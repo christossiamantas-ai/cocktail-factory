@@ -17,8 +17,10 @@ def get_data(worksheet):
        return conn.read(worksheet=worksheet, ttl=0)
    except:
        return pd.DataFrame()
-
 def save_data(df, worksheet):
+    Δες αν το "ingredients" υπάρχει στα διαθέσιμα φύλλα
+available_sheets = conn.spreadsheet.worksheets()
+print([s.title for s in available_sheets])
    conn.update(worksheet=worksheet, data=df)
    st.cache_data.clear()
 
