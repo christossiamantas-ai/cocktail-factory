@@ -56,7 +56,7 @@ recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.em
 
 # --- Sidebar ---
 st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "🛒 Παραγγελίες", "📈 Dashboard"])
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "🛒 Παραγγελίες", "📈 Εμπορική Πολιτική", "📈 Dashboard"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
@@ -271,3 +271,74 @@ elif page == "📈 Dashboard":
                     st.rerun()
     else:
         st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
+# --- 7. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (ΧΩΡΙΣ ΕΞΤΡΑ ΕΦΚ) ---
+elif page == "📈 Εμπορική Πολιτική":
+    st.header("📈 Ανάλυση Εμπορικής Συμφωνίας (Deals)")
+    
+    if not df_rec.empty:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Στοιχεία Πώλησης")
+            sell_c = st.selectbox("Cocktail προς Πώληση:", recipe_options, key="deal_sell")
+            sell_qty = st.number_input("Τεμάχια Προς Πώληση:", min_value=1, value=10)
+            sell_p = st.number_input("Συμφωνημένη Τιμή Μονάδας (€):", min_value=0.0, value=10.0, step=0.5)
+
+        with col2:
+            st.subheader("Στοιχεία Παροχής (Δώρο)")
+            free_c = st.selectbox("Cocktail που Δίνεται Δώρο:", recipe_options, key="deal_free")
+            free_qty = st.number_input("Τεμάχια Δώρου (Free Goods):", min_value=0, value=0)
+
+        # ΣΥΝΑΡΤΗΣΗ ΥΠΟΛΟΓΙΣΜΟΥ (Μόνο Υλικά + Σταθερά)
+        def get_exact_unit_cost_no_tax(name):
+            try:
+                row = df_rec[df_rec["Ονομα"] == name].iloc[0]
+                c_raw = 0.0
+                for i in range(1, 14):
+                    ing_n = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                    ml = float(row.get(f"ML{i}", 0))
+                    if ing_n not in ["ΚΕΝΟ", "nan", "Νερό", ""] and ml > 0:
+                        m = df_ing[df_ing["Name"].str.strip() == ing_n]
+                        if not m.empty:
+                            # Παίρνουμε την τιμή/ml (που περιέχει ήδη τον ΕΦΚ)
+                            c_raw += (ml * float(m.iloc[0]["Τιμή/ml"]))
+                
+                # Επιστρέφει μόνο Κόστος Υλικών + Σταθερά
+                return c_raw + TOTAL_FIXED
+            except:
+                return 0.0
+
+        # Υπολογισμοί Deal
+        unit_cost_sell = get_exact_unit_cost_no_tax(sell_c)
+        unit_cost_free = get_exact_unit_cost_no_tax(free_c)
+        
+        total_revenue = sell_qty * sell_p
+        # Συνολικό κόστος επένδυσης (Πωληθέντα + Δώρα)
+        total_investment_cost = (sell_qty * unit_cost_sell) + (free_qty * unit_cost_free)
+        
+        # Πραγματικό κόστος ανά πωληθέν τεμάχιο
+        real_unit_cost = total_investment_cost / sell_qty
+        
+        total_deal_profit = total_revenue - total_investment_cost
+        margin = (total_deal_profit / total_revenue * 100) if total_revenue > 0 else 0
+
+        st.divider()
+        
+        # Παρουσίαση Αποτελεσμάτων
+        res1, res2, res3 = st.columns(3)
+        res1.metric("Κόστος Ανάλυσης (1 τμχ)", f"{format_greek(unit_cost_sell)}€")
+        res2.metric("Πραγματικό Κόστος (με Δώρα)", f"{format_greek(real_unit_cost)}€")
+        res3.metric("Συνολικό Κέρδος Deal", f"{format_greek(total_deal_profit)}€")
+        
+        st.write(f"---")
+        # Δυναμικό μήνυμα επεξήγησης
+        if free_qty > 0:
+            st.warning(f"💡 **Ανάλυση:** Το cocktail έχει κόστος {format_greek(unit_cost_sell)}€. "
+                       f"Λόγω της προσφοράς (δώρα), το κόστος για κάθε ένα από τα {sell_qty} τεμάχια που χρεώνετε "
+                       f"ανεβαίνει στα **{format_greek(real_unit_cost)}€**.")
+        else:
+            st.success(f"✅ Χωρίς δώρα, το κόστος παραμένει σταθερό στα {format_greek(unit_cost_sell)}€ ανά μονάδα.")
+            
+        st.subheader(f"Σύνοψη Συμφωνίας: {round(margin, 1)}% Margin")
+
+    else:
+        st.warning("Δεν βρέθηκαν συνταγές στο αρχείο db_recipes.csv.")
