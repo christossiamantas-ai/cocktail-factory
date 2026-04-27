@@ -1,224 +1,273 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-import json
-from datetime import datetime
+import os
+import math
+import plotly.express as px
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="Cocktail Factory Cloud v13.1", layout="wide")
+# --- Ρυθμίσεις Σελίδας ---
+st.set_page_config(page_title="DC CABCLUB 2026 - Ultimate", layout="wide", page_icon="🍸")
 
-# Σύνδεση με το Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Αρχεία Βάσης
+DB_INGREDIENTS = "db_ingredients.csv"
+DB_RECIPES = "db_recipes.csv"
+DB_ORDERS = "db_orders.csv"
+DB_HISTORY = "db_history.csv"
 
-# --- ΣΥΝΑΡΤΗΣΕΙΣ ΓΙΑ ΔΕΔΟΜΕΝΑ ---
-def get_data(worksheet):
-   try:
-       # ttl=0 για να διαβάζει πάντα τα τελευταία δεδομένα από το Sheet
-       return conn.read(worksheet=worksheet, ttl=0)
-   except:
-       return pd.DataFrame()
+TOTAL_FIXED = 0.22  
+TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
 
-def save_data(df, worksheet):
-   conn.update(worksheet=worksheet, data=df)
-   st.cache_data.clear()
+def format_greek(value):
+    if isinstance(value, (int, float)):
+        return "{:.3f}".format(value).replace('.', ',')
+    return value
 
-# --- STATE MANAGEMENT ---
-if 'builder_recipe' not in st.session_state: st.session_state.builder_recipe = []
-if 'edit_name' not in st.session_state: st.session_state.edit_name = ""
+def load_data():
+    if os.path.exists(DB_INGREDIENTS):
+        ing = pd.read_csv(DB_INGREDIENTS)
+    else:
+        ing = pd.DataFrame(columns=["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
+    
+    for col in ["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"]:
+        if col not in ing.columns:
+            ing[col] = 0.0 if col != "Name" else "Νέο Υλικό"
+            
+    if os.path.exists(DB_RECIPES):
+        rec = pd.read_csv(DB_RECIPES)
+    else:
+        cols_rec = ["Ονομα", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
+        rec = pd.DataFrame(columns=cols_rec)
+        
+    if os.path.exists(DB_ORDERS):
+        orders = pd.read_csv(DB_ORDERS, dtype={"Πελάτης": str, "Cocktail": str})
+    else:
+        orders = pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
+    orders["Πελάτης"] = orders["Πελάτης"].astype(str).replace("nan", "")
 
-# --- NAVIGATION ---
-st.sidebar.title("🍸 Factory Cloud v13.1")
-page = st.sidebar.selectbox("Μενού", [
-   "📊 Dashboard", "📦 Αποθήκη", "🛠️ Recipe Builder",
-   "📂 Αρχείο Συνταγών", "📝 Νέα Παραγγελία", "📋 Τιμοκατάλογος"
-])
+    if os.path.exists(DB_HISTORY):
+        history = pd.read_csv(DB_HISTORY)
+    else:
+        history = pd.DataFrame(columns=["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
+        
+    return ing, rec, orders, history
 
-# --- 0. DASHBOARD ---
-if page == "📊 Dashboard":
-   st.title("📊 Επισκόπηση (Live)")
-   ings = get_data("ingredients")
-   recs = get_data("recipes")
-   ords = get_data("orders")
+df_ing, df_rec, df_orders, df_history = load_data()
+ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
+recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
-   c1, c2, c3 = st.columns(3)
-   c1.metric("Υλικά στην Αποθήκη", len(ings) if not ings.empty else 0)
-   c2.metric("Συνταγές στο Αρχείο", len(recs) if not recs.empty else 0)
-   c3.metric("Σύνολο Παραγγελιών", len(ords) if not ords.empty else 0)
+# --- Sidebar ---
+st.sidebar.title("DC CABCLUB 2026 🏆")
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "🛒 Παραγγελίες", "📈 Dashboard"])
+country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
+tax_factor = TAX_RATES[country]
 
-   st.divider()
-   if not ords.empty:
-       st.subheader("📅 Τελευταίες Παραγγελίες")
-       st.dataframe(ords.tail(10), use_container_width=True)
+# --- 1. ΑΠΟΘΗΚΗ ---
+if page == "📦 Αποθήκη":
+    st.header("📦 Διαχείριση Υλικών & Τιμών")
+    cols_to_show = ["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %"]
+    column_config_ing = {
+        "Name": st.column_config.TextColumn("Όνομα Υλικού"),
+        "Price": st.column_config.NumberColumn("Τιμή Αγοράς (€)"),
+        "Volume": st.column_config.NumberColumn("ML Φιάλης"),
+        "Τιμή/ml": st.column_config.NumberColumn("Τιμή/ml", disabled=True),
+        "Αλκοόλ %": st.column_config.NumberColumn("Alc %")
+    }
+    edited_ing = st.data_editor(df_ing[cols_to_show], column_config=column_config_ing, num_rows="dynamic", use_container_width=True)
+    if st.button("💾 Αποθήκευση Υλικών"):
+        temp_df = edited_ing.copy()
+        temp_df["Τιμή/ml"] = temp_df["Price"] / temp_df["Volume"].replace(0, 1)
+        final_df = temp_df.merge(df_ing[["Name", "Απόθεμα (ml)"]], on="Name", how="left")
+        final_df["Απόθεμα (ml)"] = final_df["Απόθεμα (ml)"].fillna(0.0)
+        final_df.to_csv(DB_INGREDIENTS, index=False)
+        st.success("Η αποθήκη ενημερώθηκε!")
+        st.rerun()
 
-# --- 1. INVENTORY (ΜΕ IMPORT) ---
-elif page == "📦 Αποθήκη":
-   st.title("📦 Διαχείριση Υλικών")
-   ings = get_data("ingredients")
+# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
+elif page == "📝 Νέα Συνταγή":
+    st.header("📝 Καταχώρηση Νέας Συνταγής")
+    with st.form("new_recipe_form"):
+        name = st.text_input("Όνομα Cocktail")
+        cat_price = st.number_input("Τιμή Καταλόγου (€)", min_value=0.0, step=0.10)
+        recipe_data = {}
+        for i in range(1, 14):
+            c1, c2 = st.columns([3, 1])
+            with c1: recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = st.selectbox(f"Συστατικό {i}", ing_options, key=f"n_s_{i}")
+            with c2: recipe_data[f"ML{i}"] = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
+        if st.form_submit_button("💾 Αποθήκευση"):
+            if name:
+                new_row = {"Ονομα": name, "Τιμή Καταλόγου": cat_price, **recipe_data}
+                df_rec = pd.concat([df_rec, pd.DataFrame([new_row])], ignore_index=True)
+                df_rec.to_csv(DB_RECIPES, index=False)
+                st.success("Αποθηκεύτηκε!")
+                st.rerun()
 
-   c1, c2 = st.columns(2)
-   with c1:
-       with st.expander("➕ Προσθήκη / Import", expanded=True):
-           t1, t2 = st.tabs(["Χειροκίνητα", "Excel Import"])
-           with t1:
-               n = st.text_input("Όνομα Υλικού")
-               p = st.number_input("Τιμή Αγοράς (€)", 0.0)
-               v = st.number_input("Όγκος (ml)", 1.0, 5000.0, 700.0)
-               if st.button("Αποθήκευση"):
-                   new_row = pd.DataFrame([{"name": n, "purchase_price": p, "volume_ml": v, "cost_per_ml": p/v}])
-                   updated_df = pd.concat([ings, new_row], ignore_index=True)
-                   save_data(updated_df, "ingredients")
-                   st.success("Αποθηκεύτηκε!")
-                   st.rerun()
+# --- 3. ΔΙΑΧΕΙΡΙΣΗ ---
+elif page == "📊 Διαχείριση":
+    st.header("📊 Επεξεργασία Συνταγών")
+    if not df_rec.empty:
+        df_rec["Τιμή Αντιπροσώπου"] = df_rec["Τιμή Καταλόγου"] * 0.74
+        config_rec = {"Ονομα": st.column_config.TextColumn("Όνομα", width="medium")}
+        for i in range(1, 14):
+            config_rec[f"ΣΥΣΤΑΤΙΚΟ{i}"] = st.column_config.SelectboxColumn(f"Υλικό {i}", options=ing_options)
+            config_rec[f"ML{i}"] = st.column_config.NumberColumn(f"ML {i}")
+        ed = st.data_editor(df_rec, column_config=config_rec, num_rows="dynamic", use_container_width=True)
+        if st.button("💾 Αποθήκευση"):
+            to_save = ed.drop(columns=["Τιμή Αντιπροσώπου"]) if "Τιμή Αντιπροσώπου" in ed.columns else ed
+            to_save.to_csv(DB_RECIPES, index=False)
+            st.success("Ενημερώθηκε!")
+            st.rerun()
 
-           with t2:
-               st.write("Το Excel πρέπει να έχει στήλες: **Name, Price, Volume**")
-               up = st.file_uploader("Ανεβάστε αρχείο .xlsx", type=["xlsx"])
-               if up and st.button("🚀 Εκτέλεση Import"):
-                   df_upload = pd.read_excel(up)
-                   new_ings = pd.DataFrame({
-                       "name": df_upload["Name"],
-                       "purchase_price": df_upload["Price"],
-                       "volume_ml": df_upload["Volume"],
-                       "cost_per_ml": df_upload["Price"] / df_upload["Volume"]
-                   })
-                   updated_df = pd.concat([ings, new_ings], ignore_index=True).drop_duplicates(subset=['name'], keep='last')
-                   save_data(updated_df, "ingredients")
-                   st.success(f"Εισήχθησαν {len(new_ings)} υλικά!")
-                   st.rerun()
+# --- 4. ΑΝΑΛΥΣΗ ---
+elif page == "🔍 Ανάλυση":
+    st.header("🔍 Οικονομική Ανάλυση")
+    if not df_rec.empty:
+        discount = st.sidebar.slider("Έκπτωση Προσφοράς %", 0, 100, 0)
+        choice = st.selectbox("Επιλέξτε Cocktail:", df_rec["Ονομα"].unique())
+        r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
+        
+        p_retail = float(r["Τιμή Καταλόγου"])
+        p_agent = p_retail * 0.74
+        p_custom = p_retail * (1 - discount/100)
+        
+        raw_cost, pure_alc_ml = 0.0, 0.0
+        breakdown = []
+        for i in range(1, 14):
+            ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+            ml = float(r.get(f"ML{i}", 0))
+            if ing_n not in ["ΚΕΝΟ", "nan", "Νερό", ""] and ml > 0:
+                match = df_ing[df_ing["Name"] == ing_n]
+                if not match.empty:
+                    c_ml = float(match.iloc[0]["Τιμή/ml"])
+                    raw_cost += (ml * c_ml)
+                    pure_alc_ml += (ml * float(match.iloc[0]["Αλκοόλ %"]) / 100)
+                    breakdown.append({"Υλικό": ing_n, "ML": ml, "Κόστος": ml * c_ml})
 
-   with c2:
-       if not ings.empty:
-           with st.expander("📝 Επεξεργασία / Διαγραφή"):
-               sel = st.selectbox("Επιλογή Υλικού", ings['name'])
-               idx = ings[ings['name'] == sel].index[0]
+        efk = pure_alc_ml * tax_factor * 100
+        total_production = raw_cost + TOTAL_FIXED 
+        profit = p_custom - total_production
 
-               col_up, col_del = st.columns(2)
-               if col_del.button("🗑️ Διαγραφή"):
-                   ings = ings.drop(idx)
-                   save_data(ings, "ingredients")
-                   st.rerun()
+        st.subheader(f"Ανάλυση: {choice}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Λιανική", f"{format_greek(p_retail)}€")
+        c2.metric("Αντιπρόσωπος", f"{format_greek(p_agent)}€")
+        c3.metric("Πώληση (με έκπτωση)", f"{format_greek(p_custom)}€")
 
-   st.dataframe(ings, use_container_width=True)
+        m = st.columns(5)
+        m[0].metric("Υλικά", f"{format_greek(raw_cost)}€")
+        m[1].metric("ΕΦΚ", f"{format_greek(efk)}€")
+        m[2].metric("Σταθερά", f"{format_greek(TOTAL_FIXED)}€")
+        m[3].metric("Σύνολο Κόστους", f"{format_greek(total_production)}€")
+        m[4].metric("Καθαρό Κέρδος", f"{format_greek(profit)}€")
+        
+        st.write("**Σύνθεση Συνταγής:**")
+        st.table(pd.DataFrame(breakdown))
 
-# --- 2. RECIPE BUILDER ---
-elif page == "🛠️ Recipe Builder":
-   st.title("🛠️ Σχεδιασμός Συνταγής")
-   ings = get_data("ingredients")
-   recs = get_data("recipes")
+        detailed_export = [
+            ["Όνομα Cocktail", choice],
+            ["Τιμή Καταλόγου", format_greek(p_retail)],
+            ["Τιμή Αντιπροσώπου", format_greek(p_agent)],
+            ["Τιμή Πώλησης (Με Έκπτωση)", format_greek(p_custom)],
+            ["--- ΑΝΑΛΥΣΗ ΚΟΣΤΟΥΣ ΥΛΙΚΩΝ ---", ""]
+        ]
+        for item in breakdown:
+            detailed_export.append([f"{item['Υλικό']} ({item['ML']}ml)", format_greek(item['Κόστος'])])
+        
+        detailed_export.extend([
+            ["ΕΦΚ", format_greek(efk)],
+            ["Σταθερά Έξοδα", format_greek(TOTAL_FIXED)],
+            ["ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ", format_greek(total_production)],
+            ["ΚΑΘΑΡΟ ΚΕΡΔΟΣ", format_greek(profit)]
+        ])
+        
+        csv_final = pd.DataFrame(detailed_export).to_csv(index=False, header=False, sep=';', encoding='utf-8-sig')
+        st.download_button("📥 Λήψη Αναφοράς (Excel)", csv_final, f"Analysis_{choice}.csv")
 
-   col_opt, col_main = st.columns([1, 2])
-   with col_opt:
-       f_bot = st.number_input("Μπουκάλι/Καπάκι (€)", 0.19)
-       f_tax = st.number_input("Φόρος %", 24.5)
-       f_box = 0.02
-       f_ship = 0.01
+# --- 5. ΠΑΡΑΓΓΕΛΙΕΣ ---
+elif page == "🛒 Παραγγελίες":
+    st.header("🛒 Παραγγελίες & Ανάγκες")
+    col_a, col_b = st.columns([1, 1.3])
+    with col_a:
+        order_config = {
+            "Πελάτης": st.column_config.TextColumn("Πελάτης"),
+            "Cocktail": st.column_config.SelectboxColumn("Cocktail", options=recipe_options),
+            "Τεμάχια": st.column_config.NumberColumn("Τεμάχια", min_value=1)
+        }
+        ed_orders = st.data_editor(df_orders, column_config=order_config, num_rows="dynamic", use_container_width=True)
+        if st.button("💾 Αποθήκευση Παραγγελιών"):
+            ed_orders.to_csv(DB_ORDERS, index=False)
+            st.rerun()
 
-   with col_main:
-       name = st.text_input("Όνομα Cocktail", value=st.session_state.edit_name)
-       c1, c2, c3 = st.columns([2,1,1])
-       sel_ing = c1.selectbox("Υλικό", ings['name']) if not ings.empty else ""
-       ml = c2.number_input("ml", 0.0)
-       if c3.button("Προσθήκη"):
-           st.session_state.builder_recipe.append({"Υλικό": sel_ing, "ml": ml})
-           st.rerun()
+        if st.button("✅ ΟΛΟΚΛΗΡΩΣΗ & ΑΡΧΕΙΟΘΕΤΗΣΗ"):
+            if not ed_orders.empty:
+                new_h = ed_orders.copy()
+                new_h["Ημερομηνία"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+                df_history = pd.concat([df_history, new_h], ignore_index=True)
+                df_history.to_csv(DB_HISTORY, index=False)
+                pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"]).to_csv(DB_ORDERS, index=False)
+                st.success("Η παραγγελία μεταφέρθηκε στο ιστορικό!")
+                st.rerun()
 
-       liq_cost = 0
-       for idx, item in enumerate(st.session_state.builder_recipe):
-           p_ml = ings[ings['name'] == item['Υλικό']]['cost_per_ml'].values[0]
-           liq_cost += item['ml'] * p_ml
-           st.write(f"• {item['Υλικό']} ({item['ml']}ml)")
-           if st.button("🗑️", key=f"del_{idx}"):
-               st.session_state.builder_recipe.pop(idx); st.rerun()
+    with col_b:
+        st.subheader("Υπολογισμός με Κενό Απόθεμα")
+        if not ed_orders.empty:
+            needs = {}
+            for _, o in ed_orders.iterrows():
+                r_m = df_rec[df_rec["Ονομα"] == o["Cocktail"]]
+                if not r_m.empty:
+                    for i in range(1,14):
+                        ing, ml = str(r_m.iloc[0][f"ΣΥΣΤΑΤΙΚΟ{i}"]), float(r_m.iloc[0][f"ML{i}"])
+                        if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
+                            needs[ing] = needs.get(ing, 0) + (ml * o["Τεμάχια"])
+            
+            if needs:
+                calc_data = []
+                for ing, total_ml in needs.items():
+                    ing_info = df_ing[df_ing["Name"] == ing]
+                    vol = float(ing_info.iloc[0]["Volume"]) if not ing_info.empty else 700
+                    calc_data.append({"Υλικό": ing, "Ανάγκη (ml)": total_ml, "Απόθεμα στο Ράφι (ml)": 0.0, "_vol": vol})
+                
+                df_c = pd.DataFrame(calc_data)
+                ed_c = st.data_editor(df_c, column_config={"Ανάγκη (ml)": st.column_config.NumberColumn(disabled=True), "Απόθεμα στο Ράφι (ml)": st.column_config.NumberColumn(min_value=0.0), "_vol": None}, use_container_width=True)
+                
+                ed_c["Προς Αγορά (Φιάλες)"] = ed_c.apply(lambda x: math.ceil(max(0, x["Ανάγκη (ml)"] - x["Απόθεμα στο Ράφι (ml)"]) / x["_vol"]) if x["_vol"] > 0 else 0, axis=1)
+                st.subheader("📋 Λίστα Αγορών")
+                st.dataframe(ed_c[ed_c["Προς Αγορά (Φιάλες)"] > 0][["Υλικό", "Προς Αγορά (Φιάλες)"]], use_container_width=True)
 
-       total = liq_cost + (liq_cost * f_tax/100) + f_bot + f_box + f_ship
-       st.metric("Κόστος Μονάδας", f"{total:.3f}€")
+# --- 6. DASHBOARD ---
+elif page == "📈 Dashboard":
+    st.header("📈 Στατιστικά Πωλήσεων & Ιστορικό")
+    if not df_history.empty:
+        fig = px.bar(df_history.groupby("Cocktail")["Τεμάχια"].sum().reset_index(), 
+                     x="Cocktail", y="Τεμάχια", 
+                     title="Συνολικές Πωλήσεις ανά Cocktail", 
+                     color="Cocktail")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.subheader("Πλήρες Ιστορικό")
+        st.dataframe(df_history.sort_values("Ημερομηνία", ascending=False), use_container_width=True)
+        
+        st.divider()
+        st.subheader("⚠️ Διαχείριση Δεδομένων")
+        
+        if "delete_confirm" not in st.session_state:
+            st.session_state.delete_confirm = False
 
-       if st.button("💾 Αποθήκευση Συνταγής"):
-           new_rec = pd.DataFrame([{
-               "name": name, "ingredients_json": json.dumps(st.session_state.builder_recipe),
-               "fixed_costs": f_bot, "tax_percent": f_tax, "box_cost": f_box, "shipping_cost": f_ship
-           }])
-           if not recs.empty and name in recs['name'].values:
-               recs = recs[recs['name'] != name]
-           updated_recs = pd.concat([recs, new_rec], ignore_index=True)
-           save_data(updated_recs, "recipes")
-           st.session_state.builder_recipe = []; st.session_state.edit_name = ""; st.rerun()
-
-# --- 3. ARCHIVE ---
-elif page == "📂 Αρχείο Συνταγών":
-   st.title("📂 Αρχείο Συνταγών")
-   recs = get_data("recipes")
-   ings_db = get_data("ingredients")
-
-   if not recs.empty:
-       sel = st.selectbox("Επιλέξτε Συνταγή", recs['name'])
-       r = recs[recs['name'] == sel].iloc[0]
-       items = json.loads(r['ingredients_json'])
-
-       table = []
-       liq_sum = 0
-       for i in items:
-           p_ml = ings_db[ings_db['name'] == i['Υλικό']]['cost_per_ml'].values[0] if not ings_db.empty else 0
-           cost = i['ml'] * p_ml
-           table.append({"Υλικό": i['Υλικό'], "ml": i['ml'], "Κόστος (€)": round(cost, 3)})
-           liq_sum += cost
-
-       st.table(pd.DataFrame(table))
-       tax_v = liq_sum * (r['tax_percent']/100)
-       final = liq_sum + tax_v + r['fixed_costs'] + r['box_cost'] + r['shipping_cost']
-       st.metric("Τελικό Κόστος", f"{final:.3f}€")
-
-       if st.button("🗑️ Διαγραφή Συνταγής"):
-           recs = recs[recs['name'] != sel]
-           save_data(recs, "recipes"); st.rerun()
-
-# --- 4. NEW ORDER ---
-elif page == "📝 Νέα Παραγγελία":
-   st.title("📝 Παραγγελίες & Ανάγκες")
-   recs = get_data("recipes")
-   ords = get_data("orders")
-
-   col1, col2 = st.columns([1,2])
-   with col1:
-       sel_list = st.multiselect("Προϊόντα", recs['name'])
-       order_items = []
-       for s in sel_list:
-           q = st.number_input(f"Τεμάχια {s}", 1, 1000, 10)
-           order_items.append({"item": s, "qty": q})
-
-       if st.button("🚀 Καταχώρηση Παραγγελίας"):
-           new_ord = pd.DataFrame([{"order_date": datetime.now().strftime("%d/%m/%Y %H:%M"), "items_json": json.dumps(order_items)}])
-           updated_ords = pd.concat([ords, new_ord], ignore_index=True)
-           save_data(updated_ords, "orders")
-           st.success("Η παραγγελία καταγράφηκε!")
-
-   with col2:
-       if order_items:
-           raw = {}
-           for entry in order_items:
-               recipe = recs[recs['name'] == entry['item']].iloc[0]
-               ing_list = json.loads(recipe['ingredients_json'])
-               for ing in ing_list:
-                   raw[ing['Υλικό']] = raw.get(ing['Υλικό'], 0) + (ing['ml'] * entry['qty'])
-           st.subheader("Συνολικές Ανάγκες")
-           st.table(pd.DataFrame([{"Υλικό": k, "Λίτρα": round(v/1000, 2)} for k, v in raw.items()]))
-
-# --- 5. PRICE LIST ---
-elif page == "📋 Τιμοκατάλογος":
-   st.title("📋 Τιμοκατάλογος")
-   recs = get_data("recipes")
-   ings = get_data("ingredients")
-   markup = st.slider("Markup %", 10, 300, 100)
-
-   res = []
-   if not recs.empty:
-       for _, r in recs.iterrows():
-           items = json.loads(r['ingredients_json'])
-           l_cost = 0
-           for i in items:
-               p_ml = ings[ings['name'] == i['Υλικό']]['cost_per_ml'].values[0] if not ings.empty else 0
-               l_cost += i['ml'] * p_ml
-           unit_c = l_cost + (l_cost * r['tax_percent']/100) + r['fixed_costs'] + r['box_cost'] + r['shipping_cost']
-           price = unit_c * (1 + markup/100)
-           res.append({"Cocktail": r['name'], "Κόστος": round(unit_c, 2), "Τιμή": round(price, 2), "Κέρδος €": round(price-unit_c, 2)})
-       st.table(pd.DataFrame(res))
+        if not st.session_state.delete_confirm:
+            if st.button("🗑️ Καθαρισμός Ιστορικού"):
+                st.session_state.delete_confirm = True
+                st.rerun()
+        else:
+            st.warning("Είστε σίγουροι ότι θέλετε να διαγράψετε όλο το ιστορικό;")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("✅ Ναι, Διαγραφή"):
+                    new_df = pd.DataFrame(columns=["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
+                    new_df.to_csv(DB_HISTORY, index=False)
+                    st.session_state.delete_confirm = False
+                    st.success("Διαγράφηκε!")
+                    st.rerun()
+            with c2:
+                if st.button("❌ Άκυρο"):
+                    st.session_state.delete_confirm = False
+                    st.rerun()
+    else:
+        st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
