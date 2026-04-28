@@ -7,6 +7,32 @@ import plotly.express as px
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
+# --- Σύστημα Password ---
+def check_password():
+    """Επιστρέφει True αν ο χρήστης έδωσε σωστό κωδικό."""
+    def password_entered():
+        # panatha1908
+        if st.session_state["password"] == "panatha1908":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Διαγραφή κωδικού από το state για ασφάλεια
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # Πρώτη φορά που ανοίγει η εφαρμογή
+        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Λάθος κωδικός
+        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
+        st.error("❌ Λάθος κωδικός. Προσπαθήστε ξανά.")
+        return False
+    else:
+        # Σωστός κωδικός
+        return True
+
+if not check_password():
+    st.stop()  # Σταματάει την εκτέλεση της εφαρμογής εδώ αν δεν είναι σωστός ο κωδικός
 
 # Προσθήκη CSS
 st.markdown("""
