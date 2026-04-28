@@ -95,6 +95,7 @@ ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()
 recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
 # --- Sidebar ---
+st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
 st.sidebar.title("DC CABCLUB 2026 🏆")
 page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "📈 Dashboard"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
@@ -577,3 +578,4 @@ elif page == "📈 Dashboard":
                     st.rerun()
     else:
         st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
+
