@@ -176,7 +176,7 @@ elif page == "📝 Νέα Συνταγή":
         
         if st.form_submit_button("💾 Αποθήκευση Συνταγής"):
             if name:
-                # 1. Δημιουργία της νέας γραμμής
+                # 1. Δημιουργία της νέας γραμμής (Περιλαμβάνει το Barcode)
                 new_row = {
                     "Barcode": str(barcode).strip(),
                     "Ονομα": name, 
@@ -184,30 +184,38 @@ elif page == "📝 Νέα Συνταγή":
                     **recipe_data
                 }
                 
-                # 2. Μετατροπή σε DataFrame
+                # Μετατροπή σε DataFrame
                 new_df = pd.DataFrame([new_row])
                 
-                # 3. Φόρτωση του υπάρχοντος αρχείου (αν υπάρχει) και ένωση
+                # 2. Φόρτωση του αρχείου και έλεγχος στηλών
                 if os.path.exists(DB_RECIPES):
                     old_df = pd.read_csv(DB_RECIPES)
-                    # Διασφαλίζουμε ότι τα barcodes διαβάζονται ως strings για να γίνει σωστά ο έλεγχος
+                    
+                    # --- Η ΚΡΙΣΙΜΗ ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΟ KEYERROR ---
+                    if "Barcode" not in old_df.columns:
+                        # Αν λείπει η στήλη Barcode, τη δημιουργούμε κενή στην αρχή
+                        old_df.insert(0, "Barcode", "")
+                    # ------------------------------------------
+
+                    # Καθαρισμός δεδομένων Barcode για σωστή σύγκριση
                     old_df["Barcode"] = old_df["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
+                    
+                    # Ένωση παλιών και νέων δεδομένων
                     combined_df = pd.concat([old_df, new_df], ignore_index=True)
                 else:
+                    # Αν δεν υπάρχει καν το αρχείο, το δημιουργούμε από το μηδέν
                     combined_df = new_df
 
-                # 4. Η ΜΑΓΙΚΗ ΓΡΑΜΜΗ: Αφαίρεση διπλότυπων
-                # Αν υπάρχει ίδια συνταγή με ίδιο Barcode ΚΑΙ ίδιο Όνομα, κράτα μόνο την πρώτη
+                # 3. Αφαίρεση διπλότυπων (για να μην την περνάει 2 φορές)
                 combined_df = combined_df.drop_duplicates(subset=["Barcode", "Ονομα"], keep="first")
                 
-                # 5. Τελική αποθήκευση
+                # 4. Τελική αποθήκευση
                 combined_df.to_csv(DB_RECIPES, index=False)
                 
                 st.success(f"✅ Το Cocktail '{name}' αποθηκεύτηκε επιτυχώς!")
                 st.rerun()
             else:
                 st.error("❌ Παρακαλώ εισάγετε το όνομα του Cocktail.")
-
 # --- 3. ΔΙΑΧΕΙΡΙΣΗ (ΟΛΟΚΛΗΡΩΜΕΝΟΣ ΚΩΔΙΚΑΣ) ---
 elif page == "📊 Διαχείριση":
     st.header("📊 Επεξεργασία Συνταγών & Barcodes Shop")
