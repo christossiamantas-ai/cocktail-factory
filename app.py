@@ -183,148 +183,152 @@ elif page == "📊 Διαχείριση":
             st.success("Ενημερώθηκε!")
             st.rerun()
 
-# --- 4. ΑΝΑΛΥΣΗ ---
+# # --- 4. ΑΝΑΛΥΣΗ (ΠΛΗΡΗΣ ΑΠΟΚΑΤΑΣΤΑΣΗ & ΔΙΟΡΘΩΣΗ) ---
 elif page == "🔍 Ανάλυση":
     st.header("🔍 Οικονομική Ανάλυση & Κερδοφορία")
     
     if not df_rec.empty:
+        # Sidebar Ρυθμίσεις
         st.sidebar.subheader("Ρυθμίσεις Ανάλυσης")
         discount = st.sidebar.slider("Έκπτωση Προσφοράς %", 0, 100, 0)
-        agent_rate = 0.74 
-
-        choice = st.selectbox("Επιλέξτε Cocktail για ανάλυση:", df_rec["Ονομα"].unique())
+        
+        choice = st.selectbox("Επιλέξτε Cocktail:", df_rec["Ονομα"].unique())
         r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
         
-        # --- 1. ΥΠΟΛΟΓΙΣΜΟΙ ΤΙΜΩΝ ---
+        # Βασικές Τιμές
         p_retail = float(r["Τιμή Καταλόγου"])
-        p_agent = p_retail * agent_rate
+        p_agent = p_retail * 0.74
         p_custom = p_retail * (1 - discount/100)
         
-        # --- 2. ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ & ML ---
         raw_cost, pure_alc_ml, total_ml_cocktail = 0.0, 0.0, 0.0
         breakdown = []
+        
+        # --- ΣΥΛΛΟΓΗ ΔΕΔΟΜΕΝΩΝ ΣΥΝΤΑΓΗΣ ---
         for i in range(1, 14):
             ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
             ml = float(r.get(f"ML{i}", 0))
             
             if ing_n != "ΚΕΝΟ" and ml > 0:
-                total_ml_cocktail += ml  # Προσθήκη στα συνολικά ML
-                
-                if ing_n not in ["nan", "Νερό", ""]:
+                total_ml_cocktail += ml
+                if ing_n == "Νερό":
+                    breakdown.append({"Υλικό": "Νερό", "ML": ml, "Κόστος": 0.0, "Alc %": 0.0})
+                elif ing_n not in ["nan", ""]:
                     match = df_ing[df_ing["Name"] == ing_n]
                     if not match.empty:
-                        c_ml = float(match.iloc[0]["Τιμή/ml"])
-                        item_cost = ml * c_ml
+                        alc_val = float(match.iloc[0]["Αλκοόλ %"])
+                        actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
+                        pure_alc_ml += (ml * actual_alc_pct)
+                        
+                        item_cost = ml * float(match.iloc[0]["Τιμή/ml"])
                         raw_cost += item_cost
-                        pure_alc_ml += (ml * float(match.iloc[0]["Αλκοόλ %"]) / 100)
-                        breakdown.append({"Υλικό": ing_n, "ML": ml, "Κόστος": item_cost})
+                        breakdown.append({
+                            "Υλικό": ing_n, 
+                            "ML": ml, 
+                            "Κόστος": item_cost, 
+                            "Alc %": actual_alc_pct * 100
+                        })
 
-        # Ο ΕΦΚ έχει ήδη υπολογιστεί στην τιμή κτήσης των υλικών
-        efk_info = pure_alc_ml * tax_factor * 100
+        # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
+        final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
+        efk_informational = pure_alc_ml * tax_factor
         total_production = raw_cost + TOTAL_FIXED 
         
-        # --- 3. ΥΠΟΛΟΓΙΣΜΟΣ ΚΕΡΔΩΝ / MARGIN / MARKUP ---
         profit_retail = p_retail - total_production
         profit_agent = p_agent - total_production
-        
+        profit_custom = p_custom - total_production
         margin_retail = (profit_retail / p_retail * 100) if p_retail > 0 else 0
-        margin_agent = (profit_agent / p_agent * 100) if p_agent > 0 else 0
-        
-        markup_retail = (profit_retail / total_production * 100) if total_production > 0 else 0
-        markup_agent = (profit_agent / total_production * 100) if total_production > 0 else 0
 
-        # --- ΕΜΦΑΝΙΣΗ ---
+        # --- ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ ---
         st.subheader(f"Στατιστικά για: {choice}")
-        
-        # Γενικές Πληροφορίες Cocktail
-        st.info(f"**Συνολική Ποσότητα Cocktail:** {total_ml_cocktail:.1f} ml")
+        m_col1, m_col2 = st.columns(2)
+        m_col1.metric("Συνολική Ποσότητα", f"{total_ml_cocktail:.1f} ml".replace('.', ','))
+        m_col2.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %".replace('.', ','))
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("Τιμή Λιανικής", f"{format_greek(p_retail)}€")
-        c2.metric("Τιμή Αντιπροσώπου", f"{format_greek(p_agent)}€")
-        c3.metric("Τιμή με Έκπτωση", f"{format_greek(p_custom)}€", delta=f"-{discount}%")
+        c1.metric("Τιμή Λιανικής", f"{p_retail:.2f} €".replace('.', ','))
+        c2.metric("Τιμή Αντιπροσώπου", f"{p_agent:.2f} €".replace('.', ','))
+        c3.metric("Τιμή με Έκπτωση", f"{p_custom:.2f} €".replace('.', ','), delta=f"-{discount}%")
 
         st.markdown("---")
-
-        # Ανάλυση Κερδοφορίας
-        st.write("### 💰 Ανάλυση Κερδοφορίας (Margin & Markup)")
-        m1, m2 = st.columns(2)
-        with m1:
-            st.markdown("**Πώληση Λιανικής**")
-            st.metric("Κέρδος", f"{format_greek(profit_retail)}€")
-            st.write(f"**Margin:** {margin_retail:.1f}% | **Markup:** {markup_retail:.1f}%")
-        with m2:
-            st.markdown("**Πώληση Αντιπροσώπου**")
-            st.metric("Κέρδος", f"{format_greek(profit_agent)}€")
-            st.write(f"**Margin:** {margin_agent:.1f}% | **Markup:** {markup_agent:.1f}%")
+        st.write("### 💰 Ανάλυση Πραγματικής Κερδοφορίας")
+        p_c1, p_c2, p_c3 = st.columns(3)
+        p_c1.metric("Κέρδος Λιανικής", f"{profit_retail:.2f} €".replace('.', ','))
+        p_c2.metric("Κέρδος Αντιπροσώπου", f"{profit_agent:.2f} €".replace('.', ','))
+        p_c3.metric("Κέρδος με Έκπτωση", f"{profit_custom:.2f} €".replace('.', ','))
 
         st.markdown("---")
-
-        # Ανάλυση Κόστους
         st.write("### 🛠️ Ανάλυση Κόστους & Φόρων")
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Κόστος Υλικών", f"{format_greek(raw_cost)}€")
-        k2.metric("ΕΦΚ (Ενσωματωμένος)", f"{format_greek(efk_info)}€", help="Ο ΕΦΚ έχει ήδη υπολογιστεί στην τιμή αγοράς.")
-        k3.metric("Σταθερά Έξοδα", f"{format_greek(TOTAL_FIXED)}€")
-        k4.metric("ΣΥΝΟΛΟ ΚΟΣΤΟΥΣ", f"{format_greek(total_production)}€", delta_color="inverse")
+        k1.metric("Κόστος Υλικών", f"{raw_cost:.2f} €".replace('.', ','))
+        k2.metric("ΕΦΚ (Ενσωμ.)", f"{efk_informational:.2f} €".replace('.', ','))
+        k3.metric("Σταθερά Έξοδα", f"{TOTAL_FIXED:.2f} €".replace('.', ','))
+        k4.metric("ΣΥΝΟΛΟ ΚΟΣΤΟΥΣ", f"{total_production:.2f} €".replace('.', ','))
 
-        # Πίνακας Υλικών
+        # --- ΠΙΝΑΚΑΣ ΥΛΙΚΩΝ ΣΤΗΝ ΟΘΟΝΗ ---
         st.markdown("---")
-        st.write("### 🍹 Αναλυτική Σύνθεση Συνταγής")
-        df_br = pd.DataFrame(breakdown)
-        if not df_br.empty:
-            df_br["% στο Κόστος"] = (df_br["Κόστος"] / raw_cost * 100)
-            st.dataframe(df_br.style.format({"ML": "{:.1f}", "Κόστος": "{:.3f}€", "% στο Κόστος": "{:.1f}%"}), use_container_width=True)
+        st.write("### 🍹 Σύνθεση Υλικών")
+        df_screen = pd.DataFrame(breakdown)
+        if not df_screen.empty:
+            df_render = df_screen.copy()
+            for col in ["ML", "Alc %", "Κόστος"]:
+                if col in df_render.columns:
+                    df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
+            st.table(df_render[["Υλικό", "ML", "Alc %", "Κόστος"]])
 
-        # --- 5. ΕΞΕΛΙΓΜΕΝΟ ΑΝΑΛΥΤΙΚΟ REPORT (CSV) ---
-        report_lines = []
+        # --- ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ REPORT (ΕΚΤΟΣ COLUMNS ΓΙΑ ΝΑ ΦΑΙΝΕΤΑΙ ΠΑΝΤΑ) ---
+        st.markdown("### 📜 Εξαγωγή Επαγγελματικού Report")
         
-        # Βοηθητική συνάρτηση για ομοιόμορφη προσθήκη γραμμών
-        def add_line(desc, val):
-            report_lines.append({"ΠΕΡΙΓΡΑΦΗ": desc, "ΤΙΜΗ / ΠΟΣΟΤΗΤΑ": val})
+        def clean_val(val, decimals=3):
+            try:
+                return f"{float(val):.{decimals}f}".replace('.', ',')
+            except:
+                return str(val).replace('.', ',')
 
-        add_line("--- ΓΕΝΙΚΑ ΣΤΟΙΧΕΙΑ ---", "")
-        add_line("COCKTAIL:", choice)
-        add_line("Ημερομηνία Αναφοράς:", datetime.now().strftime("%d/%m/%Y %H:%M"))
-        add_line("Συνολική Ποσότητα:", f"{total_ml_cocktail:.1f} ml")
+        # Προετοιμασία δεδομένων CSV
+        report_data = [
+            ["ΗΜΕΡΟΜΗΝΙΑ REPORT", datetime.now().strftime("%d/%m/%Y %H:%M")],
+            ["COCKTAIL", choice],
+            ["ΣΥΝΟΛΙΚΗ ΠΟΣΟΤΗΤΑ (ML)", clean_val(total_ml_cocktail, 1)],
+            ["ΑΛΚΟΟΛΙΚΟΣ ΒΑΘΜΟΣ (ABV) %", clean_val(final_abv, 2)],
+            ["ΧΩΡΑ ΦΟΡΟΛΟΓΙΑΣ", country],
+            ["---------------------------", "---------------------------"],
+            ["ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΛΥΣΗ", ""],
+            ["Κόστος Υλικών (με ΕΦΚ)", f"{clean_val(raw_cost)} €"],
+            ["ΕΦΚ (Ενημερωτικά)", f"{clean_val(efk_informational)} €"],
+            ["Σταθερά Έξοδα Μονάδας", f"{clean_val(TOTAL_FIXED)} €"],
+            ["ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ ΠΑΡΑΓΩΓΗΣ", f"{clean_val(total_production)} €"],
+            ["---------------------------", "---------------------------"],
+            ["ΤΙΜΕΣ & ΚΕΡΔΗ", ""],
+            ["Τιμή Λιανικής", f"{clean_val(p_retail, 2)} €"],
+            ["Κέρδος Λιανικής", f"{clean_val(profit_retail)} €"],
+            ["Margin Λιανικής %", f"{clean_val(margin_retail, 2)} %"],
+            ["Τιμή Αντιπροσώπου (26%)", f"{clean_val(p_agent, 2)} €"],
+            ["Κέρδος Αντιπροσώπου", f"{clean_val(profit_agent)} €"],
+            ["Τιμή με Έκπτωση", f"{clean_val(p_custom, 2)} €"],
+            ["Κέρδος με Έκπτωση", f"{clean_val(profit_custom)} €"],
+            ["---------------------------", "---------------------------"],
+            ["ΑΝΑΛΥΣΗ ΥΛΙΚΩΝ ΑΝΑ ΣΥΣΤΑΤΙΚΟ", ""]
+        ]
         
-        add_line("--- ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΛΥΣΗ ---", "")
-        add_line("Κόστος Υλικών:", f"{format_greek(raw_cost)} €")
-        add_line("Σταθερά Έξοδα:", f"{format_greek(TOTAL_FIXED)} €")
-        add_line("ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ:", f"{format_greek(total_production)} €")
-        add_line("ΕΦΚ (Ενσωματωμένος):", f"{format_greek(efk_info)} €")
-        
-        add_line("--- ΠΩΛΗΣΗ ΛΙΑΝΙΚΗΣ ---", "")
-        add_line("Τιμή Πώλησης:", f"{format_greek(p_retail)} €")
-        add_line("Καθαρό Κέρδος:", f"{format_greek(profit_retail)} €")
-        add_line("Margin %:", f"{margin_retail:.2f} %")
-        add_line("Markup %:", f"{markup_retail:.2f} %")
-        
-        add_line("--- ΠΩΛΗΣΗ ΑΝΤΙΠΡΟΣΩΠΟΥ ---", "")
-        add_line("Τιμή Πώλησης:", f"{format_greek(p_agent)} €")
-        add_line("Καθαρό Κέρδος:", f"{format_greek(profit_agent)} €")
-        add_line("Margin %:", f"{margin_agent:.2f} %")
-        add_line("Markup %:", f"{markup_agent:.2f} %")
-        
-        add_line("--- ΑΝΑΛΥΤΙΚΗ ΣΥΝΤΑΓΗ ---", "")
         for item in breakdown:
-            item_perc = (item['Κόστος'] / raw_cost * 100) if raw_cost > 0 else 0
-            add_line(f"Συστατικό: {item['Υλικό']}", f"{item['ML']} ml | {format_greek(item['Κόστος'])} € | ({item_perc:.1f}%)")
-            
-        add_line("-----------------------", "-----------------------")
-        add_line("APPLICATION:", "DC CABCLUB 2026")
+            val_alc = item.get('Alc %', 0.0)
+            report_data.append([
+                f"Υλικό: {item['Υλικό']}", 
+                f"{clean_val(item['ML'], 1)} ml | {clean_val(val_alc, 1)}% Alc | {clean_val(item['Κόστος'])} €"
+            ])
 
-        # Δημιουργία DataFrame
-        df_export = pd.DataFrame(report_lines)
-
-        # Μετατροπή σε CSV με UTF-8-SIG για τα Ελληνικά και ερωτηματικό για το Excel
+        # Δημιουργία αρχείου
+        df_export = pd.DataFrame(report_data, columns=["ΠΕΡΙΓΡΑΦΗ", "ΤΙΜΗ / ΠΟΣΟΤΗΤΑ"])
         csv_final = df_export.to_csv(index=False, sep=';', encoding='utf-8-sig')
         
+        # ΤΟ ΚΟΥΜΠΙ (Σε δική του γραμμή στο τέλος)
+        st.info("Κάντε κλικ στο παρακάτω κουμπί για να κατεβάσετε το πλήρες αρχείο Excel (CSV).")
         st.download_button(
-            label=f"📥 Λήψη Report: {choice}", 
+            label=f"📥 Λήψη Πλήρους Report: {choice}", 
             data=csv_final, 
-            file_name=f"Report_{choice.replace(' ', '_')}.csv",
-            mime="text/csv"
+            file_name=f"Professional_Report_{choice.replace(' ', '_')}.csv",
+            mime="text/csv",
+            key="download_report_button" # Προσθήκη κλειδιού για ασφάλεια
         )
 # --- 5. ΠΑΡΑΓΓΕΛΙΕΣ ---
 elif page == "🛒 Παραγγελίες":
@@ -604,4 +608,5 @@ elif page == "📈 Dashboard":
                     st.rerun()
     else:
         st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
+
 
