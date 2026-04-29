@@ -123,7 +123,7 @@ recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.em
 # --- Sidebar ---
 st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
 st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "📈 Dashboard"])
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📈 Dashboard"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
@@ -714,6 +714,39 @@ elif page == "📈 Dashboard":
                     st.rerun()
     else:
         st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
+
+        # --- 7. SHOP SYNC (ΑΥΤΟΜΑΤΟΣ ΣΥΓΧΡΟΝΙΣΜΟΣ) ---
+elif page == "🌐 Shop Sync":
+    st.header("🌐 Αυτόματος Συγχρονισμός με το e-Shop")
+    st.markdown("---")
+    
+    # Πλαίσιο Ρυθμίσεων
+    with st.container():
+        c1, c2 = st.columns(2)
+        with c1:
+            start_date = st.date_input("Αναζήτηση παραγγελιών από:", datetime.now())
+        with c2:
+            st.info("💡 Η σύνδεση γίνεται μέσω ασφαλούς πρωτοκόλλου IMAP (Gmail).")
+
+    # Ρυθμίσεις Gmail
+    with st.expander("🔑 Στοιχεία Σύνδεσης & Φίλτρα"):
+        u_email = st.text_input("Gmail Address", placeholder="info@yourdomain.gr")
+        a_pass = st.text_input("App Password", type="password", help="Χρησιμοποιήστε τον κωδικό εφαρμογής της Google")
+        mail_subject = st.text_input("Φίλτρο Θέματος Email", value="Νέα παραγγελία")
+
+    st.write("### 📥 Ληφθείσες Παραγγελίες")
+    
+    # Κουμπί Ελέγχου
+    if st.button("🔄 Έλεγχος & Ταυτοποίηση Barcodes", use_container_width=True):
+        with st.spinner("Σύνδεση με το Gmail..."):
+            # Εδώ θα μπει ο κώδικας που θα διαβάζει τα emails
+            # Όταν μου στείλεις το κείμενο του email, θα το ολοκληρώσουμε
+            import time
+            time.sleep(1.5)
+            st.warning("⚠️ Εκκρεμεί η ρύθμιση του Email Parser. Παρακαλώ στείλτε ένα δείγμα email παραγγελίας.")
+
+    # Εδώ θα εμφανίζονται τα αποτελέσματα σε πίνακα
+    st.info("Μόλις ολοκληρωθεί η σύνδεση, εδώ θα βλέπετε τα Cocktails που πουλήθηκαν στο site και την αντιστοιχία τους με τις συνταγές σας.")
 
 
 
