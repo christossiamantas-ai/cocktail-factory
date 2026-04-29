@@ -724,7 +724,10 @@ elif page == "🌐 Shop Sync":
     with st.container():
         c1, c2 = st.columns(2)
         with c1:
-            start_date = st.date_input("Αναζήτηση παραγγελιών από:", datetime.now())
+            start_date = st.date_input(
+    "Αναζήτηση παραγγελιών από:", 
+    value=datetime.now(), 
+    format="DD/MM/YYYY")
         with c2:
             st.info("💡 Η σύνδεση γίνεται μέσω ασφαλούς πρωτοκόλλου IMAP (Gmail).")
 
