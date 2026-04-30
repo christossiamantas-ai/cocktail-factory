@@ -4,6 +4,8 @@ import os
 import math
 from datetime import datetime
 import plotly.express as px
+import imaplib
+import email
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
@@ -723,42 +725,171 @@ elif page == "📈 Dashboard":
     else:
         st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
 
-        # --- 7. SHOP SYNC (ΑΥΤΟΜΑΤΟΣ ΣΥΓΧΡΟΝΙΣΜΟΣ) ---
+       # --- 7. SHOP SYNC (GMAIL, ΥΠΟΛΟΓΙΣΜΟΣ ΑΝΑΓΚΩΝ & ΜΕΝΟΥ ΕΚΤΥΠΩΣΗΣ) ---
 elif page == "🌐 Shop Sync":
-    st.header("🌐 Αυτόματος Συγχρονισμός με το e-Shop")
-    st.markdown("---")
+    st.header("🌐 Αυτόματος Συγχρονισμός & Inventory Check")
     
-    # Πλαίσιο Ρυθμίσεων
-    with st.container():
-        c1, c2 = st.columns(2)
-        with c1:
-            start_date = st.date_input(
-    "Αναζήτηση παραγγελιών από:", 
-    value=datetime.now(), 
-    format="DD/MM/YYYY")
-        with c2:
-            st.info("💡 Η σύνδεση γίνεται μέσω ασφαλούς πρωτοκόλλου IMAP (Gmail).")
+    # Αρχικοποίηση μνήμης (Session State) για να μην χάνονται τα δεδομένα στην ανανέωση
+    if 'sync_results' not in st.session_state:
+        st.session_state['sync_results'] = []
 
-    # Ρυθμίσεις Gmail
-    with st.expander("🔑 Στοιχεία Σύνδεσης & Φίλτρα"):
-        u_email = st.text_input("Gmail Address", placeholder="info@yourdomain.gr")
-        a_pass = st.text_input("App Password", type="password", help="Χρησιμοποιήστε τον κωδικό εφαρμογής της Google")
-        mail_subject = st.text_input("Φίλτρο Θέματος Email", value="Νέα παραγγελία")
+    # --- ΣΥΝΑΡΤΗΣΗ GMAIL ---
+    def fetch_gmail_orders(user_email, app_password, search_date):
+        orders = []
+        try:
+            import re, imaplib, email
+            mail = imaplib.IMAP4_SSL("imap.gmail.com")
+            mail.login(user_email, app_password)
+            mail.select("inbox")
+            
+            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            date_str = f"{search_date.day:02d}-{months[search_date.month-1]}-{search_date.year}"
+            search_query = f'(SINCE "{date_str}" SUBJECT "[Cabclub Cocktails]: Έχετε μια νέα παραγγελία")'
+            
+            status, messages = mail.search(None, search_query)
+            if status == "OK":
+                for num in messages[0].split():
+                    status, data = mail.fetch(num, "(RFC822)")
+                    msg = email.message_from_bytes(data[0][1])
+                    
+                    # Λήψη πραγματικής ημερομηνίας email
+                    raw_date = msg.get("Date")
+                    date_tuple = email.utils.parsedate_tz(raw_date)
+                    fmt_date = datetime.fromtimestamp(email.utils.mktime_tz(date_tuple)).strftime("%d/%m/%Y") if date_tuple else "Άγνωστη"
 
-    st.write("### 📥 Ληφθείσες Παραγγελίες")
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == "text/plain":
+                                body = part.get_payload(decode_header=True).decode()
+                    else:
+                        body = msg.get_payload(decode_header=True).decode()
+
+                    customer_match = re.search(r"Όνομα Εταιρείας:\s*(.*)", body)
+                    customer_name = customer_match.group(1).strip() if customer_match else "Λιανική Πώληση"
+
+                    lines = re.findall(r"^(.*?)\s+×(\d+)", body, re.MULTILINE)
+                    for prod_name, qty in lines:
+                        orders.append({
+                            "Ημερομηνία": fmt_date,
+                            "Πελάτης": customer_name,
+                            "Cocktail": prod_name.strip(),
+                            "Τεμάχια": int(qty) * 24
+                        })
+            mail.logout()
+            return orders
+        except Exception as e:
+            st.error(f"Σφάλμα Σύνδεσης: {e}")
+            return []
+
+    # --- 1. ΡΥΘΜΙΣΕΙΣ & ΚΟΥΜΠΙΑ ΕΛΕΓΧΟΥ ---
+    with st.expander("🔑 Ρυθμίσεις Σύνδεσης Gmail", expanded=True):
+        c1, c2, c3 = st.columns([2, 2, 1])
+        g_user = c1.text_input("Gmail", value="info@cabclubcocktails.gr")
+        g_pass = c2.text_input("App Password", type="password")
+        g_date = c3.date_input("Από ημερομηνία", value=datetime.now(), format="DD/MM/YYYY")
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("🚀 Έναρξη Συγχρονισμού"):
+            with st.spinner("Αναζήτηση στο Gmail..."):
+                st.session_state['sync_results'] = fetch_gmail_orders(g_user, g_pass, g_date)
     
-    # Κουμπί Ελέγχου
-    if st.button("🔄 Έλεγχος & Ταυτοποίηση Barcodes", use_container_width=True):
-        with st.spinner("Σύνδεση με το Gmail..."):
-            # Εδώ θα μπει ο κώδικας που θα διαβάζει τα emails
-            # Όταν μου στείλεις το κείμενο του email, θα το ολοκληρώσουμε
-            import time
-            time.sleep(1.5)
-            st.warning("⚠️ Εκκρεμεί η ρύθμιση του Email Parser. Παρακαλώ στείλτε ένα δείγμα email παραγγελίας.")
+    with col_btn2:
+        if st.button("🧪 Δοκιμαστική Λειτουργία (Test)"):
+            st.session_state['sync_results'] = [
+                {"Ημερομηνία": datetime.now().strftime("%d/%m/%Y"), "Πελάτης": "TEST CLIENT A", "Cocktail": "Aegean Kings", "Τεμάχια": 24},
+                {"Ημερομηνία": datetime.now().strftime("%d/%m/%Y"), "Πελάτης": "TEST CLIENT B", "Cocktail": "Salted Caramel", "Τεμάχια": 48}
+            ]
+            st.success("Φορτώθηκαν δοκιμαστικά δεδομένα!")
 
-    # Εδώ θα εμφανίζονται τα αποτελέσματα σε πίνακα
-    st.info("Μόλις ολοκληρωθεί η σύνδεση, εδώ θα βλέπετε τα Cocktails που πουλήθηκαν στο site και την αντιστοιχία τους με τις συνταγές σας.")
+    # --- 2. ΠΙΝΑΚΑΣ ΠΑΡΑΓΓΕΛΙΩΝ ---
+    st.subheader("📋 Λίστα Παραγγελιών Shop")
+    if st.session_state['sync_results']:
+        st.dataframe(pd.DataFrame(st.session_state['sync_results']), use_container_width=True)
+    else:
+        st.info("Δεν υπάρχουν δεδομένα. Κάντε συγχρονισμό ή Test.")
 
+    # --- 3. ΥΠΟΛΟΓΙΣΜΟΣ ΑΝΑΓΚΩΝ & ΣΤΟΚ ---
+    st.divider()
+    st.subheader("🎯 Ανάγκες Υλικών & Έλεγχος Στοκ")
+    
+    order_items_for_print = [] 
+    
+    if st.session_state['sync_results'] and not df_rec.empty:
+        bom_totals = {}
+        for row in st.session_state['sync_results']:
+            base_name = row['Cocktail'].split(' ')[0]
+            match = df_rec[df_rec['Ονομα'].str.contains(base_name, case=False, na=False)]
+            if not match.empty:
+                recipe = match.iloc[0]
+                for i in range(1, 14):
+                    ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                    ml_val = float(recipe.get(f"ML{i}", 0))
+                    if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""] and ml_val > 0:
+                        bom_totals[ing] = bom_totals.get(ing, 0) + (ml_val * row['Τεμάχια'])
 
+        if bom_totals:
+            h1, h2, h3, h4 = st.columns([2, 1, 1, 1])
+            h1.write("**Υλικό**")
+            h2.write("**Ανάγκη (ml)**")
+            h3.write("**Στοκ (ml)**")
+            h4.write("**Έλλειμμα**")
 
+            for ing, req in bom_totals.items():
+                c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                c1.write(f"**{ing}**")
+                c2.write(f"{req:,.0f}")
+                stk_val = c3.number_input(f"S_{ing}", min_value=0.0, step=50.0, label_visibility="collapsed", key=f"inp_{ing}")
+                gap = max(0.0, req - stk_val)
+                
+                if gap > 0:
+                    c4.markdown(f"<span style='color:#FF4B4B; font-weight:bold;'>{gap:,.0f} ml</span>", unsafe_allow_html=True)
+                    order_items_for_print.append({"item": ing, "qty": f"{gap:,.0f} ml"})
+                else:
+                    c4.markdown("<span style='color:#00CC96;'>✅ OK</span>", unsafe_allow_html=True)
+            
+            # --- 4. ΜΕΝΟΥ ΕΚΤΥΠΩΣΗΣ (UTF-8 ΔΙΟΡΘΩΜΕΝΟ) ---
+            st.divider()
+            st.subheader("🖨️ Μενού Εκτύπωσης Report")
+            
+            if order_items_for_print:
+                html_content = f"""
+                <html>
+                <head>
+                    <meta charset='UTF-8'>
+                    <style>
+                        body {{ font-family: 'Helvetica', Arial, sans-serif; padding: 30px; }}
+                        h2 {{ color: #d32f2f; border-bottom: 2px solid #d32f2f; padding-bottom: 10px; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+                        th {{ background-color: #f8f9fa; }}
+                        .date {{ font-size: 0.9em; color: #666; }}
+                    </style>
+                </head>
+                <body>
+                    <h2>Λίστα Παραγγελίας Υλικών</h2>
+                    <p class="date">Ημερομηνία: {datetime.now().strftime('%d/%m/%Y')}</p>
+                    <table>
+                        <tr><th>Συστατικό</th><th>Ποσότητα</th></tr>
+                """
+                for line in order_items_for_print:
+                    html_content += f"<tr><td>{line['item']}</td><td><strong>{line['qty']}</strong></td></tr>"
+                
+                html_content += "</table></body></html>"
 
+                cp1, cp2 = st.columns(2)
+                with cp1:
+                    st.download_button(
+                        label="📄 Λήψη Report (PDF Ready)",
+                        data=html_content,
+                        file_name=f"Order_{datetime.now().strftime('%d_%m_%y')}.html",
+                        mime="text/html"
+                    )
+                with cp2:
+                    if st.button("📋 Προεπισκόπηση Κειμένου"):
+                        st.code("\n".join([f"{l['item']}: {l['qty']}" for l in order_items_for_print]))
+            else:
+                st.info("Δεν υπάρχουν ελλείμματα για παραγγελία.")
+    else:
+        st.write("Αναμονή για δεδομένα...")
