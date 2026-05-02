@@ -913,101 +913,165 @@ elif page == "🌐 Shop Sync":
     else:
         st.write("Αναμονή για δεδομένα...")
 
-       # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΠΛΗΡΗΣ ΚΩΔΙΚΑΣ ΜΕ ΙΣΤΟΡΙΚΟ) ---
+       # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΑΝΑΛΥΤΙΚΗ ΠΑΡΑΓΩΓΗ ΑΝΑ ΤΕΜΑΧΙΟ & ΥΛΙΚΟ) ---
 elif page == "📦 Lot Παραγωγής":
-    st.header("📦 Καταγραφή & Αρχείο Lot Παραγωγής")
+    st.header("📦 Αναλυτικό Δελτίο Παραγωγής")
     
-    # --- ΤΜΗΜΑ 1: ΝΕΑ ΚΑΤΑΧΩΡΗΣΗ ---
-    st.subheader("🆕 Νέο Δελτίο Παραγωγής")
-    selected_date = st.date_input("Επιλέξτε Ημερομηνία Παραγωγής", value=datetime.now(), format="DD/MM/YYYY")
+    # 1. Ημερομηνία & Ώρα
+    selected_date = st.date_input("Ημερομηνία Παραγωγής", value=datetime.now(), format="DD/MM/YYYY")
     date_display = selected_date.strftime('%d/%m/%Y')
+    current_time = datetime.now().strftime('%H:%M')
     
     if not df_rec.empty:
-        selected_cocktails = st.multiselect("Ποια cocktail φτιάξατε σήμερα;", options=df_rec["Ονομα"].unique())
+        # 2. Επιλογή Cocktail και Τεμαχίων
+        st.subheader("🍸 1. Προϊόντα & Ποσότητες")
+        selected_cocktails = st.multiselect("Επιλέξτε Cocktail:", options=df_rec["Ονομα"].unique())
         
+        counts = {}
         if selected_cocktails:
-            needed_ingredients = set()
-            for cocktail in selected_cocktails:
-                recipe_row = df_rec[df_rec["Ονομα"] == cocktail].iloc[0]
-                for i in range(1, 14):
-                    ing_name = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                    if ing_name and ing_name not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
-                        needed_ingredients.add(ing_name)
-            
-            active_ingredients = sorted(list(needed_ingredients))
-            
-            lot_entries = []
-            with st.form("dynamic_lot_form"):
-                h1, h2, h3 = st.columns([2, 2, 1])
-                h1.write("**Πρώτη Ύλη**")
-                h2.write("**Lot Number**")
-                h3.write("**Ημ. Λήξης**")
-                
-                for ing in active_ingredients:
-                    c1, c2, c3 = st.columns([2, 2, 1])
-                    c1.markdown(f"**{ing}**")
-                    l_num = c2.text_input(f"Lot_{ing}", key=f"lot_{ing}", label_visibility="collapsed")
-                    l_exp = c3.text_input(f"Exp_{ing}", key=f"exp_{ing}", label_visibility="collapsed")
-                    
-                    if l_num:
-                        lot_entries.append({"Ημερομηνία": date_display, "Cocktails": ", ".join(selected_cocktails), "Υλικό": ing, "Lot Number": l_num, "Ημ. Λήξης": l_exp})
+            col_counts = st.columns(len(selected_cocktails))
+            for i, name in enumerate(selected_cocktails):
+                counts[name] = col_counts[i].number_input(f"Τεμάχια: {name}", min_value=1, value=1, step=1)
 
-                if st.form_submit_button("💾 Αποθήκευση Δελτίου"):
+            # 3. Φόρμα Καταγραφής Lot ανά Cocktail
+            st.subheader("🧪 2. Ανάλυση Πρώτων Υλών & Lot")
+            lot_entries = []
+            
+            with st.form("detailed_lot_form"):
+                for cocktail_name in selected_cocktails:
+                    st.markdown(f"#### 🏷️ {cocktail_name} ({counts[cocktail_name]} τμχ)")
+                    
+                    # Εύρεση υλικών για το συγκεκριμένο cocktail
+                    recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
+                    
+                    # Επικεφαλίδες
+                    h1, h2, h3 = st.columns([2, 2, 1])
+                    h1.caption("Πρώτη Ύλη")
+                    h2.caption("Lot Number")
+                    h3.caption("Λήξη")
+                    
+                    for i in range(1, 14):
+                        ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                        if ing and ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
+                            c1, c2, c3 = st.columns([2, 2, 1])
+                            c1.write(ing)
+                            l_num = c2.text_input(f"Lot", key=f"lot_{cocktail_name}_{ing}_{i}", label_visibility="collapsed")
+                            l_exp = c3.text_input(f"Λήξη", key=f"exp_{cocktail_name}_{ing}_{i}", label_visibility="collapsed")
+                            
+                            if l_num:
+                                lot_entries.append({
+                                    "Ημερομηνία": date_display,
+                                    "Ώρα": current_time,
+                                    "Cocktail": cocktail_name,
+                                    "Τεμάχια": counts[cocktail_name],
+                                    "Υλικό": ing,
+                                    "Lot Number": l_num,
+                                    "Ημ. Λήξης": l_exp
+                                })
+                    st.markdown("---")
+                
+                if st.form_submit_button("💾 Αποθήκευση Παραγωγής"):
                     if lot_entries:
                         csv_filename = f"Lot_Report_{selected_date.strftime('%d_%m_%Y')}.csv"
-                        pd.DataFrame(lot_entries).to_csv(csv_filename, index=False, encoding='utf-8-sig')
-                        st.success(f"✅ Το δελτίο {date_display} αποθηκεύτηκε!")
+                        new_df = pd.DataFrame(lot_entries)
+                        if os.path.exists(csv_filename):
+                            old_csv = pd.read_csv(csv_filename)
+                            final_df = pd.concat([old_csv, new_df], ignore_index=True).drop_duplicates()
+                        else:
+                            final_df = new_df
+                        final_df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+                        st.success("✅ Η παραγωγή καταγράφηκε!")
                         st.rerun()
-                    else:
-                        st.warning("Συμπληρώστε τουλάχιστον ένα Lot.")
 
-    # --- ΤΜΗΜΑ 2: ΙΣΤΟΡΙΚΟ & ΕΚΤΥΠΩΣΕΙΣ ---
+    # --- ΤΜΗΜΑ ΙΣΤΟΡΙΚΟΥ, ΕΚΤΥΠΩΣΗΣ & ΔΙΑΓΡΑΦΗΣ (ΠΡΟΤΥΠΟ LOT ΣΤΟ ΟΝΟΜΑ) ---
     st.markdown("---")
-    st.subheader("📂 Ιστορικό Δελτίων")
-    
+    st.subheader("📂 Ιστορικό & Διαχείριση Αρχείου")
     import glob
-    # Αναζήτηση όλων των αρχείων Lot στον φάκελο
-    past_reports = glob.glob("Lot_Report_*.csv")
+    import os
     
-    if past_reports:
-        # Δημιουργία λίστας ημερομηνιών από τα ονόματα των αρχείων
-        report_dates = sorted([f.replace("Lot_Report_", "").replace(".csv", "").replace("_", "/") for f in past_reports], reverse=True)
+    past_files = glob.glob("Lot_Report_*.csv")
+    
+    if past_files:
+        dates = sorted([f.replace("Lot_Report_", "").replace(".csv", "").replace("_", "/") for f in past_files], reverse=True)
         
-        col_sel, col_btn = st.columns([2, 1])
-        selected_past = col_sel.selectbox("Επιλέξτε παλαιότερη ημερομηνία:", report_dates)
+        col_select, col_delete = st.columns([3, 1])
+        sel_date = col_select.selectbox("Επιλέξτε Ημερομηνία για προβολή ή διαγραφή:", dates)
         
-        if selected_past:
-            # Φόρτωση του επιλεγμένου αρχείου
-            file_to_load = f"Lot_Report_{selected_past.replace('/', '_')}.csv"
-            old_df = pd.read_csv(file_to_load)
+        if sel_date:
+            file_path = f"Lot_Report_{sel_date.replace('/', '_')}.csv"
             
-            st.write(f"**Περιεχόμενα Δελτίου: {selected_past}**")
-            st.dataframe(old_data := old_df[["Υλικό", "Lot Number", "Ημ. Λήξης"]], use_container_width=True)
-            
-            # Δημιουργία HTML για επανεκτύπωση
-            cocktails_list = old_df["Cocktails"].iloc[0] if "Cocktails" in old_df.columns else "N/A"
-            
-            html_reprint = f"""
-            <html><head><meta charset='UTF-8'><style>
-                body {{ font-family: sans-serif; padding: 20px; }}
-                table {{ width: 100%; border-collapse: collapse; }}
-                th, td {{ border: 1px solid #000; padding: 8px; text-align: left; }}
-                th {{ background: #eee; }}
-            </style></head><body>
-                <h2>ΔΕΛΤΙΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2>
-                <p><strong>Ημερομηνία:</strong> {selected_past}</p>
-                <p><strong>Προϊόντα:</strong> {cocktails_list}</p>
-                <table><tr><th>Υλικό</th><th>Lot Number</th><th>Λήξη</th></tr>
-            """
-            for _, row in old_df.iterrows():
-                html_reprint += f"<tr><td>{row['Υλικό']}</td><td>{row['Lot Number']}</td><td>{row['Ημ. Λήξης']}</td></tr>"
-            html_reprint += "</table></body></html>"
-            
-            st.download_button(
-                label=f"🖨️ Επανεκτύπωση Δελτίου {selected_past}",
-                data=html_reprint,
-                file_name=f"Re_Print_Lot_{selected_past.replace('/', '_')}.html",
-                mime="text/html"
-            )
+            if col_delete.button("🗑️ Διαγραφή Δελτίου", use_container_width=True):
+                try:
+                    os.remove(file_path)
+                    st.error(f"Το δελτίο {sel_date} διαγράφηκε.")
+                    st.rerun()
+                except Exception as e:
+                    st.warning(f"Σφάλμα: {e}")
+
+            if os.path.exists(file_path):
+                df_past = pd.read_csv(file_path)
+                
+                # Fix παλιών στηλών
+                if "Cocktails" in df_past.columns and "Cocktail" not in df_past.columns:
+                    df_past = df_past.rename(columns={"Cocktails": "Cocktail"})
+                if "Τεμάχια" not in df_past.columns:
+                    df_past["Τεμάχια"] = 0
+                if "Ώρα" not in df_past.columns:
+                    df_past["Ώρα"] = "N/A"
+
+                st.dataframe(df_past, use_container_width=True)
+                
+                # ΚΑΤΑΣΚΕΥΗ HTML ΜΕ ΤΟ ΝΕΟ ΠΡΟΤΥΠΟ ΟΝΟΜΑΣΙΑΣ
+                html = f"""
+                <html><head><meta charset='UTF-8'><style>
+                    body {{ font-family: sans-serif; padding: 20px; color: #333; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-bottom: 30px; }}
+                    th, td {{ border: 1px solid #000; padding: 10px; text-align: left; }}
+                    th {{ background: #f2f2f2; }}
+                    .section-title {{ background: #444; color: #fff; padding: 8px 12px; margin-top: 25px; font-weight: bold; border-radius: 4px; }}
+                    .lot-label {{ color: #d32f2f; font-weight: bold; }}
+                    h1 {{ border-bottom: 2px solid #333; padding-bottom: 10px; }}
+                </style></head><body>
+                    <h1>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ: {sel_date}</h1>
+                    <p>Ημερομηνία Εκτύπωσης: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+                """
+                
+                if not df_past.empty:
+                    # 1. Πίνακας Συνολικής Παραγωγής
+                    html += "<h3>1. Συνολική Παραγωγή</h3><table><tr><th>Προϊόν (Τίτλος Παρτίδας)</th><th>Ποσότητα</th><th>Ώρα</th></tr>"
+                    summary = df_past.groupby(["Cocktail", "Ώρα"])["Τεμάχια"].first().reset_index()
+                    for _, row in summary.iterrows():
+                        # ΕΔΩ ΠΡΟΣΤΙΘΕΤΑΙ ΤΟ ΠΡΟΤΥΠΟ
+                        full_title = f"{row['Cocktail']} (LOT NUMBER: {sel_date})"
+                        html += f"<tr><td><strong>{full_title}</strong></td><td>{row['Τεμάχια']} τμχ</td><td>{row['Ώρα']}</td></tr>"
+                    html += "</table>"
+
+                    # 2. Αναλυτική Ιχνηλασιμότητα
+                    html += "<h3>2. Ανάλυση Ιχνηλασιμότητας Πρώτων Υλών</h3>"
+                    for t_val in df_past["Ώρα"].unique():
+                        time_df = df_past[df_past["Ώρα"] == t_val]
+                        for c_name in time_df["Cocktail"].unique():
+                            c_data = time_df[time_df["Cocktail"] == c_name]
+                            qty = c_data['Τεμάχια'].iloc[0]
+                            # ΕΔΩ ΠΡΟΣΤΙΘΕΤΑΙ ΤΟ ΠΡΟΤΥΠΟ ΚΑΙ ΣΤΟΥΣ ΤΙΤΛΟΥΣ ΤΩΝ ΠΙΝΑΚΩΝ
+                            full_batch_name = f"{c_name} | LOT NUMBER: {sel_date}"
+                            
+                            html += f"<div class='section-title'>Παρτίδα: {full_batch_name}</div>"
+                            html += f"<p style='margin-left:10px;'>Ποσότητα: <b>{qty} τμχ</b> | Ώρα Καταγραφής: <b>{t_val}</b></p>"
+                            html += "<table><tr><th>Πρώτη Ύλη</th><th>Lot Number Υλικού</th><th>Ημ. Λήξης Υλικού</th></tr>"
+                            for _, r in c_data.iterrows():
+                                html += f"<tr><td>{r['Υλικό']}</td><td>{r['Lot Number']}</td><td>{r['Ημ. Λήξης']}</td></tr>"
+                            html += "</table>"
+                
+                html += "<br><br><div style='margin-top:40px; border-top:1px solid #ccc; padding-top:20px;'>"
+                html += "<p>Υπογραφή Υπευθύνου Παραγωγής: __________________________</p></div>"
+                html += "</body></html>"
+                
+                st.download_button(
+                    label="🖨️ Λήψη Δελτίου για Εκτύπωση", 
+                    data=html, 
+                    file_name=f"Production_Report_{sel_date.replace('/','_')}.html", 
+                    mime="text/html"
+                )
     else:
         st.info("Δεν υπάρχουν ακόμα αποθηκευμένα δελτία.")
