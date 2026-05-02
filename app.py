@@ -125,7 +125,7 @@ recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.em
 # --- Sidebar ---
 st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
 st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📈 Dashboard"])
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
@@ -150,7 +150,8 @@ if page == "📦 Αποθήκη":
         st.success("Η αποθήκη ενημερώθηκε!")
         st.rerun()
 
-# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΜΕ ΠΡΟΣΘΗΚΗ BARCODE) ---
+
+# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
 elif page == "📝 Νέα Συνταγή":
     st.header("📝 Καταχώρηση Νέας Συνταγής")
     
@@ -172,123 +173,148 @@ elif page == "📝 Νέα Συνταγή":
         for i in range(1, 14):
             c1, c2 = st.columns([3, 1])
             with c1: 
-                recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = st.selectbox(f"Συστατικό {i}", ing_options, key=f"n_s_{i}")
+                # Χρήση του ing_options που ήδη έχεις ορίσει
+                val_ing = st.selectbox(f"Συστατικό {i}", ing_options, key=f"n_s_{i}")
+                recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = val_ing if val_ing else "ΚΕΝΟ"
             with c2: 
                 recipe_data[f"ML{i}"] = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
         
         if st.form_submit_button("💾 Αποθήκευση Συνταγής"):
             if name:
-                # 1. Δημιουργία της νέας γραμμής (Περιλαμβάνει το Barcode)
+                # 1. Προετοιμασία της νέας γραμμής
                 new_row = {
                     "Barcode": str(barcode).strip(),
                     "Ονομα": name, 
                     "Τιμή Καταλόγου": cat_price, 
                     **recipe_data
                 }
-                
-                # Μετατροπή σε DataFrame
                 new_df = pd.DataFrame([new_row])
                 
-                # 2. Φόρτωση του αρχείου και έλεγχος στηλών
+                # Ορίζουμε την ακριβή σειρά στηλών που θέλουμε να έχει το CSV μας
+                cols_order = ["Barcode", "Ονομα", "Τιμή Καταλόγου"]
+                for i in range(1, 14):
+                    cols_order.append(f"ΣΥΣΤΑΤΙΚΟ{i}")
+                    cols_order.append(f"ML{i}")
+
+                # 2. Φόρτωση και Συγχώνευση
                 if os.path.exists(DB_RECIPES):
                     old_df = pd.read_csv(DB_RECIPES)
                     
-                    # --- Η ΚΡΙΣΙΜΗ ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΟ KEYERROR ---
-                    if "Barcode" not in old_df.columns:
-                        # Αν λείπει η στήλη Barcode, τη δημιουργούμε κενή στην αρχή
-                        old_df.insert(0, "Barcode", "")
-                    # ------------------------------------------
-
-                    # Καθαρισμός δεδομένων Barcode για σωστή σύγκριση
+                    # Διόρθωση στηλών αν το αρχείο είναι παλιό
+                    for col in cols_order:
+                        if col not in old_df.columns:
+                            old_df[col] = "ΚΕΝΟ" if "ΣΥΣΤΑΤΙΚΟ" in col else 0.0
+                    
+                    # Εξασφάλιση ότι το Barcode είναι string για τη σύγκριση
                     old_df["Barcode"] = old_df["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
                     
-                    # Ένωση παλιών και νέων δεδομένων
+                    # Ένωση
                     combined_df = pd.concat([old_df, new_df], ignore_index=True)
                 else:
-                    # Αν δεν υπάρχει καν το αρχείο, το δημιουργούμε από το μηδέν
                     combined_df = new_df
 
-                # 3. Αφαίρεση διπλότυπων (για να μην την περνάει 2 φορές)
-                combined_df = combined_df.drop_duplicates(subset=["Barcode", "Ονομα"], keep="first")
+                # 3. Τελική Τακτοποίηση στηλών και αφαίρεση διπλοτύπων
+                combined_df = combined_df.reindex(columns=cols_order)
+                combined_df = combined_df.drop_duplicates(subset=["Barcode", "Ονομα"], keep="last")
                 
-                # 4. Τελική αποθήκευση
-                combined_df.to_csv(DB_RECIPES, index=False)
+                # 4. Αποθήκευση με σωστό Encoding για Ελληνικά
+                combined_df.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
                 
                 st.success(f"✅ Το Cocktail '{name}' αποθηκεύτηκε επιτυχώς!")
                 st.rerun()
             else:
                 st.error("❌ Παρακαλώ εισάγετε το όνομα του Cocktail.")
-# --- 3. ΔΙΑΧΕΙΡΙΣΗ (ΟΛΟΚΛΗΡΩΜΕΝΟΣ ΚΩΔΙΚΑΣ) ---
+# --- 3. ΔΙΑΧΕΙΡΙΣΗ (ΜΕ ΕΠΕΞΕΡΓΑΣΙΑ ΜΕΣΩ DROP DOWN) ---
 elif page == "📊 Διαχείριση":
     st.header("📊 Επεξεργασία Συνταγών & Barcodes Shop")
     
     if not df_rec.empty:
         # --- ΠΡΟΕΤΟΙΜΑΣΙΑ ΔΕΔΟΜΕΝΩΝ ---
-        # 1. Έλεγχος αν υπάρχει η στήλη Barcode, αν όχι προσθήκη στην αρχή
         if "Barcode" not in df_rec.columns:
             df_rec.insert(0, "Barcode", "")
         
-        # 2. Μετατροπή Barcode σε κείμενο για αποφυγή του FLOAT error και του ".0"
         df_rec["Barcode"] = df_rec["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
-        
-        # 3. Υπολογισμός τιμής αντιπροσώπου (μόνο για εμφάνιση)
         df_rec["Τιμή Αντιπροσώπου"] = df_rec["Τιμή Καταλόγου"] * 0.74
+
+        # --- 1. ΕΠΕΞΕΡΓΑΣΙΑ ΜΕΣΩ DROP DOWN (Η ΝΕΑ ΛΕΙΤΟΥΡΓΙΑ) ---
+        st.subheader("🔄 Αλλαγή Συνταγής")
+        with st.expander("Κάντε κλικ εδώ για να επεξεργαστείτε μια συγκεκριμένη συνταγή", expanded=True):
+            # Επιλογή συνταγής
+            recipe_to_edit = st.selectbox("Επιλέξτε Cocktail για επεξεργασία:", df_rec["Ονομα"].unique())
+            
+            if recipe_to_edit:
+                # Φιλτράρισμα των δεδομένων της συγκεκριμένης συνταγής
+                row = df_rec[df_rec["Ονομα"] == recipe_to_edit].iloc[0]
+                
+                with st.form("edit_recipe_form"):
+                    c_h1, c_h2, c_h3 = st.columns([2, 1, 1])
+                    edit_name = c_h1.text_input("Όνομα Cocktail", value=row["Ονομα"])
+                    edit_barcode = c_h2.text_input("Barcode", value=row["Barcode"])
+                    edit_price = c_h3.number_input("Τιμή Καταλόγου (€)", value=float(row["Τιμή Καταλόγου"]), step=0.10)
+                    
+                    st.write("---")
+                    st.write("🧪 **Συστατικά & ML**")
+                    
+                    new_recipe_data = {}
+                    col_a, col_b = st.columns(2)
+                    
+                    for i in range(1, 14):
+                        target_col = col_a if i <= 7 else col_b
+                        with target_col:
+                            c_ing, c_ml = st.columns([2, 1])
+                            # Παίρνουμε την υπάρχουσα τιμή ή "ΚΕΝΟ" αν δεν υπάρχει
+                            current_ing = row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")
+                            current_ml = row.get(f"ML{i}", 0.0)
+                            
+                            # Εύρεση index του υπάρχοντος υλικού στο ing_options για να προ-επιλεγεί
+                            try:
+                                idx = ing_options.index(current_ing)
+                            except:
+                                idx = 0
+                                
+                            new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = c_ing.selectbox(f"Υλικό {i}", ing_options, index=idx, key=f"edit_s_{i}")
+                            new_recipe_data[f"ML{i}"] = c_ml.number_input(f"ML {i}", value=float(current_ml), key=f"edit_m_{i}")
+
+                    if st.form_submit_button("💾 Αποθήκευση Αλλαγών Συνταγής"):
+                        # Ενημέρωση του DataFrame
+                        idx_to_update = df_rec[df_rec["Ονομα"] == recipe_to_edit].index
+                        
+                        df_rec.loc[idx_to_update, "Ονομα"] = edit_name
+                        df_rec.loc[idx_to_update, "Barcode"] = edit_barcode
+                        df_rec.loc[idx_to_update, "Τιμή Καταλόγου"] = edit_price
+                        for k, v in new_recipe_data.items():
+                            df_rec.loc[idx_to_update, k] = v
+                        
+                        # Αποθήκευση στο CSV (αφαιρούμε τη στήλη "Τιμή Αντιπροσώπου" πριν σώσουμε)
+                        to_save = df_rec.drop(columns=["Τιμή Αντιπροσώπου"], errors='ignore')
+                        to_save.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
+                        st.success(f"✅ Η συνταγή '{edit_name}' ενημερώθηκε!")
+                        st.rerun()
+
+        st.write("---")
         
-        # --- ΡΥΘΜΙΣΗ ΣΤΗΛΩΝ (CONFIG) ---
+        # --- 2. ΟΜΑΔΙΚΗ ΕΠΕΞΕΡΓΑΣΙΑ ΜΕΣΩ ΠΙΝΑΚΑ (ΠΑΡΑΜΕΝΕΙ ΩΣ ΕΧΕΙ) ---
+        st.subheader("📋 Συνολικός Πίνακας & Barcodes")
         config_rec = {
-            "Barcode": st.column_config.TextColumn(
-                "Barcode Shop (SKU)", 
-                help="Ο κωδικός που έρχεται από το email της παραγγελίας",
-                width="medium"
-            ),
+            "Barcode": st.column_config.TextColumn("Barcode Shop (SKU)", width="medium"),
             "Ονομα": st.column_config.TextColumn("Όνομα Cocktail", width="medium"),
             "Τιμή Καταλόγου": st.column_config.NumberColumn("Λιανική (€)", format="%.2f"),
             "Τιμή Αντιπροσώπου": st.column_config.NumberColumn("Αντιπρόσωπος (€)", format="%.2f", disabled=True)
         }
-        
-        # Αυτόματη ρύθμιση για τα 13 συστατικά και τα ML τους
         for i in range(1, 14):
-            config_rec[f"ΣΥΣΤΑΤΙΚΟ{i}"] = st.column_config.SelectboxColumn(
-                f"Υλικό {i}", 
-                options=ing_options,
-                width="small"
-            )
-            config_rec[f"ML{i}"] = st.column_config.NumberColumn(
-                f"ML {i}", 
-                format="%.1f",
-                width="small"
-            )
+            config_rec[f"ΣΥΣΤΑΤΙΚΟ{i}"] = st.column_config.SelectboxColumn(f"Υλικό {i}", options=ing_options, width="small")
+            config_rec[f"ML{i}"] = st.column_config.NumberColumn(f"ML {i}", format="%.1f", width="small")
+
+        ed = st.data_editor(df_rec, column_config=config_rec, num_rows="dynamic", use_container_width=True, key="recipe_editor_bulk")
         
-        # --- ΕΜΦΑΝΙΣΗ ΔΥΝΑΜΙΚΟΥ ΠΙΝΑΚΑ ---
-        st.info("💡 Μπορείτε να πληκτρολογήσετε το Barcode απευθείας στον πίνακα. Μην ξεχάσετε να πατήσετε Αποθήκευση.")
-        
-        ed = st.data_editor(
-            df_rec, 
-            column_config=config_rec, 
-            num_rows="dynamic", 
-            use_container_width=True,
-            key="recipe_editor"
-        )
-        
-        # --- ΑΠΟΘΗΚΕΥΣΗ ---
-        if st.button("💾 Αποθήκευση Αλλαγών & Barcodes"):
-            # Κρατάμε όλες τις στήλες εκτός από την "Τιμή Αντιπροσώπου" που είναι υπολογιστική
+        if st.button("💾 Αποθήκευση Αλλαγών Πίνακα"):
             columns_to_save = [col for col in ed.columns if col != "Τιμή Αντιπροσώπου"]
-            to_save = ed[columns_to_save]
-            
-            # Αποθήκευση στο CSV
-            to_save.to_csv(DB_RECIPES, index=False)
-            
-            st.success("✅ Οι συνταγές και τα Barcodes αποθηκεύτηκαν επιτυχώς!")
-            # st.rerun() # Ενεργοποίησέ το αν θέλεις να ανανεώνεται η σελίδα αμέσως
-    else:
-        st.warning("⚠️ Δεν βρέθηκαν συνταγές. Δημιουργήστε μια νέα συνταγή πρώτα.")
-        if st.button("Προσθήκη Πρώτης Συνταγής"):
-            # Δημιουργία κενής γραμμής με Barcode αν η βάση είναι άδεια
-            cols = ["Barcode", "Ονομα", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
-            empty_df = pd.DataFrame(columns=cols)
-            empty_df.to_csv(DB_RECIPES, index=False)
+            ed[columns_to_save].to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
+            st.success("✅ Ο πίνακας αποθηκεύτηκε!")
             st.rerun()
+            
+    else:
+        st.warning("⚠️ Δεν βρέθηκαν συνταγές.")
 
 # # --- 4. ΑΝΑΛΥΣΗ (ΠΛΗΡΗΣ ΑΠΟΚΑΤΑΣΤΑΣΗ & ΔΙΟΡΘΩΣΗ) ---
 elif page == "🔍 Ανάλυση":
@@ -893,3 +919,102 @@ elif page == "🌐 Shop Sync":
                 st.info("Δεν υπάρχουν ελλείμματα για παραγγελία.")
     else:
         st.write("Αναμονή για δεδομένα...")
+
+       # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΠΛΗΡΗΣ ΚΩΔΙΚΑΣ ΜΕ ΙΣΤΟΡΙΚΟ) ---
+elif page == "📦 Lot Παραγωγής":
+    st.header("📦 Καταγραφή & Αρχείο Lot Παραγωγής")
+    
+    # --- ΤΜΗΜΑ 1: ΝΕΑ ΚΑΤΑΧΩΡΗΣΗ ---
+    st.subheader("🆕 Νέο Δελτίο Παραγωγής")
+    selected_date = st.date_input("Επιλέξτε Ημερομηνία Παραγωγής", value=datetime.now(), format="DD/MM/YYYY")
+    date_display = selected_date.strftime('%d/%m/%Y')
+    
+    if not df_rec.empty:
+        selected_cocktails = st.multiselect("Ποια cocktail φτιάξατε σήμερα;", options=df_rec["Ονομα"].unique())
+        
+        if selected_cocktails:
+            needed_ingredients = set()
+            for cocktail in selected_cocktails:
+                recipe_row = df_rec[df_rec["Ονομα"] == cocktail].iloc[0]
+                for i in range(1, 14):
+                    ing_name = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                    if ing_name and ing_name not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
+                        needed_ingredients.add(ing_name)
+            
+            active_ingredients = sorted(list(needed_ingredients))
+            
+            lot_entries = []
+            with st.form("dynamic_lot_form"):
+                h1, h2, h3 = st.columns([2, 2, 1])
+                h1.write("**Πρώτη Ύλη**")
+                h2.write("**Lot Number**")
+                h3.write("**Ημ. Λήξης**")
+                
+                for ing in active_ingredients:
+                    c1, c2, c3 = st.columns([2, 2, 1])
+                    c1.markdown(f"**{ing}**")
+                    l_num = c2.text_input(f"Lot_{ing}", key=f"lot_{ing}", label_visibility="collapsed")
+                    l_exp = c3.text_input(f"Exp_{ing}", key=f"exp_{ing}", label_visibility="collapsed")
+                    
+                    if l_num:
+                        lot_entries.append({"Ημερομηνία": date_display, "Cocktails": ", ".join(selected_cocktails), "Υλικό": ing, "Lot Number": l_num, "Ημ. Λήξης": l_exp})
+
+                if st.form_submit_button("💾 Αποθήκευση Δελτίου"):
+                    if lot_entries:
+                        csv_filename = f"Lot_Report_{selected_date.strftime('%d_%m_%Y')}.csv"
+                        pd.DataFrame(lot_entries).to_csv(csv_filename, index=False, encoding='utf-8-sig')
+                        st.success(f"✅ Το δελτίο {date_display} αποθηκεύτηκε!")
+                        st.rerun()
+                    else:
+                        st.warning("Συμπληρώστε τουλάχιστον ένα Lot.")
+
+    # --- ΤΜΗΜΑ 2: ΙΣΤΟΡΙΚΟ & ΕΚΤΥΠΩΣΕΙΣ ---
+    st.markdown("---")
+    st.subheader("📂 Ιστορικό Δελτίων")
+    
+    import glob
+    # Αναζήτηση όλων των αρχείων Lot στον φάκελο
+    past_reports = glob.glob("Lot_Report_*.csv")
+    
+    if past_reports:
+        # Δημιουργία λίστας ημερομηνιών από τα ονόματα των αρχείων
+        report_dates = sorted([f.replace("Lot_Report_", "").replace(".csv", "").replace("_", "/") for f in past_reports], reverse=True)
+        
+        col_sel, col_btn = st.columns([2, 1])
+        selected_past = col_sel.selectbox("Επιλέξτε παλαιότερη ημερομηνία:", report_dates)
+        
+        if selected_past:
+            # Φόρτωση του επιλεγμένου αρχείου
+            file_to_load = f"Lot_Report_{selected_past.replace('/', '_')}.csv"
+            old_df = pd.read_csv(file_to_load)
+            
+            st.write(f"**Περιεχόμενα Δελτίου: {selected_past}**")
+            st.dataframe(old_data := old_df[["Υλικό", "Lot Number", "Ημ. Λήξης"]], use_container_width=True)
+            
+            # Δημιουργία HTML για επανεκτύπωση
+            cocktails_list = old_df["Cocktails"].iloc[0] if "Cocktails" in old_df.columns else "N/A"
+            
+            html_reprint = f"""
+            <html><head><meta charset='UTF-8'><style>
+                body {{ font-family: sans-serif; padding: 20px; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th, td {{ border: 1px solid #000; padding: 8px; text-align: left; }}
+                th {{ background: #eee; }}
+            </style></head><body>
+                <h2>ΔΕΛΤΙΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2>
+                <p><strong>Ημερομηνία:</strong> {selected_past}</p>
+                <p><strong>Προϊόντα:</strong> {cocktails_list}</p>
+                <table><tr><th>Υλικό</th><th>Lot Number</th><th>Λήξη</th></tr>
+            """
+            for _, row in old_df.iterrows():
+                html_reprint += f"<tr><td>{row['Υλικό']}</td><td>{row['Lot Number']}</td><td>{row['Ημ. Λήξης']}</td></tr>"
+            html_reprint += "</table></body></html>"
+            
+            st.download_button(
+                label=f"🖨️ Επανεκτύπωση Δελτίου {selected_past}",
+                data=html_reprint,
+                file_name=f"Re_Print_Lot_{selected_past.replace('/', '_')}.html",
+                mime="text/html"
+            )
+    else:
+        st.info("Δεν υπάρχουν ακόμα αποθηκευμένα δελτία.")
