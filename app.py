@@ -38,26 +38,27 @@ if not check_password():
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
-    # Διαβάζουμε τα δεδομένα απευθείας από τα Tabs του Google Sheet
-    # ttl=0 σημαίνει ότι δεν κρατάει προσωρινή μνήμη, διαβάζει πάντα το τελευταίο
     try:
-        ing = conn.read(worksheet="Ingredients", ttl=0).dropna(how="all")
-    except:
-        st.error("❌ Δεν βρέθηκε το Tab 'Ingredients' στο Google Sheet.")
+        # Διαβάζει το 1ο Tab (Ingredients) όνομα κι αν έχει
+        ing = conn.read(worksheet=0, ttl=0).dropna(how="all")
+    except Exception as e:
+        st.error(f"Σφάλμα στο 1ο Tab: {e}")
         ing = pd.DataFrame()
 
     try:
-        rec = conn.read(worksheet="Recipes", ttl=0).dropna(how="all")
-    except:
-        st.error("❌ Δεν βρέθηκε το Tab 'Recipes' στο Google Sheet.")
+        # Διαβάζει το 2ο Tab (Recipes)
+        rec = conn.read(worksheet=1, ttl=0).dropna(how="all")
+    except Exception as e:
+        st.error(f"Σφάλμα στο 2ο Tab: {e}")
         rec = pd.DataFrame()
     
     try:
-        history = conn.read(worksheet="Production_Logs", ttl=0).dropna(how="all")
+        # Διαβάζει το 3ο Tab (Production_Logs)
+        history = conn.read(worksheet=2, ttl=0).dropna(how="all")
     except:
         history = pd.DataFrame(columns=["Ημερομηνία", "Ώρα", "Cocktail", "Τεμάχια", "Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
     
-    # Οι παραγγελίες μπορούν να μείνουν σε τοπικό CSV ή να τις βάλεις σε 4ο Tab αν θες
+    # Οι παραγγελίες μένουν τοπικά
     DB_ORDERS = "db_orders.csv"
     if os.path.exists(DB_ORDERS):
         orders = pd.read_csv(DB_ORDERS)
