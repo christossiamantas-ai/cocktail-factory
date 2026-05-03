@@ -38,32 +38,22 @@ if not check_password():
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 
-        def load_data():
-    # 1. Φόρτωση Ingredients (Αυτό δουλεύει ήδη!)
+    def load_data():
     try:
         ing = conn.read(worksheet="Ingredients", ttl=0).fillna("")
     except:
         ing = pd.DataFrame()
 
-    # 2. Φόρτωση Recipes - Η ΝΕΑ "ΕΛΕΥΘΕΡΗ" ΜΟΡΦΗ
     try:
-        # Διαβάζουμε το Tab χωρίς κανέναν περιορισμό
-        rec = conn.read(worksheet="Recipes", ttl=0)
-        if rec is not None:
-            rec = rec.fillna("")
-        else:
-            rec = pd.DataFrame()
-    except Exception as e:
-        st.error(f"Σφάλμα ανάγνωσης Recipes: {e}")
+        rec = conn.read(worksheet="Recipes", ttl=0).fillna("")
+    except:
         rec = pd.DataFrame()
             
-    # 3. Φόρτωση Production Logs
     try:
         history = conn.read(worksheet="Production_Logs", ttl=0).fillna("")
     except:
         history = pd.DataFrame(columns=["Ημερομηνία", "Ώρα", "Cocktail", "Τεμάχια", "Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
 
-    # Λοιπά δεδομένα
     DB_ORDERS = "db_orders.csv"
     orders = pd.read_csv(DB_ORDERS) if os.path.exists(DB_ORDERS) else pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
         
