@@ -1,416 +1,191 @@
 import streamlit as st
 import pandas as pd
 import os
-import math
 from datetime import datetime
-import plotly.express as px
-import imaplib
-import email
-from streamlit_gsheets import GSheetsConnection  # <--- ΠΡΟΣΘΕΣΕ ΑΥΤΟ
+from streamlit_gsheets import GSheetsConnection
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 
 # --- Σύστημα Password ---
 def check_password():
-    """Επιστρέφει True αν ο χρήστης έδωσε σωστό κωδικό."""
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if st.session_state["password_correct"]:
+        return True
+
     def password_entered():
         if st.session_state["password"] == "panatha1908":
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else:
-            st.session_state["password_correct"] = False
+            st.error("❌ Λάθος κωδικός.")
 
-    if "password_correct" not in st.session_state:
-        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
-        st.error("❌ Λάθος κωδικός. Προσπαθήστε ξανά.")
-        return False
-    else:
-        return True
+    st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
+    return False
 
 if not check_password():
     st.stop()
 
-# --- ΝΕΟ: ΣΥΝΔΕΣΗ ΜΕ GOOGLE SHEETS (Αμέσως μετά το password) ---
+# --- ΣΥΝΔΕΣΗ ΜΕ GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-
 def load_data():
+    # Φόρτωση Υλικών
     try:
         ing = conn.read(worksheet="Ingredients", ttl=0).fillna("")
     except:
-        ing = pd.DataFrame()
+        ing = pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %"])
 
+    # Φόρτωση Συνταγών
     try:
         rec = conn.read(worksheet="Recipes", ttl=0).fillna("")
     except:
-        rec = pd.DataFrame()
-            
-    try:
-        history = conn.read(worksheet="Production_Logs", ttl=0).fillna("")
-    except:
-        history = pd.DataFrame(columns=["Ημερομηνία", "Ώρα", "Cocktail", "Τεμάχια", "Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
+        cols_rec = ["Barcode", "Ονομα", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
+        rec = pd.DataFrame(columns=cols_rec)
 
+    # Φόρτωση Παραγγελιών (Τοπικά προς το παρόν αν δεν έχεις sheet)
     DB_ORDERS = "db_orders.csv"
     orders = pd.read_csv(DB_ORDERS) if os.path.exists(DB_ORDERS) else pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
-        
-    return ing, rec, orders, history
+    
+    return ing, rec, orders
 
 # Εκτέλεση της φόρτωσης
-df_ing, df_rec, df_orders, df_history = load_data()
+df_ing, df_rec, df_orders = load_data()
 
-# Προετοιμασία επιλογών για τα μενού (dropdowns)
-ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].dropna().astype(str).unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
-recipe_options = sorted(df_rec["Ονομα"].dropna().astype(str).unique().tolist()) if not df_rec.empty else []
-
-# Προσθήκη CSS
-st.markdown("""
-    <style>
-    /* Φόντο όλης της εφαρμογής */
-    .stApp {
-        background-color: #0e1117;
-    }
-    
-    /* Στυλ για τα Metrics (Κέρδος, Κόστος κλπ) */
-    [data-testid="stMetricValue"] {
-        font-size: 28px;
-        color: #00ffcc; /* Ένα neon κυανό χρώμα για τις τιμές */
-    }
-    
-    /* Στυλ για τα κουτιά των metrics */
-    div[data-testid="stMetric"] {
-        background-color: #1e2129;
-        border: 1px solid #333;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
-    }
-
-    /* Κουμπιά με πιο έντονο στυλ */
-    .stButton>button {
-        width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        background-color: #3e4451;
-        color: white;
-        border: none;
-    }
-    .stButton>button:hover {
-        border: 1px solid #00ffcc;
-        color: #00ffcc;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# Αρχεία Βάσης
-DB_INGREDIENTS = "db_ingredients.csv"
-DB_RECIPES = "db_recipes.csv"
-DB_ORDERS = "db_orders.csv"
-DB_HISTORY = "db_history.csv"
-
-TOTAL_FIXED = 0.22  
-TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
-
-def format_greek(value):
-    if isinstance(value, (int, float)):
-        return "{:.3f}".format(value).replace('.', ',')
-    return value
-
-def load_data():
-    if os.path.exists(DB_INGREDIENTS):
-        ing = pd.read_csv(DB_INGREDIENTS)
-    else:
-        ing = pd.DataFrame(columns=["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
-    
-    for col in ["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"]:
-        if col not in ing.columns:
-            ing[col] = 0.0 if col != "Name" else "Νέο Υλικό"
-            
-    if os.path.exists(DB_RECIPES):
-        rec = pd.read_csv(DB_RECIPES)
-    else:
-        cols_rec = ["Ονομα", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
-        rec = pd.DataFrame(columns=cols_rec)
-        
-    if os.path.exists(DB_ORDERS):
-        orders = pd.read_csv(DB_ORDERS, dtype={"Πελάτης": str, "Cocktail": str})
-    else:
-        orders = pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
-    orders["Πελάτης"] = orders["Πελάτης"].astype(str).replace("nan", "")
-
-    if os.path.exists(DB_HISTORY):
-        history = pd.read_csv(DB_HISTORY)
-    else:
-        history = pd.DataFrame(columns=["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
-        
-    return ing, rec, orders, history
-
-df_ing, df_rec, df_orders, df_history = load_data()
+# Επιλογές για dropdowns
 ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
-recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
 # --- Sidebar ---
 st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
 st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard"])
-country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
-tax_factor = TAX_RATES[country]
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "🛒 Παραγγελίες"])
 
-# --- 1. ΑΠΟΘΗΚΗ (ΜΕ ΑΥΤΟΜΑΤΟ ID & ΒΑΡΟΣ) ---
+# --- 1. ΑΠΟΘΗΚΗ ---
 if page == "📦 Αποθήκη":
-    st.header("📦 Διαχείριση Υλικών & Τιμών")
+    st.header("📦 Διαχείριση Υλικών στο Cloud")
     
-    # 1. Έλεγχος και δημιουργία στήλης ID αν δεν υπάρχει
     if "ID" not in df_ing.columns:
-        # Αν η βάση είναι παλιά, δίνουμε IDs ξεκινώντας από το 1001
         df_ing.insert(0, "ID", range(1001, 1001 + len(df_ing)))
-    
-    if "Weight_Full" not in df_ing.columns:
-        df_ing["Weight_Full"] = 0.0
-
-    # Στήλες που θα εμφανίζονται (το ID είναι disabled για να μην αλλάζει κατά λάθος)
-    cols_to_show = ["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %"]
     
     column_config_ing = {
         "ID": st.column_config.NumberColumn("ID", disabled=True, format="%d"),
         "Name": st.column_config.TextColumn("Όνομα Υλικού"),
         "Price": st.column_config.NumberColumn("Τιμή Αγοράς (€)", format="%.2f €"),
         "Volume": st.column_config.NumberColumn("ML Φιάλης (ml)", min_value=1),
-        "Weight_Full": st.column_config.NumberColumn("Βάρος Περιεχομένου (g)", help="Πόσο ζυγίζουν τα ML της φιάλης στη ζυγαριά", format="%d g"),
+        "Weight_Full": st.column_config.NumberColumn("Βάρος (g)", format="%d g"),
         "Τιμή/ml": st.column_config.NumberColumn("Τιμή/ml", disabled=True, format="%.4f €"),
         "Αλκοόλ %": st.column_config.NumberColumn("Alc %", format="%.1f %%")
     }
     
-    # Επεξεργασία υλικών
-    edited_ing = st.data_editor(
-        df_ing[cols_to_show], 
-        column_config=column_config_ing, 
-        num_rows="dynamic", 
-        use_container_width=True,
-        key="ing_editor"
-    )
+    edited_ing = st.data_editor(df_ing, column_config=column_config_ing, num_rows="dynamic", use_container_width=True)
     
-    if st.button("💾 Αποθήκευση Υλικών"):
-        # Δημιουργούμε ένα αντίγραφο των αλλαγών
+    if st.button("💾 Αποθήκευση Υλικών στο Cloud"):
         temp_df = edited_ing.copy()
-        
-        # 2. ΑΥΤΟΜΑΤΗ ΠΑΡΑΓΩΓΗ ID ΓΙΑ ΝΕΕΣ ΓΡΑΜΜΕΣ
-        # Αν ο χρήστης πρόσθεσε γραμμή, το ID θα είναι NaN
+        # Παραγωγή IDs για νέα υλικά
         if temp_df["ID"].isnull().any():
             max_id = df_ing["ID"].max() if not df_ing.empty else 1000
-            # Γεμίζουμε τα κενά IDs ξεκινώντας πάνω από το μέγιστο υπάρχον
             null_mask = temp_df["ID"].isnull()
-            new_ids = range(int(max_id) + 1, int(max_id) + 1 + null_mask.sum())
-            temp_df.loc[null_mask, "ID"] = list(new_ids)
+            temp_df.loc[null_mask, "ID"] = range(int(max_id) + 1, int(max_id) + 1 + null_mask.sum())
         
-        # Υπολογισμός τιμής ανά ml
         temp_df["Τιμή/ml"] = temp_df["Price"] / temp_df["Volume"].replace(0, 1)
         
-        # Διατήρηση υπολοίπων στηλών (π.χ. Απόθεμα) αν υπάρχουν
-        if "Απόθεμα (ml)" in df_ing.columns:
-            # Κάνουμε merge με βάση το ID πλέον, όχι το Name!
-            final_df = temp_df.merge(df_ing[["ID", "Απόθεμα (ml)"]], on="ID", how="left")
-            final_df["Απόθεμα (ml)"] = final_df["Απόθεμα (ml)"].fillna(0.0)
-        else:
-            final_df = temp_df
-            
-        # Τελική αποθήκευση
-        final_df.to_csv(DB_INGREDIENTS, index=False, encoding='utf-8-sig')
-        st.success(f"✅ Η αποθήκη ενημερώθηκε! (Τελευταίο ID: {int(final_df['ID'].max())})")
-        st.rerun()
+        try:
+            conn.update(worksheet="Ingredients", data=temp_df)
+            st.cache_data.clear()
+            st.success("✅ Τα υλικά συγχρονίστηκαν με το Google Sheets!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Σφάλμα Cloud: {e}")
 
-
-# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΤΑ ΔΙΚΑ ΣΟΥ ONOMATA) ---
+# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
 elif page == "📝 Νέα Συνταγή":
     st.header("📝 Καταχώρηση Νέας Συνταγής")
     
-    # Χρησιμοποιούμε το df_rec που έχεις ορίσει στην αρχή του κώδικά σου
-    if 'rec' not in st.session_state:
-        st.session_state.rec = df_rec
-
     with st.form("new_recipe_form"):
-        # Πάνω μέρος: Barcode, Όνομα, Τιμή
-        c_top1, c_top2 = st.columns([1, 2])
-        with c_top1: 
-            barcode_input = st.text_input("Barcode (SKU Site)")
-        with c_top2: 
-            name_input = st.text_input("Όνομα Cocktail")
-            
-        cat_price = st.number_input("Τιμή Καταλόγου (€)", min_value=0.0, step=0.10)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        barcode = c1.text_input("Barcode")
+        name = c2.text_input("Όνομα Cocktail")
+        price = c3.number_input("Τιμή (€)", min_value=0.0, step=0.5)
         
-        st.markdown("---")
-        st.subheader("Συστατικά Συνταγής")
-        
-        # Λίστες για να μαζέψουμε τα δεδομένα από τα inputs
+        st.write("---")
         temp_ingredients = []
         temp_mls = []
-
-        # Δημιουργία των 13 πεδίων για Συστατικά και ML
-        for i in range(1, 14):
-            c1, c2 = st.columns([3, 1])
-            with c1: 
-                # Χρησιμοποιούμε το ing_options που έχεις ήδη στον κώδικα
-                val_ing = st.selectbox(f"Συστατικό {i}", ing_options, key=f"n_s_{i}")
-                temp_ingredients.append(val_ing if val_ing else "ΚΕΝΟ")
-            with c2: 
-                val_ml = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
-                temp_mls.append(val_ml)
         
-        submit_button = st.form_submit_button("Προσθήκη Συνταγής")
-
-        if submit_button:
-            if name_input:
-                # 1. Κατασκευή του λεξικού για τη νέα συνταγή
-                new_recipe = {
-                    "Barcode": str(barcode_input),
-                    "Ονομα": name_input,
-                    "Τιμή Καταλόγου": cat_price
-                }
-                
-                # Δυναμική προσθήκη των 13 συστατικών
+        cols = st.columns(2)
+        for i in range(1, 14):
+            target = cols[0] if i <= 7 else cols[1]
+            with target:
+                sc1, sc2 = st.columns([3, 1])
+                ing_val = sc1.selectbox(f"Υλικό {i}", ing_options, key=f"ni_{i}")
+                ml_val = sc2.number_input(f"ML {i}", min_value=0.0, key=f"nm_{i}")
+                temp_ingredients.append(ing_val)
+                temp_mls.append(ml_val)
+        
+        if st.form_submit_button("Προσθήκη Συνταγής"):
+            if name:
+                new_recipe = {"Barcode": barcode, "Ονομα": name, "Τιμή Καταλόγου": price}
                 for i in range(1, 14):
                     new_recipe[f"ΣΥΣΤΑΤΙΚΟ{i}"] = temp_ingredients[i-1]
                     new_recipe[f"ML{i}"] = temp_mls[i-1]
                 
-                new_df = pd.DataFrame([new_recipe])
-
-                # 2. Ενημέρωση του st.session_state.rec
-                st.session_state.rec = pd.concat([st.session_state.rec, new_df], ignore_index=True)
-                
-                # 3. Αποθήκευση στο GOOGLE SHEETS
+                updated_rec = pd.concat([df_rec, pd.DataFrame([new_recipe])], ignore_index=True)
                 try:
-                    # Μετατρέπουμε το DataFrame σε λίστα για πιο σίγουρη εγγραφή
-                    data_to_write = st.session_state.rec.fillna("") 
-                    
-                    # Ενημέρωση - Δοκίμασε να προσθέσεις το όνομα του worksheet ακριβώς όπως είναι
-                    conn.update(worksheet="Recipes", data=data_to_write)
-                    
-                    # Αναγκαστικό καθάρισμα cache για να "τραβήξει" τα νέα δεδομένα
-                    st.cache_data.clear() 
-                    
-                    st.success(f"✅ Η συνταγή '{name_input}' συγχρονίστηκε με το Google Sheets!")
-                    st.balloons()
+                    conn.update(worksheet="Recipes", data=updated_rec)
+                    st.cache_data.clear()
+                    st.success(f"✅ Η συνταγή '{name}' αποθηκεύτηκε στο Cloud!")
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"⚠️ Η εφαρμογή δεν μπόρεσε να γράψει στο Google Sheets. Σφάλμα: {e}")
-
-                # 4. Αποθήκευση στο τοπικό CSV (Backup)
-                try:
-                    # Χρησιμοποιούμε το DB_RECIPES που έχεις ορίσει ("db_recipes.csv")
-                    if os.path.exists(DB_RECIPES):
-                        old_df = pd.read_csv(DB_RECIPES)
-                        combined_df = pd.concat([old_df, new_df], ignore_index=True)
-                    else:
-                        combined_df = new_df
-                    combined_df.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                except Exception as e:
-                    st.warning(f"⚠️ Τοπική αποθήκευση απέτυχε: {e}")
-
-                st.rerun()
+                    st.error(f"❌ Σφάλμα: {e}")
             else:
-                st.error("❌ Παρακαλώ δώστε ένα όνομα στο Cocktail.")
+                st.error("❌ Δώστε όνομα!")
 
-# --- 5. ΔΙΑΧΕΙΡΙΣΗ ΣΥΝΤΑΓΩΝ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
+# --- 3. ΔΙΑΧΕΙΡΙΣΗ ---
 elif page == "📊 Διαχείριση":
-    st.header("📊 Επεξεργασία & Διαγραφή Συνταγών")
-    
-    # Σιγουρευόμαστε ότι έχουμε τα τελευταία δεδομένα
-    if os.path.exists(DB_RECIPES):
-        df_rec = pd.read_csv(DB_RECIPES)
+    st.header("📊 Επεξεργασία & Διαγραφή")
     
     if not df_rec.empty:
-        # Διασφάλιση σωστού format για τα Barcodes
-        if "Barcode" not in df_rec.columns:
-            df_rec.insert(0, "Barcode", "")
-        df_rec["Barcode"] = df_rec["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
-        
-        # 1. Επιλογή Cocktail
-        recipe_to_edit = st.selectbox(
-            "Αναζήτηση Cocktail:", 
-            options=df_rec["Ονομα"].unique(),
-            index=None,
-            placeholder="Επιλέξτε ένα Cocktail..."
-        )
+        recipe_to_edit = st.selectbox("Επιλογή Cocktail:", df_rec["Ονομα"].unique(), index=None)
         
         if recipe_to_edit:
-            # Φέρνουμε τη γραμμή της συγκεκριμένης συνταγής
             row = df_rec[df_rec["Ονομα"] == recipe_to_edit].iloc[0]
+            t1, t2 = st.tabs(["📝 Επεξεργασία", "🗑️ Διαγραφή"])
             
-            # Χωρισμός σε Tabs: Επεξεργασία και Διαγραφή
-            tab_edit, tab_del = st.tabs(["📝 Επεξεργασία Στοιχείων", "🗑️ Διαγραφή Συνταγής"])
-            
-            with tab_edit:
-                with st.form(f"form_{recipe_to_edit}"): # Μοναδικό ID φόρμας
-                    col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
-                    edit_name = col_h1.text_input("Όνομα Cocktail", value=str(row["Ονομα"]))
-                    edit_barcode = col_h2.text_input("Barcode Shop", value=str(row["Barcode"]))
-                    current_price = float(row["Τιμή Καταλόγου"]) if "Τιμή Καταλόγου" in row else 0.0
-                    edit_price = col_h3.number_input("Τιμή (€)", value=current_price, step=0.10)
+            with t1:
+                with st.form(f"edit_{recipe_to_edit}"):
+                    en = st.text_input("Όνομα", value=str(row["Ονομα"]))
+                    eb = st.text_input("Barcode", value=str(row.get("Barcode", "")))
+                    ep = st.number_input("Τιμή", value=float(row.get("Τιμή Καταλόγου", 0.0)))
                     
-                    st.write("---")
-                    new_recipe_data = {}
-                    c1, c2 = st.columns(2)
-                    
-                    # Καθαρισμός λίστας επιλογών για σύγκριση
-                    clean_options = [str(opt).strip() for opt in ing_options]
-                    
+                    new_data = {}
                     for i in range(1, 14):
-                        target_col = c1 if i <= 7 else c2
-                        with target_col:
-                            # Παίρνουμε την τιμή από το CSV και καθαρίζουμε κενά
-                            val_from_db = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
-                            ml_from_db = float(row.get(f"ML{i}", 0.0))
-                            
-                            # Εύρεση σωστού index (αν δεν υπάρχει, πάει στο 0 -> ΚΕΝΟ)
-                            try:
-                                current_idx = clean_options.index(val_from_db)
-                            except ValueError:
-                                current_idx = 0
-                            
-                            sub_c1, sub_c2 = st.columns([2, 1])
-                            
-                            # Χρήση δυναμικού key (recipe_to_edit) για να ανανεώνονται τα πεδία
-                            new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(
-                                f"Υλικό {i}", 
-                                options=ing_options, 
-                                index=current_idx, 
-                                key=f"s_{i}_{recipe_to_edit}"
-                            )
-                            new_recipe_data[f"ML{i}"] = sub_c2.number_input(
-                                f"ML {i}", 
-                                value=ml_from_db, 
-                                key=f"m_{i}_{recipe_to_edit}"
-                            )
-
-                    if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
-                        idx_to_update = df_rec[df_rec["Ονομα"] == recipe_to_edit].index
-                        df_rec.loc[idx_to_update, "Ονομα"] = edit_name
-                        df_rec.loc[idx_to_update, "Barcode"] = edit_barcode
-                        df_rec.loc[idx_to_update, "Τιμή Καταλόγου"] = edit_price
-                        for k, v in new_recipe_data.items():
-                            df_rec.loc[idx_to_update, k] = v
+                        c1, c2 = st.columns([3, 1])
+                        curr_ing = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                        try: idx = ing_options.index(curr_ing)
+                        except: idx = 0
+                        new_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = c1.selectbox(f"Υλικό {i}", ing_options, index=idx, key=f"ei_{i}")
+                        new_data[f"ML{i}"] = c2.number_input(f"ML {i}", value=float(row.get(f"ML{i}", 0.0)), key=f"em_{i}")
+                    
+                    if st.form_submit_button("💾 Αποθήκευση στο Cloud"):
+                        df_rec.loc[df_rec["Ονομα"] == recipe_to_edit, ["Ονομα", "Barcode", "Τιμή Καταλόγου"]] = [en, eb, ep]
+                        for k, v in new_data.items():
+                            df_rec.loc[df_rec["Ονομα"] == en, k] = v
                         
-                        df_rec.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                        st.success(f"✅ Η συνταγή '{edit_name}' ενημερώθηκε!")
+                        conn.update(worksheet="Recipes", data=df_rec)
+                        st.cache_data.clear()
+                        st.success("✅ Ενημερώθηκε!")
                         st.rerun()
 
-            with tab_del:
-                st.warning(f"⚠️ Είστε σίγουροι ότι θέλετε να διαγράψετε το **{recipe_to_edit}**; Αυτή η ενέργεια δεν αναιρείται.")
-                if st.button(f"🗑️ Οριστική Διαγραφή {recipe_to_edit}", key=f"del_{recipe_to_edit}"):
+            with t2:
+                if st.button("🗑️ Οριστική Διαγραφή από το Cloud"):
                     df_rec = df_rec[df_rec["Ονομα"] != recipe_to_edit]
-                    df_rec.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                    st.error(f"❌ Η συνταγή '{recipe_to_edit}' διαγράφηκε.")
+                    conn.update(worksheet="Recipes", data=df_rec)
+                    st.cache_data.clear()
+                    st.error("❌ Διαγράφηκε!")
                     st.rerun()
-
-        st.write("---")
-        with st.expander("📋 Προεπισκόπηση Όλων των Συνταγών (Πίνακας)"):
-            st.dataframe(df_rec, use_container_width=True)
-            
     else:
-        st.info("Δεν βρέθηκαν αποθηκευμένες συνταγές. Πηγαίνετε στη 'Νέα Συνταγή' για να ξεκινήσετε.")
-
+        st.info("Δεν υπάρχουν συνταγές.")
 # --- 4. ΑΝΑΛΥΣΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΣΥΜΒΑΤΟΤΗΤΑ ΜΕ ID & ΟΝΟΜΑΤΑ) ---
 elif page == "🔍 Ανάλυση":
     st.header("🔍 Οικονομική Ανάλυση & Κερδοφορία")
