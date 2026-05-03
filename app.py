@@ -223,90 +223,93 @@ if page == "📦 Αποθήκη":
         st.rerun()
 
 
-# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
+# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΠΛΗΡΗΣ ΔΙΟΡΘΩΜΕΝΗ ΕΚΔΟΣΗ) ---
 elif page == "📝 Νέα Συνταγή":
     st.header("📝 Καταχώρηση Νέας Συνταγής")
     
     with st.form("new_recipe_form"):
-        # Προσθήκη Barcode και Ονόματος στην ίδια γραμμή
+        # Πάνω μέρος: Barcode, Όνομα, Τιμή
         c_top1, c_top2 = st.columns([1, 2])
         with c_top1: 
-            barcode = st.text_input("Barcode (SKU Site)")
+            barcode_input = st.text_input("Barcode (SKU Site)")
         with c_top2: 
-            name = st.text_input("Όνομα Cocktail")
+            name_input = st.text_input("Όνομα Cocktail")
             
         cat_price = st.number_input("Τιμή Καταλόγου (€)", min_value=0.0, step=0.10)
         
         st.markdown("---")
         st.subheader("Συστατικά Συνταγής")
         
-        recipe_data = {}
-        # Δημιουργία των 13 πεδίων για υλικά και ποσότητες
+        # Λίστες για να μαζέψουμε τα δεδομένα από τα inputs
+        temp_ingredients = []
+        temp_mls = []
+
+        # Δημιουργία των 13 πεδίων για Συστατικά και ML
         for i in range(1, 14):
             c1, c2 = st.columns([3, 1])
             with c1: 
-                # Χρήση του ing_options που ήδη έχεις ορίσει
+                # Χρησιμοποιούμε το ing_options που έχεις ορίσει στην αρχή του κώδικα
                 val_ing = st.selectbox(f"Συστατικό {i}", ing_options, key=f"n_s_{i}")
-                recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = val_ing if val_ing else "ΚΕΝΟ"
+                temp_ingredients.append(val_ing if val_ing else "ΚΕΝΟ")
             with c2: 
-                recipe_data[f"ML{i}"] = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
+                val_ml = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
+                temp_mls.append(val_ml)
         
-        if st.form_submit_button("Προσθήκη Συνταγής"):
-            new_recipe = {
-                "Barcode": str(barcode_new),
-                "Ονομα": name_new,
-                "Τιμή Καταλόγου": price_new
-            }
-            # Προσθήκη των συστατικών στο λεξικό
-            for i in range(1, 14):
-                new_recipe[f"ΣΥΣΤΑΤΙΚΟ{i}"] = ingredients_list[i-1]
-                new_recipe[f"ML{i}"] = ml_list[i-1]
-            
-            # Ενημέρωση του DataFrame στην εφαρμογή
-            new_df = pd.DataFrame([new_recipe])
-            st.session_state.rec = pd.concat([st.session_state.rec, new_df], ignore_index=True)
-            
-            # --- ΕΔΩ ΕΙΝΑΙ Η ΑΠΟΘΗΚΕΥΣΗ ΣΤΟ GOOGLE SHEETS ---
-            try:
-                conn.update(worksheet="Recipes", data=st.session_state.rec)
-                st.success(f"✅ Η συνταγή '{name_new}' αποθηκεύτηκε στο Google Sheets!")
-            except Exception as e:
-                st.error(f"⚠️ Η συνταγή προστέθηκε τοπικά, αλλά απέτυχε η αποθήκευση στο Cloud: {e}")
+        # Το σωστό κουμπί για φόρμα
+        submit_button = st.form_submit_button("Προσθήκη Συνταγής")
+
+        if submit_button:
+            if name_input:
+                # 1. Κατασκευή του λεξικού (Dictionary) για τη νέα συνταγή
+                new_recipe = {
+                    "Barcode": str(barcode_input),
+                    "Ονομα": name_input,
+                    "Τιμή Καταλόγου": cat_price
+                }
                 
-                # Ορίζουμε την ακριβή σειρά στηλών που θέλουμε να έχει το CSV μας
-                cols_order = ["Barcode", "Ονομα", "Τιμή Καταλόγου"]
+                # Δυναμική προσθήκη των 13 συστατικών και των ML τους
                 for i in range(1, 14):
-                    cols_order.append(f"ΣΥΣΤΑΤΙΚΟ{i}")
-                    cols_order.append(f"ML{i}")
-
-                # 2. Φόρτωση και Συγχώνευση
-                if os.path.exists(DB_RECIPES):
-                    old_df = pd.read_csv(DB_RECIPES)
-                    
-                    # Διόρθωση στηλών αν το αρχείο είναι παλιό
-                    for col in cols_order:
-                        if col not in old_df.columns:
-                            old_df[col] = "ΚΕΝΟ" if "ΣΥΣΤΑΤΙΚΟ" in col else 0.0
-                    
-                    # Εξασφάλιση ότι το Barcode είναι string για τη σύγκριση
-                    old_df["Barcode"] = old_df["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
-                    
-                    # Ένωση
-                    combined_df = pd.concat([old_df, new_df], ignore_index=True)
-                else:
-                    combined_df = new_df
-
-                # 3. Τελική Τακτοποίηση στηλών και αφαίρεση διπλοτύπων
-                combined_df = combined_df.reindex(columns=cols_order)
-                combined_df = combined_df.drop_duplicates(subset=["Barcode", "Ονομα"], keep="last")
+                    new_recipe[f"ΣΥΣΤΑΤΙΚΟ{i}"] = temp_ingredients[i-1]
+                    new_recipe[f"ML{i}"] = temp_mls[i-1]
                 
-                # 4. Αποθήκευση με σωστό Encoding για Ελληνικά
-                combined_df.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
+                # Μετατροπή σε DataFrame
+                new_df = pd.DataFrame([new_recipe])
+
+                # 2. Ενημέρωση της μνήμης της εφαρμογής (Session State)
+                st.session_state.rec = pd.concat([st.session_state.rec, new_df], ignore_index=True)
                 
-                st.success(f"✅ Το Cocktail '{name}' αποθηκεύτηκε επιτυχώς!")
-                st.rerun()
+                # 3. Αποθήκευση στο GOOGLE SHEETS
+                try:
+                    conn.update(worksheet="Recipes", data=st.session_state.rec)
+                    st.cache_data.clear() # Καθαρίζουμε την προσωρινή μνήμη για να φανεί η αλλαγή
+                    st.success(f"✅ Η συνταγή '{name_input}' αποθηκεύτηκε επιτυχώς στο Cloud!")
+                except Exception as e:
+                    st.error(f"⚠️ Σφάλμα σύνδεσης με Google Sheets: {e}")
+
+                # 4. Αποθήκευση στο τοπικό CSV (Backup)
+                try:
+                    # Ορισμός σωστής σειράς στηλών για το αρχείο
+                    cols_order = ["Barcode", "Ονομα", "Τιμή Καταλόγου"]
+                    for i in range(1, 14):
+                        cols_order.append(f"ΣΥΣΤΑΤΙΚΟ{i}")
+                        cols_order.append(f"ML{i}")
+                    
+                    if os.path.exists(DB_RECIPES):
+                        old_df = pd.read_csv(DB_RECIPES)
+                        combined_df = pd.concat([old_df, new_df], ignore_index=True)
+                    else:
+                        combined_df = new_df
+                    
+                    # Τακτοποίηση και αποθήκευση
+                    combined_df = combined_df.reindex(columns=cols_order)
+                    combined_df.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
+                except Exception as e:
+                    st.warning(f"⚠️ Η τοπική αποθήκευση (CSV) απέτυχε: {e}")
+
+                st.balloons()
+                st.rerun() # Ανανέωση της σελίδας
             else:
-                st.error("❌ Παρακαλώ εισάγετε το όνομα του Cocktail.")
+                st.error("❌ Παρακαλώ δώστε ένα όνομα στο Cocktail.")
 
 # --- 5. ΔΙΑΧΕΙΡΙΣΗ ΣΥΝΤΑΓΩΝ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
 elif page == "📊 Διαχείριση":
