@@ -31,10 +31,10 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 def load_data():
     # Φορτώνουμε όλα τα tabs από το Google Sheet
     try:
-        ing = conn.read(worksheet="Ingredients", ttl=0).fillna("")
-        rec = conn.read(worksheet="Recipes", ttl=0).fillna("")
-        orders = conn.read(worksheet="Orders", ttl=0).fillna("")
-        history = conn.read(worksheet="History", ttl=0).fillna("")
+        ing = conn.read(worksheet="Ingredients", ttl="5m").fillna("")
+        rec = conn.read(worksheet="Recipes", ttl="5m").fillna("")
+        orders = conn.read(worksheet="Orders", ttl="5m").fillna("")
+        history = conn.read(worksheet="History", ttl="5m").fillna("")
     except Exception as e:
         st.error(f"⚠️ Σφάλμα σύνδεσης με Google Sheets: {e}")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
