@@ -51,14 +51,17 @@ def load_data():
 
     # 2. Φόρτωση Recipes
     try:
-        # Δοκιμάζουμε με το όνομα, αν αποτύχει δοκιμάζουμε με τη σειρά (1)
-        rec = conn.read(worksheet="Recipes", ttl=0).fillna("")
-    except:
+        # Χρησιμοποιούμε fillna για να μην κρασάρει αν βρει κενά
+        rec = conn.read(worksheet="Recipes", ttl=0)
+        if rec is not None:
+            rec = rec.fillna("")
+    except Exception as e:
+        # Αν αποτύχει το όνομα, δοκίμασε τη σειρά 1 (2ο tab)
         try:
-            rec = conn.read(worksheet=1, ttl=0)
-        except Exception as e:
-            st.error(f"Σφάλμα στο Tab Recipes: {e}")
-            rec = pd.DataFrame()
+            rec = conn.read(worksheet=1, ttl=0).fillna("")
+        except:
+            st.error("⚠️ Το Tab 'Recipes' χρειάζεται συνεχόμενους τίτλους στην πρώτη γραμμή.")
+            rec = pd.DataFrame(columns=["Barcode", "Ονομα", "Τιμή Καταλόγου"])
             
     # 3. Φόρτωση Production Logs
     try:
