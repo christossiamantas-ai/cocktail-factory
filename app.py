@@ -227,6 +227,10 @@ if page == "📦 Αποθήκη":
 elif page == "📝 Νέα Συνταγή":
     st.header("📝 Καταχώρηση Νέας Συνταγής")
     
+    # Εξασφάλιση ότι το session_state υπάρχει
+    if 'rec' not in st.session_state:
+        st.session_state.rec = rec
+
     with st.form("new_recipe_form"):
         # Πάνω μέρος: Barcode, Όνομα, Τιμή
         c_top1, c_top2 = st.columns([1, 2])
@@ -248,8 +252,7 @@ elif page == "📝 Νέα Συνταγή":
         for i in range(1, 14):
             c1, c2 = st.columns([3, 1])
             with c1: 
-                # Χρησιμοποιούμε το ing_options που έχεις ορίσει στην αρχή του κώδικα
-                val_ing = st.selectbox(f"Συστατικό {i}", ing_options, key=f"n_s_{i}")
+                val_ing = st.selectbox(f"Συστατικό {i}", [""] + ing_options, key=f"n_s_{i}")
                 temp_ingredients.append(val_ing if val_ing else "ΚΕΝΟ")
             with c2: 
                 val_ml = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
@@ -281,32 +284,24 @@ elif page == "📝 Νέα Συνταγή":
                 # 3. Αποθήκευση στο GOOGLE SHEETS
                 try:
                     conn.update(worksheet="Recipes", data=st.session_state.rec)
-                    st.cache_data.clear() # Καθαρίζουμε την προσωρινή μνήμη για να φανεί η αλλαγή
-                    st.success(f"✅ Η συνταγή '{name_input}' αποθηκεύτηκε επιτυχώς στο Cloud!")
+                    st.cache_data.clear() # Καθαρίζουμε την cache για να ανανεωθούν τα δεδομένα
+                    st.success(f"✅ Η συνταγή '{name_input}' αποθηκεύτηκε στο Google Sheets!")
+                    st.balloons()
                 except Exception as e:
                     st.error(f"⚠️ Σφάλμα σύνδεσης με Google Sheets: {e}")
 
                 # 4. Αποθήκευση στο τοπικό CSV (Backup)
                 try:
-                    # Ορισμός σωστής σειράς στηλών για το αρχείο
-                    cols_order = ["Barcode", "Ονομα", "Τιμή Καταλόγου"]
-                    for i in range(1, 14):
-                        cols_order.append(f"ΣΥΣΤΑΤΙΚΟ{i}")
-                        cols_order.append(f"ML{i}")
-                    
                     if os.path.exists(DB_RECIPES):
                         old_df = pd.read_csv(DB_RECIPES)
                         combined_df = pd.concat([old_df, new_df], ignore_index=True)
                     else:
                         combined_df = new_df
                     
-                    # Τακτοποίηση και αποθήκευση
-                    combined_df = combined_df.reindex(columns=cols_order)
                     combined_df.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
                 except Exception as e:
                     st.warning(f"⚠️ Η τοπική αποθήκευση (CSV) απέτυχε: {e}")
 
-                st.balloons()
                 st.rerun() # Ανανέωση της σελίδας
             else:
                 st.error("❌ Παρακαλώ δώστε ένα όνομα στο Cocktail.")
