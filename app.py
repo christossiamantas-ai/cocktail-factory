@@ -179,7 +179,7 @@ elif page == "📊 Διαχείριση":
                 st.success(f"Το cocktail '{en}' ενημερώθηκε επιτυχώς!")
                 st.rerun()
 
-# --- 5. ΑΝΑΛΥΣΗ (ΠΛΗΡΗΣ ΕΚΔΟΣΗ ΜΕ HTML REPORT) ---
+# --- 5. ΑΝΑΛΥΣΗ (ΠΛΗΡΗΣ ΕΚΔΟΣΗ ΜΕ ΔΙΟΡΘΩΜΕΝΑ ΕΛΛΗΝΙΚΑ & METRICS) ---
 elif page == "🔍 Ανάλυση":
     st.header("🔍 Οικονομική Ανάλυση & Κερδοφορία")
     
@@ -190,7 +190,7 @@ elif page == "🔍 Ανάλυση":
         choice = st.selectbox("Επιλέξτε Cocktail:", df_rec["Ονομα"].unique())
         r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
         
-        # Υπολογισμοί Τιμών
+        # Υπολογισμοί
         p_retail = float(r.get("Τιμή Καταλόγου", 0))
         p_agent = p_retail * 0.74
         p_custom = p_retail * (1 - discount/100)
@@ -216,67 +216,81 @@ elif page == "🔍 Ανάλυση":
 
         final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
         total_production = raw_cost + TOTAL_FIXED 
-        
-        # Κέρδη
         prof_ret = p_retail - total_production
         prof_age = p_agent - total_production
         prof_cus = p_custom - total_production
 
-        # --- ΕΜΦΑΝΙΣΗ ΟΠΩΣ ΣΤΟ LOCAL ---
+        # --- ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ (ΑΝΤΙΓΡΑΦΗ LOCAL) ---
         st.subheader(f"Στατιστικά για: {choice}")
         m1, m2 = st.columns(2)
         m1.metric("Συνολική Ποσότητα", f"{total_ml_cocktail:.1f} ml")
         m2.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %")
         
         c1, c2, c3 = st.columns(3)
+        # Χρήση label_visibility="visible" και σωστά χρώματα
         c1.metric("Τιμή Λιανικής", f"{p_retail:.2f} €")
         c2.metric("Τιμή Αντιπροσώπου", f"{p_agent:.2f} €")
-        c3.metric("Τιμή με Έκπτωση", f"{p_custom:.2f} €", delta=f"-{discount}%")
+        c3.metric("Τιμή με Έκπτωση", f"{p_custom:.2f} €", delta=f"-{discount}%" if discount > 0 else None, delta_color="inverse")
 
         st.markdown("---")
         st.write("### 💰 Ανάλυση Πραγματικής Κερδοφορίας")
         p1, p2, p3 = st.columns(3)
-        p1.metric("Κέρδος Λιανικής", f"{prof_ret:.2f} €", delta_color="normal")
+        # Πράσινο χρώμα στο κέρδος (delta)
+        p1.metric("Κέρδος Λιανικής", f"{prof_ret:.2f} €")
         p2.metric("Κέρδος Αντιπροσώπου", f"{prof_age:.2f} €")
         p3.metric("Κέρδος με Έκπτωση", f"{prof_cus:.2f} €")
 
-        # --- ΔΗΜΙΟΥΡΓΙΑ HTML REPORT ---
+        # --- ΔΗΜΙΟΥΡΓΙΑ HTML REPORT (ΜΕ UTF-8 ΓΙΑ ΕΛΛΗΝΙΚΑ) ---
         report_html = f"""
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee;">
-            <h2 style="color: #ff4b4b;">Report Συνταγής: {choice}</h2>
-            <p><b>Ημερομηνία:</b> {datetime.now().strftime("%d/%m/%Y")}</p>
-            <hr>
-            <table style="width: 100%; border-collapse: collapse;">
-                <tr style="background: #f8f9fa;"><td>Τιμή Λιανικής</td><td><b>{p_retail:.2f} €</b></td></tr>
-                <tr><td>Κόστος Παραγωγής</td><td><b>{total_production:.2f} €</b></td></tr>
-                <tr style="background: #f8f9fa;"><td><b>Καθαρό Κέρδος (Retail)</b></td><td style="color: green;"><b>{prof_ret:.2f} €</b></td></tr>
-                <tr><td>Αλκοολικός Βαθμός</td><td>{final_abv:.2f} %</td></tr>
-            </table>
-            <h3>Σύνθεση Υλικών</h3>
-            <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
-                <thead style="background: #eee;">
-                    <tr><th>Υλικό</th><th>ML</th><th>Κόστος</th></tr>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; }}
+                .header {{ color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 10px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                th, td {{ padding: 12px; border: 1px solid #ddd; text-align: left; }}
+                th {{ background-color: #f2f2f2; }}
+                .profit {{ color: #28a745; font-weight: bold; }}
+                .summary {{ background: #f9f9f9; padding: 15px; border-radius: 8px; margin-top: 20px; }}
+            </style>
+        </head>
+        <body>
+            <h1 class="header">Report Cocktail: {choice}</h1>
+            <p><b>Ημερομηνία Έκδοσης:</b> {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>
+            
+            <div class="summary">
+                <p><b>Τιμή Πώλησης (Retail):</b> {p_retail:.2f} €</p>
+                <p><b>Συνολικό Κόστος:</b> {total_production:.2f} €</p>
+                <p><b>Καθαρό Κέρδος:</b> <span class="profit">{prof_ret:.2f} €</span></p>
+                <p><b>Αλκοόλ (ABV):</b> {final_abv:.2f}%</p>
+            </div>
+
+            <h3>Σύνθεση Συνταγής</h3>
+            <table>
+                <thead>
+                    <tr><th>Συστατικό</th><th>Ποσότητα (ml)</th><th>Κόστος (€)</th><th>Αλκοόλ %</th></tr>
                 </thead>
                 <tbody>
         """
         for item in breakdown:
-            report_html += f"<tr><td>{item['Υλικό']}</td><td>{item['ML']}</td><td>{item['Κόστος']:.3f} €</td></tr>"
+            report_html += f"<tr><td>{item['Υλικό']}</td><td>{item['ML']:.1f}</td><td>{item['Κόστος']:.3f}</td><td>{item['Alc']:.1f}%</td></tr>"
         
-        report_html += "</tbody></table></div>"
+        report_html += """
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
 
         st.markdown("---")
-        st.write("### 📜 Εξαγωγή Report")
         st.download_button(
-            label="📥 Λήψη Επαγγελματικού Report (HTML)",
-            data=report_html,
+            label="📥 Λήψη Πλήρους Report (HTML)",
+            data=report_html.encode('utf-8'),
             file_name=f"Report_{choice}.html",
             mime="text/html"
         )
-        
-        # Προεπισκόπηση του Report
-        with st.expander("Προεπισκόπηση Report"):
-            st.components.v1.html(report_html, height=400, scrolling=True)
-
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ ---
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική")
