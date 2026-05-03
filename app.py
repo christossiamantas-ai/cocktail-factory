@@ -122,22 +122,61 @@ elif page == "📝 Νέα Συνταγή":
 elif page == "📊 Διαχείριση":
     st.header("📊 Επεξεργασία & Διαγραφή")
     recipe_to_edit = st.selectbox("Αναζήτηση Cocktail:", options=recipe_options, index=None)
+    
     if recipe_to_edit:
+        # Φιλτράρουμε τη γραμμή της συνταγής
         row = df_rec[df_rec["Ονομα"] == recipe_to_edit].iloc[0]
+        
         with st.form("edit_form"):
-            en = st.text_input("Όνομα", value=row["Ονομα"])
-            eb = st.text_input("Barcode", value=str(row["Barcode"]))
-            ep = st.number_input("Τιμή", value=float(row["Τιμή Καταλόγου"]))
+            en = st.text_input("Όνομα", value=row.get("Ονομα", ""))
+            eb = st.text_input("Barcode", value=str(row.get("Barcode", "")))
+            # Προσοχή στο όνομα της στήλης Τιμή
+            price_col = "Τιμή Καταλόγου" if "Τιμή Καταλόγου" in df_rec.columns else "Τιμή"
+            ep = st.number_input("Τιμή", value=float(row.get(price_col, 0.0)))
+            
             new_data = {}
+            # Loop για τα 13 συστατικά
             for i in range(1, 14):
                 c1, c2 = st.columns([2, 1])
-                new_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = c1.selectbox(f"Υλικό {i}", ing_options, index=ing_options.index(row[f"ΣΥΣΤΑΤΙΚΟ{i}"]) if row[f"ΣΥΣΤΑΤΙΚΟ{i}"] in ing_options else 0, key=f"e_s_{i}")
-                new_data[f"ML{i}"] = c2.number_input(f"ML {i}", value=float(row[f"ML{i}"]), key=f"e_m_{i}")
-            if st.form_submit_button("💾 Ενημέρωση"):
-                df_rec.loc[df_rec["Ονομα"] == recipe_to_edit, ["Ονομα", "Barcode", "Τιμή Καταλόγου"]] = [en, eb, ep]
-                for k, v in new_data.items(): df_rec.loc[df_rec["Ονομα"] == en, k] = v
+                
+                # Έλεγχος αν η στήλη υπάρχει στο Excel (πρόληψη KeyError)
+                col_name = f"ΣΥΣΤΑΤΙΚΟ{i}"
+                ml_name = f"ML{i}"
+                
+                current_ing = row.get(col_name, "")
+                current_ml = row.get(ml_name, 0.0)
+                
+                # Επιλογή Υλικού
+                new_data[col_name] = c1.selectbox(
+                    f"Υλικό {i}", 
+                    ing_options, 
+                    index=ing_options.index(current_ing) if current_ing in ing_options else 0, 
+                    key=f"e_s_{i}"
+                )
+                
+                # Ποσότητα ML
+                new_data[ml_name] = c2.number_input(
+                    f"ML {i}", 
+                    value=float(current_ml) if current_ml else 0.0, 
+                    key=f"e_m_{i}"
+                )
+            
+            # ΤΟ ΚΟΥΜΠΙ ΠΡΕΠΕΙ ΝΑ ΕΙΝΑΙ ΕΔΩ (Μέσα στο with st.form)
+            submitted = st.form_submit_button("💾 Ενημέρωση & Αποθήκευση")
+            
+            if submitted:
+                # Ενημέρωση του DataFrame
+                df_rec.loc[df_rec["Ονομα"] == recipe_to_edit, ["Ονομα", "Barcode", price_col]] = [en, eb, ep]
+                
+                for k, v in new_data.items():
+                    df_rec.loc[df_rec["Ονομα"] == en, k] = v
+                
+                # Αποστολή στο Google Sheets
                 conn.update(worksheet="Recipes", data=df_rec)
+                
+                # Καθαρισμός Cache και ανανέωση
                 st.cache_data.clear()
+                st.success(f"Το cocktail '{en}' ενημερώθηκε επιτυχώς!")
                 st.rerun()
 
 # --- 5. ΑΝΑΛΥΣΗ ---
