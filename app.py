@@ -251,19 +251,27 @@ elif page == "📝 Νέα Συνταγή":
             with c2: 
                 recipe_data[f"ML{i}"] = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
         
-        if st.form_submit_button("💾 Αποθήκευση Συνταγής"):
-            if name:
-                # 1. Προετοιμασία της νέας γραμμής
-                new_row = {
-                    "Barcode": str(barcode).strip(),
-                    "Ονομα": name, 
-                    "Τιμή Καταλόγου": cat_price, 
-                    **recipe_data
-                }
-                new_df = pd.DataFrame([new_row])
-                # Πρόσθεσε αυτή τη γραμμή για να στέλνει τα δεδομένα στο Google Sheets
-conn.update(worksheet="Recipes", data=st.session_state.rec)
-st.success("✅ Η συνταγή αποθηκεύτηκε επιτυχώς στο Google Sheets!")
+        if st.button("Προσθήκη Συνταγής"):
+            new_recipe = {
+                "Barcode": str(barcode_new),
+                "Ονομα": name_new,
+                "Τιμή Καταλόγου": price_new
+            }
+            # Προσθήκη των συστατικών στο λεξικό
+            for i in range(1, 14):
+                new_recipe[f"ΣΥΣΤΑΤΙΚΟ{i}"] = ingredients_list[i-1]
+                new_recipe[f"ML{i}"] = ml_list[i-1]
+            
+            # Ενημέρωση του DataFrame στην εφαρμογή
+            new_df = pd.DataFrame([new_recipe])
+            st.session_state.rec = pd.concat([st.session_state.rec, new_df], ignore_index=True)
+            
+            # --- ΕΔΩ ΕΙΝΑΙ Η ΑΠΟΘΗΚΕΥΣΗ ΣΤΟ GOOGLE SHEETS ---
+            try:
+                conn.update(worksheet="Recipes", data=st.session_state.rec)
+                st.success(f"✅ Η συνταγή '{name_new}' αποθηκεύτηκε στο Google Sheets!")
+            except Exception as e:
+                st.error(f"⚠️ Η συνταγή προστέθηκε τοπικά, αλλά απέτυχε η αποθήκευση στο Cloud: {e}")
                 
                 # Ορίζουμε την ακριβή σειρά στηλών που θέλουμε να έχει το CSV μας
                 cols_order = ["Barcode", "Ονομα", "Τιμή Καταλόγου"]
