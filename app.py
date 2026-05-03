@@ -282,12 +282,19 @@ elif page == "📝 Νέα Συνταγή":
                 
                 # 3. Αποθήκευση στο GOOGLE SHEETS
                 try:
-                    conn.update(worksheet="Recipes", data=st.session_state.rec)
-                    st.cache_data.clear() # Καθαρισμός για να φανεί η αλλαγή
-                    st.success(f"✅ Η συνταγή '{name_input}' αποθηκεύτηκε στο Cloud!")
+                    # Μετατρέπουμε το DataFrame σε λίστα για πιο σίγουρη εγγραφή
+                    data_to_write = st.session_state.rec.fillna("") 
+                    
+                    # Ενημέρωση - Δοκίμασε να προσθέσεις το όνομα του worksheet ακριβώς όπως είναι
+                    conn.update(worksheet="Recipes", data=data_to_write)
+                    
+                    # Αναγκαστικό καθάρισμα cache για να "τραβήξει" τα νέα δεδομένα
+                    st.cache_data.clear() 
+                    
+                    st.success(f"✅ Η συνταγή '{name_input}' συγχρονίστηκε με το Google Sheets!")
                     st.balloons()
                 except Exception as e:
-                    st.error(f"⚠️ Σφάλμα Google Sheets: {e}")
+                    st.error(f"⚠️ Η εφαρμογή δεν μπόρεσε να γράψει στο Google Sheets. Σφάλμα: {e}")
 
                 # 4. Αποθήκευση στο τοπικό CSV (Backup)
                 try:
