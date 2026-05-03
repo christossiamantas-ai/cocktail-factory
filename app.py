@@ -38,7 +38,7 @@ if not check_password():
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 
-    def load_data():
+def load_data():
     try:
         ing = conn.read(worksheet="Ingredients", ttl=0).fillna("")
     except:
