@@ -179,27 +179,116 @@ elif page == "📊 Διαχείριση":
                 st.success(f"Το cocktail '{en}' ενημερώθηκε επιτυχώς!")
                 st.rerun()
 
-# --- 5. ΑΝΑΛΥΣΗ ---
+# --- 5. ΑΝΑΛΥΣΗ (ΠΛΗΡΗΣ ΕΚΔΟΣΗ) ---
 elif page == "🔍 Ανάλυση":
-    st.header("🔍 Οικονομική Ανάλυση")
-    choice = st.selectbox("Επιλέξτε Cocktail:", recipe_options)
-    if choice:
-        r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
-        raw_cost, pure_alc_ml, total_ml = 0.0, 0.0, 0.0
-        breakdown = []
-        for i in range(1, 14):
-            ing_n, ml = str(r[f"ΣΥΣΤΑΤΙΚΟ{i}"]), float(r[f"ML{i}"])
-            if ing_n != "ΚΕΝΟ" and ml > 0:
-                total_ml += ml
-                match = df_ing[df_ing["Name"] == ing_n]
-                if not match.empty:
-                    p_ml = float(match.iloc[0]["Τιμή/ml"])
-                    item_cost = ml * p_ml
-                    raw_cost += item_cost
-                    breakdown.append({"Υλικό": ing_n, "ML": ml, "Κόστος": item_cost})
+    st.header("🔍 Οικονομική Ανάλυση & Κερδοφορία")
+    
+    if not df_rec.empty:
+        # Sidebar Ρυθμίσεις
+        st.sidebar.subheader("Ρυθμίσεις Ανάλυσης")
+        discount = st.sidebar.slider("Έκπτωση Προσφοράς %", 0, 100, 0)
         
-        st.metric("Συνολικό Κόστος Παραγωγής", f"{raw_cost + TOTAL_FIXED:.2f} €")
-        st.table(pd.DataFrame(breakdown))
+        # Χρήση του df_rec που φορτώσαμε στην αρχή
+        recipe_list = df_rec["Ονομα"].unique()
+        choice = st.selectbox("Επιλέξτε Cocktail:", recipe_list)
+        
+        if choice:
+            r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
+            
+            # Βασικές Τιμές
+            p_retail = float(r.get("Τιμή Καταλόγου", 0))
+            p_agent = p_retail * 0.74
+            p_custom = p_retail * (1 - discount/100)
+            
+            raw_cost, pure_alc_ml, total_ml_cocktail = 0.0, 0.0, 0.0
+            breakdown = []
+            missing_ingredients = [] 
+            
+            # Ορισμός σταθερών αν δεν υπάρχουν ήδη στον κώδικα
+            tf = tax_factor if 'tax_factor' in locals() else 0.02 # Παράδειγμα ΕΦΚ
+            fixed_exp = TOTAL_FIXED if 'TOTAL_FIXED' in locals() else 0.50 # Παράδειγμα Σταθερών
+            
+            # --- ΣΥΛΛΟΓΗ ΔΕΔΟΜΕΝΩΝ ΣΥΝΤΑΓΗΣ ---
+            for i in range(1, 14):
+                ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                ml = float(r.get(f"ML{i}", 0))
+                
+                if ing_n != "ΚΕΝΟ" and ml > 0:
+                    total_ml_cocktail += ml
+                    if ing_n == "Νερό":
+                        breakdown.append({"Υλικό": "Νερό", "ML": ml, "Κόστος": 0.0, "Alc %": 0.0})
+                    elif ing_n not in ["nan", ""]:
+                        # Αναζήτηση στο df_ing (Ingredients)
+                        match = df_ing[df_ing["Name"] == ing_n]
+                        
+                        if not match.empty:
+                            ing_row = match.iloc[0]
+                            alc_val = float(ing_row.get("Αλκοόλ %", 0))
+                            actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
+                            pure_alc_ml += (ml * actual_alc_pct)
+                            
+                            price_ml = float(ing_row.get("Τιμή/ml", 0))
+                            item_cost = ml * price_ml
+                            raw_cost += item_cost
+                            
+                            breakdown.append({
+                                "Υλικό": ing_n, 
+                                "ML": ml, 
+                                "Κόστος": item_cost, 
+                                "Alc %": actual_alc_pct * 100
+                            })
+                        else:
+                            missing_ingredients.append(ing_n)
+                            breakdown.append({
+                                "Υλικό": f"⚠️ {ing_n}", 
+                                "ML": ml, 
+                                "Κόστος": 0.0, 
+                                "Alc %": 0.0
+                            })
+
+            if missing_ingredients:
+                st.warning(f"Λείπουν από την Αποθήκη: {', '.join(missing_ingredients)}")
+
+            # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
+            final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
+            efk_informational = pure_alc_ml * tf
+            total_production = raw_cost + fixed_exp 
+            
+            profit_retail = p_retail - total_production
+            profit_agent = p_agent - total_production
+            profit_custom = p_custom - total_production
+            margin_retail = (profit_retail / p_retail * 100) if p_retail > 0 else 0
+
+            # --- ΕΜΦΑΝΙΣΗ ---
+            st.subheader(f"Στατιστικά για: {choice}")
+            m_col1, m_col2 = st.columns(2)
+            m_col1.metric("Συνολική Ποσότητα", f"{total_ml_cocktail:.1f} ml".replace('.', ','))
+            m_col2.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %".replace('.', ','))
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Τιμή Λιανικής", f"{p_retail:.2f} €".replace('.', ','))
+            c2.metric("Τιμή Αντιπροσώπου", f"{p_agent:.2f} €".replace('.', ','))
+            c3.metric("Με Έκπτωση", f"{p_custom:.2f} €".replace('.', ','), delta=f"-{discount}%")
+
+            st.write("### 💰 Ανάλυση Κερδοφορίας")
+            p_c1, p_c2, p_c3 = st.columns(3)
+            p_c1.metric("Κέρδος Λιανικής", f"{profit_retail:.2f} €".replace('.', ','))
+            p_c2.metric("Κέρδος Αντιπροσώπου", f"{profit_agent:.2f} €".replace('.', ','))
+            p_c3.metric("Κέρδος με Έκπτωση", f"{profit_custom:.2f} €".replace('.', ','))
+
+            st.markdown("---")
+            st.write("### 🍹 Σύνθεση Υλικών")
+            df_screen = pd.DataFrame(breakdown)
+            if not df_screen.empty:
+                df_render = df_screen.copy()
+                for col in ["ML", "Alc %", "Κόστος"]:
+                    if col in df_render.columns:
+                        df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
+                st.table(df_render[["Υλικό", "ML", "Alc %", "Κόστος"]])
+
+            # --- DOWNLOAD REPORT ---
+            report_csv = df_screen.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 Λήψη Report (CSV)", data=report_csv, file_name=f"Report_{choice}.csv", mime="text/csv")
 
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ ---
 elif page == "📊 Εμπορική Πολιτική":
