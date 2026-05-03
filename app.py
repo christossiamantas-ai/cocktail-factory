@@ -38,32 +38,37 @@ if not check_password():
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
+    # 1. Φόρτωση Ingredients
     try:
-        # Διαβάζει το 1ο Tab (Ingredients) όνομα κι αν έχει
-        ing = conn.read(worksheet=0, ttl=0).dropna(how="all")
-    except Exception as e:
-        st.error(f"Σφάλμα στο 1ο Tab: {e}")
-        ing = pd.DataFrame()
+        # Δοκιμάζουμε με το όνομα, αν αποτύχει δοκιμάζουμε με τη σειρά (0)
+        ing = conn.read(worksheet="Ingredients", ttl=0)
+    except:
+        try:
+            ing = conn.read(worksheet=0, ttl=0)
+        except Exception as e:
+            st.error(f"Σφάλμα στο Tab Ingredients: {e}")
+            ing = pd.DataFrame()
 
+    # 2. Φόρτωση Recipes
     try:
-        # Διαβάζει το 2ο Tab (Recipes)
-        rec = conn.read(worksheet=1, ttl=0).dropna(how="all")
-    except Exception as e:
-        st.error(f"Σφάλμα στο 2ο Tab: {e}")
-        rec = pd.DataFrame()
-    
+        # Δοκιμάζουμε με το όνομα, αν αποτύχει δοκιμάζουμε με τη σειρά (1)
+        rec = conn.read(worksheet="Recipes", ttl=0)
+    except:
+        try:
+            rec = conn.read(worksheet=1, ttl=0)
+        except Exception as e:
+            st.error(f"Σφάλμα στο Tab Recipes: {e}")
+            rec = pd.DataFrame()
+            
+    # 3. Φόρτωση Production Logs
     try:
-        # Διαβάζει το 3ο Tab (Production_Logs)
-        history = conn.read(worksheet=2, ttl=0).dropna(how="all")
+        history = conn.read(worksheet="Production_Logs", ttl=0)
     except:
         history = pd.DataFrame(columns=["Ημερομηνία", "Ώρα", "Cocktail", "Τεμάχια", "Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
-    
-    # Οι παραγγελίες μένουν τοπικά
+
+    # Λοιπά δεδομένα
     DB_ORDERS = "db_orders.csv"
-    if os.path.exists(DB_ORDERS):
-        orders = pd.read_csv(DB_ORDERS)
-    else:
-        orders = pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
+    orders = pd.read_csv(DB_ORDERS) if os.path.exists(DB_ORDERS) else pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
         
     return ing, rec, orders, history
 
