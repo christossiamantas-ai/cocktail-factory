@@ -6,35 +6,72 @@ from datetime import datetime
 import plotly.express as px
 import imaplib
 import email
+from streamlit_gsheets import GSheetsConnection  # <--- ΠΡΟΣΘΕΣΕ ΑΥΤΟ
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
+
 # --- Σύστημα Password ---
 def check_password():
     """Επιστρέφει True αν ο χρήστης έδωσε σωστό κωδικό."""
     def password_entered():
-        # panatha1908
         if st.session_state["password"] == "panatha1908":
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Διαγραφή κωδικού από το state για ασφάλεια
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # Πρώτη φορά που ανοίγει η εφαρμογή
         st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        # Λάθος κωδικός
         st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
         st.error("❌ Λάθος κωδικός. Προσπαθήστε ξανά.")
         return False
     else:
-        # Σωστός κωδικός
         return True
 
 if not check_password():
-    st.stop()  # Σταματάει την εκτέλεση της εφαρμογής εδώ αν δεν είναι σωστός ο κωδικός
+    st.stop()
+
+# --- ΝΕΟ: ΣΥΝΔΕΣΗ ΜΕ GOOGLE SHEETS (Αμέσως μετά το password) ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def load_data():
+    # Διαβάζουμε τα δεδομένα απευθείας από τα Tabs του Google Sheet
+    # ttl=0 σημαίνει ότι δεν κρατάει προσωρινή μνήμη, διαβάζει πάντα το τελευταίο
+    try:
+        ing = conn.read(worksheet="Ingredients", ttl=0).dropna(how="all")
+    except:
+        st.error("❌ Δεν βρέθηκε το Tab 'Ingredients' στο Google Sheet.")
+        ing = pd.DataFrame()
+
+    try:
+        rec = conn.read(worksheet="Recipes", ttl=0).dropna(how="all")
+    except:
+        st.error("❌ Δεν βρέθηκε το Tab 'Recipes' στο Google Sheet.")
+        rec = pd.DataFrame()
+    
+    try:
+        history = conn.read(worksheet="Production_Logs", ttl=0).dropna(how="all")
+    except:
+        history = pd.DataFrame(columns=["Ημερομηνία", "Ώρα", "Cocktail", "Τεμάχια", "Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
+    
+    # Οι παραγγελίες μπορούν να μείνουν σε τοπικό CSV ή να τις βάλεις σε 4ο Tab αν θες
+    DB_ORDERS = "db_orders.csv"
+    if os.path.exists(DB_ORDERS):
+        orders = pd.read_csv(DB_ORDERS)
+    else:
+        orders = pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
+        
+    return ing, rec, orders, history
+
+# Εκτέλεση της φόρτωσης
+df_ing, df_rec, df_orders, df_history = load_data()
+
+# Προετοιμασία επιλογών για τα μενού (dropdowns)
+ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].dropna().astype(str).unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
+recipe_options = sorted(df_rec["Ονομα"].dropna().astype(str).unique().tolist()) if not df_rec.empty else []
 
 # Προσθήκη CSS
 st.markdown("""
