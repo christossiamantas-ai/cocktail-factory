@@ -179,117 +179,169 @@ elif page == "📊 Διαχείριση":
                 st.success(f"Το cocktail '{en}' ενημερώθηκε επιτυχώς!")
                 st.rerun()
 
-# --- 5. ΑΝΑΛΥΣΗ (ΠΛΗΡΗΣ ΕΚΔΟΣΗ ΜΕ ΔΙΟΡΘΩΜΕΝΑ ΕΛΛΗΝΙΚΑ & METRICS) ---
+# --- 4. ΑΝΑΛΥΣΗ (ONLINE ΕΚΔΟΣΗ - ΔΙΑΤΗΡΗΣΗ LOCAL LOGIC) ---
 elif page == "🔍 Ανάλυση":
     st.header("🔍 Οικονομική Ανάλυση & Κερδοφορία")
     
     if not df_rec.empty:
+        # Sidebar Ρυθμίσεις
         st.sidebar.subheader("Ρυθμίσεις Ανάλυσης")
         discount = st.sidebar.slider("Έκπτωση Προσφοράς %", 0, 100, 0)
         
         choice = st.selectbox("Επιλέξτε Cocktail:", df_rec["Ονομα"].unique())
         r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
         
-        # Υπολογισμοί
+        # Βασικές Τιμές
         p_retail = float(r.get("Τιμή Καταλόγου", 0))
         p_agent = p_retail * 0.74
         p_custom = p_retail * (1 - discount/100)
         
         raw_cost, pure_alc_ml, total_ml_cocktail = 0.0, 0.0, 0.0
         breakdown = []
+        missing_ingredients = [] 
         
+        # --- ΣΥΛΛΟΓΗ ΔΕΔΟΜΕΝΩΝ ΣΥΝΤΑΓΗΣ ---
         for i in range(1, 14):
             ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
             ml = float(r.get(f"ML{i}", 0))
+            
             if ing_n != "ΚΕΝΟ" and ml > 0:
                 total_ml_cocktail += ml
-                match = df_ing[df_ing["Name"] == ing_n]
-                if not match.empty:
-                    ing_row = match.iloc[0]
-                    alc_val = float(ing_row.get("Αλκοόλ %", 0))
-                    actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
-                    pure_alc_ml += (ml * actual_alc_pct)
-                    price_ml = float(ing_row.get("Τιμή/ml", 0))
-                    item_cost = ml * price_ml
-                    raw_cost += item_cost
-                    breakdown.append({"Υλικό": ing_n, "ML": ml, "Κόστος": item_cost, "Alc": actual_alc_pct*100})
+                if ing_n == "Νερό":
+                    breakdown.append({"Υλικό": "Νερό", "ML": ml, "Κόστος": 0.0, "Alc %": 0.0})
+                elif ing_n not in ["nan", ""]:
+                    # Αναζήτηση στο df_ing (που φορτώνεται από το Google Sheets online)
+                    match = df_ing[df_ing["Name"] == ing_n]
+                    
+                    if not match.empty:
+                        ing_row = match.iloc[0]
+                        alc_val = float(ing_row.get("Αλκοόλ %", 0))
+                        actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
+                        pure_alc_ml += (ml * actual_alc_pct)
+                        
+                        price_ml = float(ing_row.get("Τιμή/ml", 0))
+                        item_cost = ml * price_ml
+                        raw_cost += item_cost
+                        
+                        breakdown.append({
+                            "Υλικό": ing_n, 
+                            "ML": ml, 
+                            "Κόστος": item_cost, 
+                            "Alc %": actual_alc_pct * 100
+                        })
+                    else:
+                        missing_ingredients.append(ing_n)
+                        breakdown.append({
+                            "Υλικό": f"⚠️ {ing_n} (Μη διαθέσιμο)", 
+                            "ML": ml, 
+                            "Κόστος": 0.0, 
+                            "Alc %": 0.0
+                        })
 
+        if missing_ingredients:
+            st.error(f"⚠️ Τα παρακάτω υλικά δεν βρέθηκαν: {', '.join(missing_ingredients)}")
+
+        # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
+        # Χρησιμοποιεί τις σταθερές tax_factor και TOTAL_FIXED που έχεις ορίσει στην αρχή του app.py
         final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
+        efk_informational = pure_alc_ml * tax_factor
         total_production = raw_cost + TOTAL_FIXED 
-        prof_ret = p_retail - total_production
-        prof_age = p_agent - total_production
-        prof_cus = p_custom - total_production
+        
+        profit_retail = p_retail - total_production
+        profit_agent = p_agent - total_production
+        profit_custom = p_custom - total_production
+        margin_retail = (profit_retail / p_retail * 100) if p_retail > 0 else 0
 
-        # --- ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ (ΑΝΤΙΓΡΑΦΗ LOCAL) ---
+        # --- ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ ---
         st.subheader(f"Στατιστικά για: {choice}")
-        m1, m2 = st.columns(2)
-        m1.metric("Συνολική Ποσότητα", f"{total_ml_cocktail:.1f} ml")
-        m2.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %")
+        m_col1, m_col2 = st.columns(2)
+        m_col1.metric("Συνολική Ποσότητα", f"{total_ml_cocktail:.1f} ml".replace('.', ','))
+        m_col2.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %".replace('.', ','))
         
         c1, c2, c3 = st.columns(3)
-        # Χρήση label_visibility="visible" και σωστά χρώματα
-        c1.metric("Τιμή Λιανικής", f"{p_retail:.2f} €")
-        c2.metric("Τιμή Αντιπροσώπου", f"{p_agent:.2f} €")
-        c3.metric("Τιμή με Έκπτωση", f"{p_custom:.2f} €", delta=f"-{discount}%" if discount > 0 else None, delta_color="inverse")
+        c1.metric("Τιμή Λιανικής", f"{p_retail:.2f} €".replace('.', ','))
+        c2.metric("Τιμή Αντιπροσώπου", f"{p_agent:.2f} €".replace('.', ','))
+        c3.metric("Τιμή με Έκπτωση", f"{p_custom:.2f} €".replace('.', ','), delta=f"-{discount}%")
 
         st.markdown("---")
         st.write("### 💰 Ανάλυση Πραγματικής Κερδοφορίας")
-        p1, p2, p3 = st.columns(3)
-        # Πράσινο χρώμα στο κέρδος (delta)
-        p1.metric("Κέρδος Λιανικής", f"{prof_ret:.2f} €")
-        p2.metric("Κέρδος Αντιπροσώπου", f"{prof_age:.2f} €")
-        p3.metric("Κέρδος με Έκπτωση", f"{prof_cus:.2f} €")
-
-        # --- ΔΗΜΙΟΥΡΓΙΑ HTML REPORT (ΜΕ UTF-8 ΓΙΑ ΕΛΛΗΝΙΚΑ) ---
-        report_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; }}
-                .header {{ color: #ff4b4b; border-bottom: 2px solid #ff4b4b; padding-bottom: 10px; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                th, td {{ padding: 12px; border: 1px solid #ddd; text-align: left; }}
-                th {{ background-color: #f2f2f2; }}
-                .profit {{ color: #28a745; font-weight: bold; }}
-                .summary {{ background: #f9f9f9; padding: 15px; border-radius: 8px; margin-top: 20px; }}
-            </style>
-        </head>
-        <body>
-            <h1 class="header">Report Cocktail: {choice}</h1>
-            <p><b>Ημερομηνία Έκδοσης:</b> {datetime.now().strftime("%d/%m/%Y %H:%M")}</p>
-            
-            <div class="summary">
-                <p><b>Τιμή Πώλησης (Retail):</b> {p_retail:.2f} €</p>
-                <p><b>Συνολικό Κόστος:</b> {total_production:.2f} €</p>
-                <p><b>Καθαρό Κέρδος:</b> <span class="profit">{prof_ret:.2f} €</span></p>
-                <p><b>Αλκοόλ (ABV):</b> {final_abv:.2f}%</p>
-            </div>
-
-            <h3>Σύνθεση Συνταγής</h3>
-            <table>
-                <thead>
-                    <tr><th>Συστατικό</th><th>Ποσότητα (ml)</th><th>Κόστος (€)</th><th>Αλκοόλ %</th></tr>
-                </thead>
-                <tbody>
-        """
-        for item in breakdown:
-            report_html += f"<tr><td>{item['Υλικό']}</td><td>{item['ML']:.1f}</td><td>{item['Κόστος']:.3f}</td><td>{item['Alc']:.1f}%</td></tr>"
-        
-        report_html += """
-                </tbody>
-            </table>
-        </body>
-        </html>
-        """
+        p_c1, p_c2, p_c3 = st.columns(3)
+        p_c1.metric("Κέρδος Λιανικής", f"{profit_retail:.2f} €".replace('.', ','))
+        p_c2.metric("Κέρδος Αντιπροσώπου", f"{profit_agent:.2f} €".replace('.', ','))
+        p_c3.metric("Κέρδος με Έκπτωση", f"{profit_custom:.2f} €".replace('.', ','))
 
         st.markdown("---")
+        st.write("### 🛠️ Ανάλυση Κόστους & Φόρων")
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Κόστος Υλικών", f"{raw_cost:.2f} €".replace('.', ','))
+        k2.metric("ΕΦΚ (Ενσωμ.)", f"{efk_informational:.2f} €".replace('.', ','))
+        k3.metric("Σταθερά Έξοδα", f"{TOTAL_FIXED:.2f} €".replace('.', ','))
+        k4.metric("ΣΥΝΟΛΟ ΚΟΣΤΟΥΣ", f"{total_production:.2f} €".replace('.', ','))
+
+        # --- ΠΙΝΑΚΑΣ ΥΛΙΚΩΝ ΣΤΗΝ ΟΘΟΝΗ ---
+        st.markdown("---")
+        st.write("### 🍹 Σύνθεση Υλικών")
+        df_screen = pd.DataFrame(breakdown)
+        if not df_screen.empty:
+            df_render = df_screen.copy()
+            for col in ["ML", "Alc %", "Κόστος"]:
+                if col in df_render.columns:
+                    df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
+            st.table(df_render[["Υλικό", "ML", "Alc %", "Κόστος"]])
+
+        # --- ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ REPORT ---
+        st.markdown("### 📜 Εξαγωγή Επαγγελματικού Report")
+        
+        def clean_val(val, decimals=3):
+            try:
+                return f"{float(val):.{decimals}f}".replace('.', ',')
+            except:
+                return str(val).replace('.', ',')
+
+        try:
+            current_barcode = df_rec[df_rec['Ονομα'] == choice]['Barcode'].values[0]
+            if not current_barcode or str(current_barcode).lower() == 'nan':
+                current_barcode = "Δεν ορίστηκε"
+        except:
+            current_barcode = "Δεν βρέθηκε"
+
+        report_data = [
+            ["ΗΜΕΡΟΜΗΝΙΑ REPORT", datetime.now().strftime("%d/%m/%Y %H:%M")],
+            ["COCKTAIL", choice],
+            ["BARCODE (SKU)", current_barcode],
+            ["ΣΥΝΟΛΙΚΗ ΠΟΣΟΤΗΤΑ (ML)", clean_val(total_ml_cocktail, 1)],
+            ["ΑΛΚΟΟΛΙΚΟΣ ΒΑΘΜΟΣ (ABV) %", clean_val(final_abv, 2)],
+            ["---------------------------", "---------------------------"],
+            ["ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΛΥΣΗ", ""],
+            ["Κόστος Υλικών (με ΕΦΚ)", f"{clean_val(raw_cost)} €"],
+            ["ΕΦΚ (Ενημερωτικά)", f"{clean_val(efk_informational)} €"],
+            ["Σταθερά Έξοδα Μονάδας", f"{clean_val(TOTAL_FIXED)} €"],
+            ["ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ ΠΑΡΑΓΩΓΗΣ", f"{clean_val(total_production)} €"],
+            ["---------------------------", "---------------------------"],
+            ["ΤΙΜΕΣ & ΚΕΡΔΗ", ""],
+            ["Τιμή Λιανικής", f"{clean_val(p_retail, 2)} €"],
+            ["Κέρδος Λιανικής", f"{clean_val(profit_retail)} €"],
+            ["Margin Λιανικής %", f"{clean_val(margin_retail, 2)} %"],
+            ["---------------------------", "---------------------------"]
+        ]
+        
+        for item in breakdown:
+            val_alc = item.get('Alc %', 0.0)
+            report_data.append([
+                f"Υλικό: {item['Υλικό']}", 
+                f"{clean_val(item['ML'], 1)} ml | {clean_val(val_alc, 1)}% Alc | {clean_val(item['Κόστος'])} €"
+            ])
+
+        df_export = pd.DataFrame(report_data, columns=["ΠΕΡΙΓΡΑΦΗ", "ΤΙΜΗ / ΠΟΣΟΤΗΤΑ"])
+        # encode='utf-8-sig' για να ανοίγουν σωστά τα Ελληνικά στο Excel online
+        csv_final = df_export.to_csv(index=False, sep=';', encoding='utf-8-sig')
+        
         st.download_button(
-            label="📥 Λήψη Πλήρους Report (HTML)",
-            data=report_html.encode('utf-8'),
-            file_name=f"Report_{choice}.html",
-            mime="text/html"
+            label=f"📥 Λήψη Πλήρους Report: {choice}", 
+            data=csv_final, 
+            file_name=f"Report_{choice.replace(' ', '_')}.csv",
+            mime="text/csv",
+            key="download_report_btn"
         )
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ ---
 elif page == "📊 Εμπορική Πολιτική":
