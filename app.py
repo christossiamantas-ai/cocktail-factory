@@ -223,13 +223,13 @@ if page == "📦 Αποθήκη":
         st.rerun()
 
 
-# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΠΛΗΡΗΣ ΔΙΟΡΘΩΜΕΝΗ ΕΚΔΟΣΗ) ---
+# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΤΑ ΔΙΚΑ ΣΟΥ ONOMATA) ---
 elif page == "📝 Νέα Συνταγή":
     st.header("📝 Καταχώρηση Νέας Συνταγής")
     
-    # Εξασφάλιση ότι το session_state υπάρχει
+    # Χρησιμοποιούμε το df_rec που έχεις ορίσει στην αρχή του κώδικά σου
     if 'rec' not in st.session_state:
-        st.session_state.rec = rec
+        st.session_state.rec = df_rec
 
     with st.form("new_recipe_form"):
         # Πάνω μέρος: Barcode, Όνομα, Τιμή
@@ -252,57 +252,56 @@ elif page == "📝 Νέα Συνταγή":
         for i in range(1, 14):
             c1, c2 = st.columns([3, 1])
             with c1: 
-                val_ing = st.selectbox(f"Συστατικό {i}", [""] + ing_options, key=f"n_s_{i}")
+                # Χρησιμοποιούμε το ing_options που έχεις ήδη στον κώδικα
+                val_ing = st.selectbox(f"Συστατικό {i}", ing_options, key=f"n_s_{i}")
                 temp_ingredients.append(val_ing if val_ing else "ΚΕΝΟ")
             with c2: 
                 val_ml = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
                 temp_mls.append(val_ml)
         
-        # Το σωστό κουμπί για φόρμα
         submit_button = st.form_submit_button("Προσθήκη Συνταγής")
 
         if submit_button:
             if name_input:
-                # 1. Κατασκευή του λεξικού (Dictionary) για τη νέα συνταγή
+                # 1. Κατασκευή του λεξικού για τη νέα συνταγή
                 new_recipe = {
                     "Barcode": str(barcode_input),
                     "Ονομα": name_input,
                     "Τιμή Καταλόγου": cat_price
                 }
                 
-                # Δυναμική προσθήκη των 13 συστατικών και των ML τους
+                # Δυναμική προσθήκη των 13 συστατικών
                 for i in range(1, 14):
                     new_recipe[f"ΣΥΣΤΑΤΙΚΟ{i}"] = temp_ingredients[i-1]
                     new_recipe[f"ML{i}"] = temp_mls[i-1]
                 
-                # Μετατροπή σε DataFrame
                 new_df = pd.DataFrame([new_recipe])
 
-                # 2. Ενημέρωση της μνήμης της εφαρμογής (Session State)
+                # 2. Ενημέρωση του st.session_state.rec
                 st.session_state.rec = pd.concat([st.session_state.rec, new_df], ignore_index=True)
                 
                 # 3. Αποθήκευση στο GOOGLE SHEETS
                 try:
                     conn.update(worksheet="Recipes", data=st.session_state.rec)
-                    st.cache_data.clear() # Καθαρίζουμε την cache για να ανανεωθούν τα δεδομένα
-                    st.success(f"✅ Η συνταγή '{name_input}' αποθηκεύτηκε στο Google Sheets!")
+                    st.cache_data.clear() # Καθαρισμός για να φανεί η αλλαγή
+                    st.success(f"✅ Η συνταγή '{name_input}' αποθηκεύτηκε στο Cloud!")
                     st.balloons()
                 except Exception as e:
-                    st.error(f"⚠️ Σφάλμα σύνδεσης με Google Sheets: {e}")
+                    st.error(f"⚠️ Σφάλμα Google Sheets: {e}")
 
                 # 4. Αποθήκευση στο τοπικό CSV (Backup)
                 try:
+                    # Χρησιμοποιούμε το DB_RECIPES που έχεις ορίσει ("db_recipes.csv")
                     if os.path.exists(DB_RECIPES):
                         old_df = pd.read_csv(DB_RECIPES)
                         combined_df = pd.concat([old_df, new_df], ignore_index=True)
                     else:
                         combined_df = new_df
-                    
                     combined_df.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
                 except Exception as e:
-                    st.warning(f"⚠️ Η τοπική αποθήκευση (CSV) απέτυχε: {e}")
+                    st.warning(f"⚠️ Τοπική αποθήκευση απέτυχε: {e}")
 
-                st.rerun() # Ανανέωση της σελίδας
+                st.rerun()
             else:
                 st.error("❌ Παρακαλώ δώστε ένα όνομα στο Cocktail.")
 
