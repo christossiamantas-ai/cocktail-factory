@@ -37,35 +37,29 @@ if not check_password():
 # --- ΝΕΟ: ΣΥΝΔΕΣΗ ΜΕ GOOGLE SHEETS (Αμέσως μετά το password) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def load_data():
-    # 1. Φόρτωση Ingredients
-    try:
-        # Δοκιμάζουμε με το όνομα, αν αποτύχει δοκιμάζουμε με τη σειρά (0)
-        ing = conn.read(worksheet="Ingredients", ttl=0)
-    except:
-        try:
-            ing = conn.read(worksheet=0, ttl=0)
-        except Exception as e:
-            st.error(f"Σφάλμα στο Tab Ingredients: {e}")
-            ing = pd.DataFrame()
 
-    # 2. Φόρτωση Recipes
+        def load_data():
+    # 1. Φόρτωση Ingredients (Αυτό δουλεύει ήδη!)
     try:
-        # Χρησιμοποιούμε fillna για να μην κρασάρει αν βρει κενά
+        ing = conn.read(worksheet="Ingredients", ttl=0).fillna("")
+    except:
+        ing = pd.DataFrame()
+
+    # 2. Φόρτωση Recipes - Η ΝΕΑ "ΕΛΕΥΘΕΡΗ" ΜΟΡΦΗ
+    try:
+        # Διαβάζουμε το Tab χωρίς κανέναν περιορισμό
         rec = conn.read(worksheet="Recipes", ttl=0)
         if rec is not None:
             rec = rec.fillna("")
+        else:
+            rec = pd.DataFrame()
     except Exception as e:
-        # Αν αποτύχει το όνομα, δοκίμασε τη σειρά 1 (2ο tab)
-        try:
-            rec = conn.read(worksheet=1, ttl=0).fillna("")
-        except:
-            st.error("⚠️ Το Tab 'Recipes' χρειάζεται συνεχόμενους τίτλους στην πρώτη γραμμή.")
-            rec = pd.DataFrame(columns=["Barcode", "Ονομα", "Τιμή Καταλόγου"])
+        st.error(f"Σφάλμα ανάγνωσης Recipes: {e}")
+        rec = pd.DataFrame()
             
     # 3. Φόρτωση Production Logs
     try:
-        history = conn.read(worksheet="Production_Logs", ttl=0)
+        history = conn.read(worksheet="Production_Logs", ttl=0).fillna("")
     except:
         history = pd.DataFrame(columns=["Ημερομηνία", "Ώρα", "Cocktail", "Τεμάχια", "Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
 
