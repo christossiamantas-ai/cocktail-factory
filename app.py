@@ -129,18 +129,23 @@ page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συ
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
-# --- 1. ΑΠΟΘΗΚΗ (ΕΝΗΜΕΡΩΜΕΝΗ ΜΕ ΒΑΡΟΣ ΓΙΑ ΑΝΑΓΩΓΗ) ---
+# --- 1. ΑΠΟΘΗΚΗ (ΜΕ ΑΥΤΟΜΑΤΟ ID & ΒΑΡΟΣ) ---
 if page == "📦 Αποθήκη":
     st.header("📦 Διαχείριση Υλικών & Τιμών")
     
-    # Προσθέσαμε τη στήλη "Weight_Full" (Γραμμάρια ανά φιάλη)
-    # Αν το df_ing δεν έχει τη στήλη, τη δημιουργούμε με 0
+    # 1. Έλεγχος και δημιουργία στήλης ID αν δεν υπάρχει
+    if "ID" not in df_ing.columns:
+        # Αν η βάση είναι παλιά, δίνουμε IDs ξεκινώντας από το 1001
+        df_ing.insert(0, "ID", range(1001, 1001 + len(df_ing)))
+    
     if "Weight_Full" not in df_ing.columns:
         df_ing["Weight_Full"] = 0.0
 
-    cols_to_show = ["Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %"]
+    # Στήλες που θα εμφανίζονται (το ID είναι disabled για να μην αλλάζει κατά λάθος)
+    cols_to_show = ["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %"]
     
     column_config_ing = {
+        "ID": st.column_config.NumberColumn("ID", disabled=True, format="%d"),
         "Name": st.column_config.TextColumn("Όνομα Υλικού"),
         "Price": st.column_config.NumberColumn("Τιμή Αγοράς (€)", format="%.2f €"),
         "Volume": st.column_config.NumberColumn("ML Φιάλης (ml)", min_value=1),
@@ -149,30 +154,42 @@ if page == "📦 Αποθήκη":
         "Αλκοόλ %": st.column_config.NumberColumn("Alc %", format="%.1f %%")
     }
     
-    # Ο data_editor επιτρέπει πλέον την εισαγωγή των γραμμαρίων
+    # Επεξεργασία υλικών
     edited_ing = st.data_editor(
         df_ing[cols_to_show], 
         column_config=column_config_ing, 
         num_rows="dynamic", 
-        use_container_width=True
+        use_container_width=True,
+        key="ing_editor"
     )
     
     if st.button("💾 Αποθήκευση Υλικών"):
+        # Δημιουργούμε ένα αντίγραφο των αλλαγών
         temp_df = edited_ing.copy()
+        
+        # 2. ΑΥΤΟΜΑΤΗ ΠΑΡΑΓΩΓΗ ID ΓΙΑ ΝΕΕΣ ΓΡΑΜΜΕΣ
+        # Αν ο χρήστης πρόσθεσε γραμμή, το ID θα είναι NaN
+        if temp_df["ID"].isnull().any():
+            max_id = df_ing["ID"].max() if not df_ing.empty else 1000
+            # Γεμίζουμε τα κενά IDs ξεκινώντας πάνω από το μέγιστο υπάρχον
+            null_mask = temp_df["ID"].isnull()
+            new_ids = range(int(max_id) + 1, int(max_id) + 1 + null_mask.sum())
+            temp_df.loc[null_mask, "ID"] = list(new_ids)
         
         # Υπολογισμός τιμής ανά ml
         temp_df["Τιμή/ml"] = temp_df["Price"] / temp_df["Volume"].replace(0, 1)
         
-        # Συγχώνευση με το υπόλοιπο df (π.χ. απόθεμα) για να μη χαθούν δεδομένα
-        # Σιγουρευόμαστε ότι κρατάμε όλες τις απαραίτητες στήλες
+        # Διατήρηση υπολοίπων στηλών (π.χ. Απόθεμα) αν υπάρχουν
         if "Απόθεμα (ml)" in df_ing.columns:
-            final_df = temp_df.merge(df_ing[["Name", "Απόθεμα (ml)"]], on="Name", how="left")
+            # Κάνουμε merge με βάση το ID πλέον, όχι το Name!
+            final_df = temp_df.merge(df_ing[["ID", "Απόθεμα (ml)"]], on="ID", how="left")
             final_df["Απόθεμα (ml)"] = final_df["Απόθεμα (ml)"].fillna(0.0)
         else:
             final_df = temp_df
             
+        # Τελική αποθήκευση
         final_df.to_csv(DB_INGREDIENTS, index=False, encoding='utf-8-sig')
-        st.success("✅ Η αποθήκη και οι συντελεστές βάρους ενημερώθηκαν!")
+        st.success(f"✅ Η αποθήκη ενημερώθηκε! (Τελευταίο ID: {int(final_df['ID'].max())})")
         st.rerun()
 
 
@@ -349,7 +366,7 @@ elif page == "📊 Διαχείριση":
     else:
         st.info("Δεν βρέθηκαν αποθηκευμένες συνταγές. Πηγαίνετε στη 'Νέα Συνταγή' για να ξεκινήσετε.")
 
-# # --- 4. ΑΝΑΛΥΣΗ (ΠΛΗΡΗΣ ΑΠΟΚΑΤΑΣΤΑΣΗ & ΔΙΟΡΘΩΣΗ) ---
+# --- 4. ΑΝΑΛΥΣΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΣΥΜΒΑΤΟΤΗΤΑ ΜΕ ID & ΟΝΟΜΑΤΑ) ---
 elif page == "🔍 Ανάλυση":
     st.header("🔍 Οικονομική Ανάλυση & Κερδοφορία")
     
@@ -362,16 +379,17 @@ elif page == "🔍 Ανάλυση":
         r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
         
         # Βασικές Τιμές
-        p_retail = float(r["Τιμή Καταλόγου"])
+        p_retail = float(r.get("Τιμή Καταλόγου", 0))
         p_agent = p_retail * 0.74
         p_custom = p_retail * (1 - discount/100)
         
         raw_cost, pure_alc_ml, total_ml_cocktail = 0.0, 0.0, 0.0
         breakdown = []
+        missing_ingredients = [] # Λίστα για υλικά που δεν βρέθηκαν
         
         # --- ΣΥΛΛΟΓΗ ΔΕΔΟΜΕΝΩΝ ΣΥΝΤΑΓΗΣ ---
         for i in range(1, 14):
-            ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+            ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
             ml = float(r.get(f"ML{i}", 0))
             
             if ing_n != "ΚΕΝΟ" and ml > 0:
@@ -379,20 +397,40 @@ elif page == "🔍 Ανάλυση":
                 if ing_n == "Νερό":
                     breakdown.append({"Υλικό": "Νερό", "ML": ml, "Κόστος": 0.0, "Alc %": 0.0})
                 elif ing_n not in ["nan", ""]:
+                    # ΕΔΩ Η ΔΙΟΡΘΩΣΗ: Αναζήτηση στην Αποθήκη
                     match = df_ing[df_ing["Name"] == ing_n]
+                    
                     if not match.empty:
-                        alc_val = float(match.iloc[0]["Αλκοόλ %"])
+                        # Αν το βρει, παίρνει τα δεδομένα
+                        ing_row = match.iloc[0]
+                        alc_val = float(ing_row.get("Αλκοόλ %", 0))
                         actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
                         pure_alc_ml += (ml * actual_alc_pct)
                         
-                        item_cost = ml * float(match.iloc[0]["Τιμή/ml"])
+                        # Χρήση της σωστής στήλης "Τιμή/ml"
+                        price_ml = float(ing_row.get("Τιμή/ml", 0))
+                        item_cost = ml * price_ml
                         raw_cost += item_cost
+                        
                         breakdown.append({
                             "Υλικό": ing_n, 
                             "ML": ml, 
                             "Κόστος": item_cost, 
                             "Alc %": actual_alc_pct * 100
                         })
+                    else:
+                        # Αν δεν το βρει, το καταγράφει για να σε ενημερώσει
+                        missing_ingredients.append(ing_n)
+                        breakdown.append({
+                            "Υλικό": f"⚠️ {ing_n} (Μη διαθέσιμο)", 
+                            "ML": ml, 
+                            "Κόστος": 0.0, 
+                            "Alc %": 0.0
+                        })
+
+        # Εμφάνιση προειδοποίησης αν λείπουν υλικά
+        if missing_ingredients:
+            st.error(f"⚠️ Τα παρακάτω υλικά της συνταγής δεν βρέθηκαν στην Αποθήκη: {', '.join(missing_ingredients)}. Παρακαλώ ελέγξτε αν αλλάξατε το όνομά τους στη Διαχείριση.")
 
         # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
         final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
@@ -441,7 +479,7 @@ elif page == "🔍 Ανάλυση":
                     df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
             st.table(df_render[["Υλικό", "ML", "Alc %", "Κόστος"]])
 
-        # --- ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ REPORT (ΜΕ BARCODE) ---
+        # --- ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ REPORT ---
         st.markdown("### 📜 Εξαγωγή Επαγγελματικού Report")
         
         def clean_val(val, decimals=3):
@@ -450,7 +488,6 @@ elif page == "🔍 Ανάλυση":
             except:
                 return str(val).replace('.', ',')
 
-        # Εύρεση του Barcode από το dataframe των συνταγών (df_rec)
         try:
             current_barcode = df_rec[df_rec['Ονομα'] == choice]['Barcode'].values[0]
             if not current_barcode or str(current_barcode).lower() == 'nan':
@@ -458,14 +495,12 @@ elif page == "🔍 Ανάλυση":
         except:
             current_barcode = "Δεν βρέθηκε"
 
-        # Προετοιμασία δεδομένων CSV
         report_data = [
             ["ΗΜΕΡΟΜΗΝΙΑ REPORT", datetime.now().strftime("%d/%m/%Y %H:%M")],
             ["COCKTAIL", choice],
-            ["BARCODE (SKU)", current_barcode], # <--- Η ΝΕΑ ΠΡΟΣΘΗΚΗ
+            ["BARCODE (SKU)", current_barcode],
             ["ΣΥΝΟΛΙΚΗ ΠΟΣΟΤΗΤΑ (ML)", clean_val(total_ml_cocktail, 1)],
             ["ΑΛΚΟΟΛΙΚΟΣ ΒΑΘΜΟΣ (ABV) %", clean_val(final_abv, 2)],
-            ["ΧΩΡΑ ΦΟΡΟΛΟΓΙΑΣ", country],
             ["---------------------------", "---------------------------"],
             ["ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΛΥΣΗ", ""],
             ["Κόστος Υλικών (με ΕΦΚ)", f"{clean_val(raw_cost)} €"],
@@ -477,12 +512,7 @@ elif page == "🔍 Ανάλυση":
             ["Τιμή Λιανικής", f"{clean_val(p_retail, 2)} €"],
             ["Κέρδος Λιανικής", f"{clean_val(profit_retail)} €"],
             ["Margin Λιανικής %", f"{clean_val(margin_retail, 2)} %"],
-            ["Τιμή Αντιπροσώπου (26%)", f"{clean_val(p_agent, 2)} €"],
-            ["Κέρδος Αντιπροσώπου", f"{clean_val(profit_agent)} €"],
-            ["Τιμή με Έκπτωση", f"{clean_val(p_custom, 2)} €"],
-            ["Κέρδος με Έκπτωση", f"{clean_val(profit_custom)} €"],
-            ["---------------------------", "---------------------------"],
-            ["ΑΝΑΛΥΣΗ ΥΛΙΚΩΝ ΑΝΑ ΣΥΣΤΑΤΙΚΟ", ""]
+            ["---------------------------", "---------------------------"]
         ]
         
         for item in breakdown:
@@ -492,18 +522,15 @@ elif page == "🔍 Ανάλυση":
                 f"{clean_val(item['ML'], 1)} ml | {clean_val(val_alc, 1)}% Alc | {clean_val(item['Κόστος'])} €"
             ])
 
-        # Δημιουργία αρχείου
         df_export = pd.DataFrame(report_data, columns=["ΠΕΡΙΓΡΑΦΗ", "ΤΙΜΗ / ΠΟΣΟΤΗΤΑ"])
         csv_final = df_export.to_csv(index=False, sep=';', encoding='utf-8-sig')
         
-        # ΤΟ ΚΟΥΜΠΙ
-        st.info(f"Το report για το '{choice}' είναι έτοιμο με το Barcode: {current_barcode}")
         st.download_button(
             label=f"📥 Λήψη Πλήρους Report: {choice}", 
             data=csv_final, 
-            file_name=f"Professional_Report_{choice.replace(' ', '_')}.csv",
+            file_name=f"Report_{choice.replace(' ', '_')}.csv",
             mime="text/csv",
-            key="download_report_button"
+            key="download_report_btn"
         )
 # --- 5. ΠΑΡΑΓΓΕΛΙΕΣ ---
 elif page == "🛒 Παραγγελίες":
