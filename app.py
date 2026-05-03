@@ -261,6 +261,9 @@ elif page == "📝 Νέα Συνταγή":
                     **recipe_data
                 }
                 new_df = pd.DataFrame([new_row])
+                # Πρόσθεσε αυτή τη γραμμή για να στέλνει τα δεδομένα στο Google Sheets
+conn.update(worksheet="Recipes", data=st.session_state.rec)
+st.success("✅ Η συνταγή αποθηκεύτηκε επιτυχώς στο Google Sheets!")
                 
                 # Ορίζουμε την ακριβή σειρά στηλών που θέλουμε να έχει το CSV μας
                 cols_order = ["Barcode", "Ονομα", "Τιμή Καταλόγου"]
