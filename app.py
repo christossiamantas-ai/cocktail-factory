@@ -52,7 +52,7 @@ def load_data():
     # 2. Φόρτωση Recipes
     try:
         # Δοκιμάζουμε με το όνομα, αν αποτύχει δοκιμάζουμε με τη σειρά (1)
-        rec = conn.read(worksheet="Recipes", ttl=0)
+        rec = conn.read(worksheet="Recipes", ttl=0).fillna("")
     except:
         try:
             rec = conn.read(worksheet=1, ttl=0)
