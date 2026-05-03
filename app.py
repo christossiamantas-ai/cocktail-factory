@@ -251,7 +251,7 @@ elif page == "📝 Νέα Συνταγή":
             with c2: 
                 recipe_data[f"ML{i}"] = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
         
-        if st.button("Προσθήκη Συνταγής"):
+        if st.form_submit_button("Προσθήκη Συνταγής"):
             new_recipe = {
                 "Barcode": str(barcode_new),
                 "Ονομα": name_new,
