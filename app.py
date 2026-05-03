@@ -16,7 +16,7 @@ def check_password():
         st.session_state["password_correct"] = False
     if st.session_state["password_correct"]: return True
     def password_entered():
-        if st.session_state["password"] == "panatha1908":
+        if st.session_state.get("password") == "panatha1908":
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else: st.error("❌ Λάθος κωδικός.")
