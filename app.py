@@ -249,90 +249,105 @@ elif page == "📝 Νέα Συνταγή":
                 st.rerun()
             else:
                 st.error("❌ Παρακαλώ εισάγετε το όνομα του Cocktail.")
-# --- 3. ΔΙΑΧΕΙΡΙΣΗ (ΜΕ DROP DOWN ΓΙΑ ΕΠΙΛΟΓΗ ΣΥΝΤΑΓΗΣ) ---
+
+# --- 5. ΔΙΑΧΕΙΡΙΣΗ ΣΥΝΤΑΓΩΝ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
 elif page == "📊 Διαχείριση":
-    st.header("📊 Επεξεργασία Συνταγών & Barcodes Shop")
+    st.header("📊 Επεξεργασία & Διαγραφή Συνταγών")
     
-    # Φόρτωση δεδομένων (σιγουρευόμαστε ότι είναι ενημερωμένα)
+    # Σιγουρευόμαστε ότι έχουμε τα τελευταία δεδομένα
     if os.path.exists(DB_RECIPES):
         df_rec = pd.read_csv(DB_RECIPES)
     
     if not df_rec.empty:
-        # Προετοιμασία στηλών
+        # Διασφάλιση σωστού format για τα Barcodes
         if "Barcode" not in df_rec.columns:
             df_rec.insert(0, "Barcode", "")
         df_rec["Barcode"] = df_rec["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
         
-        # --- ΤΜΗΜΑ Α: DROP DOWN ΕΠΙΛΟΓΗ ΓΙΑ ΑΛΛΑΓΗ ---
-        st.subheader("🔄 1. Επιλέξτε Cocktail για Αλλαγή")
-        
-        # Το Drop Down Menu
+        # 1. Επιλογή Cocktail
         recipe_to_edit = st.selectbox(
             "Αναζήτηση Cocktail:", 
             options=df_rec["Ονομα"].unique(),
             index=None,
-            placeholder="Επιλέξτε ένα Cocktail για να δείτε τη συνταγή του..."
+            placeholder="Επιλέξτε ένα Cocktail..."
         )
         
         if recipe_to_edit:
-            # Εύρεση της γραμμής της συγκεκριμένης συνταγής
+            # Φέρνουμε τη γραμμή της συγκεκριμένης συνταγής
             row = df_rec[df_rec["Ονομα"] == recipe_to_edit].iloc[0]
             
-            with st.form("edit_recipe_full_form"):
-                st.info(f"📝 Επεξεργασία: {recipe_to_edit}")
-                
-                col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
-                edit_name = col_h1.text_input("Όνομα Cocktail", value=row["Ονομα"])
-                edit_barcode = col_h2.text_input("Barcode Shop", value=row["Barcode"])
-                # Έλεγχος αν υπάρχει στήλη Τιμή, αλλιώς 0.0
-                current_price = float(row["Τιμή Καταλόγου"]) if "Τιμή Καταλόγου" in row else 0.0
-                edit_price = col_h3.number_input("Τιμή (€)", value=current_price, step=0.10)
-                
-                st.write("---")
-                st.write("**Συστατικά & Ποσότητες (ml)**")
-                
-                new_recipe_data = {}
-                c1, c2 = st.columns(2)
-                
-                for i in range(1, 14):
-                    target_col = c1 if i <= 7 else c2
-                    with target_col:
-                        # Παίρνουμε το τρέχον υλικό και ml
-                        c_ing_val = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                        c_ml_val = float(row.get(f"ML{i}", 0.0))
-                        
-                        # Εύρεση index στη λίστα επιλογών
-                        try:
-                            idx = ing_options.index(c_ing_val)
-                        except:
-                            idx = 0
-                            
-                        sub_c1, sub_c2 = st.columns([2, 1])
-                        new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(f"Υλικό {i}", ing_options, index=idx, key=f"ed_s_{i}")
-                        new_recipe_data[f"ML{i}"] = sub_c2.number_input(f"ML {i}", value=c_ml_val, key=f"ed_m_{i}")
-
-                if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
-                    # Ενημέρωση του DataFrame
-                    idx_to_update = df_rec[df_rec["Ονομα"] == recipe_to_edit].index
-                    df_rec.loc[idx_to_update, "Ονομα"] = edit_name
-                    df_rec.loc[idx_to_update, "Barcode"] = edit_barcode
-                    df_rec.loc[idx_to_update, "Τιμή Καταλόγου"] = edit_price
-                    for k, v in new_recipe_data.items():
-                        df_rec.loc[idx_to_update, k] = v
+            # Χωρισμός σε Tabs: Επεξεργασία και Διαγραφή
+            tab_edit, tab_del = st.tabs(["📝 Επεξεργασία Στοιχείων", "🗑️ Διαγραφή Συνταγής"])
+            
+            with tab_edit:
+                with st.form(f"form_{recipe_to_edit}"): # Μοναδικό ID φόρμας
+                    col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
+                    edit_name = col_h1.text_input("Όνομα Cocktail", value=str(row["Ονομα"]))
+                    edit_barcode = col_h2.text_input("Barcode Shop", value=str(row["Barcode"]))
+                    current_price = float(row["Τιμή Καταλόγου"]) if "Τιμή Καταλόγου" in row else 0.0
+                    edit_price = col_h3.number_input("Τιμή (€)", value=current_price, step=0.10)
                     
-                    # Αποθήκευση
+                    st.write("---")
+                    new_recipe_data = {}
+                    c1, c2 = st.columns(2)
+                    
+                    # Καθαρισμός λίστας επιλογών για σύγκριση
+                    clean_options = [str(opt).strip() for opt in ing_options]
+                    
+                    for i in range(1, 14):
+                        target_col = c1 if i <= 7 else c2
+                        with target_col:
+                            # Παίρνουμε την τιμή από το CSV και καθαρίζουμε κενά
+                            val_from_db = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                            ml_from_db = float(row.get(f"ML{i}", 0.0))
+                            
+                            # Εύρεση σωστού index (αν δεν υπάρχει, πάει στο 0 -> ΚΕΝΟ)
+                            try:
+                                current_idx = clean_options.index(val_from_db)
+                            except ValueError:
+                                current_idx = 0
+                            
+                            sub_c1, sub_c2 = st.columns([2, 1])
+                            
+                            # Χρήση δυναμικού key (recipe_to_edit) για να ανανεώνονται τα πεδία
+                            new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(
+                                f"Υλικό {i}", 
+                                options=ing_options, 
+                                index=current_idx, 
+                                key=f"s_{i}_{recipe_to_edit}"
+                            )
+                            new_recipe_data[f"ML{i}"] = sub_c2.number_input(
+                                f"ML {i}", 
+                                value=ml_from_db, 
+                                key=f"m_{i}_{recipe_to_edit}"
+                            )
+
+                    if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
+                        idx_to_update = df_rec[df_rec["Ονομα"] == recipe_to_edit].index
+                        df_rec.loc[idx_to_update, "Ονομα"] = edit_name
+                        df_rec.loc[idx_to_update, "Barcode"] = edit_barcode
+                        df_rec.loc[idx_to_update, "Τιμή Καταλόγου"] = edit_price
+                        for k, v in new_recipe_data.items():
+                            df_rec.loc[idx_to_update, k] = v
+                        
+                        df_rec.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
+                        st.success(f"✅ Η συνταγή '{edit_name}' ενημερώθηκε!")
+                        st.rerun()
+
+            with tab_del:
+                st.warning(f"⚠️ Είστε σίγουροι ότι θέλετε να διαγράψετε το **{recipe_to_edit}**; Αυτή η ενέργεια δεν αναιρείται.")
+                if st.button(f"🗑️ Οριστική Διαγραφή {recipe_to_edit}", key=f"del_{recipe_to_edit}"):
+                    df_rec = df_rec[df_rec["Ονομα"] != recipe_to_edit]
                     df_rec.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                    st.success(f"✅ Οι αλλαγές στο '{edit_name}' αποθηκεύτηκαν!")
+                    st.error(f"❌ Η συνταγή '{recipe_to_edit}' διαγράφηκε.")
                     st.rerun()
 
-        # --- ΤΜΗΜΑ Β: ΣΥΝΟΛΙΚΟΣ ΠΙΝΑΚΑΣ (Προαιρετικά, για γρήγορο έλεγχο) ---
         st.write("---")
-        st.subheader("📋 2. Συνολική Λίστα Συνταγών")
-        with st.expander("Δείτε όλες τις συνταγές σε μορφή πίνακα"):
+        with st.expander("📋 Προεπισκόπηση Όλων των Συνταγών (Πίνακας)"):
             st.dataframe(df_rec, use_container_width=True)
             
     else:
-        st.warning("⚠️ Δεν υπάρχουν συνταγές για επεξεργασία. Πηγαίνετε στην καρτέλα 'Νέα Συνταγή'.")
+        st.info("Δεν βρέθηκαν αποθηκευμένες συνταγές. Πηγαίνετε στη 'Νέα Συνταγή' για να ξεκινήσετε.")
 
 # # --- 4. ΑΝΑΛΥΣΗ (ΠΛΗΡΗΣ ΑΠΟΚΑΤΑΣΤΑΣΗ & ΔΙΟΡΘΩΣΗ) ---
 elif page == "🔍 Ανάλυση":
@@ -769,192 +784,186 @@ elif page == "📈 Dashboard":
     else:
         st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
 
-       # --- 7. SHOP SYNC (GMAIL, ΥΠΟΛΟΓΙΣΜΟΣ ΑΝΑΓΚΩΝ & ΜΕΝΟΥ ΕΚΤΥΠΩΣΗΣ) ---
+       # --- 7. SHOP SYNC (V30 - WOOCOMMERCE API & ANALYSIS) ---
 elif page == "🌐 Shop Sync":
-    st.header("🌐 Αυτόματος Συγχρονισμός & Inventory Check")
+    st.header("🌐 Συγχρονισμός & Ανάλυση Ημέρας (WooCommerce API)")
     
-    # Αρχικοποίηση μνήμης (Session State) για να μην χάνονται τα δεδομένα στην ανανέωση
+    # Διαδρομές αρχείων
+    recipes_path = r"/Users/christossiamantas/Documents/recipes.xlsx"
+    WC_URL = "https://your-site-url.gr" # <--- Βάλε το URL του site σου εδώ
+
     if 'sync_results' not in st.session_state:
         st.session_state['sync_results'] = []
 
-    # --- ΣΥΝΑΡΤΗΣΗ GMAIL ---
-    def fetch_gmail_orders(user_email, app_password, search_date):
-        orders = []
-        try:
-            import re, imaplib, email
-            mail = imaplib.IMAP4_SSL("imap.gmail.com")
-            mail.login(user_email, app_password)
-            mail.select("inbox")
-            
-            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            date_str = f"{search_date.day:02d}-{months[search_date.month-1]}-{search_date.year}"
-            search_query = f'(SINCE "{date_str}" SUBJECT "[Cabclub Cocktails]: Έχετε μια νέα παραγγελία")'
-            
-            status, messages = mail.search(None, search_query)
-            if status == "OK":
-                for num in messages[0].split():
-                    status, data = mail.fetch(num, "(RFC822)")
-                    msg = email.message_from_bytes(data[0][1])
-                    
-                    # Λήψη πραγματικής ημερομηνίας email
-                    raw_date = msg.get("Date")
-                    date_tuple = email.utils.parsedate_tz(raw_date)
-                    fmt_date = datetime.fromtimestamp(email.utils.mktime_tz(date_tuple)).strftime("%d/%m/%Y") if date_tuple else "Άγνωστη"
+    tab1, tab2 = st.tabs(["📥 Λήψη από WooCommerce", "📊 Ανάλυση Υλικών"])
 
-                    body = ""
-                    if msg.is_multipart():
-                        for part in msg.walk():
-                            if part.get_content_type() == "text/plain":
-                                body = part.get_payload(decode_header=True).decode()
-                    else:
-                        body = msg.get_payload(decode_header=True).decode()
+    with tab1:
+        st.subheader("Σύνδεση με το Κατάστημα")
+        c1, c2 = st.columns(2)
+        ck = c1.text_input("Consumer Key (ck_...)", type="password")
+        cs = c2.text_input("Consumer Secret (cs_...)", type="password")
+        g_date = st.date_input("Επιλέξτε Ημερομηνία:", value=datetime.now().date())
 
-                    customer_match = re.search(r"Όνομα Εταιρείας:\s*(.*)", body)
-                    customer_name = customer_match.group(1).strip() if customer_match else "Λιανική Πώληση"
-
-                    lines = re.findall(r"^(.*?)\s+×(\d+)", body, re.MULTILINE)
-                    for prod_name, qty in lines:
-                        orders.append({
-                            "Ημερομηνία": fmt_date,
-                            "Πελάτης": customer_name,
-                            "Cocktail": prod_name.strip(),
-                            "Τεμάχια": int(qty) * 24
-                        })
-            mail.logout()
-            return orders
-        except Exception as e:
-            st.error(f"Σφάλμα Σύνδεσης: {e}")
-            return []
-
-    # --- 1. ΡΥΘΜΙΣΕΙΣ & ΚΟΥΜΠΙΑ ΕΛΕΓΧΟΥ ---
-    with st.expander("🔑 Ρυθμίσεις Σύνδεσης Gmail", expanded=True):
-        c1, c2, c3 = st.columns([2, 2, 1])
-        g_user = c1.text_input("Gmail", value="info@cabclubcocktails.gr")
-        g_pass = c2.text_input("App Password", type="password")
-        g_date = c3.date_input("Από ημερομηνία", value=datetime.now(), format="DD/MM/YYYY")
-
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("🚀 Έναρξη Συγχρονισμού"):
-            with st.spinner("Αναζήτηση στο Gmail..."):
-                st.session_state['sync_results'] = fetch_gmail_orders(g_user, g_pass, g_date)
-    
-    with col_btn2:
-        if st.button("🧪 Δοκιμαστική Λειτουργία (Test)"):
-            st.session_state['sync_results'] = [
-                {"Ημερομηνία": datetime.now().strftime("%d/%m/%Y"), "Πελάτης": "TEST CLIENT A", "Cocktail": "Aegean Kings", "Τεμάχια": 24},
-                {"Ημερομηνία": datetime.now().strftime("%d/%m/%Y"), "Πελάτης": "TEST CLIENT B", "Cocktail": "Salted Caramel", "Τεμάχια": 48}
-            ]
-            st.success("Φορτώθηκαν δοκιμαστικά δεδομένα!")
-
-    # --- 2. ΠΙΝΑΚΑΣ ΠΑΡΑΓΓΕΛΙΩΝ ---
-    st.subheader("📋 Λίστα Παραγγελιών Shop")
-    if st.session_state['sync_results']:
-        st.dataframe(pd.DataFrame(st.session_state['sync_results']), use_container_width=True)
-    else:
-        st.info("Δεν υπάρχουν δεδομένα. Κάντε συγχρονισμό ή Test.")
-
-    # --- 3. ΥΠΟΛΟΓΙΣΜΟΣ ΑΝΑΓΚΩΝ & ΣΤΟΚ ---
-    st.divider()
-    st.subheader("🎯 Ανάγκες Υλικών & Έλεγχος Στοκ")
-    
-    order_items_for_print = [] 
-    
-    if st.session_state['sync_results'] and not df_rec.empty:
-        bom_totals = {}
-        for row in st.session_state['sync_results']:
-            base_name = row['Cocktail'].split(' ')[0]
-            match = df_rec[df_rec['Ονομα'].str.contains(base_name, case=False, na=False)]
-            if not match.empty:
-                recipe = match.iloc[0]
-                for i in range(1, 14):
-                    ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                    ml_val = float(recipe.get(f"ML{i}", 0))
-                    if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""] and ml_val > 0:
-                        bom_totals[ing] = bom_totals.get(ing, 0) + (ml_val * row['Τεμάχια'])
-
-        if bom_totals:
-            h1, h2, h3, h4 = st.columns([2, 1, 1, 1])
-            h1.write("**Υλικό**")
-            h2.write("**Ανάγκη (ml)**")
-            h3.write("**Στοκ (ml)**")
-            h4.write("**Έλλειμμα**")
-
-            for ing, req in bom_totals.items():
-                c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-                c1.write(f"**{ing}**")
-                c2.write(f"{req:,.0f}")
-                stk_val = c3.number_input(f"S_{ing}", min_value=0.0, step=50.0, label_visibility="collapsed", key=f"inp_{ing}")
-                gap = max(0.0, req - stk_val)
-                
-                if gap > 0:
-                    c4.markdown(f"<span style='color:#FF4B4B; font-weight:bold;'>{gap:,.0f} ml</span>", unsafe_allow_html=True)
-                    order_items_for_print.append({"item": ing, "qty": f"{gap:,.0f} ml"})
-                else:
-                    c4.markdown("<span style='color:#00CC96;'>✅ OK</span>", unsafe_allow_html=True)
-            
-            # --- 4. ΜΕΝΟΥ ΕΚΤΥΠΩΣΗΣ (UTF-8 ΔΙΟΡΘΩΜΕΝΟ) ---
-            st.divider()
-            st.subheader("🖨️ Μενού Εκτύπωσης Report")
-            
-            if order_items_for_print:
-                html_content = f"""
-                <html>
-                <head>
-                    <meta charset='UTF-8'>
-                    <style>
-                        body {{ font-family: 'Helvetica', Arial, sans-serif; padding: 30px; }}
-                        h2 {{ color: #d32f2f; border-bottom: 2px solid #d32f2f; padding-bottom: 10px; }}
-                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-                        th {{ background-color: #f8f9fa; }}
-                        .date {{ font-size: 0.9em; color: #666; }}
-                    </style>
-                </head>
-                <body>
-                    <h2>Λίστα Παραγγελίας Υλικών</h2>
-                    <p class="date">Ημερομηνία: {datetime.now().strftime('%d/%m/%Y')}</p>
-                    <table>
-                        <tr><th>Συστατικό</th><th>Ποσότητα</th></tr>
-                """
-                for line in order_items_for_print:
-                    html_content += f"<tr><td>{line['item']}</td><td><strong>{line['qty']}</strong></td></tr>"
-                
-                html_content += "</table></body></html>"
-
-                cp1, cp2 = st.columns(2)
-                with cp1:
-                    st.download_button(
-                        label="📄 Λήψη Report (PDF Ready)",
-                        data=html_content,
-                        file_name=f"Order_{datetime.now().strftime('%d_%m_%y')}.html",
-                        mime="text/html"
-                    )
-                with cp2:
-                    if st.button("📋 Προεπισκόπηση Κειμένου"):
-                        st.code("\n".join([f"{l['item']}: {l['qty']}" for l in order_items_for_print]))
+        if st.button("🚀 Λήψη Παραγγελιών"):
+            if not ck or not cs:
+                st.warning("Παρακαλώ εισάγετε τα API Keys.")
             else:
-                st.info("Δεν υπάρχουν ελλείμματα για παραγγελία.")
-    else:
-        st.write("Αναμονή για δεδομένα...")
+                import requests
+                from requests.auth import HTTPBasicAuth
+                
+                # ISO Format για το API
+                date_start = f"{g_date}T00:00:00"
+                date_end = f"{g_date}T23:59:59"
+                
+                endpoint = f"{WC_URL}/wp-json/wc/v3/orders"
+                params = {"after": date_start, "before": date_end, "per_page": 100}
+                
+                try:
+                    with st.spinner("Επικοινωνία με το WooCommerce..."):
+                        response = requests.get(endpoint, auth=HTTPBasicAuth(ck, cs), params=params)
+                        
+                        if response.status_code == 200:
+                            orders = response.json()
+                            results = []
+                            
+                            for order in orders:
+                                # Λήψη Επωνυμίας ή Ονόματος
+                                customer = order.get("billing", {}).get("company", "")
+                                if not customer:
+                                    customer = f"{order.get('billing', {}).get('first_name')} {order.get('billing', {}).get('last_name')}"
+                                
+                                # Ανάλυση προϊόντων στην παραγγελία
+                                for item in order.get("line_items", []):
+                                    prod_name = item.get("name")
+                                    qty = item.get("quantity", 0)
+                                    
+                                    results.append({
+                                        "Ημερομηνία": g_date.strftime("%d/%m/%Y"),
+                                        "Πελάτης": customer.upper(),
+                                        "Cocktail": prod_name,
+                                        "Τεμάχια": int(qty) * 24 # Μετατροπή σε μπουκάλια
+                                    })
+                            
+                            st.session_state['sync_results'] = results
+                            if results:
+                                st.success(f"✅ Βρέθηκαν {len(results)} εγγραφές προϊόντων!")
+                                st.dataframe(pd.DataFrame(results), use_container_width=True)
+                            else:
+                                st.warning("Δεν βρέθηκαν παραγγελίες για αυτή την ημερομηνία.")
+                        else:
+                            st.error(f"Σφάλμα API: {response.status_code} - Ελέγξτε τα κλειδιά και το URL.")
+                except Exception as e:
+                    st.error(f"Αποτυχία σύνδεσης: {e}")
 
-       # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ ΞΕΧΩΡΙΣΤΑ ΠΕΔΙΑ LOT ΚΑΙ ΛΗΞΗΣ) ---
+    with tab2:
+        st.subheader("📊 Συνολικά Υλικά προς Προετοιμασία")
+        
+        if st.session_state['sync_results']:
+            if os.path.exists(recipes_path):
+                df_orders = pd.DataFrame(st.session_state['sync_results'])
+                df_recipes = pd.read_excel(recipes_path)
+                analysis = []
+                
+                for _, order in df_orders.iterrows():
+                    # Ψάχνουμε τη συνταγή (προσπάθησε να ταιριάξεις το όνομα)
+                    # Χρησιμοποιούμε "in" για να πιάνουμε ονόματα όπως "Aegean Kings 200ml"
+                    recipe = df_recipes[df_recipes['Cocktail'].apply(lambda x: str(x).lower() in order['Cocktail'].lower())]
+                    
+                    if recipe.empty:
+                        # Δεύτερη προσπάθεια αν το όνομα στη συνταγή είναι πιο μικρό
+                        recipe = df_recipes[df_recipes['Cocktail'].apply(lambda x: order['Cocktail'].lower() in str(x).lower())]
+
+                    for _, ing in recipe.iterrows():
+                        # Υπολογισμός (ml ανά 1L / 5) * συνολικά μπουκάλια 200ml
+                        total_needed = (ing['Ποσότητα'] / 5) * order['Τεμάχια']
+                        analysis.append({
+                            "Συστατικό": ing['Συστατικό'],
+                            "Ποσότητα": total_needed
+                        })
+                
+                if analysis:
+                    df_ana = pd.DataFrame(analysis)
+                    final_sum = df_ana.groupby("Συστατικό")["Ποσότητα"].sum().reset_index()
+                    
+                    st.write(f"**Ανάλυση για την ημέρα: {g_date.strftime('%d/%m/%Y')}**")
+                    st.dataframe(final_sum.style.format({"Ποσότητα": "{:.0f} ml/gr"}), use_container_width=True)
+                    
+                    if st.button("📉 Ενημέρωση Αποθήκης"):
+                        st.info("Η λειτουργία ενημέρωσης αποθήκης είναι έτοιμη για διασύνδεση.")
+                else:
+                    st.error("⚠️ Δεν βρέθηκαν αντιστοιχίες στις Συνταγές για τα προϊόντα του Shop.")
+            else:
+                st.error(f"❌ Δεν βρέθηκε το αρχείο συνταγών στο: {recipes_path}")
+        else:
+            st.info("Κάντε πρώτα λήψη παραγγελιών από το Tab 1.")
+
+      # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ ΑΥΤΟΜΑΤΗ ΑΝΑΚΤΗΣΗ & ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ) ---
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής")
     
+    import glob
+    from requests.auth import HTTPBasicAuth
+    import requests
+
     selected_date = st.date_input("Ημερομηνία Παραγωγής", value=datetime.now(), format="DD/MM/YYYY")
     date_display = selected_date.strftime('%d/%m/%Y')
     current_time = datetime.now().strftime('%H:%M')
+
+    # Αρχικοποίηση session_state για την ανάκτηση
+    if "auto_cocktails" not in st.session_state:
+        st.session_state.auto_cocktails = []
+    if "auto_counts" not in st.session_state:
+        st.session_state.auto_counts = {}
+
+    # --- ΤΜΗΜΑ ΑΝΑΚΤΗΣΗΣ ΑΠΟ E-SHOP ---
+    st.subheader("🌐 Αυτόματη Ανάκτηση από E-shop")
+    col_api1, col_api2, col_api3 = st.columns([1, 1, 1])
+    ck_input = col_api1.text_input("Consumer Key", type="password", key="lot_ck_ui")
+    cs_input = col_api2.text_input("Consumer Secret", type="password", key="lot_cs_ui")
+    
+    if col_api3.button("📥 Φόρτωση Παραγγελιών"):
+        try:
+            url = "https://cabclub.gr/wp-json/wc/v3/orders?status=processing&per_page=100"
+            res = requests.get(url, auth=HTTPBasicAuth(ck_input, cs_input))
+            if res.status_code == 200:
+                wc_data = res.json()
+                found_names = []
+                temp_counts = {}
+                for order in wc_data:
+                    for item in order.get('line_items', []):
+                        sku = str(item.get('sku')).strip()
+                        qty = int(item.get('quantity', 0))
+                        match = df_rec[df_rec["Barcode"].astype(str) == sku]
+                        if not match.empty:
+                            c_name = match.iloc[0]["Ονομα"]
+                            found_names.append(c_name)
+                            temp_counts[c_name] = temp_counts.get(c_name, 0) + qty
+                
+                st.session_state.auto_cocktails = list(set(found_names))
+                st.session_state.auto_counts = temp_counts
+                st.success(f"✅ Φορτώθηκαν {len(st.session_state.auto_cocktails)} κωδικοί!")
+                st.rerun()
+            else:
+                st.error("Αποτυχία σύνδεσης. Ελέγξτε τα κλειδιά.")
+        except Exception as e:
+            st.error(f"Σφάλμα: {e}")
+
+    st.divider()
     
     if not df_rec.empty:
         st.subheader("🍸 1. Επιλογή Προϊόντων")
-        selected_cocktails = st.multiselect("Ποια cocktail φτιάχνετε;", options=df_rec["Ονομα"].unique())
+        selected_cocktails = st.multiselect(
+            "Ποια cocktail φτιάχνετε;", 
+            options=df_rec["Ονομα"].unique(),
+            default=st.session_state.auto_cocktails
+        )
         
         counts = {}
         if selected_cocktails:
             col_counts = st.columns(len(selected_cocktails))
             for i, name in enumerate(selected_cocktails):
-                counts[name] = col_counts[i].number_input(f"Τεμάχια: {name}", min_value=1, value=1)
+                default_val = st.session_state.auto_counts.get(name, 1)
+                counts[name] = col_counts[i].number_input(f"Τεμάχια: {name}", min_value=1, value=int(default_val), key=f"cnt_{name}")
 
             st.subheader("⚖️ 2. Οδηγίες Ζύγισης & Ιχνηλασιμότητα")
             lot_entries = []
@@ -964,7 +973,6 @@ elif page == "📦 Lot Παραγωγής":
                     st.markdown(f"#### 🏷️ {cocktail_name} (LOT: {date_display})")
                     recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
                     
-                    # Επικεφαλίδες - Προσθήκη στήλης για τη Λήξη
                     h1, h2, h3, h4, h5 = st.columns([2, 1.2, 1.3, 1, 1])
                     h1.caption("Πρώτη Ύλη")
                     h2.caption("Σύνολο ml")
@@ -977,7 +985,6 @@ elif page == "📦 Lot Παραγωγής":
                         ml_unit = recipe_row.get(f"ML{i}", 0.0)
                         
                         if ing_name and ing_name not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
-                            # --- ΥΠΟΛΟΓΙΣΜΟΣ ΑΝΑΓΩΓΗΣ ---
                             total_ml = ml_unit * counts[cocktail_name]
                             target_grams = total_ml 
                             
@@ -988,7 +995,6 @@ elif page == "📦 Lot Παραγωγής":
                                 if weight_pack > 0:
                                     target_grams = (total_ml / vol_pack) * weight_pack
 
-                            # --- ΕΜΦΑΝΙΣΗ ΓΡΑΜΜΗΣ ΜΕ ΔΥΟ TEXT INPUTS ---
                             c1, c2, c3, c4, c5 = st.columns([2, 1.2, 1.3, 1, 1])
                             c1.write(f"**{ing_name}**")
                             c2.write(f"{total_ml:.0f} ml")
@@ -997,18 +1003,17 @@ elif page == "📦 Lot Παραγωγής":
                             l_num = c4.text_input("Lot", key=f"lot_{cocktail_name}_{ing_name}_{i}", label_visibility="collapsed", placeholder="Lot")
                             l_exp = c5.text_input("Λήξη", key=f"exp_{cocktail_name}_{ing_name}_{i}", label_visibility="collapsed", placeholder="MM/YY")
                             
-                            if l_num:
-                                lot_entries.append({
-                                    "Ημερομηνία": date_display,
-                                    "Ώρα": current_time,
-                                    "Cocktail": cocktail_name,
-                                    "Τεμάχια": counts[cocktail_name],
-                                    "Υλικό": ing_name,
-                                    "Σύνολο_ML": total_ml,
-                                    "Στόχος_Γραμμάρια": round(target_grams, 1),
-                                    "Lot Number": l_num,
-                                    "Ημ_Λήξης": l_exp
-                                })
+                            lot_entries.append({
+                                "Ημερομηνία": date_display,
+                                "Ώρα": current_time,
+                                "Cocktail": cocktail_name,
+                                "Τεμάχια": counts[cocktail_name],
+                                "Υλικό": ing_name,
+                                "Σύνολο_ML": total_ml,
+                                "Στόχος_Γραμμάρια": round(target_grams, 1),
+                                "Lot Number": l_num,
+                                "Ημ_Λήξης": l_exp
+                            })
                     st.markdown("---")
                 
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση"):
@@ -1023,19 +1028,13 @@ elif page == "📦 Lot Παραγωγής":
                         st.success(f"✅ Η παραγωγή αποθηκεύτηκε επιτυχώς!")
                         st.rerun()
 
-   
-
-    # --- ΤΜΗΜΑ ΙΣΤΟΡΙΚΟΥ, ΕΚΤΥΠΩΣΗΣ & ΔΙΑΓΡΑΦΗΣ (FIXED KEYERROR & NEW COLUMNS) ---
+    # --- ΤΜΗΜΑ ΙΣΤΟΡΙΚΟΥ & ΕΚΤΥΠΩΣΗΣ ---
     st.markdown("---")
     st.subheader("📂 Ιστορικό & Διαχείριση Αρχείου")
-    import glob
-    import os
-    
     past_files = glob.glob("Lot_Report_*.csv")
     
     if past_files:
         dates = sorted([f.replace("Lot_Report_", "").replace(".csv", "").replace("_", "/") for f in past_files], reverse=True)
-        
         col_select, col_delete = st.columns([3, 1])
         sel_date = col_select.selectbox("Επιλέξτε Ημερομηνία:", dates)
         
@@ -1052,23 +1051,15 @@ elif page == "📦 Lot Παραγωγής":
 
             if os.path.exists(file_path):
                 df_past = pd.read_csv(file_path)
-                
-                # --- ΑΣΦΑΛΕΙΑ ΣΤΗΛΩΝ (ΓΙΑ ΝΑ ΜΗΝ ΚΡΑΣΑΡΕΙ ΠΟΤΕ) ---
-                column_mapping = {
-                    "Cocktails": "Cocktail",
-                    "Ημ_Λήξης": "Ημ_Λήξης",
-                    "Ημ. Λήξης": "Ημ_Λήξης"  # Διόρθωση αν κάπου γράφτηκε με τελεία
-                }
+                column_mapping = {"Cocktails": "Cocktail", "Ημ_Λήξης": "Ημ_Λήξης", "Ημ. Λήξης": "Ημ_Λήξης"}
                 df_past = df_past.rename(columns=column_mapping)
                 
-                # Δημιουργία στηλών αν λείπουν από παλιά αρχεία
                 for col in ["Στόχος_Γραμμάρια", "Σύνολο_ML", "Ημ_Λήξης", "Ώρα", "Τεμάχια"]:
                     if col not in df_past.columns:
                         df_past[col] = "N/A"
 
                 st.dataframe(df_past, use_container_width=True)
                 
-                # ΚΑΤΑΣΚΕΥΗ HTML
                 html = f"""
                 <html><head><meta charset='UTF-8'><style>
                     body {{ font-family: sans-serif; padding: 20px; }}
@@ -1082,25 +1073,21 @@ elif page == "📦 Lot Παραγωγής":
                 """
                 
                 if not df_past.empty:
-                    # 1. Συνολικός Πίνακας
                     html += "<h3>1. Σύνοψη Παρτίδων</h3><table><tr><th>Προϊόν</th><th>Ποσότητα</th><th>Ώρα</th></tr>"
                     summary = df_past.groupby(["Cocktail", "Ώρα"])["Τεμάχια"].first().reset_index()
                     for _, row in summary.iterrows():
                         html += f"<tr><td>{row['Cocktail']} (LOT: {sel_date})</td><td>{row['Τεμάχια']} τμχ</td><td>{row['Ώρα']}</td></tr>"
                     html += "</table>"
 
-                    # 2. Αναλυτική Ιχνηλασιμότητα με Γραμμάρια
                     html += "<h3>2. Αναλυτική Ζύγιση & Lot Υλικών</h3>"
                     for t_val in df_past["Ώρα"].unique():
                         time_df = df_past[df_past["Ώρα"] == t_val]
                         for c_name in time_df["Cocktail"].unique():
                             c_data = time_df[time_df["Cocktail"] == c_name]
                             qty = c_data['Τεμάχια'].iloc[0]
-                            
                             html += f"<div class='section-title'>{c_name} | LOT: {sel_date} | Ποσότητα: {qty} τμχ</div>"
                             html += "<table><tr><th>Πρώτη Ύλη</th><th>Σύνολο ml</th><th>Βάρος (g)</th><th>Lot Number</th><th>Λήξη</th></tr>"
                             for _, r in c_data.iterrows():
-                                # Χρήση του σωστού key ['Ημ_Λήξης']
                                 html += f"""<tr>
                                     <td>{r['Υλικό']}</td>
                                     <td>{r['Σύνολο_ML']}</td>
@@ -1111,5 +1098,4 @@ elif page == "📦 Lot Παραγωγής":
                             html += "</table>"
                 
                 html += "<br><p>Υπογραφή Υπευθύνου: __________________________</p></body></html>"
-                
                 st.download_button("🖨️ Λήψη Δελτίου για Εκτύπωση", data=html, file_name=f"Production_{sel_date.replace('/','_')}.html", mime="text/html")
