@@ -125,7 +125,7 @@ recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.em
 # --- Sidebar ---
 st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
 st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard"])
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
@@ -1126,3 +1126,60 @@ elif page == "📦 Lot Παραγωγής":
                 
                 html += "<br><p>Υπογραφή Υπευθύνου: __________________________</p></body></html>"
                 st.download_button("🖨️ Λήψη Δελτίου για Εκτύπωση", data=html, file_name=f"Production_{sel_date.replace('/','_')}.html", mime="text/html")
+
+                # --- 9. ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΥΛΙΚΟΥ (BULK UPDATE) ---
+elif page == "🔄 Αντικατάσταση":
+    st.header("🔄 Μαζική Αντικατάσταση Πρώτης Ύλης")
+    st.info("Βρείτε σε ποιες συνταγές υπάρχει ένα υλικό και αντικαταστήστε το παντού με ένα νέο.")
+
+    if not df_rec.empty:
+        # 1. Συλλογή όλων των υλικών που χρησιμοποιούνται στις συνταγές
+        used_ingredients = []
+        for i in range(1, 14):
+            col_name = f"ΣΥΣΤΑΤΙΚΟ{i}"
+            if col_name in df_rec.columns:
+                used_ingredients.extend(df_rec[col_name].astype(str).unique())
+        
+        # Καθαρισμός λίστας από κενά και nan
+        unique_used = sorted(list(set([ing for ing in used_ingredients if ing not in ["ΚΕΝΟ", "nan", "None", ""]])))
+        
+        col_src, col_dst = st.columns(2)
+        
+        with col_src:
+            target_ing = st.selectbox("1. Επιλέξτε υλικό προς αντικατάσταση:", options=unique_used)
+        
+        # 2. Εύρεση συνταγών που το περιέχουν
+        found_recipes = []
+        for index, row in df_rec.iterrows():
+            for i in range(1, 14):
+                if str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}")) == target_ing:
+                    found_recipes.append(row["Ονομα"])
+                    break
+        
+        if found_recipes:
+            st.warning(f"🔎 Το υλικό **{target_ing}** βρέθηκε σε **{len(found_recipes)}** συνταγές:")
+            st.write(", ".join(found_recipes))
+            
+            with col_dst:
+                # Επιλογή νέου υλικού από την Αποθήκη (df_ing)
+                new_ing = st.selectbox("2. Αντικατάσταση με:", options=df_ing["Name"].unique())
+            
+            st.markdown("---")
+            if st.button("🚀 Εκτέλεση Αντικατάστασης ΠΑΝΤΟΥ"):
+                # Δημιουργούμε αντίγραφο
+                temp_recipes = df_rec.copy()
+                total_changes = 0
+                
+                for i in range(1, 14):
+                    col = f"ΣΥΣΤΑΤΙΚΟ{i}"
+                    mask = temp_recipes[col].astype(str) == target_ing
+                    total_changes += mask.sum()
+                    temp_recipes.loc[mask, col] = new_ing
+                
+                # Αποθήκευση στο CSV
+                temp_recipes.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
+                st.success(f"✅ Επιτυχία! Το '{target_ing}' αντικαταστάθηκε από το '{new_ing}' σε {total_changes} σημεία.")
+                st.balloons()
+                st.rerun()
+        else:
+            st.info("Δεν βρέθηκαν συνταγές που να περιέχουν αυτό το υλικό.")
