@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import os
 import math
@@ -8,6 +9,29 @@ import imaplib
 import email
 import time
 import plotly.graph_objects as go
+
+# 1. Ρύθμιση Σύνδεσης με Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def load_data(sheet_name):
+    """Διαβάζει δεδομένα από το Google Sheet"""
+    # Το ttl="0" διασφαλίζει ότι φέρνει πάντα τα πιο φρέσκα δεδομένα χωρίς cache
+    return conn.read(worksheet=sheet_name, ttl="0")
+
+def save_data(df, sheet_name):
+    """Αποθηκεύει το DataFrame πίσω στο Google Sheet"""
+    conn.update(worksheet=sheet_name, data=df)
+    st.success(f"✅ Το φύλλο {sheet_name} ενημερώθηκε!")
+
+# --- ΔΟΚΙΜΑΣΤΙΚΟ TEST (Πρόσθεσέ το προσωρινά για να δούμε αν δουλεύει) ---
+st.title("Test Google Sheets Connection")
+
+try:
+    test_df = load_data("Ingredients")
+    st.write("Σύνδεση επιτυχής! Να τι βρήκα στο φύλλο Ingredients:")
+    st.dataframe(test_df)
+except Exception as e:
+    st.error(f"Κάτι πήγε στραβά: {e}")
 
 # --- SIDEBAR & REFRESH LOGIC ---
 with st.sidebar:
