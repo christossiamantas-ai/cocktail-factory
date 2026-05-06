@@ -1684,6 +1684,7 @@ if page == "🧼 Συντήρηση & HACCP":
                     }
                     # Αποθήκευση με utf-8-sig για συμβατότητα με Ελληνικά στο Excel
                     pd.DataFrame([log_data]).to_csv("HACCP_Log.csv", mode='a', header=not os.path.exists("HACCP_Log.csv"), index=False, encoding='utf-8-sig')
+                    sync_to_drive("HACCP_Log.csv")
                     st.success(f"✅ Η μέτρηση για το {device} αποθηκεύτηκε!")
 
     # --- TAB 2: CHECKLIST ΚΑΘΑΡΙΣΜΟΥ (Ανά εργασία) ---
