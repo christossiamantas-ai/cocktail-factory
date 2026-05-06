@@ -10,25 +10,29 @@ import email
 import time
 import plotly.graph_objects as go
 
-# Σωστή αρχικοποίηση για Service Account
-conn = st.connection("gsheets", type=GSheetsConnection)
-
 def load_data(sheet_name):
-    """Διαβάζει δεδομένα χρησιμοποιώντας τα credentials του Service Account"""
     try:
-        # Σημαντικό: ttl=0 για να μην κρατάει παλιά δεδομένα στην προσωρινή μνήμη
-        return conn.read(worksheet=sheet_name, ttl=0)
+        # Έλεγχος αν η σύνδεση υπάρχει, αλλιώς δημιουργία
+        if "conn" not in globals():
+            conn = st.connection("gsheets", type=GSheetsConnection)
+        
+        # Ανάγνωση δεδομένων
+        data = conn.read(worksheet=sheet_name, ttl=0)
+        
+        # Έλεγχος αν το αποτέλεσμα είναι None (συμβαίνει σε σφάλμα σύνδεσης)
+        if data is None:
+            st.error(f"⚠️ Η Google δεν επέστρεψε δεδομένα για το φύλλο '{sheet_name}'.")
+            return pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
+            
+        return data
     except Exception as e:
-        st.error(f"Σφάλμα σύνδεσης στο φύλλο {sheet_name}: {e}")
-        return pd.DataFrame()
+        # Εμφάνιση του πραγματικού σφάλματος για να το δούμε στην οθόνη
+        st.error(f"❌ Σφάλμα Google Sheets: {str(e)}")
+        # Επιστροφή άδειου DataFrame με τις στήλες σου για να μην κολλάει η σελίδα
+        return pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
 
-def save_data(df, sheet_name):
-    """Αποθηκεύει δεδομένα στο Google Sheet"""
-    try:
-        conn.update(worksheet=sheet_name, data=df)
-        st.success(f"✅ Το φύλλο {sheet_name} ενημερώθηκε στο Cloud!")
-    except Exception as e:
-        st.error(f"Αποτυχία αποθήκευσης: {e}")
+# Κλήση της συνάρτησης
+df_ing = load_data("Ingredients")
 
 # --- SIDEBAR & REFRESH LOGIC ---
 with st.sidebar:
