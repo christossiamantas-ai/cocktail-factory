@@ -58,10 +58,10 @@ def sync_to_drive(file_path):
         return False
 def download_from_drive(file_path):
     """
-    Κατεβάζει το αρχείο από το Google Drive και το αποθηκεύει τοπικά.
-    ΠΡΟΣΟΧΗ: Όλες οι γραμμές εδώ πρέπει να έχουν 4 κενά εσοχή!
+    Λαμβάνει το αρχείο από το Google Drive και το αποθηκεύει τοπικά.
     """
     try:
+        # Διασφάλιση ότι η συνάρτηση get_gdrive_service() έχει οριστεί παραπάνω
         service = get_gdrive_service()
         file_name = os.path.basename(file_path)
         
@@ -74,13 +74,13 @@ def download_from_drive(file_path):
             file_id = files[0]['id']
             request = service.files().get_media(fileId=file_id)
             
-            # Άνοιγμα τοπικού αρχείου για εγγραφή των δεδομένων από το Drive
+            # Εγγραφή των δεδομένων στο τοπικό CSV
             with open(file_path, "wb") as f:
                 f.write(request.execute())
             return True
         return False
     except Exception as e:
-        st.error(f"Σφάλμα κατά τη λήψη: {e}")
+        st.error(f"Σφάλμα κατά τη λήψη από το Drive: {e}")
         return False
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
