@@ -205,11 +205,14 @@ page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικ�
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
-# --- 1. ΑΠΟΘΗΚΗ (ΦΟΡΜΑ ΑΝΤΙ ΓΙΑ ΠΙΝΑΚΑ) ---
+# --- 1. ΑΠΟΘΗΚΗ (GOOGLE SHEETS VERSION) ---
 if page == "📦 Αποθήκη":
-    st.header("📦 Διαχείριση Υλικών")
+    st.header("📦 Διαχείριση Υλικών (Cloud)")
     
-    # Εξασφάλιση στηλών
+    # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ ΑΠΟ GOOGLE SHEETS
+    df_ing = load_data("Ingredients")
+    
+    # Εξασφάλιση στηλών (αν το φύλλο είναι άδειο)
     if "ID" not in df_ing.columns:
         df_ing.insert(0, "ID", range(1001, 1001 + len(df_ing)))
     for col in ["Weight_Full", "Αλκοόλ %", "Price", "Volume"]:
@@ -226,10 +229,9 @@ if page == "📦 Αποθήκη":
             new_price = c1.number_input("Τιμή Αγοράς (€)", min_value=0.0, step=0.1)
             new_vol = c2.number_input("ML Φιάλης", min_value=1.0, value=700.0)
             new_alc = c3.number_input("Alc %", min_value=0.0, max_value=100.0, step=0.1)
+            new_weight = st.number_input("Βάρος Περιεχομένου σε Γραμμάρια (g)", min_value=0.0)
             
-            new_weight = st.number_input("Βάρος Περιεχομένου σε Γραμμάρια (g)", min_value=0.0, help="Το βάρος μόνο του υγρού")
-            
-            if st.form_submit_button("💾 Αποθήκευση Νέου Υλικού"):
+            if st.form_submit_button("💾 Αποθήκευση στο Google Sheets"):
                 if new_name:
                     max_id = df_ing["ID"].max() if not df_ing.empty else 1000
                     new_row = {
@@ -238,90 +240,57 @@ if page == "📦 Αποθήκη":
                         "Price": new_price,
                         "Volume": new_vol,
                         "Weight_Full": new_weight,
-                        "Τιμή/ml": new_price / new_vol,
+                        "Τιμή/ml": new_price / new_vol if new_vol > 0 else 0,
                         "Αλκοόλ %": new_alc,
                         "Απόθεμα (ml)": 0.0
                     }
                     df_ing = pd.concat([df_ing, pd.DataFrame([new_row])], ignore_index=True)
                     df_ing = df_ing.sort_values(by="Name", key=lambda col: col.str.lower())
-                    df_ing.to_csv(DB_INGREDIENTS, index=False, encoding='utf-8-sig')
-                    st.success(f"✅ Το υλικό '{new_name}' προστέθηκε!")
+                    
+                    # ΑΠΟΘΗΚΕΥΣΗ ΣΤΟ GOOGLE SHEETS
+                    save_data(df_ing, "Ingredients")
+                    st.success(f"✅ Το υλικό '{new_name}' προστέθηκε στο Cloud!")
                     st.rerun()
-                else:
-                    st.error("Παρακαλώ δώστε όνομα στο υλικό.")
 
     # --- TAB 2: ΕΠΕΞΕΡΓΑΣΙΑ / ΔΙΑΓΡΑΦΗ ---
     with tab2:
         st.subheader("Διόρθωση ή Διαγραφή Υλικού")
         if not df_ing.empty:
-            ing_to_edit = st.selectbox("Επιλέξτε υλικό για επεξεργασία:", options=df_ing["Name"].unique(), index=None)
+            ing_to_edit = st.selectbox("Επιλέξτε υλικό:", options=df_ing["Name"].unique(), index=None)
             
             if ing_to_edit:
                 curr_row = df_ing[df_ing["Name"] == ing_to_edit].iloc[0]
-                
                 with st.form("edit_ing_form"):
                     edit_name = st.text_input("Όνομα Υλικού", value=curr_row["Name"])
                     e1, e2, e3 = st.columns(3)
-                    edit_price = e1.number_input("Τιμή (€)", value=float(curr_row["Price"]), step=0.1)
-                    edit_vol = e2.number_input("ML Φιάλης", value=float(curr_row["Volume"]), min_value=1.0)
-                    edit_alc = e3.number_input("Alc %", value=float(curr_row["Αλκοόλ %"]), step=0.1)
-                    
+                    edit_price = e1.number_input("Τιμή (€)", value=float(curr_row["Price"]))
+                    edit_vol = e2.number_input("ML Φιάλης", value=float(curr_row["Volume"]))
+                    edit_alc = e3.number_input("Alc %", value=float(curr_row["Αλκοόλ %"]))
                     edit_weight = st.number_input("Βάρος Περιεχομένου (g)", value=float(curr_row["Weight_Full"]))
                     
                     col_btn1, col_btn2 = st.columns([1,1])
                     
-                    # --- ΕΔΩ ΜΠΑΙΝΕΙ Ο ΝΕΟΣ ΚΩΔΙΚΑΣ UPDATE ---
                     if col_btn1.form_submit_button("Update ✅"):
-                        # 1. Φόρτωση των αρχείων απευθείας από το δίσκο
-                        temp_ing = pd.read_csv(DB_INGREDIENTS)
-                        temp_rec = pd.read_csv(DB_RECIPES)
+                        # Ενημέρωση τοπικά στο DataFrame
+                        idx = df_ing[df_ing["Name"] == ing_to_edit].index
+                        df_ing.loc[idx, ["Name", "Price", "Volume", "Αλκοόλ %", "Weight_Full"]] = [edit_name, edit_price, edit_vol, edit_alc, edit_weight]
+                        df_ing.loc[idx, "Τιμή/ml"] = edit_price / edit_vol
                         
-                        old_name = ing_to_edit 
-                        
-                        # 2. Ενημέρωση στην Αποθήκη
-                        idx_ing = temp_ing[temp_ing["Name"] == old_name].index
-                        temp_ing.loc[idx_ing, "Name"] = edit_name
-                        temp_ing.loc[idx_ing, "Price"] = edit_price
-                        temp_ing.loc[idx_ing, "Volume"] = edit_vol
-                        temp_ing.loc[idx_ing, "Αλκοόλ %"] = edit_alc
-                        temp_ing.loc[idx_ing, "Weight_Full"] = edit_weight
-                        temp_ing.loc[idx_ing, "Τιμή/ml"] = edit_price / edit_vol
-                        
-                        # Σώσιμο Αποθήκης
-                        temp_ing.to_csv(DB_INGREDIENTS, index=False, encoding='utf-8-sig')
-
-                        # 3. Ενημέρωση στις Συνταγές (Αν άλλαξε το όνομα)
-                        if old_name != edit_name:
-                            changes_made = 0
-                            for i in range(1, 14):
-                                col = f"ΣΥΣΤΑΤΙΚΟ{i}"
-                                if col in temp_rec.columns:
-                                    # Καθαρισμός κενών για σωστή σύγκριση
-                                    temp_rec[col] = temp_rec[col].astype(str).str.strip()
-                                    mask = temp_rec[col] == old_name.strip()
-                                    if mask.any():
-                                        temp_rec.loc[mask, col] = edit_name
-                                        changes_made += 1
-                            
-                            if changes_made > 0:
-                                temp_rec.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                                st.info(f"⚙️ Έγινε αυτόματη ενημέρωση σε {changes_made} πεδία συνταγών.")
-
-                        st.success(f"✅ Το υλικό '{edit_name}' ενημερώθηκε!")
+                        # ΑΠΟΘΗΚΕΥΣΗ ΣΤΟ GOOGLE SHEETS
+                        save_data(df_ing, "Ingredients")
+                        st.success("✅ Η ενημέρωση ολοκληρώθηκε!")
                         st.rerun()
-                    
-                    # --- ΤΕΛΟΣ ΝΕΟΥ ΚΩΔΙΚΑ UPDATE ---
 
                     if col_btn2.form_submit_button("Διαγραφή 🗑️"):
                         df_ing = df_ing[df_ing["Name"] != ing_to_edit]
-                        df_ing.to_csv(DB_INGREDIENTS, index=False, encoding='utf-8-sig')
+                        save_data(df_ing, "Ingredients")
                         st.warning(f"Το υλικό {ing_to_edit} διαγράφηκε.")
                         st.rerun()
 
     # --- TAB 3: ΠΡΟΒΟΛΗ ΠΙΝΑΚΑ ---
     with tab3:
         st.subheader("Συνολική Εικόνα Αποθήκης")
-        st.dataframe(df_ing[["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]], use_container_width=True)
+        st.dataframe(df_ing, use_container_width=True)
 
 
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
