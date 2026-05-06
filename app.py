@@ -79,6 +79,7 @@ if 'init_done' not in st.session_state:
         download_from_drive(DB_RECIPES)
         download_from_drive(DB_ORDERS)
         download_from_drive(DB_HISTORY)
+        download_from_drive("HACCP_Log.csv")
         st.session_state['init_done'] = True
         st.rerun()
 
@@ -1245,6 +1246,7 @@ elif page == "📦 Lot Παραγωγής":
                             else:
                                 final_df = new_df
                             final_df.to_csv(csv_file, index=False, encoding='utf-8-sig')
+                            sync_to_drive(csv_file)
                             st.success(f"✅ Αποθηκεύτηκε! Το LOT του προϊόντος είναι: {date_lot_label}")
                             time.sleep(1)
                             st.rerun()
@@ -1722,6 +1724,7 @@ if page == "🧼 Συντήρηση & HACCP":
                         "Καθαριστικό": summary_cleaners, "Σημειώσεις": "-"
                     }
                     pd.DataFrame([log_data]).to_csv("HACCP_Log.csv", mode='a', header=not os.path.exists("HACCP_Log.csv"), index=False, encoding='utf-8-sig')
+                    sync_to_drive("HACCP_Log.csv")
                     st.success("✨ Το checklist αποθηκεύτηκε με επιτυχία!")
                 else:
                     st.error("⚠️ Πρέπει να ολοκληρώσετε όλες τις εργασίες και να γράψετε τα καθαριστικά!")
