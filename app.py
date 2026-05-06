@@ -49,8 +49,13 @@ def sync_to_drive(file_path):
         return True
 
     except Exception as e:
-        # Εδώ θα εμφανιστεί το ακριβές σφάλμα της Google
-        st.error(f"❌ Σφάλμα Συγχρονισμού: {e}")
+        # Χρησιμοποιούμε st.exception αντί για st.error για να δούμε όλη τη διαδρομή του σφάλματος
+        st.subheader("⚠️ Εντοπίστηκε πρόβλημα στον συγχρονισμό")
+        st.exception(e) 
+        
+        # Προσθήκη κουμπιού που σταματά την εφαρμογή για να προλάβεις να διαβάσεις
+        if st.button("Κατανόησα το σφάλμα - Συνέχεια"):
+            st.rerun()
         return False
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
