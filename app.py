@@ -15,10 +15,14 @@ FOLDER_ID = "1KSpn-eyT_B-7lTdjAerWHyxrl5zeBtar"
 SERVICE_ACCOUNT_FILE = 'service_account.json'
 
 def sync_to_drive(file_path):
+    """
+    Συγχρονίζει το αρχείο με το Google Drive και διαχειρίζεται σφάλματα
+    χωρίς να διακόπτει τη ροή του Streamlit.
+    """
     try:
-        # ΣΤΑΘΜΟΣ 1: Έλεγχος αν το αρχείο κλειδιών υπάρχει στον φάκελο
+        # Φόρτωση διαπιστευτηρίων
         if not os.path.exists(SERVICE_ACCOUNT_FILE):
-            st.error(f"⚠️ Το αρχείο {SERVICE_ACCOUNT_FILE} λείπει από τον φάκελο του project!")
+            st.error(f"Το αρχείο {SERVICE_ACCOUNT_FILE} δεν βρέθηκε!")
             return False
 
         scopes = ['https://www.googleapis.com/auth/drive']
@@ -28,7 +32,7 @@ def sync_to_drive(file_path):
 
         file_name = os.path.basename(file_path)
         
-        # ΣΤΑΘΜΟΣ 2: Αναζήτηση αν το αρχείο υπάρχει ήδη στο Drive
+        # Αναζήτηση υπάρχοντος αρχείου στο Drive
         query = f"name = '{file_name}' and '{FOLDER_ID}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id)").execute()
         files = results.get('files', [])
@@ -36,26 +40,21 @@ def sync_to_drive(file_path):
         media = MediaFileUpload(file_path, mimetype='text/csv')
 
         if files:
-            # ΣΤΑΘΜΟΣ 3α: Ενημέρωση υπάρχοντος
+            # Ενημέρωση αν υπάρχει
             file_id = files[0]['id']
             service.files().update(fileId=file_id, media_body=media).execute()
-            st.toast(f"✅ Ενημερώθηκε επιτυχώς το {file_name}")
+            st.toast(f"✅ Το Drive ενημερώθηκε: {file_name}")
         else:
-            # ΣΤΑΘΜΟΣ 3β: Δημιουργία νέου
+            # Δημιουργία αν δεν υπάρχει
             file_metadata = {'name': file_name, 'parents': [FOLDER_ID]}
             service.files().create(body=file_metadata, media_body=media).execute()
-            st.toast(f"🆕 Δημιουργήθηκε νέο αρχείο {file_name}")
+            st.toast(f"🆕 Δημιουργήθηκε νέο αρχείο στο Drive: {file_name}")
         
         return True
 
     except Exception as e:
-        # Χρησιμοποιούμε st.exception αντί για st.error για να δούμε όλη τη διαδρομή του σφάλματος
-        st.subheader("⚠️ Εντοπίστηκε πρόβλημα στον συγχρονισμό")
-        st.exception(e) 
-        
-        # Προσθήκη κουμπιού που σταματά την εφαρμογή για να προλάβεις να διαβάσεις
-        if st.button("Κατανόησα το σφάλμα - Συνέχεια"):
-            st.rerun()
+        # Εμφάνιση του σφάλματος με απλό τρόπο για να μην "κολλάει" η φόρμα
+        st.warning(f"⚠️ Προσοχή: Ο συγχρονισμός απέτυχε. Μήνυμα: {e}")
         return False
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
