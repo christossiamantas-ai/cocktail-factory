@@ -56,10 +56,10 @@ def sync_to_drive(file_path):
         # Εμφάνιση του σφάλματος με απλό τρόπο για να μην "κολλάει" η φόρμα
         st.warning(f"⚠️ Προσοχή: Ο συγχρονισμός απέτυχε. Μήνυμα: {e}")
         return False
-    def download_from_drive(file_path):
+def download_from_drive(file_path):
     """
-    Κατεβάζει το αρχείο από το Google Drive και το αποθηκεύει τοπικά 
-    αντικαθιστώντας το υπάρχον.
+    Κατεβάζει το αρχείο από το Google Drive και το αποθηκεύει τοπικά.
+    ΠΡΟΣΟΧΗ: Όλες οι γραμμές εδώ πρέπει να έχουν 4 κενά εσοχή!
     """
     try:
         service = get_gdrive_service()
@@ -72,14 +72,15 @@ def sync_to_drive(file_path):
 
         if files:
             file_id = files[0]['id']
-            # Λήψη των περιεχομένων (media) του αρχείου
             request = service.files().get_media(fileId=file_id)
+            
+            # Άνοιγμα τοπικού αρχείου για εγγραφή των δεδομένων από το Drive
             with open(file_path, "wb") as f:
                 f.write(request.execute())
             return True
         return False
     except Exception as e:
-        st.error(f"Σφάλμα κατά τη λήψη από το Drive: {e}")
+        st.error(f"Σφάλμα κατά τη λήψη: {e}")
         return False
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
