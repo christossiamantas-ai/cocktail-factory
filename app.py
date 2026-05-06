@@ -15,36 +15,47 @@ FOLDER_ID = "ΒΑΛΕ_ΕΔΩ_ΤΟ_ID_ΑΠΟ_ΤΟ_URL"
 SERVICE_ACCOUNT_FILE = 'service_account.json'
 
 def sync_to_drive(file_path):
-    """Ανεβάζει ή ενημερώνει το αρχείο CSV στο Google Drive."""
+    """
+    Ανεβάζει το αρχείο και επιστρέφει επιβεβαίωση από την Google.
+    """
     try:
-        # Έλεγχος αν υπάρχει το αρχείο JSON
-        if not os.path.exists(SERVICE_ACCOUNT_FILE):
-            st.error(f"Το αρχείο {SERVICE_ACCOUNT_FILE} λείπει από τον φάκελο!")
-            return False
-            
-        scopes = ['https://www.googleapis.com/auth/drive']
-        creds = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=scopes)
-        service = build('drive', 'v3', credentials=creds)
-
-        # Αναζήτηση για αποφυγή διπλότυπων
-        query = f"name = '{os.path.basename(file_path)}' and '{FOLDER_ID}' in parents and trashed = false"
-        results = service.files().list(q=query, fields="files(id)").execute()
+        service = get_gdrive_service() # Υποθέτουμε ότι έχεις ορίσει αυτή τη συνάρτηση για το build
+        file_name = os.path.basename(file_path)
+        
+        # 1. Αναζήτηση αν το αρχείο υπάρχει ήδη
+        query = f"name = '{file_name}' and '{FOLDER_ID}' in parents and trashed = false"
+        results = service.files().list(q=query, fields="files(id, modifiedTime)").execute()
         files = results.get('files', [])
 
         media = MediaFileUpload(file_path, mimetype='text/csv')
 
         if files:
+            # Ενημέρωση υπάρχοντος αρχείου
             file_id = files[0]['id']
-            service.files().update(fileId=file_id, media_body=media).execute()
+            updated_file = service.files().update(
+                fileId=file_id, 
+                media_body=media,
+                fields='id, modifiedTime' # Ζητάμε επιβεβαίωση χρόνου
+            ).execute()
+            
+            # Εμφάνιση επιβεβαίωσης στο Streamlit
+            st.success(f"✅ Το αρχείο ενημερώθηκε! ID: {updated_file.get('id')}")
+            st.info(f"🕒 Τελευταία τροποποίηση στο Drive: {updated_file.get('modifiedTime')}")
+            return True
         else:
-            file_metadata = {'name': os.path.basename(file_path), 'parents': [FOLDER_ID]}
-            service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        return True
-    except Exception as e:
-        st.error(f"Σφάλμα συγχρονισμού: {e}")
-        return False
+            # Δημιουργία νέου αρχείου
+            file_metadata = {'name': file_name, 'parents': [FOLDER_ID]}
+            new_file = service.files().create(
+                body=file_metadata, 
+                media_body=media, 
+                fields='id'
+            ).execute()
+            st.success(f"🆕 Δημιουργήθηκε νέο αρχείο στο Drive! ID: {new_file.get('id')}")
+            return True
 
+    except Exception as e:
+        st.error(f"❌ Αποτυχία συγχρονισμού: {e}")
+        return False
 # --- SIDEBAR LOGIC ---
 with st.sidebar:
     st.header("⚙️ Διαχείριση")
