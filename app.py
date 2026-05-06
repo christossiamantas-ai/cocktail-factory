@@ -14,6 +14,11 @@ from googleapiclient.http import MediaFileUpload
 FOLDER_ID = "1KSpn-eyT_B-7lTdjAerWHyxrl5zeBtar" 
 SERVICE_ACCOUNT_FILE = 'service_account.json'
 
+def get_gdrive_service():
+    scopes = ['https://www.googleapis.com/auth/drive']
+    creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+    return build('drive', 'v3', credentials=creds)
+
 def sync_to_drive(file_path):
     """
     Συγχρονίζει το αρχείο με το Google Drive και διαχειρίζεται σφάλματα
