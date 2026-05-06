@@ -61,6 +61,37 @@ def download_from_drive(file_path):
         return False
     except Exception:
         return False
+# ==========================================
+# 2. ΡΥΘΜΙΣΕΙΣ ΣΕΛΙΔΑΣ & PATHS
+# ==========================================
+st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
+
+BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+DB_INGREDIENTS = os.path.join(BASE_PATH, "db_ingredients.csv")
+DB_RECIPES = os.path.join(BASE_PATH, "db_recipes.csv")
+DB_ORDERS = os.path.join(BASE_PATH, "db_orders.csv")
+DB_HISTORY = os.path.join(BASE_PATH, "db_history.csv")
+
+# ΑΥΤΟΜΑΤΟ ΚΑΤΕΒΑΣΜΑ ΜΕ ΤΟ ΠΟΥ ΑΝΟΙΓΕΙ Η ΕΦΑΡΜΟΓΗ
+if 'init_done' not in st.session_state:
+    with st.spinner("🔄 Φόρτωση δεδομένων από το Cloud..."):
+        download_from_drive(DB_INGREDIENTS)
+        download_from_drive(DB_RECIPES)
+        download_from_drive(DB_ORDERS)
+        download_from_drive(DB_HISTORY)
+        st.session_state['init_done'] = True
+        st.rerun()
+
+# ==========================================
+# 3. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ (LOAD)
+# ==========================================
+def load_data():
+    ing = pd.read_csv(DB_INGREDIENTS) if os.path.exists(DB_INGREDIENTS) else pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)", "Weight_Full"])
+    rec = pd.read_csv(DB_RECIPES) if os.path.exists(DB_RECIPES) else pd.DataFrame(columns=["Barcode", "Ονομα", "Τιμή Καταλόγου"])
+    orders = pd.read_csv(DB_ORDERS) if os.path.exists(DB_ORDERS) else pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
+    return ing, rec, orders
+
+df_ing, df_rec, df_orders = load_data()
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
 def update_live_status(user_name):
