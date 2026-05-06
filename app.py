@@ -11,7 +11,7 @@ from googleapiclient.http import MediaFileUpload
 
 # --- ΡΥΘΜΙΣΕΙΣ GOOGLE DRIVE ---
 # ΠΡΟΣΟΧΗ: Εδώ βάζουμε ΜΟΝΟ το ID από το URL του browser, όχι το path του Mac!
-FOLDER_ID = "ΒΑΛΕ_ΕΔΩ_ΤΟ_ID_ΑΠΟ_ΤΟ_URL" 
+FOLDER_ID = "1KSpn-eyT_B-7lTdjAerWHyxrl5zeBtar" 
 SERVICE_ACCOUNT_FILE = 'service_account.json'
 
 def sync_to_drive(file_path):
