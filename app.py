@@ -1625,6 +1625,11 @@ elif page == "🔄 Αντικατάσταση":
                 
                 # Αποθήκευση στο CSV (Χρήση utf-8-sig για σωστή απεικόνιση Ελληνικών στο Excel)
                 temp_recipes.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
+                
+                # ---> ΠΡΟΣΘΗΚΗ: Συγχρονισμός Cloud <---
+                with st.spinner("⏳ Ενημέρωση Cloud..."):
+                    sync_to_drive(DB_RECIPES)
+                    
                 st.success(f"✅ Επιτυχία! Το '{target_ing}' αντικαταστάθηκε από το '{new_ing}' σε {total_changes} σημεία.")
                 st.balloons()
                 st.rerun()
