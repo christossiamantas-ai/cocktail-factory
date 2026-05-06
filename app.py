@@ -9,83 +9,57 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# --- ΡΥΘΜΙΣΕΙΣ GOOGLE DRIVE ---
-# ΠΡΟΣΟΧΗ: Εδώ βάζουμε ΜΟΝΟ το ID από το URL του browser, όχι το path του Mac!
+# 1. ΡΥΘΜΙΣΕΙΣ & ΣΥΝΔΕΣΗ DRIVE
+# ==========================================
 FOLDER_ID = "1KSpn-eyT_B-7lTdjAerWHyxrl5zeBtar" 
 SERVICE_ACCOUNT_FILE = 'service_account.json'
 
 def get_gdrive_service():
+    """Σύνδεση με το Google Drive API"""
+    if not os.path.exists(SERVICE_ACCOUNT_FILE):
+        st.error(f"Το αρχείο {SERVICE_ACCOUNT_FILE} λείπει!")
+        return None
     scopes = ['https://www.googleapis.com/auth/drive']
     creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
     return build('drive', 'v3', credentials=creds)
 
 def sync_to_drive(file_path):
-    """
-    Συγχρονίζει το αρχείο με το Google Drive και διαχειρίζεται σφάλματα
-    χωρίς να διακόπτει τη ροή του Streamlit.
-    """
+    """Ανεβάζει το τοπικό CSV στο Drive"""
     try:
-        # Φόρτωση διαπιστευτηρίων
-        if not os.path.exists(SERVICE_ACCOUNT_FILE):
-            st.error(f"Το αρχείο {SERVICE_ACCOUNT_FILE} δεν βρέθηκε!")
-            return False
-
-        scopes = ['https://www.googleapis.com/auth/drive']
-        creds = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=scopes)
-        service = build('drive', 'v3', credentials=creds)
-
-        file_name = os.path.basename(file_path)
-        
-        # Αναζήτηση υπάρχοντος αρχείου στο Drive
-        query = f"name = '{file_name}' and '{FOLDER_ID}' in parents and trashed = false"
-        results = service.files().list(q=query, fields="files(id)").execute()
-        files = results.get('files', [])
-
-        media = MediaFileUpload(file_path, mimetype='text/csv')
-
-        if files:
-            # Ενημέρωση αν υπάρχει
-            file_id = files[0]['id']
-            service.files().update(fileId=file_id, media_body=media).execute()
-            st.toast(f"✅ Το Drive ενημερώθηκε: {file_name}")
-        else:
-            # Δημιουργία αν δεν υπάρχει
-            file_metadata = {'name': file_name, 'parents': [FOLDER_ID]}
-            service.files().create(body=file_metadata, media_body=media).execute()
-            st.toast(f"🆕 Δημιουργήθηκε νέο αρχείο στο Drive: {file_name}")
-        
-        return True
-
-    except Exception as e:
-        # Εμφάνιση του σφάλματος με απλό τρόπο για να μην "κολλάει" η φόρμα
-        st.warning(f"⚠️ Προσοχή: Ο συγχρονισμός απέτυχε. Μήνυμα: {e}")
-        return False
-def download_from_drive(file_path):
-    """
-    Λαμβάνει το αρχείο από το Google Drive και το αποθηκεύει τοπικά.
-    """
-    try:
-        # Διασφάλιση ότι η συνάρτηση get_gdrive_service() έχει οριστεί παραπάνω
         service = get_gdrive_service()
+        if not service: return False
         file_name = os.path.basename(file_path)
-        
-        # Αναζήτηση του αρχείου στο Drive
         query = f"name = '{file_name}' and '{FOLDER_ID}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id)").execute()
         files = results.get('files', [])
-
+        media = MediaFileUpload(file_path, mimetype='text/csv')
         if files:
-            file_id = files[0]['id']
-            request = service.files().get_media(fileId=file_id)
-            
-            # Εγγραφή των δεδομένων στο τοπικό CSV
+            service.files().update(fileId=files[0]['id'], media_body=media).execute()
+        else:
+            meta = {'name': file_name, 'parents': [FOLDER_ID]}
+            service.files().create(body=meta, media_body=media).execute()
+        st.toast(f"✅ Συγχρονίστηκε: {file_name}")
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Σφάλμα Sync: {e}")
+        return False
+
+def download_from_drive(file_path):
+    """Κατεβάζει το CSV από το Drive στο Streamlit"""
+    try:
+        service = get_gdrive_service()
+        if not service: return False
+        file_name = os.path.basename(file_path)
+        query = f"name = '{file_name}' and '{FOLDER_ID}' in parents and trashed = false"
+        results = service.files().list(q=query, fields="files(id)").execute()
+        files = results.get('files', [])
+        if files:
+            request = service.files().get_media(fileId=files[0]['id'])
             with open(file_path, "wb") as f:
                 f.write(request.execute())
             return True
         return False
-    except Exception as e:
-        st.error(f"Σφάλμα κατά τη λήψη από το Drive: {e}")
+    except Exception:
         return False
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
