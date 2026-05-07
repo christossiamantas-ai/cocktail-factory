@@ -43,7 +43,7 @@ def load_data_from_sheets():
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
         # Άνοιγμα του Spreadsheet "database"
-        ss = client.open("database")
+        ss = client.open_by_key('18vCTHJk-3b5yrGQgZvD512bEPZhozOlWNHrkDu6j2Fc')
         
         # Βοηθητική συνάρτηση για ασφαλή ανάγνωση tabs
         def fetch_tab(name, fallback_cols):
