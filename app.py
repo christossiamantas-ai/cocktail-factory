@@ -369,6 +369,7 @@ elif page == "📊 Διαχείριση":
                         with target_col:
                             val_from_db = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
                             # Ασφαλής μετατροπή σε αριθμό (αποφυγή ValueError)
+        # Ασφαλής μετατροπή σε αριθμό (αποφυγή ValueError)
         raw_ml = str(row.get(f"ML{i}", "0")).replace(",", ".").strip()
         try:
             ml_from_db = float(raw_ml) if raw_ml else 0.0
@@ -379,7 +380,10 @@ elif page == "📊 Διαχείριση":
         new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(f"Υλικό {i}", options=ing_options, index=current_idx, key=f"s_{i}_{recipe_to_edit}")
         new_recipe_data[f"ML{i}"] = sub_c2.number_input(f"ML {i}", value=ml_from_db, key=f"m_{i}_{recipe_to_edit}")
 
-                    if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
+    # ΤΩΡΑ ΤΟ ΚΟΥΜΠΙ: Πρέπει να είναι στην ίδια ευθεία με το 'for' ή το 'with'
+    if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
+        # Εδώ μπαίνει ο κώδικας αποθήκευσης
+        st.success("Η συνταγή ενημερώθηκε!")
                         idx_to_update = df_rec[df_rec["Ονομα"] == recipe_to_edit].index
                         df_rec.loc[idx_to_update, "Ονομα"] = edit_name
                         df_rec.loc[idx_to_update, "Barcode"] = edit_barcode
