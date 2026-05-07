@@ -341,11 +341,13 @@ elif page == "📊 Διαχείριση":
     st.header("📊 Επεξεργασία & Διαγραφή Συνταγών")
     
     if not df_rec.empty:
-        if "Barcode" not in df_rec.columns: df_rec.insert(0, "Barcode", "")
+        if "Barcode" not in df_rec.columns: 
+            df_rec.insert(0, "Barcode", "")
+        
         df_rec["Barcode"] = df_rec["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
         
         recipe_options = sorted(df_rec["Ονομα"].unique(), key=lambda x: str(x).lower())
-        recipe_to_edit = st.selectbox("Αναζήτηση Cocktail:", options=df_rec["Ονομα"].unique(), index=None, placeholder="Επιλέξτε ένα Cocktail...")
+        recipe_to_edit = st.selectbox("Αναζήτηση Cocktail:", options=recipe_options, index=None, placeholder="Επιλέξτε ένα Cocktail...")
         
         if recipe_to_edit:
             row = df_rec[df_rec["Ονομα"] == recipe_to_edit].iloc[0]
@@ -368,29 +370,30 @@ elif page == "📊 Διαχείριση":
                         target_col = c1 if i <= 7 else c2
                         with target_col:
                             val_from_db = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                            current_idx = clean_options.index(val_from_db) if val_from_db in clean_options else 0
+                            
                             # Ασφαλής μετατροπή σε αριθμό (αποφυγή ValueError)
-        # Ασφαλής μετατροπή σε αριθμό (αποφυγή ValueError)
-        raw_ml = str(row.get(f"ML{i}", "0")).replace(",", ".").strip()
-        try:
-            ml_from_db = float(raw_ml) if raw_ml else 0.0
-        except ValueError:
-            ml_from_db = 0.0
-            
-        sub_c1, sub_c2 = st.columns([2, 1])
-        new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(f"Υλικό {i}", options=ing_options, index=current_idx, key=f"s_{i}_{recipe_to_edit}")
-        new_recipe_data[f"ML{i}"] = sub_c2.number_input(f"ML {i}", value=ml_from_db, key=f"m_{i}_{recipe_to_edit}")
+                            raw_ml = str(row.get(f"ML{i}", "0")).replace(",", ".").strip()
+                            try:
+                                ml_from_db = float(raw_ml) if raw_ml else 0.0
+                            except ValueError:
+                                ml_from_db = 0.0
+                            
+                            sub_c1, sub_c2 = st.columns([2, 1])
+                            new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(f"Υλικό {i}", options=ing_options, index=current_idx, key=f"s_{i}_{recipe_to_edit}")
+                            new_recipe_data[f"ML{i}"] = sub_c2.number_input(f"ML {i}", value=ml_from_db, key=f"m_{i}_{recipe_to_edit}")
 
-    # ΤΩΡΑ ΤΟ ΚΟΥΜΠΙ: Πρέπει να είναι στην ίδια ευθεία με το 'for' ή το 'with'
-    if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
-        # Εδώ μπαίνει ο κώδικας αποθήκευσης
-        st.success("Η συνταγή ενημερώθηκε!")
+                    # Το κουμπί Submit ανήκει στο "with st.form" (ίδια ευθεία με το "for i in range")
+                    if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
                         idx_to_update = df_rec[df_rec["Ονομα"] == recipe_to_edit].index
                         df_rec.loc[idx_to_update, "Ονομα"] = edit_name
                         df_rec.loc[idx_to_update, "Barcode"] = edit_barcode
                         df_rec.loc[idx_to_update, "Τιμή Καταλόγου"] = edit_price
-                        for k, v in new_recipe_data.items(): df_rec.loc[idx_to_update, k] = v
-                        df_rec = df_rec.sort_values(by="Ονομα", key=lambda col: col.str.lower())
                         
+                        for k, v in new_recipe_data.items(): 
+                            df_rec.loc[idx_to_update, k] = v
+                        
+                        df_rec = df_rec.sort_values(by="Ονομα", key=lambda col: col.str.lower())
                         save_to_sheet(df_rec, "Recipes")
                         st.success(f"✅ Η συνταγή '{edit_name}' ενημερώθηκε!")
                         st.rerun()
