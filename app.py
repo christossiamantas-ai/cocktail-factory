@@ -92,9 +92,8 @@ TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος":
 def init_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # Διαβάζει το μυστικό που βάλαμε στο Streamlit Cloud
-    creds_json = st.secrets["google_credentials"]
-    creds_dict = json.loads(creds_json)
+    # Μετατρέπουμε απευθείας τα secrets του Streamlit σε λεξικό (dict)
+    creds_dict = dict(st.secrets["google_credentials"])
     
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
