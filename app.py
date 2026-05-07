@@ -12,16 +12,26 @@ from googleapiclient.http import MediaFileUpload
 # ==========================================
 # GOOGLE DRIVE AUTH — STREAMLIT SECRETS EDITION (PATCHED)
 # ==========================================
-import json
 
 def get_gdrive_service():
     try:
-        sa_info = dict(st.secrets["gcp"])  # ΤΟ ΣΩΣΤΟ
-        folder_id = sa_info.pop("folder_id")
+        # 1. Παίρνουμε τα secrets και τα μετατρέπουμε σε κανονικό dictionary
+        sa_info = dict(st.secrets["gcp"])
+        
+        # 2. Αφαιρούμε το folder_id για να μην μπερδευτεί η Google
+        folder_id = sa_info.pop("folder_id", None)
 
+        # 3. ΚΡΙΣΙΜΗ ΔΙΟΡΘΩΣΗ: Μετατροπή των κωδικοποιημένων \n σε πραγματικές αλλαγές γραμμής
+        if "private_key" in sa_info:
+            sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+
+        # 4. Καθαρισμός του scope (απλό string, όχι markdown link)
+        scopes = ["https://www.googleapis.com/auth/drive"]
+
+        # 5. Δημιουργία των credentials
         creds = service_account.Credentials.from_service_account_info(
             sa_info,
-            scopes=["[googleapis.com](https://www.googleapis.com/auth/drive)"]
+            scopes=scopes
         )
 
         service = build("drive", "v3", credentials=creds)
@@ -32,28 +42,31 @@ def get_gdrive_service():
         return None, None
 
 
-
 def sync_to_drive(file_path):
     """Ανέβασμα / ενημέρωση CSV στο Google Drive (μέσω Secrets)"""
     try:
         service, FOLDER_ID = get_gdrive_service()
-        if not service:
+        if not service or not FOLDER_ID:
+            st.error("Δεν βρέθηκε το Service ή το Folder ID")
             return False
 
         file_name = os.path.basename(file_path)
+        
+        # Αναζήτηση αν το αρχείο υπάρχει ήδη στον συγκεκριμένο φάκελο
         query = f"name = '{file_name}' and '{FOLDER_ID}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id)").execute()
         files = results.get("files", [])
 
-        from googleapiclient.http import MediaFileUpload
         media = MediaFileUpload(file_path, mimetype="text/csv")
 
         if files:
+            # Ενημέρωση υπάρχοντος αρχείου
             service.files().update(
                 fileId=files[0]["id"],
                 media_body=media
             ).execute()
         else:
+            # Δημιουργία νέου αρχείου
             meta = {"name": file_name, "parents": [FOLDER_ID]}
             service.files().create(
                 body=meta,
@@ -72,7 +85,7 @@ def download_from_drive(file_path):
     """Κατεβάζει CSV από Google Drive (μέσω Secrets)"""
     try:
         service, FOLDER_ID = get_gdrive_service()
-        if not service:
+        if not service or not FOLDER_ID:
             return False
 
         file_name = os.path.basename(file_path)
@@ -88,7 +101,8 @@ def download_from_drive(file_path):
 
         return False
 
-    except Exception:
+    except Exception as e:
+        # st.write(f"Download Error: {e}") # Για αποσφαλμάτωση αν χρειαστεί
         return False
 
 # ==========================================
