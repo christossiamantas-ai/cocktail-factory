@@ -368,10 +368,12 @@ elif page == "📊 Διαχείριση":
                         target_col = c1 if i <= 7 else c2
                         with target_col:
                             val_from_db = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
-                            ml_from_db = float(row.get(f"ML{i}", 0.0))
-                            
-                            try: current_idx = clean_options.index(val_from_db)
-                            except ValueError: current_idx = 0
+                            # Ασφαλής μετατροπή σε αριθμό (αποφυγή ValueError)
+        raw_ml = str(row.get(f"ML{i}", "0")).replace(",", ".").strip()
+        try:
+            ml_from_db = float(raw_ml) if raw_ml else 0.0
+        except ValueError:
+            ml_from_db = 0.0
                             
                             sub_c1, sub_c2 = st.columns([2, 1])
                             new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(f"Υλικό {i}", options=ing_options, index=current_idx, key=f"s_{i}_{recipe_to_edit}")
