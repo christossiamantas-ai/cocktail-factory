@@ -369,11 +369,11 @@ elif page == "📊 Διαχείριση":
                         with target_col:
                             val_from_db = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
                             # Ασφαλής μετατροπή σε αριθμό (αποφυγή ValueError)
-        raw_ml = str(row.get(f"ML{i}", "0")).replace(",", ".").strip()
-        try:
-            ml_from_db = float(raw_ml) if raw_ml else 0.0
-        except ValueError:
-            ml_from_db = 0.0
+                           raw_ml = str(row.get(f"ML{i}", "0")).replace(",", ".").strip()
+                           try:
+                           ml_from_db = float(raw_ml) if raw_ml else 0.0
+                           except ValueError:
+                           ml_from_db = 0.0
                             
                             sub_c1, sub_c2 = st.columns([2, 1])
                             new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(f"Υλικό {i}", options=ing_options, index=current_idx, key=f"s_{i}_{recipe_to_edit}")
