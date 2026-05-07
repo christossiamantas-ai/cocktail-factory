@@ -5,6 +5,7 @@ import math
 from datetime import datetime
 import plotly.express as px
 import imaplib
+import json
 import email
 import time
 import gspread
@@ -90,14 +91,19 @@ TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος":
 @st.cache_resource
 def init_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("client_secret.json", scope)
+    
+    # Διαβάζει το μυστικό που βάλαμε στο Streamlit Cloud
+    creds_json = st.secrets["google_credentials"]
+    creds_dict = json.loads(creds_json)
+    
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     return client.open("CabClub_DB")
 
 try:
     spreadsheet = init_google_sheets()
 except Exception as e:
-    st.error(f"Σφάλμα σύνδεσης με Google Sheets. Βεβαιωθείτε ότι το client_secret.json υπάρχει και το αρχείο CabClub_DB είναι shared στο Service Account. Λεπτομέρειες: {e}")
+    st.error(f"Σφάλμα σύνδεσης με Google Sheets: {e}")
     st.stop()
 
 def load_sheet_data(worksheet_name, columns):
