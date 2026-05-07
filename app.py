@@ -1,184 +1,136 @@
 import streamlit as st
 import pandas as pd
 import os
-import math
+import gspread
+from google.oauth2 import service_account
 from datetime import datetime
-import plotly.express as px
-import imaplib
-import email
 import time
 
-# --- SIDEBAR & REFRESH LOGIC ---
-with st.sidebar:
-    st.header("⚙️ Διαχείριση")
-    if st.button("🔄 Ανανέωση Δεδομένων"):
-        # Καθαρίζει όλη τη μνήμη cache της εφαρμογής
-        st.cache_data.clear()
-        # Επανεκκινεί την εφαρμογή για να διαβάσει τα αρχεία από το Drive
-        st.rerun()
-    
-    st.info("Πατήστε ανανέωση αν ο συνεργάτης σας έκανε αλλαγές στο Excel.")
-    st.divider()
-    # Στο sidebar, κάτω από το button:
-now = datetime.now().strftime("%H:%M:%S") # Αφαίρεσα το ένα .datetime
-st.write(f"Τελευταίος έλεγχος: {now}")
+# ==========================================
+# 1. ΣΥΝΔΕΣΗ ΜΕ GOOGLE SHEETS API
+# ==========================================
 
-# --- ΣΥΣΤΗΜΑ LIVE STATUS ---
-def update_live_status(user_name):
-    # Γράφει το όνομα και την τρέχουσα ώρα σε ένα αρχείο status.txt
-    with open("app_status.txt", "w", encoding="utf-8") as f:
-        f.write(f"{user_name}|{time.time()}")
+@st.cache_resource
+def get_ss_client():
+    """Σύνδεση με το Google Sheets με διόρθωση κλειδιού για το Cloud"""
+    try:
+        sa_info = dict(st.secrets["gcp"])
+        if "private_key" in sa_info:
+            sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+        
+        sa_info.pop("folder_id", None)
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds = service_account.Credentials.from_service_account_info(sa_info, scopes=scopes)
+        return gspread.authorize(creds)
+    except Exception as e:
+        st.error(f"⚠️ Σφάλμα σύνδεσης API: {e}")
+        return None
 
-def get_who_is_online():
-    if os.path.exists("app_status.txt"):
-        with open("app_status.txt", "r", encoding="utf-8") as f:
-            data = f.read().split("|")
-            if len(data) == 2:
-                user, last_time = data[0], float(data[1])
-                # Αν η τελευταία ενημέρωση έγινε τα τελευταία 60 δευτερόλεπτα
-                if time.time() - last_time < 60:
-                    return user
-    return None
+def load_data_from_sheets():
+    """Φορτώνει δεδομένα και προστατεύει από KeyError αν λείπουν στήλες"""
+    try:
+        client = get_ss_client()
+        if not client: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        
+        # Το ID του Google Sheet σου
+        ss = client.open_by_key('18vCTHJk-3b5yrGQgZvD512bEPZhozOlWNHrkDu6j2Fc')
+        
+        def fetch_tab(name, expected_cols):
+            try:
+                ws = ss.worksheet(name)
+                data = ws.get_all_records()
+                df = pd.DataFrame(data)
+                
+                if df.empty:
+                    return pd.DataFrame(columns=expected_cols)
+                
+                # Καθαρισμός ονομάτων στηλών από κενά
+                df.columns = [str(c).strip() for c in df.columns]
+                
+                # Αυτόματη δημιουργία στηλών αν λείπουν (Προστασία από KeyError)
+                for col in expected_cols:
+                    if col not in df.columns:
+                        df[col] = 0 if col != "Name" else "Νέο Υλικό"
+                return df
+            except:
+                return pd.DataFrame(columns=expected_cols)
 
-# Επιλογή χρήστη στο sidebar (για να ξέρει το σύστημα ποιος είναι μέσα)
-current_user = st.sidebar.selectbox("👤 Είσαι ο:", ["Χρήστης Α", "Χρήστης Β"])
+        # Φόρτωση Πινάκων
+        ing = fetch_tab("Inventory", ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
+        rec = fetch_tab("Recipes", ["Ονομα", "Τιμή Καταλόγου"])
+        orders = fetch_tab("Orders", ["Πελάτης", "Cocktail", "Τεμάχια"])
+        history = fetch_tab("History", ["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
 
-# Ενημέρωση ότι είσαι ενεργός
-update_live_status(current_user)
+        return ing, rec, orders, history
+    except Exception as e:
+        st.error(f"❌ Γενικό Σφάλμα Φόρτωσης: {e}")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-# Έλεγχος αν είναι ο άλλος μέσα
-online_user = get_who_is_online()
+# --- ΕΚΤΕΛΕΣΗ ΦΟΡΤΩΣΗΣ ---
+df_ing, df_rec, df_orders, df_history = load_data_from_sheets()
 
-# Εμφάνιση ένδειξης στο sidebar
-if online_user and online_user != current_user:
-    st.sidebar.success(f"🟢 Ο {online_user} είναι online!")
-else:
-    st.sidebar.info("⚪️ Μόνος στην εφαρμογή")
-
-# --- Ρυθμίσεις Σελίδας ---
+# ==========================================
+# 2. ΡΥΘΜΙΣΕΙΣ ΣΕΛΙΔΑΣ & ΑΣΦΑΛΕΙΑ
+# ==========================================
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
-# --- Σύστημα Password ---
-def check_password():
-    """Επιστρέφει True αν ο χρήστης έδωσε σωστό κωδικό."""
-    def password_entered():
-        # panatha1908
-        if st.session_state["password"] == "panatha1908":
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Διαγραφή κωδικού από το state για ασφάλεια
-        else:
-            st.session_state["password_correct"] = False
 
+def check_password():
     if "password_correct" not in st.session_state:
-        # Πρώτη φορά που ανοίγει η εφαρμογή
-        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
+        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", 
+                      on_change=lambda: st.session_state.update({"password_correct": st.session_state["pwd"] == "panatha1908"}), 
+                      key="pwd")
         return False
     elif not st.session_state["password_correct"]:
-        # Λάθος κωδικός
-        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
-        st.error("❌ Λάθος κωδικός. Προσπαθήστε ξανά.")
+        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", 
+                      on_change=lambda: st.session_state.update({"password_correct": st.session_state["pwd"] == "panatha1908"}), 
+                      key="pwd")
+        st.error("❌ Λάθος κωδικός.")
         return False
-    else:
-        # Σωστός κωδικός
-        return True
+    return True
 
 if not check_password():
-    st.stop()  # Σταματάει την εκτέλεση της εφαρμογής εδώ αν δεν είναι σωστός ο κωδικός
+    st.stop()
 
-# Προσθήκη CSS
+# --- CSS STYLE ---
 st.markdown("""
     <style>
-    /* Φόντο όλης της εφαρμογής */
-    .stApp {
-        background-color: #0e1117;
-    }
-    
-    /* Στυλ για τα Metrics (Κέρδος, Κόστος κλπ) */
-    [data-testid="stMetricValue"] {
-        font-size: 28px;
-        color: #00ffcc; /* Ένα neon κυανό χρώμα για τις τιμές */
-    }
-    
-    /* Στυλ για τα κουτιά των metrics */
-    div[data-testid="stMetric"] {
-        background-color: #1e2129;
-        border: 1px solid #333;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
-    }
-
-    /* Κουμπιά με πιο έντονο στυλ */
-    .stButton>button {
-        width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        background-color: #3e4451;
-        color: white;
-        border: none;
-    }
-    .stButton>button:hover {
-        border: 1px solid #00ffcc;
-        color: #00ffcc;
-    }
+    .stApp { background-color: #0e1117; }
+    [data-testid="stMetricValue"] { font-size: 28px; color: #00ffcc; }
+    div[data-testid="stMetric"] { background-color: #1e2129; border: 1px solid #333; padding: 15px; border-radius: 10px; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #3e4451; color: white; }
     </style>
     """, unsafe_allow_html=True)
 
-# Αρχεία Βάσης
-# --- Δυναμικά Paths για να παίζει σε Mac & Windows ταυτόχρονα ---
-BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+# ==========================================
+# 3. SIDEBAR LOGIC
+# ==========================================
+with st.sidebar:
+    st.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
+    st.title("DC CABCLUB 2026 🏆")
+    
+    if st.button("🔄 Ανανέωση Δεδομένων"):
+        st.cache_data.clear()
+        st.rerun()
 
-DB_INGREDIENTS = os.path.join(BASE_PATH, "db_ingredients.csv")
-DB_RECIPES = os.path.join(BASE_PATH, "db_recipes.csv")
-DB_ORDERS = os.path.join(BASE_PATH, "db_orders.csv")
-DB_HISTORY = os.path.join(BASE_PATH, "db_history.csv")
+    current_user = st.selectbox("👤 Είσαι ο:", ["Χρήστης Α", "Χρήστης Β"])
+    
+    st.divider()
+    page = st.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
+    
+    TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
+    country = st.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
+    tax_factor = TAX_RATES[country]
 
-TOTAL_FIXED = 0.22  
-TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
+# Βασικές μεταβλητές για dropdowns
+ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
+recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
 def format_greek(value):
     if isinstance(value, (int, float)):
         return "{:.3f}".format(value).replace('.', ',')
     return value
 
-def load_data():
-    if os.path.exists(DB_INGREDIENTS):
-        ing = pd.read_csv(DB_INGREDIENTS)
-    else:
-        ing = pd.DataFrame(columns=["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
-    
-    for col in ["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"]:
-        if col not in ing.columns:
-            ing[col] = 0.0 if col != "Name" else "Νέο Υλικό"
-            
-    if os.path.exists(DB_RECIPES):
-        rec = pd.read_csv(DB_RECIPES)
-    else:
-        cols_rec = ["Ονομα", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
-        rec = pd.DataFrame(columns=cols_rec)
-        
-    if os.path.exists(DB_ORDERS):
-        orders = pd.read_csv(DB_ORDERS, dtype={"Πελάτης": str, "Cocktail": str})
-    else:
-        orders = pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
-    orders["Πελάτης"] = orders["Πελάτης"].astype(str).replace("nan", "")
-
-    if os.path.exists(DB_HISTORY):
-        history = pd.read_csv(DB_HISTORY)
-    else:
-        history = pd.DataFrame(columns=["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
-        
-    return ing, rec, orders, history
-
-df_ing, df_rec, df_orders, df_history = load_data()
-ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
-recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
-
-# --- Sidebar ---
-st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
-st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
-country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
-tax_factor = TAX_RATES[country]
+# Τώρα μπορείς να συνεχίσεις με το if page == "📦 Αποθήκη": κτλ...
 
 # --- 1. ΑΠΟΘΗΚΗ (ΦΟΡΜΑ ΑΝΤΙ ΓΙΑ ΠΙΝΑΚΑ) ---
 if page == "📦 Αποθήκη":
