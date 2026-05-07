@@ -12,24 +12,13 @@ import time
 
 @st.cache_resource
 def get_ss_client():
-    """
-    Δημιουργεί τον client για τη σύνδεση με τα Google Sheets.
-    Χρησιμοποιεί το st.cache_resource για να μην επαναλαμβάνεται η σύνδεση.
-    """
     try:
-        # Λήψη διαπιστευτηρίων από τα Streamlit Secrets
         sa_info = dict(st.secrets["gcp"])
-        
-        # Διόρθωση του private_key για το περιβάλλον του Cloud
         if "private_key" in sa_info:
             sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
         
-        # Καθορισμός των δικαιωμάτων (scopes)
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        
+        sa_info.pop("folder_id", None)
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = service_account.Credentials.from_service_account_info(sa_info, scopes=scopes)
         return gspread.authorize(creds)
     except Exception as e:
@@ -37,65 +26,45 @@ def get_ss_client():
         return None
 
 def load_data_from_sheets():
-    """
-    Φορτώνει δεδομένα από το Google Sheet και διασφαλίζει ότι 
-    υπάρχουν όλες οι απαραίτητες στήλες για να αποφευχθούν KeyError.
-    """
     try:
         client = get_ss_client()
-        if not client:
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        if not client: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
-        # Σύνδεση μέσω του ID του αρχείου
-        sheet_id = '18vCTHJk-3b5yrGQgZvD512bEPZhozOlWNHrkDu6j2Fc'
-        ss = client.open_by_key(sheet_id)
+        # Σύνδεση με το ID του αρχείου σου
+        ss = client.open_by_key('18vCTHJk-3b5yrGQgZvD512bEPZhozOlWNHrkDu6j2Fc')
         
-        def fetch_tab_safely(name, expected_cols):
+        def fetch_tab(name, expected_cols):
             try:
-                # Προσπάθεια ανάγνωσης του tab
-                worksheet = ss.worksheet(name)
-                data = worksheet.get_all_records()
+                ws = ss.worksheet(name)
+                data = ws.get_all_records()
                 df = pd.DataFrame(data)
                 
-                # Αν το sheet είναι άδειο, φτιάξε κενό DataFrame με τις στήλες
                 if df.empty:
                     return pd.DataFrame(columns=expected_cols)
                 
-                # Καθαρισμός ονομάτων στηλών (αφαίρεση κενών)
+                # Καθαρισμός στηλών από κενά (π.χ. "ID " -> "ID")
                 df.columns = [str(c).strip() for c in df.columns]
                 
-                # ΕΛΕΓΧΟΣ ΣΤΗΛΩΝ: Αν λείπει κάποια στήλη, πρόσθεσέ την με 0
+                # Διασφάλιση ότι υπάρχουν όλες οι στήλες
                 for col in expected_cols:
                     if col not in df.columns:
-                        df[col] = 0
-                
+                        df[col] = 0 if col != "Name" else "Νέο Υλικό"
                 return df
-            except gspread.exceptions.WorksheetNotFound:
-                st.warning(f"⚠️ Το φύλλο '{name}' δεν βρέθηκε. Χρήση κενού πίνακα.")
-                return pd.DataFrame(columns=expected_cols)
-            except Exception as e:
-                st.error(f"⚠️ Σφάλμα στο tab '{name}': {e}")
+            except:
                 return pd.DataFrame(columns=expected_cols)
 
-        # Ορισμός αναμενόμενων στηλών για κάθε πίνακα
-        ing_cols = ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]
-        rec_cols = ["Ονομα", "Τιμή Καταλόγου"]
-        ord_cols = ["Πελάτης", "Cocktail", "Τεμάχια"]
-        his_cols = ["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"]
+        # ΠΡΟΣΟΧΗ: Αυτά πρέπει να υπάρχουν ως επικεφαλίδες στο Google Sheet
+        df_ing = fetch_tab("Inventory", ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
+        df_rec = fetch_tab("Recipes", ["Ονομα", "Τιμή Καταλόγου"])
+        df_orders = fetch_tab("Orders", ["Πελάτης", "Cocktail", "Τεμάχια"])
+        df_history = fetch_tab("History", ["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
 
-        # Φόρτωση των πινάκων
-        df_inventory = fetch_tab_safely("Inventory", ing_cols)
-        df_recipes   = fetch_tab_safely("Recipes", rec_cols)
-        df_orders    = fetch_tab_safely("Orders", ord_cols)
-        df_history   = fetch_tab_safely("History", his_cols)
-
-        return df_inventory, df_recipes, df_orders, df_history
-
+        return df_ing, df_rec, df_orders, df_history
     except Exception as e:
-        st.error(f"❌ Γενική αποτυχία φόρτωσης: {e}")
+        st.error(f"❌ Γενικό Σφάλμα: {e}")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-# Κλήση της συνάρτησης για ανάκτηση των δεδομένων
+# --- ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ ---
 df_ing, df_rec, df_orders, df_history = load_data_from_sheets()
 
 # ==========================================
