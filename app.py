@@ -446,7 +446,11 @@ elif page == "🔍 Ανάλυση":
                         alc_val = float(ing_row.get("Αλκοόλ %", 0))
                         actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
                         pure_alc_ml += (ml * actual_alc_pct)
-                        price_ml = float(ing_row.get("Τιμή/ml", 0))
+                        raw_price_ml = str(ing_row.get("Τιμή/ml", "0")).replace(",", ".").strip()
+        try:
+            price_ml = float(raw_price_ml) if raw_price_ml else 0.0
+        except ValueError:
+            price_ml = 0.0
                         item_cost = ml * price_ml
                         raw_cost += item_cost
                         breakdown.append({"Υλικό": ing_n, "ML": ml, "Κόστος": item_cost, "Alc %": actual_alc_pct * 100})
