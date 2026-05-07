@@ -1019,12 +1019,10 @@ elif page == "📈 Dashboard":
 elif page == "🌐 Shop Sync":
     st.header("🌐 Συγχρονισμός & Ανάλυση Ημέρας (WooCommerce API)")
     
-    # Διαδρομές αρχείων & Ρυθμίσεις
-    # ΣΗΜΕΙΩΣΗ: Βεβαιώσου ότι η διαδρομή είναι προσβάσιμη από την εφαρμογή
+    # Διαδρομές αρχείων
     recipes_path = r"/Users/christossiamantas/Documents/recipes.xlsx"
-    WC_URL = "https://your-site-url.gr" # <--- Αντικατάστησε με το πραγματικό URL
 
-    # Αρχικοποίηση session state για τα αποτελέσματα ώστε να μη χάνονται στο rerun
+    # Αρχικοποίηση session state
     if 'sync_results' not in st.session_state:
         st.session_state['sync_results'] = []
 
@@ -1032,28 +1030,37 @@ elif page == "🌐 Shop Sync":
 
     with tab1:
         st.subheader("Σύνδεση με το Κατάστημα")
+        
+        # Προσθήκη URL εισαγωγής για μεγαλύτερη ευελιξία
+        WC_URL = st.text_input("URL Καταστήματος", value="https://το-site-σου.gr", help="Πληκτρολογήστε το πλήρες URL (π.χ. https://example.com)")
+        
         c1, c2 = st.columns(2)
-        ck = c1.text_input("Consumer Key (ck_...)", type="password", help="Βρείτε το στο WooCommerce > Settings > Advanced > REST API")
+        ck = c1.text_input("Consumer Key (ck_...)", type="password")
         cs = c2.text_input("Consumer Secret (cs_...)", type="password")
         g_date = st.date_input("Επιλέξτε Ημερομηνία:", value=datetime.now().date())
 
         if st.button("🚀 Λήψη Παραγγελιών"):
-            if not ck or not cs:
-                st.warning("Παρακαλώ εισάγετε τα API Keys.")
+            # Έλεγχος αν συμπληρώθηκαν όλα τα απαραίτητα πεδία
+            if not ck or not cs or not WC_URL or WC_URL == "https://το-site-σου.gr":
+                st.warning("Παρακαλώ εισάγετε το URL και τα API Keys.")
             else:
                 import requests
                 from requests.auth import HTTPBasicAuth
+                import pandas as pd # Βεβαιώσου ότι έχεις κάνει import τα pandas
                 
-                # ISO Format για το API (Απαραίτητο για το φιλτράρισμα του WooCommerce)
+                # Αφαίρεση τυχόν τελικού slash αν το έβαλε ο χρήστης κατά λάθος
+                clean_url = WC_URL.rstrip('/')
+                endpoint = f"{clean_url}/wp-json/wc/v3/orders"
+                
+                # ISO Format για το API
                 date_start = f"{g_date}T00:00:00"
                 date_end = f"{g_date}T23:59:59"
                 
-                endpoint = f"{WC_URL}/wp-json/wc/v3/orders"
                 params = {
                     "after": date_start, 
                     "before": date_end, 
                     "per_page": 100,
-                    "status": "processing" # Προαιρετικό: Λήψη μόνο των παραγγελιών προς επεξεργασία
+                    "status": "processing" 
                 }
                 
                 try:
@@ -1065,12 +1072,10 @@ elif page == "🌐 Shop Sync":
                             results = []
                             
                             for order in orders:
-                                # Λήψη Επωνυμίας ή Ονόματος Πελάτη
                                 customer = order.get("billing", {}).get("company", "")
                                 if not customer:
                                     customer = f"{order.get('billing', {}).get('first_name')} {order.get('billing', {}).get('last_name')}"
                                 
-                                # Ανάλυση προϊόντων (Line Items) στην παραγγελία
                                 for item in order.get("line_items", []):
                                     prod_name = item.get("name")
                                     qty = item.get("quantity", 0)
@@ -1079,7 +1084,7 @@ elif page == "🌐 Shop Sync":
                                         "Ημερομηνία": g_date.strftime("%d/%m/%Y"),
                                         "Πελάτης": customer.upper(),
                                         "Cocktail": prod_name,
-                                        "Τεμάχια": int(qty) * 24 # Μετατροπή κιβωτίου σε μπουκάλια
+                                        "Τεμάχια": int(qty) * 24 
                                     })
                             
                             st.session_state['sync_results'] = results
@@ -1089,10 +1094,9 @@ elif page == "🌐 Shop Sync":
                             else:
                                 st.warning("Δεν βρέθηκαν παραγγελίες για αυτή την ημερομηνία.")
                         else:
-                            st.error(f"Σφάλμα API: {response.status_code} - Ελέγξτε τα κλειδιά και το URL.")
+                            st.error(f"Σφάλμα API: {response.status_code}. Ελέγξτε το URL και τα κλειδιά.")
                 except Exception as e:
                     st.error(f"Αποτυχία σύνδεσης: {e}")
-
     with tab2:
         st.subheader("📊 Συνολικά Υλικά προς Προετοιμασία")
         
