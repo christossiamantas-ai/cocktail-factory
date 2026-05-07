@@ -16,8 +16,7 @@ import json
 
 def get_gdrive_service():
     try:
-        # Φορτώνει όλο το JSON του service account
-        sa_info = dict(st.secrets["gcp"])
+        sa_info = dict(st.secrets["gcp"])  # ΤΟ ΣΩΣΤΟ
         folder_id = sa_info.pop("folder_id")
 
         creds = service_account.Credentials.from_service_account_info(
@@ -31,6 +30,7 @@ def get_gdrive_service():
     except Exception as e:
         st.error(f"Σφάλμα στα credentials: {e}")
         return None, None
+
 
 
 def sync_to_drive(file_path):
