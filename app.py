@@ -433,7 +433,12 @@ elif page == "🔍 Ανάλυση":
         
         for i in range(1, 14):
             ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
-            ml = float(r.get(f"ML{i}", 0))
+            # Ασφαλής μετατροπή ML από το Sheet
+            raw_ml = str(r.get(f"ML{i}", "0")).replace(",", ".").strip()
+            try:
+                ml = float(raw_ml) if raw_ml else 0.0
+            except ValueError:
+                ml = 0.0
             
             if ing_n != "ΚΕΝΟ" and ml > 0:
                 total_ml_cocktail += ml
@@ -443,20 +448,35 @@ elif page == "🔍 Ανάλυση":
                     match = df_ing[df_ing["Name"] == ing_n]
                     if not match.empty:
                         ing_row = match.iloc[0]
+                        
+                        # Υπολογισμός Αλκοόλ
                         alc_val = float(ing_row.get("Αλκοόλ %", 0))
                         actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
                         pure_alc_ml += (ml * actual_alc_pct)
+                        
+                        # Ασφαλής μετατροπή τιμής ανά ml
                         raw_price_ml = str(ing_row.get("Τιμή/ml", "0")).replace(",", ".").strip()
-        try:
-            price_ml = float(raw_price_ml) if raw_price_ml else 0.0
-        except ValueError:
-            price_ml = 0.0
+                        try:
+                            price_ml = float(raw_price_ml) if raw_price_ml else 0.0
+                        except ValueError:
+                            price_ml = 0.0
+                        
                         item_cost = ml * price_ml
                         raw_cost += item_cost
-                        breakdown.append({"Υλικό": ing_n, "ML": ml, "Κόστος": item_cost, "Alc %": actual_alc_pct * 100})
+                        breakdown.append({
+                            "Υλικό": ing_n, 
+                            "ML": ml, 
+                            "Κόστος": item_cost, 
+                            "Alc %": actual_alc_pct * 100
+                        })
                     else:
                         missing_ingredients.append(ing_n)
-                        breakdown.append({"Υλικό": f"⚠️ {ing_n} (Μη διαθέσιμο)", "ML": ml, "Κόστος": 0.0, "Alc %": 0.0})
+                        breakdown.append({
+                            "Υλικό": f"⚠️ {ing_n} (Μη διαθέσιμο)", 
+                            "ML": ml, 
+                            "Κόστος": 0.0, 
+                            "Alc %": 0.0
+                        })
 
         if missing_ingredients:
             st.error(f"⚠️ Τα παρακάτω υλικά της συνταγής δεν βρέθηκαν στην Αποθήκη: {', '.join(missing_ingredients)}")
