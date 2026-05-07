@@ -9,58 +9,88 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 1. ΡΥΘΜΙΣΕΙΣ & ΣΥΝΔΕΣΗ DRIVE
 # ==========================================
-FOLDER_ID = "1KSpn-eyT_B-7lTdjAerWHyxrl5zeBtar" 
-SERVICE_ACCOUNT_FILE = 'service_account.json'
+# GOOGLE DRIVE AUTH — STREAMLIT SECRETS EDITION (PATCHED)
+# ==========================================
+import json
 
 def get_gdrive_service():
-    """Σύνδεση με το Google Drive API"""
-    if not os.path.exists(SERVICE_ACCOUNT_FILE):
-        st.error(f"Το αρχείο {SERVICE_ACCOUNT_FILE} λείπει!")
-        return None
-    scopes = ['https://www.googleapis.com/auth/drive']
-    creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
-    return build('drive', 'v3', credentials=creds)
+    try:
+        # Φορτώνει όλο το JSON του service account
+        sa_info = dict(st.secrets["gcp"])
+        folder_id = sa_info.pop("folder_id")
+
+        creds = service_account.Credentials.from_service_account_info(
+            sa_info,
+            scopes=["[googleapis.com](https://www.googleapis.com/auth/drive)"]
+        )
+
+        service = build("drive", "v3", credentials=creds)
+        return service, folder_id
+
+    except Exception as e:
+        st.error(f"Σφάλμα στα credentials: {e}")
+        return None, None
+
 
 def sync_to_drive(file_path):
-    """Ανεβάζει το τοπικό CSV στο Drive"""
+    """Ανέβασμα / ενημέρωση CSV στο Google Drive (μέσω Secrets)"""
     try:
-        service = get_gdrive_service()
-        if not service: return False
+        service, FOLDER_ID = get_gdrive_service()
+        if not service:
+            return False
+
         file_name = os.path.basename(file_path)
         query = f"name = '{file_name}' and '{FOLDER_ID}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id)").execute()
-        files = results.get('files', [])
-        media = MediaFileUpload(file_path, mimetype='text/csv')
+        files = results.get("files", [])
+
+        from googleapiclient.http import MediaFileUpload
+        media = MediaFileUpload(file_path, mimetype="text/csv")
+
         if files:
-            service.files().update(fileId=files[0]['id'], media_body=media).execute()
+            service.files().update(
+                fileId=files[0]["id"],
+                media_body=media
+            ).execute()
         else:
-            meta = {'name': file_name, 'parents': [FOLDER_ID]}
-            service.files().create(body=meta, media_body=media).execute()
+            meta = {"name": file_name, "parents": [FOLDER_ID]}
+            service.files().create(
+                body=meta,
+                media_body=media
+            ).execute()
+
         st.toast(f"✅ Συγχρονίστηκε: {file_name}")
         return True
+
     except Exception as e:
         st.warning(f"⚠️ Σφάλμα Sync: {e}")
         return False
 
+
 def download_from_drive(file_path):
-    """Κατεβάζει το CSV από το Drive στο Streamlit"""
+    """Κατεβάζει CSV από Google Drive (μέσω Secrets)"""
     try:
-        service = get_gdrive_service()
-        if not service: return False
+        service, FOLDER_ID = get_gdrive_service()
+        if not service:
+            return False
+
         file_name = os.path.basename(file_path)
         query = f"name = '{file_name}' and '{FOLDER_ID}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id)").execute()
-        files = results.get('files', [])
+        files = results.get("files", [])
+
         if files:
-            request = service.files().get_media(fileId=files[0]['id'])
+            request = service.files().get_media(fileId=files[0]["id"])
             with open(file_path, "wb") as f:
                 f.write(request.execute())
             return True
+
         return False
+
     except Exception:
         return False
+
 # ==========================================
 # 2. ΡΥΘΜΙΣΕΙΣ ΣΕΛΙΔΑΣ & PATHS
 # ==========================================
