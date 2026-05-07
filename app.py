@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import os
 import gspread
 from google.oauth2 import service_account
 from datetime import datetime
@@ -12,13 +11,11 @@ import time
 
 @st.cache_resource
 def get_ss_client():
-    """Σύνδεση με το Google Sheets με διόρθωση κλειδιού για το Cloud"""
     try:
         sa_info = dict(st.secrets["gcp"])
         if "private_key" in sa_info:
             sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
         
-        sa_info.pop("folder_id", None)
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds = service_account.Credentials.from_service_account_info(sa_info, scopes=scopes)
         return gspread.authorize(creds)
@@ -27,12 +24,11 @@ def get_ss_client():
         return None
 
 def load_data_from_sheets():
-    """Φορτώνει δεδομένα και προστατεύει από KeyError αν λείπουν στήλες"""
     try:
         client = get_ss_client()
         if not client: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
-        # Το ID του Google Sheet σου
+        # Σύνδεση με το ID του αρχείου σου
         ss = client.open_by_key('18vCTHJk-3b5yrGQgZvD512bEPZhozOlWNHrkDu6j2Fc')
         
         def fetch_tab(name, expected_cols):
@@ -41,55 +37,39 @@ def load_data_from_sheets():
                 data = ws.get_all_records()
                 df = pd.DataFrame(data)
                 
-                if df.empty:
-                    return pd.DataFrame(columns=expected_cols)
-                
                 # Καθαρισμός ονομάτων στηλών από κενά
-                df.columns = [str(c).strip() for c in df.columns]
+                if not df.empty:
+                    df.columns = [str(c).strip() for c in df.columns]
+                else:
+                    df = pd.DataFrame(columns=expected_cols)
                 
-                # Αυτόματη δημιουργία στηλών αν λείπουν (Προστασία από KeyError)
+                # Διασφάλιση ότι όλες οι στήλες υπάρχουν (Πρόληψη KeyError)
                 for col in expected_cols:
                     if col not in df.columns:
-                        df[col] = 0 if col != "Name" else "Νέο Υλικό"
+                        df[col] = 0 if col != "Name" else "Κενό"
+                
                 return df
             except:
                 return pd.DataFrame(columns=expected_cols)
 
-        # Φόρτωση Πινάκων
-        ing = fetch_tab("Inventory", ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
-        rec = fetch_tab("Recipes", ["Ονομα", "Τιμή Καταλόγου"])
-        orders = fetch_tab("Orders", ["Πελάτης", "Cocktail", "Τεμάχια"])
-        history = fetch_tab("History", ["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
+        # Φόρτωση των 4 Tabs
+        df_ing = fetch_tab("Inventory", ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
+        df_rec = fetch_tab("Recipes", ["Ονομα", "Τιμή Καταλόγου"])
+        df_orders = fetch_tab("Orders", ["Πελάτης", "Cocktail", "Τεμάχια"])
+        df_history = fetch_tab("History", ["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
 
-        return ing, rec, orders, history
+        return df_ing, df_rec, df_orders, df_history
     except Exception as e:
-        st.error(f"❌ Γενικό Σφάλμα Φόρτωσης: {e}")
+        st.error(f"❌ Γενικό Σφάλμα: {e}")
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # --- ΕΚΤΕΛΕΣΗ ΦΟΡΤΩΣΗΣ ---
 df_ing, df_rec, df_orders, df_history = load_data_from_sheets()
 
 # ==========================================
-# 2. ΡΥΘΜΙΣΕΙΣ ΣΕΛΙΔΑΣ & ΑΣΦΑΛΕΙΑ
+# 2. ΡΥΘΜΙΣΕΙΣ ΣΕΛΙΔΑΣ & SIDEBAR
 # ==========================================
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
-
-def check_password():
-    if "password_correct" not in st.session_state:
-        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", 
-                      on_change=lambda: st.session_state.update({"password_correct": st.session_state["pwd"] == "panatha1908"}), 
-                      key="pwd")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", 
-                      on_change=lambda: st.session_state.update({"password_correct": st.session_state["pwd"] == "panatha1908"}), 
-                      key="pwd")
-        st.error("❌ Λάθος κωδικός.")
-        return False
-    return True
-
-if not check_password():
-    st.stop()
 
 # --- CSS STYLE ---
 st.markdown("""
@@ -97,31 +77,22 @@ st.markdown("""
     .stApp { background-color: #0e1117; }
     [data-testid="stMetricValue"] { font-size: 28px; color: #00ffcc; }
     div[data-testid="stMetric"] { background-color: #1e2129; border: 1px solid #333; padding: 15px; border-radius: 10px; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #3e4451; color: white; }
     </style>
     """, unsafe_allow_html=True)
 
-# ==========================================
-# 3. SIDEBAR LOGIC
-# ==========================================
 with st.sidebar:
     st.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
-    st.title("DC CABCLUB 2026 🏆")
-    
     if st.button("🔄 Ανανέωση Δεδομένων"):
         st.cache_data.clear()
         st.rerun()
-
-    current_user = st.selectbox("👤 Είσαι ο:", ["Χρήστης Α", "Χρήστης Β"])
     
-    st.divider()
-    page = st.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
+    page = st.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "📦 Lot Παραγωγής"])
     
     TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
     country = st.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
     tax_factor = TAX_RATES[country]
 
-# Βασικές μεταβλητές για dropdowns
+# Λίστες για τα Dropdowns
 ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
 recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
@@ -129,8 +100,6 @@ def format_greek(value):
     if isinstance(value, (int, float)):
         return "{:.3f}".format(value).replace('.', ',')
     return value
-
-# Τώρα μπορείς να συνεχίσεις με το if page == "📦 Αποθήκη": κτλ...
 
 # --- 1. ΑΠΟΘΗΚΗ (ΦΟΡΜΑ ΑΝΤΙ ΓΙΑ ΠΙΝΑΚΑ) ---
 if page == "📦 Αποθήκη":
