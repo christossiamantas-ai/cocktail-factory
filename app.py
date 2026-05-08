@@ -1204,8 +1204,32 @@ elif page == "📦 Lot Παραγωγής":
             all_custs = ["ΟΛΟΙ"] + sorted(df_past["Πελάτης"].unique().tolist())
             sel_cust = st.selectbox("👤 Φίλτρο Πελάτη (για εκτύπωση):", all_custs)
             
-            view_df = df_past if sel_cust == "ΟΛΟΙ" else df_past[df_past["Πελάτης"] == sel_cust]
-            st.dataframe(view_df[["Πελάτης", "Cocktail", "LOT_Cocktail", "Ώρα", "Τεμάχια"]].drop_duplicates(), use_container_width=True)
+            # --- ΔΙΑΔΡΑΣΤΙΚΟΣ ΠΙΝΑΚΑΣ ΕΠΕΞΕΡΓΑΣΙΑΣ ---
+            st.markdown("#### 📝 Προβολή & Επεξεργασία Δεδομένων")
+            st.info("💡 Κάντε κλικ στα κελιά για διόρθωση οποιουδήποτε πεδίου. Επιλέξτε γραμμές από το αριστερό περιθώριο και πατήστε 'Delete' στο πληκτρολόγιό σας για διαγραφή.")
+            
+            # Χρήση του data_editor για απευθείας επεξεργασία του df_past
+            edited_df_past = st.data_editor(
+                df_past,
+                use_container_width=True,
+                num_rows="dynamic",
+                key=f"lot_editor_{sel_hist_date.replace('/', '_')}" # Μοναδικό κλειδί ανά ημέρα
+            )
+            
+            # Κουμπί για αποθήκευση αλλαγών στο αρχείο CSV της συγκεκριμένης ημέρας
+            if st.button("💾 Αποθήκευση Αλλαγών Ιστορικού"):
+                try:
+                    edited_df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
+                    st.success(f"✅ Οι αλλαγές για τις {sel_hist_date} αποθηκεύτηκαν!")
+                    time.sleep(1) # Μικρή παύση για να προλάβει ο χρήστης να δει το μήνυμα
+                    st.rerun() # Ανανέωση της σελίδας για εφαρμογή των αλλαγών
+                except Exception as e:
+                    st.error(f"❌ Σφάλμα κατά την αποθήκευση: {e}")
+
+            # Φιλτράρισμα του (ενδεχομένως διορθωμένου) πίνακα για τη δημιουργία των εκτυπώσεων
+            view_df = edited_df_past if sel_cust == "ΟΛΟΙ" else edited_df_past[edited_df_past["Πελάτης"] == sel_cust]
+            
+            # --- ΕΠΑΓΓΕΛΜΑΤΙΚΟ HTML ΓΙΑ ΕΚΤΥΠΩΣΗ ---
             
             # --- ΕΠΑΓΓΕΛΜΑΤΙΚΟ HTML ΓΙΑ ΕΚΤΥΠΩΣΗ ---
             html = f"""
