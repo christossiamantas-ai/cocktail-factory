@@ -1238,8 +1238,15 @@ elif page == "📦 Lot Παραγωγής":
             # Κουμπί για αποθήκευση αλλαγών στο αρχείο CSV της συγκεκριμένης ημέρας
             if st.button("💾 Αποθήκευση Αλλαγών Ιστορικού"):
                 try:
-                    edited_df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
-                    st.success(f"✅ Οι αλλαγές για τις {sel_hist_date} αποθηκεύτηκαν!")
+                    # ΝΕΟΣ ΕΛΕΓΧΟΣ: Αν ο πίνακας άδειασε τελείως, διαγράφουμε το αρχείο!
+                    if edited_df_past.empty:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        st.success(f"✅ Διαγράφηκαν όλες οι εγγραφές. Η ημερομηνία {sel_hist_date} αφαιρέθηκε από το ιστορικό.")
+                    else:
+                        edited_df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
+                        st.success(f"✅ Οι αλλαγές για τις {sel_hist_date} αποθηκεύτηκαν!")
+                    
                     time.sleep(1) 
                     st.rerun() 
                 except Exception as e:
@@ -1248,244 +1255,237 @@ elif page == "📦 Lot Παραγωγής":
             # Φιλτράρισμα του (ενδεχομένως διορθωμένου) πίνακα για τη δημιουργία των εκτυπώσεων
             view_df = edited_df_past if sel_cust == "ΟΛΟΙ" else edited_df_past[edited_df_past["Πελάτης"] == sel_cust]
             
-            # --- ΕΠΑΓΓΕΛΜΑΤΙΚΟ HTML ΓΙΑ ΕΚΤΥΠΩΣΗ ---
-            
-            # --- ΕΠΑΓΓΕΛΜΑΤΙΚΟ HTML ΓΙΑ ΕΚΤΥΠΩΣΗ ---
-            html = f"""
-            <html>
-            <head>
-                <meta charset='UTF-8'>
-                <style>
-                    body {{ font-family: 'Helvetica', sans-serif; color: #333; line-height: 1.4; }}
-                    .document-header {{ text-align: center; border-bottom: 2px solid #444; padding-bottom: 10px; margin-bottom: 20px; }}
-                    .customer-section {{ background-color: #f2f2f2; padding: 10px; border: 1px solid #ccc; margin-top: 20px; border-radius: 5px; }}
-                    .cocktail-title {{ color: #d32f2f; border-left: 5px solid #d32f2f; padding-left: 10px; margin: 15px 0 5px 0; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }}
-                    th {{ background-color: #444; color: white; padding: 8px; text-align: left; }}
-                    td {{ border: 1px solid #ddd; padding: 6px; }}
-                    tr:nth-child(even) {{ background-color: #f9f9f9; }}
-                    .footer-info {{ margin-top: 30px; font-size: 10px; color: #666; font-style: italic; }}
-                    .signature-table {{ width: 100%; margin-top: 40px; border: none; }}
-                    .signature-table td {{ border: none; padding: 20px; border-top: 1px solid #333; text-align: center; width: 50%; }}
-                    @media print {{
-                        .page-break {{ page-break-before: always; }}
-                    }}
-                </style>
-            </head>
-            <body>
-                <div class='document-header'>
-                    <h1>CABCLUB COCKTAILS</h1>
-                    <h2>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2>
-                    <p>Ημερομηνία: <b>{sel_hist_date}</b> | LOT Ημέρας: <b>{df_past['LOT_Cocktail'].iloc[0]}</b></p>
-                </div>
-            """
-
-            for p in view_df["Πελάτης"].unique():
-                p_df = view_df[view_df["Πελάτης"] == p]
-                html += f"""
-                <div class='customer-section'>
-                    <strong>ΠΕΛΑΤΗΣ / ΠΑΡΑΓΓΕΛΙΑ:</strong> {p}
-                </div>
+            # ΝΕΟΣ ΕΛΕΓΧΟΣ: Προχωράμε στην εκτύπωση ΜΟΝΟ αν υπάρχουν δεδομένα
+            if view_df.empty:
+                st.warning("⚠️ Δεν υπάρχουν διαθέσιμα δεδομένα παραγωγής για προβολή ή εκτύπωση με τα τρέχοντα φίλτρα.")
+            else:
+                # --- ΕΠΑΓΓΕΛΜΑΤΙΚΟ HTML ΓΙΑ ΕΚΤΥΠΩΣΗ ---
+                html = f"""
+                <html>
+                <head>
+                    <meta charset='UTF-8'>
+                    <style>
+                        body {{ font-family: 'Helvetica', sans-serif; color: #333; line-height: 1.4; }}
+                        .document-header {{ text-align: center; border-bottom: 2px solid #444; padding-bottom: 10px; margin-bottom: 20px; }}
+                        .customer-section {{ background-color: #f2f2f2; padding: 10px; border: 1px solid #ccc; margin-top: 20px; border-radius: 5px; }}
+                        .cocktail-title {{ color: #d32f2f; border-left: 5px solid #d32f2f; padding-left: 10px; margin: 15px 0 5px 0; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }}
+                        th {{ background-color: #444; color: white; padding: 8px; text-align: left; }}
+                        td {{ border: 1px solid #ddd; padding: 6px; }}
+                        tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                        .footer-info {{ margin-top: 30px; font-size: 10px; color: #666; font-style: italic; }}
+                        .signature-table {{ width: 100%; margin-top: 40px; border: none; }}
+                        .signature-table td {{ border: none; padding: 20px; border-top: 1px solid #333; text-align: center; width: 50%; }}
+                        @media print {{
+                            .page-break {{ page-break-before: always; }}
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class='document-header'>
+                        <h1>CABCLUB COCKTAILS</h1>
+                        <h2>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2>
+                        <p>Ημερομηνία: <b>{sel_hist_date}</b> | LOT Ημέρας: <b>{view_df['LOT_Cocktail'].iloc[0]}</b></p>
+                    </div>
                 """
-                for t in p_df["Ώρα"].unique():
-                    t_df = p_df[p_df["Ώρα"] == t]
-                    for c in t_df["Cocktail"].unique():
-                        c_df = t_df[t_df["Cocktail"] == c]
-                        html += f"""
-                        <h3 class='cocktail-title'>{c} <small>(ID: {c_df['Barcode'].iloc[0]})</small></h3>
-                        <p style='font-size:12px; margin:0;'>Ποσότητα: <b>{c_df['Τεμάχια'].iloc[0]} τμχ</b> | Ώρα Παραγωγής: {t}</p>
+
+                for p in view_df["Πελάτης"].unique():
+                    p_df = view_df[view_df["Πελάτης"] == p]
+                    html += f"""
+                    <div class='customer-section'>
+                        <strong>ΠΕΛΑΤΗΣ / ΠΑΡΑΓΓΕΛΙΑ:</strong> {p}
+                    </div>
+                    """
+                    for t in p_df["Ώρα"].unique():
+                        t_df = p_df[p_df["Ώρα"] == t]
+                        for c in t_df["Cocktail"].unique():
+                            c_df = t_df[t_df["Cocktail"] == c]
+                            html += f"""
+                            <h3 class='cocktail-title'>{c} <small>(ID: {c_df['Barcode'].iloc[0]})</small></h3>
+                            <p style='font-size:12px; margin:0;'>Ποσότητα: <b>{c_df['Τεμάχια'].iloc[0]} τμχ</b> | Ώρα Παραγωγής: {t}</p>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Πρώτη Ύλη</th>
+                                        <th>Σύνολο ml</th>
+                                        <th>Βάρος (g)</th>
+                                        <th>Lot Number</th>
+                                        <th>Ημ. Λήξης</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                            """
+                            for _, r in c_df.iterrows():
+                                html += f"""
+                                    <tr>
+                                        <td><b>{r['Υλικό']}</b></td>
+                                        <td>{r['Σύνολο_ML']}</td>
+                                        <td>{r['Στόχος_Γραμμάρια']}g</td>
+                                        <td>{r['Lot Number']}</td>
+                                        <td>{r['Ημ_Λήξης']}</td>
+                                    </tr>
+                                """
+                            html += "</tbody></table>"
+                
+                html += """
+                    <table class='signature-table'>
+                        <tr>
+                            <td>Υπεύθυνος Παραγωγής<br><br>____________________</td>
+                            <td>Ποιοτικός Έλεγχος<br><br>____________________</td>
+                        </tr>
+                    </table>
+                    <div class='page-break'></div>
+                """
+
+                html += f"""
+                    <div class='footer-info'>
+                        Εκτύπωση από DC CABCLUB System: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+                    </div>
+                </body>
+                </html>
+                """
+
+                # --- ΝΕΟ ΤΜΗΜΑ: ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (ΧΩΡΙΣ ΥΛΙΚΑ) ---
+                df_daily = view_df.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
+                df_grouped = df_daily.groupby(['Cocktail', 'Πελάτης', 'LOT_Cocktail'])['Τεμάχια'].sum().reset_index()
+
+                html_daily = f"""
+                <html>
+                <head>
+                    <meta charset='UTF-8'>
+                    <style>
+                        body {{ font-family: 'Helvetica', sans-serif; padding: 20px; color: #333; }}
+                        .header {{ text-align: center; border-bottom: 3px solid #d32f2f; padding-bottom: 10px; margin-bottom: 30px; }}
+                        .cocktail-section {{ margin-bottom: 40px; }}
+                        .cocktail-header {{ background-color: #d32f2f; color: white; padding: 10px; margin-bottom: 0; border-radius: 5px 5px 0 0; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
+                        th {{ background-color: #444; color: white; padding: 10px; border: 1px solid #ddd; text-align: left; }}
+                        td {{ padding: 10px; border: 1px solid #ddd; }}
+                        .subtotal-row {{ background-color: #f2f2f2; font-weight: bold; }}
+                        .grand-total {{ text-align: center; font-size: 20px; font-weight: bold; border-top: 2px solid #333; padding-top: 20px; margin-top: 30px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class='header'>
+                        <h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1>
+                        <p>Ημερομηνία: <b>{sel_hist_date}</b></p>
+                    </div>
+                """
+
+                for cocktail in df_grouped['Cocktail'].unique():
+                    c_data = df_grouped[df_grouped['Cocktail'] == cocktail]
+                    cocktail_total = c_data['Τεμάχια'].sum()
+                    
+                    html_daily += f"""
+                    <div class='cocktail-section'>
+                        <h2 class='cocktail-header'>{cocktail}</h2>
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Πρώτη Ύλη</th>
-                                    <th>Σύνολο ml</th>
-                                    <th>Βάρος (g)</th>
-                                    <th>Lot Number</th>
-                                    <th>Ημ. Λήξης</th>
+                                    <th>LOT Number</th>
+                                    <th>Πελάτης</th>
+                                    <th>Ποσότητα (τμχ)</th>
                                 </tr>
                             </thead>
                             <tbody>
+                    """
+                    
+                    for _, row in c_data.iterrows():
+                        html_daily += f"""
+                            <tr>
+                                <td>{row['LOT_Cocktail']}</td>
+                                <td>{row['Πελάτης']}</td>
+                                <td>{row['Τεμάχια']}</td>
+                            </tr>
                         """
-                        for _, r in c_df.iterrows():
-                            html += f"""
-                                <tr>
-                                    <td><b>{r['Υλικό']}</b></td>
-                                    <td>{r['Σύνολο_ML']}</td>
-                                    <td>{r['Στόχος_Γραμμάρια']}g</td>
-                                    <td>{r['Lot Number']}</td>
-                                    <td>{r['Ημ_Λήξης']}</td>
-                                </tr>
-                            """
-                        html += "</tbody></table>"
-                
-                html += """
-                <table class='signature-table'>
-                    <tr>
-                        <td>Υπεύθυνος Παραγωγής<br><br>____________________</td>
-                        <td>Ποιοτικός Έλεγχος<br><br>____________________</td>
-                    </tr>
-                </table>
-                <div class='page-break'></div>
-                """
+                    
+                    html_daily += f"""
+                            <tr class='subtotal-row'>
+                                <td colspan='2' style='text-align: right;'>ΣΥΝΟΛΟ {cocktail}:</td>
+                                <td>{cocktail_total} τμχ</td>
+                            </tr>
+                        </tbody>
+                        </table>
+                    </div>
+                    """
 
-            html += f"""
-                <div class='footer-info'>
-                    Εκτύπωση από DC CABCLUB System: {datetime.now().strftime('%d/%m/%Y %H:%M')}
-                </div>
-            </body>
-            </html>
-            """
-
-            # --- ΝΕΟ ΤΜΗΜΑ: ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (ΧΩΡΙΣ ΥΛΙΚΑ) ---
-            # --- ΝΕΟ ΤΜΗΜΑ: ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (ΧΩΡΙΣ ΥΛΙΚΑ - ΧΩΡΙΣΜΕΝΟ ΑΝΑ COCKTAIL) ---
-            # 1. Απομόνωση μοναδικών παραγωγών και ομαδοποίηση
-            df_daily = view_df.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
-            df_grouped = df_daily.groupby(['Cocktail', 'Πελάτης', 'LOT_Cocktail'])['Τεμάχια'].sum().reset_index()
-
-            # 2. Αρχή HTML με CSS
-            html_daily = f"""
-            <html>
-            <head>
-                <meta charset='UTF-8'>
-                <style>
-                    body {{ font-family: 'Helvetica', sans-serif; padding: 20px; color: #333; }}
-                    .header {{ text-align: center; border-bottom: 3px solid #d32f2f; padding-bottom: 10px; margin-bottom: 30px; }}
-                    .cocktail-section {{ margin-bottom: 40px; }}
-                    .cocktail-header {{ background-color: #d32f2f; color: white; padding: 10px; margin-bottom: 0; border-radius: 5px 5px 0 0; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
-                    th {{ background-color: #444; color: white; padding: 10px; border: 1px solid #ddd; text-align: left; }}
-                    td {{ padding: 10px; border: 1px solid #ddd; }}
-                    .subtotal-row {{ background-color: #f2f2f2; font-weight: bold; }}
-                    .grand-total {{ text-align: center; font-size: 20px; font-weight: bold; border-top: 2px solid #333; padding-top: 20px; margin-top: 30px; }}
-                </style>
-            </head>
-            <body>
-                <div class='header'>
-                    <h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1>
-                    <p>Ημερομηνία: <b>{sel_hist_date}</b></p>
-                </div>
-            """
-
-            # 3. Δημιουργία πινάκων ανά Cocktail
-            for cocktail in df_grouped['Cocktail'].unique():
-                # Φιλτράρισμα δεδομένων μόνο για το συγκεκριμένο cocktail
-                c_data = df_grouped[df_grouped['Cocktail'] == cocktail]
-                cocktail_total = c_data['Τεμάχια'].sum()
-                
+                grand_total = df_grouped['Τεμάχια'].sum()
                 html_daily += f"""
-                <div class='cocktail-section'>
-                    <h2 class='cocktail-header'>{cocktail}</h2>
+                    <div class='grand-total'>
+                        ΓΕΝΙΚΟ ΣΥΝΟΛΟ ΠΑΡΑΓΩΓΗΣ ΗΜΕΡΑΣ: {grand_total} τμχ
+                    </div>
+                </body>
+                </html>
+                """            
+                
+                # --- ΝΕΟ ΤΜΗΜΑ: ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΛΙΣΤΑ ΠΡΩΤΩΝ ΥΛΩΝ (ΓΙΑ ΠΡΟΕΤΟΙΜΑΣΙΑ) ---
+                df_ingredients_total = view_df.groupby("Υλικό").agg({
+                    "Σύνολο_ML": "sum",
+                    "Στόχος_Γραμμάρια": "sum"
+                }).reset_index()
+
+                html_ing_list = f"""
+                <html>
+                <head>
+                    <meta charset='UTF-8'>
+                    <style>
+                        body {{ font-family: 'Helvetica', sans-serif; padding: 30px; color: #2c3e50; }}
+                        .header {{ text-align: center; border-bottom: 4px solid #2980b9; padding-bottom: 10px; margin-bottom: 30px; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                        th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
+                        td {{ border: 1px solid #bdc3c7; padding: 10px; font-size: 14px; }}
+                        tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                        .total-row {{ font-weight: bold; background-color: #ecf0f1; }}
+                        .unit {{ color: #7f8c8d; font-size: 12px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class='header'>
+                        <h1>📋 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΠΡΩΤΩΝ ΥΛΩΝ</h1>
+                        <p>Ημερομηνία Παραγωγής: <b>{sel_hist_date}</b></p>
+                    </div>
                     <table>
                         <thead>
                             <tr>
-                                <th>LOT Number</th>
-                                <th>Πελάτης</th>
-                                <th>Ποσότητα (τμχ)</th>
+                                <th>Πρώτη Ύλη</th>
+                                <th>Συνολική Ποσότητα (ml)</th>
+                                <th>Συνολικό Βάρος (g)</th>
+                                <th>Συνολικό Βάρος (kg)</th>
                             </tr>
                         </thead>
                         <tbody>
                 """
-                
-                for _, row in c_data.iterrows():
-                    html_daily += f"""
+
+                for _, row in df_ingredients_total.iterrows():
+                    kg_val = row['Στόχος_Γραμμάρια'] / 1000
+                    html_ing_list += f"""
                         <tr>
-                            <td>{row['LOT_Cocktail']}</td>
-                            <td>{row['Πελάτης']}</td>
-                            <td>{row['Τεμάχια']}</td>
+                            <td><b>{row['Υλικό']}</b></td>
+                            <td>{row['Σύνολο_ML']:.0f} <span class='unit'>ml</span></td>
+                            <td>{row['Στόχος_Γραμμάρια']:.1f} <span class='unit'>g</span></td>
+                            <td><b>{kg_val:.3f}</b> <span class='unit'>kg</span></td>
                         </tr>
                     """
-                
-                # Προσθήκη μερικού συνόλου για το cocktail
-                html_daily += f"""
-                        <tr class='subtotal-row'>
-                            <td colspan='2' style='text-align: right;'>ΣΥΝΟΛΟ {cocktail}:</td>
-                            <td>{cocktail_total} τμχ</td>
-                        </tr>
-                    </tbody>
+
+                html_ing_list += """
+                        </tbody>
                     </table>
-                </div>
+                    <div style='margin-top: 40px; font-size: 12px; font-style: italic;'>
+                        * Οι υπολογισμοί βάρους βασίζονται στην πυκνότητα κάθε υλικού όπως έχει οριστεί στις Πρώτες Ύλες.
+                    </div>
+                </body>
+                </html>
                 """
 
-            # 4. Προσθήκη Γενικού Συνόλου Ημέρας στο τέλος
-            grand_total = df_grouped['Τεμάχια'].sum()
-            html_daily += f"""
-                <div class='grand-total'>
-                    ΓΕΝΙΚΟ ΣΥΝΟΛΟ ΠΑΡΑΓΩΓΗΣ ΗΜΕΡΑΣ: {grand_total} τμχ
-                </div>
-            </body>
-            </html>
-            """            
-            
-            # --- ΝΕΟ ΤΜΗΜΑ: ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΛΙΣΤΑ ΠΡΩΤΩΝ ΥΛΩΝ (ΓΙΑ ΠΡΟΕΤΟΙΜΑΣΙΑ) ---
-            # 1. Ομαδοποίηση ανά Υλικό και άθροιση ml και γραμμαρίων
-            df_ingredients_total = view_df.groupby("Υλικό").agg({
-                "Σύνολο_ML": "sum",
-                "Στόχος_Γραμμάρια": "sum"
-            }).reset_index()
-
-            # 2. Δημιουργία HTML για τις Πρώτες Ύλες
-            html_ing_list = f"""
-            <html>
-            <head>
-                <meta charset='UTF-8'>
-                <style>
-                    body {{ font-family: 'Helvetica', sans-serif; padding: 30px; color: #2c3e50; }}
-                    .header {{ text-align: center; border-bottom: 4px solid #2980b9; padding-bottom: 10px; margin-bottom: 30px; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                    th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
-                    td {{ border: 1px solid #bdc3c7; padding: 10px; font-size: 14px; }}
-                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
-                    .total-row {{ font-weight: bold; background-color: #ecf0f1; }}
-                    .unit {{ color: #7f8c8d; font-size: 12px; }}
-                </style>
-            </head>
-            <body>
-                <div class='header'>
-                    <h1>📋 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΠΡΩΤΩΝ ΥΛΩΝ</h1>
-                    <p>Ημερομηνία Παραγωγής: <b>{sel_hist_date}</b></p>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Πρώτη Ύλη</th>
-                            <th>Συνολική Ποσότητα (ml)</th>
-                            <th>Συνολικό Βάρος (g)</th>
-                            <th>Συνολικό Βάρος (kg)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
-
-            for _, row in df_ingredients_total.iterrows():
-                kg_val = row['Στόχος_Γραμμάρια'] / 1000
-                html_ing_list += f"""
-                    <tr>
-                        <td><b>{row['Υλικό']}</b></td>
-                        <td>{row['Σύνολο_ML']:.0f} <span class='unit'>ml</span></td>
-                        <td>{row['Στόχος_Γραμμάρια']:.1f} <span class='unit'>g</span></td>
-                        <td><b>{kg_val:.3f}</b> <span class='unit'>kg</span></td>
-                    </tr>
-                """
-
-            html_ing_list += """
-                    </tbody>
-                </table>
-                <div style='margin-top: 40px; font-size: 12px; font-style: italic;'>
-                    * Οι υπολογισμοί βάρους βασίζονται στην πυκνότητα κάθε υλικού όπως έχει οριστεί στις Πρώτες Ύλες.
-                </div>
-            </body>
-            </html>
-            """
-
-            # --- ΕΜΦΑΝΙΣΗ ΚΟΥΜΠΙΩΝ ΔΙΠΛΑ-ΔΙΠΛΑ (ΠΛΕΟΝ 3 ΚΟΥΜΠΙΑ) ---
-            st.divider()
-            col_p1, col_p2, col_p3 = st.columns(3)
-            with col_p1:
-                st.download_button("🖨️ Εκτύπωση Επαγγελματικού Δελτίου", data=html, file_name=f"Professional_Report_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
-            with col_p2:
-                st.download_button("📋 Εκτύπωση Ημερήσιας Παραγωγής", data=html_daily, file_name=f"Daily_Production_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
-            with col_p3:
-                st.download_button("🧪 Λίστα Πρώτων Υλών", data=html_ing_list, file_name=f"Ingredients_Needed_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
+                # --- ΕΜΦΑΝΙΣΗ ΚΟΥΜΠΙΩΝ ΔΙΠΛΑ-ΔΙΠΛΑ (ΠΛΕΟΝ 3 ΚΟΥΜΠΙΑ) ---
+                st.divider()
+                col_p1, col_p2, col_p3 = st.columns(3)
+                with col_p1:
+                    st.download_button("🖨️ Εκτύπωση Επαγγελματικού Δελτίου", data=html, file_name=f"Professional_Report_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
+                with col_p2:
+                    st.download_button("📋 Εκτύπωση Ημερήσιας Παραγωγής", data=html_daily, file_name=f"Daily_Production_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
+                with col_p3:
+                    st.download_button("🧪 Λίστα Πρώτων Υλών", data=html_ing_list, file_name=f"Ingredients_Needed_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
 
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ (ΑΝΑΖΗΤΗΣΗ ΣΕ ΟΛΑ) ---
     st.divider()
