@@ -217,7 +217,6 @@ if page == "📦 Αποθήκη":
                         "Αλκοόλ %": new_alc,
                         "Απόθεμα (ml)": 0.0
                     }
-                    }
                     df_ing = pd.concat([df_ing, pd.DataFrame([new_row])], ignore_index=True)
                     df_ing = df_ing.sort_values(by="Name", key=lambda col: col.str.lower())
                     
