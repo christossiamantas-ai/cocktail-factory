@@ -1415,13 +1415,77 @@ elif page == "📦 Lot Παραγωγής":
             </body>
             </html>
             """            
-            # --- ΕΜΦΑΝΙΣΗ ΚΟΥΜΠΙΩΝ ΔΙΠΛΑ-ΔΙΠΛΑ ---
+            
+            # --- ΝΕΟ ΤΜΗΜΑ: ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΛΙΣΤΑ ΠΡΩΤΩΝ ΥΛΩΝ (ΓΙΑ ΠΡΟΕΤΟΙΜΑΣΙΑ) ---
+            # 1. Ομαδοποίηση ανά Υλικό και άθροιση ml και γραμμαρίων
+            df_ingredients_total = view_df.groupby("Υλικό").agg({
+                "Σύνολο_ML": "sum",
+                "Στόχος_Γραμμάρια": "sum"
+            }).reset_index()
+
+            # 2. Δημιουργία HTML για τις Πρώτες Ύλες
+            html_ing_list = f"""
+            <html>
+            <head>
+                <meta charset='UTF-8'>
+                <style>
+                    body {{ font-family: 'Helvetica', sans-serif; padding: 30px; color: #2c3e50; }}
+                    .header {{ text-align: center; border-bottom: 4px solid #2980b9; padding-bottom: 10px; margin-bottom: 30px; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                    th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
+                    td {{ border: 1px solid #bdc3c7; padding: 10px; font-size: 14px; }}
+                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                    .total-row {{ font-weight: bold; background-color: #ecf0f1; }}
+                    .unit {{ color: #7f8c8d; font-size: 12px; }}
+                </style>
+            </head>
+            <body>
+                <div class='header'>
+                    <h1>📋 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΠΡΩΤΩΝ ΥΛΩΝ</h1>
+                    <p>Ημερομηνία Παραγωγής: <b>{sel_hist_date}</b></p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Πρώτη Ύλη</th>
+                            <th>Συνολική Ποσότητα (ml)</th>
+                            <th>Συνολικό Βάρος (g)</th>
+                            <th>Συνολικό Βάρος (kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+
+            for _, row in df_ingredients_total.iterrows():
+                kg_val = row['Στόχος_Γραμμάρια'] / 1000
+                html_ing_list += f"""
+                    <tr>
+                        <td><b>{row['Υλικό']}</b></td>
+                        <td>{row['Σύνολο_ML']:.0f} <span class='unit'>ml</span></td>
+                        <td>{row['Στόχος_Γραμμάρια']:.1f} <span class='unit'>g</span></td>
+                        <td><b>{kg_val:.3f}</b> <span class='unit'>kg</span></td>
+                    </tr>
+                """
+
+            html_ing_list += """
+                    </tbody>
+                </table>
+                <div style='margin-top: 40px; font-size: 12px; font-style: italic;'>
+                    * Οι υπολογισμοί βάρους βασίζονται στην πυκνότητα κάθε υλικού όπως έχει οριστεί στις Πρώτες Ύλες.
+                </div>
+            </body>
+            </html>
+            """
+
+            # --- ΕΜΦΑΝΙΣΗ ΚΟΥΜΠΙΩΝ ΔΙΠΛΑ-ΔΙΠΛΑ (ΠΛΕΟΝ 3 ΚΟΥΜΠΙΑ) ---
             st.divider()
-            col_p1, col_p2 = st.columns(2)
+            col_p1, col_p2, col_p3 = st.columns(3)
             with col_p1:
                 st.download_button("🖨️ Εκτύπωση Επαγγελματικού Δελτίου", data=html, file_name=f"Professional_Report_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
             with col_p2:
                 st.download_button("📋 Εκτύπωση Ημερήσιας Παραγωγής", data=html_daily, file_name=f"Daily_Production_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
+            with col_p3:
+                st.download_button("🧪 Λίστα Πρώτων Υλών", data=html_ing_list, file_name=f"Ingredients_Needed_{sel_hist_date.replace('/','_')}.html", mime="text/html", use_container_width=True)
 
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ (ΑΝΑΖΗΤΗΣΗ ΣΕ ΟΛΑ) ---
     st.divider()
