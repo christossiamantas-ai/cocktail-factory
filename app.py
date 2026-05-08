@@ -1458,30 +1458,34 @@ elif page == "📦 Lot Παραγωγής":
                         delete_clicked = btn_del.form_submit_button("🗑️ Διαγραφή ΟΛΟΚΛΗΡΗΣ της Παραγωγής", use_container_width=True)
 
                         if save_clicked:
-                            # Έξυπνος υπολογισμός: Πόσο άλλαξαν τα τεμάχια;
-                            multiplier = new_pieces / old_pieces if old_pieces > 0 else 1
+                            # Μετατροπή σε ακέραιους αυστηρά, για αποφυγή σφαλμάτων
+                            new_p = int(new_pieces)
+                            old_p = int(old_pieces)
+                            multiplier = new_p / old_p if old_p > 0 else 1
 
                             for idx in row_indices:
-                                df_past.at[idx, "Πελάτης"] = new_customer
-                                df_past.at[idx, "Cocktail"] = new_cocktail
-                                df_past.at[idx, "Τεμάχια"] = new_pieces  # Αποθήκευση νέων τεμαχίων
-                                df_past.at[idx, "LOT_Cocktail"] = new_lot_cocktail
+                                # Χρήση της .loc (αντί της .at) που είναι 100% ασφαλής στην εγγραφή
+                                df_past.loc[idx, "Πελάτης"] = str(new_customer)
+                                df_past.loc[idx, "Cocktail"] = str(new_cocktail)
+                                df_past.loc[idx, "Τεμάχια"] = new_p  # Αυστηρή καταχώρηση νέων τεμαχίων
+                                df_past.loc[idx, "LOT_Cocktail"] = str(new_lot_cocktail)
                                 
-                                df_past.at[idx, "Υλικό"] = updated_rows[idx]["Υλικό"]
-                                df_past.at[idx, "Lot Number"] = updated_rows[idx]["Lot Number"]
-                                df_past.at[idx, "Ημ_Λήξης"] = updated_rows[idx]["Ημ_Λήξης"]
+                                df_past.loc[idx, "Υλικό"] = str(updated_rows[idx]["Υλικό"])
+                                df_past.loc[idx, "Lot Number"] = str(updated_rows[idx]["Lot Number"])
+                                df_past.loc[idx, "Ημ_Λήξης"] = str(updated_rows[idx]["Ημ_Λήξης"])
                                 
-                                # ΑΥΤΟΜΑΤΗ ΑΝΑΠΡΟΣΑΡΜΟΓΗ ML ΚΑΙ ΓΡΑΜΜΑΡΙΩΝ!
-                                if new_pieces != old_pieces:
-                                    df_past.at[idx, "Σύνολο_ML"] = updated_rows[idx]["Σύνολο_ML"] * multiplier
-                                    df_past.at[idx, "Στόχος_Γραμμάρια"] = updated_rows[idx]["Στόχος_Γραμμάρια"] * multiplier
+                                # ΑΥΤΟΜΑΤΗ ΑΝΑΠΡΟΣΑΡΜΟΓΗ ML ΚΑΙ ΓΡΑΜΜΑΡΙΩΝ
+                                if new_p != old_p:
+                                    df_past.loc[idx, "Σύνολο_ML"] = float(updated_rows[idx]["Σύνολο_ML"]) * multiplier
+                                    df_past.loc[idx, "Στόχος_Γραμμάρια"] = float(updated_rows[idx]["Στόχος_Γραμμάρια"]) * multiplier
                                 else:
-                                    df_past.at[idx, "Σύνολο_ML"] = updated_rows[idx]["Σύνολο_ML"]
-                                    df_past.at[idx, "Στόχος_Γραμμάρια"] = updated_rows[idx]["Στόχος_Γραμμάρια"]
+                                    df_past.loc[idx, "Σύνολο_ML"] = float(updated_rows[idx]["Σύνολο_ML"])
+                                    df_past.loc[idx, "Στόχος_Γραμμάρια"] = float(updated_rows[idx]["Στόχος_Γραμμάρια"])
                             
+                            # Αποθήκευση στο αρχείο
                             df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
-                            st.success(f"✅ Η παραγωγή ενημερώθηκε (Νέα Τεμάχια: {new_pieces})!")
-                            time.sleep(1)
+                            st.success(f"✅ Η παραγωγή ενημερώθηκε επιτυχώς! (Τεμάχια που σώθηκαν: {new_p})")
+                            time.sleep(1.5) # Δίνουμε μισό δευτερόλεπτο παραπάνω για ασφαλή εγγραφή στον δίσκο
                             st.rerun()
 
                         if delete_clicked:
