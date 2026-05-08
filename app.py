@@ -203,7 +203,6 @@ if page == "📦 Αποθήκη":
                     max_id = pd.to_numeric(df_ing["ID"], errors="coerce").max() if not df_ing.empty else 1000
                     if pd.isna(max_id): max_id = 1000
                     
-                    # --- ΔΙΟΡΘΩΣΗ ΥΠΟΛΟΓΙΣΜΟΥ ---
                     val_price = float(str(new_price).replace(",", ".").strip())
                     val_vol = float(str(new_vol).replace(",", ".").strip())
                     price_per_ml = round(val_price / val_vol, 5) if val_vol > 0 else 0.0
@@ -249,7 +248,6 @@ if page == "📦 Αποθήκη":
                         temp_ing, temp_rec, _, _ = load_data() 
                         old_name = ing_to_edit 
                         
-                        # --- ΔΙΟΡΘΩΣΗ ΥΠΟΛΟΓΙΣΜΟΥ ---
                         clean_price = float(str(edit_price).replace(",", ".").strip())
                         clean_vol = float(str(edit_vol).replace(",", ".").strip())
                         price_per_ml = round(clean_price / clean_vol, 5) if clean_vol > 0 else 0.0
@@ -264,7 +262,6 @@ if page == "📦 Αποθήκη":
                         
                         save_to_sheet(temp_ing, "Ingredients")
 
-                        # Ενημέρωση ονόματος στις συνταγές αν άλλαξε
                         if old_name != edit_name:
                             changes_made = 0
                             for i in range(1, 14):
@@ -290,19 +287,8 @@ if page == "📦 Αποθήκη":
 
     with tab3:
         st.subheader("Συνολική Εικόνα Αποθήκης")
-        # Εμφάνιση πίνακα με στρογγυλοποίηση για καθαρή εικόνα
         df_display = df_ing[["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]].copy()
         st.dataframe(df_display, use_container_width=True)
-```[cite: 1]
-
-### Τι διορθώθηκε:
-1.  **Μαθηματική Ακρίβεια**: Χρησιμοποιείται πλέον ο τύπος $Price / Volume$ και όχι πολλαπλασιασμός[cite: 1].
-2.  **Καθαρισμός Δεδομένων**: Προστέθηκε το `.replace(",", ".").strip()` σε όλα τα κρίσιμα πεδία εισαγωγής για να μην "κρασάρει" η εφαρμογή από ελληνικά κόμματα[cite: 1].
-3.  **Στρογγυλοποίηση**: Η τιμή ανά ml στρογγυλοποιείται στα 5 δεκαδικά ψηφία (`round(..., 5)`) για να αποφευχθούν τα τεράστια νούμερα που είδες στην εικόνα `image_6403b2.jpg`[cite: 1].
-4.  **Στοίχιση**: Διορθώθηκαν όλες οι εσοχές (indentation) για να αποφευχθούν τα σφάλματα `SyntaxError` ή `IndentationError`[cite: 1].
-
-**Σημείωση**: Μην ξεχάσεις να καθαρίσεις χειροκίνητα τις λανθασμένες τιμές από τη στήλη **Τιμή/ml** στο Google Sheet "CabClub_DB" για να ανανεωθεί σωστά η προβολή[cite: 1].
-
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
 elif page == "📝 Νέα Συνταγή":
     st.header("📝 Καταχώρηση Νέας Συνταγής")
