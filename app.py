@@ -650,10 +650,22 @@ elif page == "🔍 Ανάλυση":
             key="download_report_btn"
         )
 
-# --- 🖨️ ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΒΙΒΛΙΟΥ ΣΥΝΤΑΓΩΝ ---
+# --- 🖨️ ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΒΙΒΛΙΟΥ ΣΥΝΤΑΓΩΝ (Yellow Theme + Logo) ---
     st.divider()
     st.subheader("🖨️ Εκτύπωση Βιβλίου Συνταγών")
-    st.info("Αυτό το κουμπί θα δημιουργήσει ένα επαγγελματικό αρχείο HTML με όλες τις καταχωρημένες συνταγές σας (αγνοώντας τα κενά πεδία).")
+
+    import base64
+
+    # Συνάρτηση για τη μετατροπή του logo σε Base64
+    def get_base64_image(image_path):
+        try:
+            with open(image_path, "rb") as img_file:
+                return base64.b64encode(img_file.read()).decode()
+        except:
+            return ""
+
+    # Εδώ βάλε τη διαδρομή του logo σου (π.χ. "logo.png")
+    logo_base64 = get_base64_image("logo.png") 
 
     if not df_rec.empty:
         # 1. Κατασκευή του HTML εγγράφου
@@ -663,7 +675,8 @@ elif page == "🔍 Ανάλυση":
             <meta charset='UTF-8'>
             <style>
                 body {{ font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; background-color: #f9f9f9; }}
-                .main-title {{ text-align: center; border-bottom: 5px solid #d32f2f; padding-bottom: 10px; margin-bottom: 50px; }}
+                .main-title {{ text-align: center; border-bottom: 5px solid #ffcc00; padding-bottom: 10px; margin-bottom: 50px; }}
+                .logo-img {{ max-width: 150px; margin-bottom: 10px; }}
                 .recipe-card {{ 
                     background-color: white; 
                     border: 1px solid #ddd; 
@@ -674,44 +687,46 @@ elif page == "🔍 Ανάλυση":
                     page-break-inside: avoid;
                 }}
                 .recipe-header {{ 
-                    background-color: #d32f2f; 
-                    color: white; 
+                    background-color: #ffcc00; /* Κίτρινο Χρώμα */
+                    color: #1a1a1a; /* Σκούρα γράμματα για αντίθεση */
                     padding: 15px; 
                     border-radius: 8px 8px 0 0; 
                     margin: -25px -25px 20px -25px; 
                 }}
                 .recipe-name {{ margin: 0; font-size: 26px; text-transform: uppercase; }}
-                .barcode-label {{ font-size: 14px; opacity: 0.8; font-weight: normal; }}
+                .barcode-label {{ font-size: 14px; opacity: 0.8; font-weight: bold; }}
                 table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-                th {{ background-color: #f2f2f2; text-align: left; padding: 12px; border-bottom: 2px solid #d32f2f; color: #444; }}
+                th {{ background-color: #fff9e6; text-align: left; padding: 12px; border-bottom: 2px solid #ffcc00; color: #444; }}
                 td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 15px; }}
                 .ing-name {{ font-weight: bold; color: #2c3e50; }}
                 .footer {{ text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 60px; border-top: 1px solid #ccc; padding-top: 10px; }}
+                .analysis-box {{ 
+                    margin-top:20px; 
+                    padding:12px; 
+                    background:#fffdf2; 
+                    border-top:3px solid #ffcc00; 
+                    border-radius: 0 0 8px 8px; 
+                }}
             </style>
         </head>
         <body>
             <div class='main-title'>
+                {f'<img src="data:image/png;base64,{logo_base64}" class="logo-img"><br>' if logo_base64 else ''}
                 <h1>CABCLUB COCKTAILS</h1>
                 <h2>ΟΛΟΚΛΗΡΩΜΕΝΟ ΒΙΒΛΙΟ ΣΥΝΤΑΓΩΝ</h2>
                 <p>Σύνολο Συνταγών: {len(df_rec)}</p>
             </div>
         """
 
-        # Λούπα σε κάθε γραμμή του αρχείου συνταγών
         for _, recipe in df_rec.iterrows():
             name = recipe.get("Ονομα", "Χωρίς Όνομα")
             bc = recipe.get("Barcode", "-")
-            
-            # --- ΔΙΑΒΑΣΜΑ ΤΩΝ ΕΤΟΙΜΩΝ ΠΛΗΡΟΦΟΡΙΩΝ ---
-            # Βάλε εδώ τα ΑΚΡΙΒΗ ονόματα των στηλών όπως τα γράφεις στο αρχείο σου!
-            abv_value = recipe.get("ABV", "-") 
-            retail_price = recipe.get("Προτεινόμενη Τιμή", "-") 
             
             html_book += f"""
             <div class='recipe-card'>
                 <div class='recipe-header'>
                     <h2 class='recipe-name'>{name}</h2>
-                    <span class='barcode-label'>Shop ID: <b>{bc}</b></span>
+                    <span class='barcode-label'>Shop ID: {bc}</span>
                 </div>
                 <table>
                     <thead>
@@ -723,35 +738,47 @@ elif page == "🔍 Ανάλυση":
                     <tbody>
             """
             
+            total_ml_cocktail = 0
+            total_alcohol_ml = 0
+            total_cost = 0
             found_ingredients = 0
+            
             for i in range(1, 14):
                 raw_ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
-                ml = recipe.get(f"ML{i}", 0)
+                try:
+                    ml = float(recipe.get(f"ML{i}", 0))
+                except:
+                    ml = 0
                 
-                # ΚΑΘΑΡΙΣΜΟΣ: Αφαιρούμε κενά δεξιά-αριστερά και τα κάνουμε όλα κεφαλαία για τον έλεγχο
                 ing_clean = raw_ing.strip()
                 ing_check = ing_clean.upper()
                 
-                # Ο ΑΥΣΤΗΡΟΣ ΕΛΕΓΧΟΣ
-                if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"]:
-                    html_book += f"""
-                    <tr>
-                        <td class='ing-name'>{ing_clean}</td>
-                        <td>{ml} ml</td>
-                    </tr>
-                    """
+                if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"] and ml > 0:
+                    html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.0f} ml</td></tr>"
                     found_ingredients += 1
+                    
+                    if not df_ing.empty and ing_clean in df_ing["Name"].values:
+                        ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
+                        abv = float(ing_row.get("ABV", 0))
+                        price = float(ing_row.get("Price", 0))
+                        vol = float(ing_row.get("Volume", 700))
+                        cost_per_ml = price / vol if vol > 0 else 0
+                        total_ml_cocktail += ml
+                        total_alcohol_ml += ml * (abv / 100)
+                        total_cost += ml * cost_per_ml
             
             if found_ingredients == 0:
                 html_book += "<tr><td colspan='2'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
 
-            # --- ΠΡΟΣΘΗΚΗ ΤΩΝ ΣΤΟΙΧΕΙΩΝ ΣΤΟ ΚΑΤΩ ΜΕΡΟΣ ΤΗΣ ΚΑΡΤΑΣ ---
+            final_abv = (total_alcohol_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
+            suggested_price = total_cost / 0.25 # Food Cost 25%
+
             html_book += f"""
                     </tbody>
                 </table>
-                <div style='margin-top:20px; padding:12px; background:#fefefe; border-top:2px solid #d32f2f; border-radius: 0 0 8px 8px;'>
-                    <span style='font-size:16px; color:#444;'>Αλκοόλ (ABV): <b>{abv_value}</b></span>
-                    <span style='float:right; font-size:18px; color:#d32f2f;'>Προτεινόμενη Τιμή: <b>{retail_price}</b></span>
+                <div class='analysis-box'>
+                    <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{final_abv:.1f}%</b></span>
+                    <span style='float:right; font-size:18px; color:#b38f00;'>Προτεινόμενη Λιανική: <b>{suggested_price:.2f} €</b></span>
                 </div>
             </div>
             """
@@ -764,11 +791,10 @@ elif page == "🔍 Ανάλυση":
         </html>
         """
 
-        # 2. Κουμπί Λήψης του αρχείου
         st.download_button(
-            label="📑 Λήψη Πλήρους Βιβλίου Συνταγών (HTML)",
+            label="📑 Λήψη Κίτρινου Βιβλίου Συνταγών (με Logo)",
             data=html_book,
-            file_name=f"CabClub_Recipe_Book_{datetime.now().strftime('%d_%m_%Y')}.html",
+            file_name=f"Recipe_Book_Yellow_{datetime.now().strftime('%d_%m_%Y')}.html",
             mime="text/html",
             use_container_width=True
         )
