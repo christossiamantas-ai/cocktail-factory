@@ -649,6 +649,118 @@ elif page == "🔍 Ανάλυση":
             mime="text/csv",
             key="download_report_btn"
         )
+
+# --- 🖨️ ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΒΙΒΛΙΟΥ ΣΥΝΤΑΓΩΝ ---
+    st.divider()
+    st.subheader("🖨️ Εκτύπωση Βιβλίου Συνταγών")
+    st.info("Αυτό το κουμπί θα δημιουργήσει ένα επαγγελματικό αρχείο HTML με όλες τις καταχωρημένες συνταγές σας.")
+
+    if not df_rec.empty:
+        # 1. Κατασκευή του HTML εγγράφου
+        html_book = f"""
+        <html>
+        <head>
+            <meta charset='UTF-8'>
+            <style>
+                body {{ font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; background-color: #f9f9f9; }}
+                .main-title {{ text-align: center; border-bottom: 5px solid #d32f2f; padding-bottom: 10px; margin-bottom: 50px; }}
+                .recipe-card {{ 
+                    background-color: white; 
+                    border: 1px solid #ddd; 
+                    border-radius: 12px; 
+                    padding: 25px; 
+                    margin-bottom: 40px; 
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                    page-break-inside: avoid; /* Αποτρέπει το σπάσιμο της συνταγής σε δύο σελίδες */
+                }}
+                .recipe-header {{ 
+                    background-color: #d32f2f; 
+                    color: white; 
+                    padding: 15px; 
+                    border-radius: 8px 8px 0 0; 
+                    margin: -25px -25px 20px -25px; 
+                }}
+                .recipe-name {{ margin: 0; font-size: 26px; text-transform: uppercase; }}
+                .barcode-label {{ font-size: 14px; opacity: 0.8; font-weight: normal; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+                th {{ background-color: #f2f2f2; text-align: left; padding: 12px; border-bottom: 2px solid #d32f2f; color: #444; }}
+                td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 15px; }}
+                .ing-name {{ font-weight: bold; color: #2c3e50; }}
+                .footer {{ text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 60px; border-top: 1px solid #ccc; padding-top: 10px; }}
+            </style>
+        </head>
+        <body>
+            <div class='main-title'>
+                <h1>CABCLUB COCKTAILS</h1>
+                <h2>ΟΛΟΚΛΗΡΩΜΕΝΟ ΒΙΒΛΙΟ ΣΥΝΤΑΓΩΝ</h2>
+                <p>Σύνολο Συνταγών: {len(df_rec)}</p>
+            </div>
+        """
+
+        # Λούπα σε κάθε γραμμή του αρχείου συνταγών
+        for _, recipe in df_rec.iterrows():
+            name = recipe.get("Ονομα", "Χωρίς Όνομα")
+            bc = recipe.get("Barcode", "-")
+            
+            html_book += f"""
+            <div class='recipe-card'>
+                <div class='recipe-header'>
+                    <h2 class='recipe-name'>{name}</h2>
+                    <span class='barcode-label'>Shop ID: <b>{bc}</b></span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Συστατικό Συνταγής</th>
+                            <th>Ποσότητα (ml)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            
+            # Έλεγχος και για τα 13 πιθανά συστατικά κάθε συνταγής
+            found_ingredients = 0
+            for i in range(1, 14):
+                ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
+                ml = recipe.get(f"ML{i}", 0)
+                
+                # Φιλτράρουμε τις κενές τιμές
+                if ing and ing.lower() not in ["nan", "κενό", "none", "", "0"]:
+                    html_book += f"""
+                    <tr>
+                        <td class='ing-name'>{ing}</td>
+                        <td>{ml} ml</td>
+                    </tr>
+                    """
+                    found_ingredients += 1
+            
+            if found_ingredients == 0:
+                html_book += "<tr><td colspan='2'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
+
+            html_book += """
+                    </tbody>
+                </table>
+            </div>
+            """
+
+        html_book += f"""
+            <div class='footer'>
+                Αυτόματη εξαγωγή από το σύστημα διαχείρισης CABCLUB: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+            </div>
+        </body>
+        </html>
+        """
+
+        # 2. Κουμπί Λήψης του αρχείου
+        st.download_button(
+            label="📑 Λήψη Πλήρους Βιβλίου Συνταγών (HTML)",
+            data=html_book,
+            file_name=f"CabClub_Recipe_Book_{datetime.now().strftime('%d_%m_%Y')}.html",
+            mime="text/html",
+            use_container_width=True
+        )
+    else:
+        st.warning("⚠️ Η βάση δεδομένων των συνταγών είναι άδεια.")
 # --- 5. ΠΑΡΑΓΓΕΛΙΕΣ ---
 elif page == "🛒 Παραγγελίες":
     st.header("🛒 Παραγγελίες & Ανάγκες")
