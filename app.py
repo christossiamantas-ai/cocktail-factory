@@ -179,11 +179,10 @@ tax_factor = TAX_RATES[country]
 if page == "📦 Αποθήκη":
     st.header("📦 Διαχείριση Υλικών")
     
-    # Έλεγχος στήλης ID
+    # Εξασφάλιση βασικών στηλών
     if "ID" not in df_ing.columns:
         df_ing.insert(0, "ID", range(1001, 1001 + len(df_ing)))
     
-    # Εξασφάλιση ότι υπάρχουν οι απαραίτητες στήλες
     for col in ["Weight_Full", "Αλκοόλ %", "Price", "Volume", "Τιμή/ml"]:
         if col not in df_ing.columns: 
             df_ing[col] = 0.0
@@ -195,20 +194,19 @@ if page == "📦 Αποθήκη":
         with st.form("add_ing_form", clear_on_submit=True):
             new_name = st.text_input("Όνομα Υλικού (π.χ. Gin Mare)")
             c1, c2, c3 = st.columns(3)
-            new_price = c1.number_input("Τιμή Αγοράς (€)", min_value=0.0, step=0.1, key="new_pr")
-            new_vol = c2.number_input("ML Φιάλης", min_value=1.0, value=700.0, key="new_vol")
-            new_alc = c3.number_input("Alc %", min_value=0.0, max_value=100.0, step=0.1, key="new_alc")
+            new_price = c1.number_input("Τιμή Αγοράς (€)", min_value=0.0, step=0.1)
+            new_vol = c2.number_input("ML Φιάλης", min_value=1.0, value=700.0)
+            new_alc = c3.number_input("Alc %", min_value=0.0, max_value=100.0, step=0.1)
             new_weight = st.number_input("Βάρος Περιεχομένου σε Γραμμάρια (g)", min_value=0.0)
             
             if st.form_submit_button("💾 Αποθήκευση Νέου Υλικού"):
                 if new_name:
-                    # Υπολογισμός ID
                     try:
-                        max_id = pd.to_numeric(df_ing["ID"], errors='coerce').max()
+                        max_id = pd.to_numeric(df_ing["ID"], errors="coerce").max()
                         if pd.isna(max_id): max_id = 1000
                     except:
                         max_id = 1000
-                    
+                        
                     # Υπολογισμός τιμής ανά ML
                     v_price = float(str(new_price).replace(",", ".").strip())
                     v_vol = float(str(new_vol).replace(",", ".").strip())
@@ -216,7 +214,7 @@ if page == "📦 Αποθήκη":
                     
                     new_row = {
                         "ID": int(max_id) + 1,
-                        "Name": new_name,
+                        "Name": new_name.strip(),
                         "Price": v_price,
                         "Volume": v_vol,
                         "Weight_Full": new_weight,
@@ -246,10 +244,11 @@ if page == "📦 Αποθήκη":
                 with st.form("edit_ing_form"):
                     edit_name = st.text_input("Όνομα Υλικού", value=str(curr_row["Name"]))
                     e1, e2, e3 = st.columns(3)
-                    # Χρήση float() για να αποφύγουμε προβλήματα τύπων στο number_input
-                    val_pr = float(curr_row.get("Price", 0))
-                    val_vol = float(curr_row.get("Volume", 700))
-                    val_alc = float(curr_row.get("Αλκοόλ %", 0))
+                    
+                    # Ασφαλής μετατροπή υπαρχόντων τιμών
+                    val_pr = float(str(curr_row.get("Price", 0)).replace(",", ".").strip())
+                    val_vol = float(str(curr_row.get("Volume", 700)).replace(",", ".").strip())
+                    val_alc = float(str(curr_row.get("Αλκοόλ %", 0)).replace(",", ".").strip())
                     
                     edit_price = e1.number_input("Τιμή (€)", value=val_pr, step=0.1)
                     edit_vol = e2.number_input("ML Φιάλης", value=val_vol, min_value=1.0)
@@ -259,46 +258,52 @@ if page == "📦 Αποθήκη":
                     col_btn1, col_btn2 = st.columns([1,1])
                     
                     if col_btn1.form_submit_button("Update ✅"):
-                        # Επαναφόρτωση για σιγουριά
+                        # 1. Φόρτωση φρέσκων δεδομένων από το Cloud
                         temp_ing, temp_rec, _, _ = load_data()
-                        old_name = str(ing_to_edit)
+                        old_name = str(ing_to_edit).strip()
                         
-                        # Καθαρισμός και υπολογισμός
-                        c_price = float(str(edit_price).replace(",", ".").strip())
-                        c_vol = float(str(edit_vol).replace(",", ".").strip())
-                        p_ml = round(c_price / c_vol, 5) if c_vol > 0 else 0.0
+                        # 2. Καθαρισμός και υπολογισμός νέων τιμών
+                        try:
+                            c_price = float(str(edit_price).replace(",", ".").strip())
+                            c_vol = float(str(edit_vol).replace(",", ".").strip())
+                            p_ml = round(c_price / c_vol, 5) if c_vol > 0 else 0.0
+                        except:
+                            c_price, c_vol, p_ml = 0.0, 700.0, 0.0
                         
-                        # --- ΛΥΣΗ ΓΙΑ ΤΟ ΣΦΑΛΜΑ TYPEERROR ---
-                        # Βρίσκουμε το index της γραμμής ως λίστα
-                        idx_list = temp_ing.index[temp_ing["Name"] == old_name].tolist()
+                        # 3. Εύρεση της γραμμής (Index)
+                        idx_list = temp_ing.index[temp_ing["Name"].astype(str).str.strip() == old_name].tolist()
                         
                         if idx_list:
                             i = idx_list[0]
-                            # Ενημέρωση των τιμών με απόλυτα ασφαλή τρόπο
-                            temp_ing.loc[i, "Name"] = str(edit_name)
-                            temp_ing.loc[i, "Price"] = float(c_price)
-                            temp_ing.loc[i, "Volume"] = float(c_vol)
-                            temp_ing.loc[i, "Αλκοόλ %"] = float(edit_alc)
-                            temp_ing.loc[i, "Weight_Full"] = float(edit_weight)
-                            temp_ing.loc[i, "Τιμή/ml"] = float(p_ml)
+                            # Χρήση .at για ασφαλή ενημέρωση ανά κελί (Λύση για TypeError)
+                            temp_ing.at[i, "Name"] = str(edit_name).strip()
+                            temp_ing.at[i, "Price"] = c_price
+                            temp_ing.at[i, "Volume"] = c_vol
+                            temp_ing.at[i, "Αλκοόλ %"] = float(edit_alc)
+                            temp_ing.at[i, "Weight_Full"] = float(edit_weight)
+                            temp_ing.at[i, "Τιμή/ml"] = p_ml
                             
                             save_to_sheet(temp_ing, "Ingredients")
 
-                            # Ενημέρωση ονόματος στις συνταγές αν άλλαξε
-                            if old_name != edit_name:
+                            # 4. Αυτόματη ενημέρωση συνταγών αν άλλαξε το όνομα
+                            new_name_str = str(edit_name).strip()
+                            if old_name != new_name_str:
                                 for j in range(1, 14):
-                                    col_name = f"ΣΥΣΤΑΤΙΚΟ{j}"
-                                    if col_name in temp_rec.columns:
-                                        temp_rec.loc[temp_rec[col_name].astype(str).str.strip() == old_name.strip(), col_name] = edit_name
+                                    col_n = f"ΣΥΣΤΑΤΙΚΟ{j}"
+                                    if col_n in temp_rec.columns:
+                                        mask = temp_rec[col_n].astype(str).str.strip() == old_name
+                                        temp_rec.loc[mask, col_n] = new_name_str
                                 save_to_sheet(temp_rec, "Recipes")
 
                             st.success(f"✅ Το υλικό '{edit_name}' ενημερώθηκε!")
                             time.sleep(1)
                             st.rerun()
+                        else:
+                            st.error("⚠️ Το υλικό δεν βρέθηκε. Πατήστε Ανανέωση.")
 
                     if col_btn2.form_submit_button("Διαγραφή 🗑️"):
                         temp_ing, _, _, _ = load_data()
-                        temp_ing = temp_ing[temp_ing["Name"] != ing_to_edit]
+                        temp_ing = temp_ing[temp_ing["Name"].astype(str).str.strip() != ing_to_edit]
                         save_to_sheet(temp_ing, "Ingredients")
                         st.warning(f"⚠️ Το υλικό '{ing_to_edit}' διαγράφηκε.")
                         time.sleep(1)
@@ -307,13 +312,9 @@ if page == "📦 Αποθήκη":
     with tab3:
         st.subheader("Συνολική Εικόνα Αποθήκης")
         if not df_ing.empty:
-            cols_to_show = ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]
-            # Εμφάνιση μόνο των στηλών που υπάρχουν
-            available_cols = [c for c in cols_to_show if c in df_ing.columns]
-            st.dataframe(df_ing[available_cols], use_container_width=True)
-        else:
-            st.info("Η αποθήκη είναι άδεια.")
-
+            cols_show = ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]
+            available = [c for c in cols_show if c in df_ing.columns]
+            st.dataframe(df_ing[available], use_container_width=True)
 
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
 elif page == "📝 Νέα Συνταγή":
