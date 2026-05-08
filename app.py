@@ -1211,93 +1211,131 @@ elif page == "📦 Lot Παραγωγής":
             else:
                 df_past = pd.read_csv(file_path)
                 
-                # --- 🛠️ ΔΙΑΧΕΙΡΙΣΗ & ΕΠΕΞΕΡΓΑΣΙΑ ΜΕ ΦΟΡΜΑ ---
-                st.markdown("#### 🛠️ Διαχείριση Εγγραφών")
+                # --- 🛠️ ΔΙΑΧΕΙΡΙΣΗ & ΕΠΕΞΕΡΓΑΣΙΑ (ΟΜΑΔΟΠΟΙΗΜΕΝΗ ΑΝΑ COCKTAIL) ---
+                st.markdown("#### 🛠️ Διαχείριση Παραγωγής (Ανά Cocktail)")
                 
                 # Δημιουργία λιστών για τα dropdowns στη φόρμα
                 cocktail_options = df_rec["Ονομα"].dropna().unique().tolist() if not df_rec.empty else []
                 ingredient_options = df_ing["Name"].dropna().unique().tolist() if not df_ing.empty else []
 
-                # 1. ΕΠΙΛΟΓΗ ΕΓΓΡΑΦΗΣ ΓΙΑ ΕΠΕΞΕΡΓΑΣΙΑ (Με κρυφή φόρμα)
-                options = ["-- Επιλέξτε εγγραφή για επεξεργασία --"]
-                for idx, row in df_past.iterrows():
-                    # Εμφανίζουμε Ώρα, Πελάτη, Cocktail και Υλικό για να ξεχωρίζουν οι εγγραφές
-                    label = f"{row.get('Ώρα','')} | {row.get('Πελάτης','')} | {row.get('Cocktail','')} -> {row.get('Υλικό','')}"
-                    options.append(f"ID {idx} | {label}")
+                # 1. ΟΜΑΔΟΠΟΙΗΣΗ ΕΓΓΡΑΦΩΝ: Βρίσκουμε τις μοναδικές παραγωγές
+                # Ομαδοποιούμε βάσει Ώρας, Πελάτη και Cocktail για να ενώσουμε τα υλικά
+                batches = df_past.groupby(['Ώρα', 'Πελάτης', 'Cocktail', 'LOT_Cocktail']).groups
 
-                selected_entry = st.selectbox("🔍 Αναζήτηση εγγραφής στο ιστορικό:", options)
+                options = ["-- Επιλέξτε Παραγωγή --"]
+                batch_mapping = {}
+                for (time_val, cust, cock, lot_c), indices in batches.items():
+                    # Το indices είναι η λίστα με τις γραμμές (του CSV) που ανήκουν σε αυτό το κοκτέιλ
+                    label = f"🍹 {cock} | 👤 {cust} | 🕒 {time_val} | LOT: {lot_c}"
+                    options.append(label)
+                    batch_mapping[label] = list(indices)
 
-                # 2. Η ΦΟΡΜΑ ΕΜΦΑΝΙΖΕΤΑΙ ΜΟΝΟ ΟΤΑΝ ΕΠΙΛΕΓΕΙ ΚΑΤΙ
-                if selected_entry != "-- Επιλέξτε εγγραφή για επεξεργασία --":
-                    # Εξαγωγή του index
-                    selected_idx = int(selected_entry.split("|")[0].replace("ID", "").strip())
-                    entry_data = df_past.iloc[selected_idx]
+                selected_batch = st.selectbox("🔍 Αναζήτηση Παραγωγής (Επιλέξτε Cocktail):", options)
 
-                    with st.form("edit_lot_entry_form"):
-                        st.markdown(f"##### ✏️ Επεξεργασία Εγγραφής ID: {selected_idx}")
+                # 2. Η ΦΟΡΜΑ ΕΜΦΑΝΙΖΕΤΑΙ ΜΟΝΟ ΟΤΑΝ ΕΠΙΛΕΓΕΙ ΠΑΡΑΓΩΓΗ
+                if selected_batch != "-- Επιλέξτε Παραγωγή --":
+                    row_indices = batch_mapping[selected_batch]
+                    first_idx = row_indices[0] # Παίρνουμε την 1η γραμμή για τα γενικά στοιχεία
+                    base_data = df_past.loc[first_idx]
+
+                    with st.form("edit_batch_form"):
+                        st.markdown(f"##### ✏️ Επεξεργασία Παραγωγής: **{base_data['Cocktail']}**")
                         
-                        # Οργάνωση σε 3 στήλες
-                        c1, c2, c3 = st.columns(3)
+                        # --- ΓΕΝΙΚΑ ΣΤΟΙΧΕΙΑ ΠΑΡΑΓΩΓΗΣ ---
+                        st.markdown("**Βασικά Στοιχεία (Εφαρμόζονται σε όλη την παραγγελία)**")
+                        c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1.5])
                         
-                        # Στήλη 1: Βασικά Στοιχεία
-                        new_customer = c1.text_input("Πελάτης", value=str(entry_data.get("Πελάτης", "")))
+                        new_customer = c1.text_input("Πελάτης", value=str(base_data.get("Πελάτης", "")))
                         
-                        current_cocktail = str(entry_data.get("Cocktail", ""))
+                        current_cocktail = str(base_data.get("Cocktail", ""))
                         cocktail_idx = cocktail_options.index(current_cocktail) if current_cocktail in cocktail_options else 0
                         if cocktail_options:
-                            new_cocktail = c1.selectbox("Cocktail", options=cocktail_options, index=cocktail_idx)
+                            new_cocktail = c2.selectbox("Cocktail", options=cocktail_options, index=cocktail_idx)
                         else:
-                            new_cocktail = c1.text_input("Cocktail", value=current_cocktail)
+                            new_cocktail = c2.text_input("Cocktail", value=current_cocktail)
                             
-                        new_pieces = c1.number_input("Τεμάχια", value=int(entry_data.get("Τεμάχια", 1)), min_value=1)
+                        new_pieces = c3.number_input("Τεμάχια", value=int(base_data.get("Τεμάχια", 1)), min_value=1)
+                        new_lot_cocktail = c4.text_input("LOT Προϊόντος", value=str(base_data.get("LOT_Cocktail", "")))
 
-                        # Στήλη 2: Υλικά & Ποσότητες
-                        current_ing = str(entry_data.get("Υλικό", ""))
-                        ing_idx = ingredient_options.index(current_ing) if current_ing in ingredient_options else 0
-                        if ingredient_options:
-                            new_ing = c2.selectbox("Υλικό (Πρώτη Ύλη)", options=ingredient_options, index=ing_idx)
-                        else:
-                            new_ing = c2.text_input("Υλικό (Πρώτη Ύλη)", value=current_ing)
+                        st.divider()
+
+                        # --- ΕΠΙΜΕΡΟΥΣ ΥΛΙΚΑ ---
+                        st.markdown("**Επιμέρους Υλικά & Ποσότητες**")
+                        
+                        updated_rows = {}
+                        
+                        # Επικεφαλίδες στηλών για τα υλικά
+                        h1, h2, h3, h4, h5 = st.columns([2, 1, 1, 1.5, 1.5])
+                        h1.caption("Υλικό (Πρώτη Ύλη)")
+                        h2.caption("Σύνολο ML")
+                        h3.caption("Στόχος (g)")
+                        h4.caption("Lot Ύλης")
+                        h5.caption("Ημ. Λήξης")
+
+                        # Εμφάνιση πεδίων για ΚΑΘΕ υλικό της συγκεκριμένης παραγγελίας
+                        for idx in row_indices:
+                            row_data = df_past.loc[idx]
+                            r1, r2, r3, r4, r5 = st.columns([2, 1, 1, 1.5, 1.5])
                             
-                        new_ml = c2.number_input("Σύνολο ML", value=float(entry_data.get("Σύνολο_ML", 0.0)))
-                        new_g = c2.number_input("Στόχος Γραμμάρια", value=float(entry_data.get("Στόχος_Γραμμάρια", 0.0)))
+                            current_ing = str(row_data.get("Υλικό", ""))
+                            ing_idx = ingredient_options.index(current_ing) if current_ing in ingredient_options else 0
+                            
+                            # Χρησιμοποιούμε unique keys (key=f"ing_{idx}") για να μην μπερδεύονται τα πεδία
+                            if ingredient_options:
+                                new_ing = r1.selectbox("Υλικό", options=ingredient_options, index=ing_idx, key=f"ing_{idx}", label_visibility="collapsed")
+                            else:
+                                new_ing = r1.text_input("Υλικό", value=current_ing, key=f"ing_{idx}", label_visibility="collapsed")
+                                
+                            new_ml = r2.number_input("ML", value=float(row_data.get("Σύνολο_ML", 0.0)), key=f"ml_{idx}", label_visibility="collapsed")
+                            new_g = r3.number_input("Γραμμάρια", value=float(row_data.get("Στόχος_Γραμμάρια", 0.0)), key=f"g_{idx}", label_visibility="collapsed")
+                            new_lot_ing = r4.text_input("Lot Ύλης", value=str(row_data.get("Lot Number", "")), key=f"lot_{idx}", label_visibility="collapsed")
+                            new_expiry = r5.text_input("Λήξη", value=str(row_data.get("Ημ_Λήξης", "")), key=f"exp_{idx}", label_visibility="collapsed")
 
-                        # Στήλη 3: Ιχνηλασιμότητα
-                        new_lot_cocktail = c3.text_input("LOT Προϊόντος", value=str(entry_data.get("LOT_Cocktail", "")))
-                        new_lot_ing = c3.text_input("Lot Number (Ύλης)", value=str(entry_data.get("Lot Number", "")))
-                        new_expiry = c3.text_input("Ημ. Λήξης", value=str(entry_data.get("Ημ_Λήξης", "")))
+                            # Αποθήκευση των αλλαγών αυτού του υλικού σε λεξικό
+                            updated_rows[idx] = {
+                                "Υλικό": new_ing,
+                                "Σύνολο_ML": new_ml,
+                                "Στόχος_Γραμμάρια": new_g,
+                                "Lot Number": new_lot_ing,
+                                "Ημ_Λήξης": new_expiry
+                            }
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         
-                        # Κουμπιά Αποθήκευσης / Διαγραφής
+                        # --- ΚΟΥΜΠΙΑ ΑΠΟΘΗΚΕΥΣΗΣ & ΔΙΑΓΡΑΦΗΣ ---
                         btn_save, btn_del = st.columns(2)
-                        save_clicked = btn_save.form_submit_button("💾 Αποθήκευση Αλλαγών", type="primary", use_container_width=True)
-                        delete_clicked = btn_del.form_submit_button("🗑️ Διαγραφή Εγγραφής", use_container_width=True)
+                        save_clicked = btn_save.form_submit_button("💾 Αποθήκευση Παραγωγής", type="primary", use_container_width=True)
+                        delete_clicked = btn_del.form_submit_button("🗑️ Διαγραφή ΟΛΟΚΛΗΡΗΣ της Παραγωγής", use_container_width=True)
 
                         if save_clicked:
-                            df_past.at[selected_idx, "Πελάτης"] = new_customer
-                            df_past.at[selected_idx, "Cocktail"] = new_cocktail
-                            df_past.at[selected_idx, "Τεμάχια"] = new_pieces
-                            df_past.at[selected_idx, "Υλικό"] = new_ing
-                            df_past.at[selected_idx, "Σύνολο_ML"] = new_ml
-                            df_past.at[selected_idx, "Στόχος_Γραμμάρια"] = new_g
-                            df_past.at[selected_idx, "LOT_Cocktail"] = new_lot_cocktail
-                            df_past.at[selected_idx, "Lot Number"] = new_lot_ing
-                            df_past.at[selected_idx, "Ημ_Λήξης"] = new_expiry
+                            # 1. Ενημερώνουμε όλες τις γραμμές με τα γενικά στοιχεία (αν άλλαξαν)
+                            for idx in row_indices:
+                                df_past.at[idx, "Πελάτης"] = new_customer
+                                df_past.at[idx, "Cocktail"] = new_cocktail
+                                df_past.at[idx, "Τεμάχια"] = new_pieces
+                                df_past.at[idx, "LOT_Cocktail"] = new_lot_cocktail
+                                
+                                # 2. Ενημερώνουμε τα στοιχεία του συγκεκριμένου υλικού
+                                df_past.at[idx, "Υλικό"] = updated_rows[idx]["Υλικό"]
+                                df_past.at[idx, "Σύνολο_ML"] = updated_rows[idx]["Σύνολο_ML"]
+                                df_past.at[idx, "Στόχος_Γραμμάρια"] = updated_rows[idx]["Στόχος_Γραμμάρια"]
+                                df_past.at[idx, "Lot Number"] = updated_rows[idx]["Lot Number"]
+                                df_past.at[idx, "Ημ_Λήξης"] = updated_rows[idx]["Ημ_Λήξης"]
                             
                             df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
-                            st.success("✅ Η εγγραφή ενημερώθηκε!")
+                            st.success("✅ Η συνολική παραγωγή ενημερώθηκε επιτυχώς!")
                             time.sleep(1)
                             st.rerun()
 
                         if delete_clicked:
-                            df_past = df_past.drop(selected_idx)
+                            # Διαγράφουμε ΟΛΕΣ τις εγγραφές (υλικά) που ανήκουν σε αυτό το Cocktail
+                            df_past = df_past.drop(row_indices)
                             if df_past.empty:
-                                os.remove(file_path) # Διαγραφή αρχείου αν αδειάσει τελείως
-                                st.warning("⚠️ Το αρχείο διαγράφηκε γιατί δεν περιείχε άλλες εγγραφές.")
+                                os.remove(file_path)
+                                st.warning("⚠️ Όλες οι εγγραφές διαγράφηκαν. Το αρχείο αφαιρέθηκε.")
                             else:
                                 df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
-                                st.warning("🗑️ Η εγγραφή διαγράφηκε!")
+                                st.warning("🗑️ Η παραγωγή διαγράφηκε ολόκληρη!")
                             
                             time.sleep(1)
                             st.rerun()
