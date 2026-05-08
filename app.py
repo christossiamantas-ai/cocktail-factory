@@ -1218,13 +1218,13 @@ elif page == "📦 Lot Παραγωγής":
                 df_past,
                 use_container_width=True,
                 num_rows="dynamic",
-                key=f"lot_editor_{sel_hist_date.replace('/', '_')}",
+                # Αφαιρέσαμε τη γραμμή key=... για να λυθεί το πρόβλημα με το session_state
                 column_config={
                     "Cocktail": st.column_config.SelectboxColumn(
-                        "Cocktail",  # Τίτλος στήλης
+                        "Cocktail",  
                         help="Επιλέξτε Cocktail από την καταχωρημένη λίστα συνταγών",
                         options=cocktail_options,
-                        required=True # Δεν επιτρέπει να μείνει κενό
+                        required=True 
                     ),
                     "Υλικό": st.column_config.SelectboxColumn(
                         "Υλικό", 
