@@ -200,15 +200,23 @@ if page == "📦 Αποθήκη":
                 if new_name:
                     max_id = pd.to_numeric(df_ing["ID"], errors="coerce").max() if not df_ing.empty else 1000
                     if pd.isna(max_id): max_id = 1000
+                    
+                    # --- ΔΙΟΡΘΩΣΗ ΥΠΟΛΟΓΙΣΜΟΥ ---
+                    val_price = float(new_price)
+                    val_vol = float(new_vol)
+                    price_per_ml = val_price / val_vol if val_vol > 0 else 0.0
+                    # ----------------------------
+
                     new_row = {
                         "ID": int(max_id) + 1,
                         "Name": new_name,
-                        "Price": new_price,
-                        "Volume": new_vol,
+                        "Price": val_price,
+                        "Volume": val_vol,
                         "Weight_Full": new_weight,
-                        "Τιμή/ml": new_price / new_vol,
+                        "Τιμή/ml": price_per_ml,
                         "Αλκοόλ %": new_alc,
                         "Απόθεμα (ml)": 0.0
+                    }
                     }
                     df_ing = pd.concat([df_ing, pd.DataFrame([new_row])], ignore_index=True)
                     df_ing = df_ing.sort_values(by="Name", key=lambda col: col.str.lower())
