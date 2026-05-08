@@ -1206,14 +1206,33 @@ elif page == "📦 Lot Παραγωγής":
             
             # --- ΔΙΑΔΡΑΣΤΙΚΟΣ ΠΙΝΑΚΑΣ ΕΠΕΞΕΡΓΑΣΙΑΣ ---
             st.markdown("#### 📝 Προβολή & Επεξεργασία Δεδομένων")
-            st.info("💡 Κάντε κλικ στα κελιά για διόρθωση οποιουδήποτε πεδίου. Επιλέξτε γραμμές από το αριστερό περιθώριο και πατήστε 'Delete' στο πληκτρολόγιό σας για διαγραφή.")
+            st.info("💡 Κάντε κλικ στα κελιά 'Cocktail' και 'Υλικό' για να επιλέξετε από τη λίστα. Επιλέξτε γραμμές από αριστερά για διαγραφή.")
             
-            # Χρήση του data_editor για απευθείας επεξεργασία του df_past
+            # 1. Δημιουργία των λιστών επιλογής από τις ήδη υπάρχουσες βάσεις
+            # Παίρνουμε τα μοναδικά ονόματα, αγνοούμε τα κενά (dropna) και τα κάνουμε λίστα (tolist)
+            cocktail_options = df_rec["Ονομα"].dropna().unique().tolist() if not df_rec.empty else []
+            ingredient_options = df_ing["Name"].dropna().unique().tolist() if not df_ing.empty else []
+
+            # 2. Χρήση του data_editor με ρύθμιση στηλών (column_config)
             edited_df_past = st.data_editor(
                 df_past,
                 use_container_width=True,
                 num_rows="dynamic",
-                key=f"lot_editor_{sel_hist_date.replace('/', '_')}" # Μοναδικό κλειδί ανά ημέρα
+                key=f"lot_editor_{sel_hist_date.replace('/', '_')}",
+                column_config={
+                    "Cocktail": st.column_config.SelectboxColumn(
+                        "Cocktail",  # Τίτλος στήλης
+                        help="Επιλέξτε Cocktail από την καταχωρημένη λίστα συνταγών",
+                        options=cocktail_options,
+                        required=True # Δεν επιτρέπει να μείνει κενό
+                    ),
+                    "Υλικό": st.column_config.SelectboxColumn(
+                        "Υλικό", 
+                        help="Επιλέξτε Πρώτη Ύλη από την καταχωρημένη αποθήκη",
+                        options=ingredient_options,
+                        required=True
+                    )
+                }
             )
             
             # Κουμπί για αποθήκευση αλλαγών στο αρχείο CSV της συγκεκριμένης ημέρας
@@ -1221,8 +1240,8 @@ elif page == "📦 Lot Παραγωγής":
                 try:
                     edited_df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
                     st.success(f"✅ Οι αλλαγές για τις {sel_hist_date} αποθηκεύτηκαν!")
-                    time.sleep(1) # Μικρή παύση για να προλάβει ο χρήστης να δει το μήνυμα
-                    st.rerun() # Ανανέωση της σελίδας για εφαρμογή των αλλαγών
+                    time.sleep(1) 
+                    st.rerun() 
                 except Exception as e:
                     st.error(f"❌ Σφάλμα κατά την αποθήκευση: {e}")
 
