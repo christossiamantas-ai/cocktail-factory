@@ -1387,8 +1387,11 @@ elif page == "📦 Lot Παραγωγής":
                     first_idx = row_indices[0] # Παίρνουμε την 1η γραμμή για τα γενικά στοιχεία
                     base_data = df_past.loc[first_idx]
                     
-                    # Κρατάμε τα αρχικά τεμάχια για να ξέρουμε αν τα άλλαξε ο χρήστης
-                    old_pieces = int(base_data.get("Τεμάχια", 1))
+                    # Κρατάμε τα αρχικά τεμάχια από το αρχείο για τον υπολογισμό
+                    try:
+                        old_pieces = int(base_data.get("Τεμάχια", 1))
+                    except:
+                        old_pieces = 1
 
                     with st.form("edit_batch_form"):
                         st.markdown(f"##### ✏️ Επεξεργασία Παραγωγής: **{base_data['Cocktail']}**")
@@ -1397,7 +1400,6 @@ elif page == "📦 Lot Παραγωγής":
                         st.markdown("**Βασικά Στοιχεία (Εφαρμόζονται σε όλη την παραγγελία)**")
                         c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1.5])
                         
-                        # ΠΡΟΣΤΕΘΗΚΑΝ ΜΟΝΑΔΙΚΑ KEYS για να μην κολλάει η μνήμη του Streamlit
                         new_customer = c1.text_input("Πελάτης", value=str(base_data.get("Πελάτης", "")), key=f"cust_{first_idx}")
                         
                         current_cocktail = str(base_data.get("Cocktail", ""))
@@ -1414,7 +1416,7 @@ elif page == "📦 Lot Παραγωγής":
 
                         # --- ΕΠΙΜΕΡΟΥΣ ΥΛΙΚΑ ---
                         st.markdown("**Επιμέρους Υλικά & Ποσότητες**")
-                        st.info("💡 Αν αλλάξετε τα συνολικά τεμάχια παραπάνω, το σύστημα θα αναπροσαρμόσει **αυτόματα** τα ml και τα γραμμάρια κατά την αποθήκευση!")
+                        st.info("💡 Αν αλλάξετε τα **Τεμάχια**, το σύστημα θα αναπροσαρμόσει αυτόματα τα ml/γραμμάρια. Αν τα τεμάχια μείνουν ίδια, μπορείτε να διορθώσετε τα ml με το χέρι.")
                         
                         updated_rows = {}
                         
@@ -1429,25 +1431,25 @@ elif page == "📦 Lot Παραγωγής":
                             row_data = df_past.loc[idx]
                             r1, r2, r3, r4, r5 = st.columns([2, 1, 1, 1.5, 1.5])
                             
+                            # Τρέχουσες τιμές από το αρχείο
+                            curr_ml = float(row_data.get("Σύνολο_ML", 0.0))
+                            curr_g = float(row_data.get("Στόχος_Γραμμάρια", 0.0))
+                            
                             current_ing = str(row_data.get("Υλικό", ""))
                             ing_idx = ingredient_options.index(current_ing) if current_ing in ingredient_options else 0
                             
-                            if ingredient_options:
-                                new_ing = r1.selectbox("Υλικό", options=ingredient_options, index=ing_idx, key=f"ing_{idx}", label_visibility="collapsed")
-                            else:
-                                new_ing = r1.text_input("Υλικό", value=current_ing, key=f"ing_{idx}", label_visibility="collapsed")
-                                
-                            new_ml = r2.number_input("ML", value=float(row_data.get("Σύνολο_ML", 0.0)), key=f"ml_{idx}", label_visibility="collapsed")
-                            new_g = r3.number_input("Γραμμάρια", value=float(row_data.get("Στόχος_Γραμμάρια", 0.0)), key=f"g_{idx}", label_visibility="collapsed")
-                            new_lot_ing = r4.text_input("Lot Ύλης", value=str(row_data.get("Lot Number", "")), key=f"lot_{idx}", label_visibility="collapsed")
-                            new_expiry = r5.text_input("Λήξη", value=str(row_data.get("Ημ_Λήξης", "")), key=f"exp_{idx}", label_visibility="collapsed")
+                            u_ing = r1.selectbox("Υλικό", options=ingredient_options, index=ing_idx, key=f"ing_{idx}", label_visibility="collapsed")
+                            u_ml = r2.number_input("ML", value=curr_ml, key=f"ml_{idx}", label_visibility="collapsed")
+                            u_g = r3.number_input("Γραμμάρια", value=curr_g, key=f"g_{idx}", label_visibility="collapsed")
+                            u_lot = r4.text_input("Lot Ύλης", value=str(row_data.get("Lot Number", "")), key=f"lot_{idx}", label_visibility="collapsed")
+                            u_exp = r5.text_input("Λήξη", value=str(row_data.get("Ημ_Λήξης", "")), key=f"exp_{idx}", label_visibility="collapsed")
 
                             updated_rows[idx] = {
-                                "Υλικό": new_ing,
-                                "Σύνολο_ML": new_ml,
-                                "Στόχος_Γραμμάρια": new_g,
-                                "Lot Number": new_lot_ing,
-                                "Ημ_Λήξης": new_expiry
+                                "Υλικό": u_ing,
+                                "ML": u_ml,
+                                "G": u_g,
+                                "Lot": u_lot,
+                                "Exp": u_exp
                             }
 
                         st.markdown("<br>", unsafe_allow_html=True)
@@ -1459,8 +1461,8 @@ elif page == "📦 Lot Παραγωγής":
 
                         if save_clicked:
                             new_p = int(new_pieces)
-                            old_p = int(old_pieces)
-                            multiplier = new_p / old_p if old_p > 0 else 1
+                            # Υπολογισμός αναλογίας (πολλαπλασιαστής)
+                            multiplier = new_p / old_pieces if old_pieces > 0 else 1
 
                             for idx in row_indices:
                                 df_past.loc[idx, "Πελάτης"] = str(new_customer)
@@ -1469,50 +1471,46 @@ elif page == "📦 Lot Παραγωγής":
                                 df_past.loc[idx, "LOT_Cocktail"] = str(new_lot_cocktail)
                                 
                                 df_past.loc[idx, "Υλικό"] = str(updated_rows[idx]["Υλικό"])
-                                df_past.loc[idx, "Lot Number"] = str(updated_rows[idx]["Lot Number"])
-                                df_past.loc[idx, "Ημ_Λήξης"] = str(updated_rows[idx]["Ημ_Λήξης"])
+                                df_past.loc[idx, "Lot Number"] = str(updated_rows[idx]["Lot"])
+                                df_past.loc[idx, "Ημ_Λήξης"] = str(updated_rows[idx]["Exp"])
                                 
-                                # ΑΥΤΟΜΑΤΗ ΑΝΑΠΡΟΣΑΡΜΟΓΗ ML ΚΑΙ ΓΡΑΜΜΑΡΙΩΝ
-                                if new_p != old_p:
-                                    df_past.loc[idx, "Σύνολο_ML"] = float(updated_rows[idx]["Σύνολο_ML"]) * multiplier
-                                    df_past.loc[idx, "Στόχος_Γραμμάρια"] = float(updated_rows[idx]["Στόχος_Γραμμάρια"]) * multiplier
+                                # ΕΛΕΓΧΟΣ: Πώς θα ενημερωθούν οι ποσότητες;
+                                if new_p != old_pieces:
+                                    # ΑΝ ΑΛΛΑΞΑΝ ΤΑ ΤΕΜΑΧΙΑ: Πολλαπλασίασε τις αρχικές τιμές του αρχείου
+                                    original_ml = float(df_past.loc[idx, "Σύνολο_ML"])
+                                    original_g = float(df_past.loc[idx, "Στόχος_Γραμμάρια"])
+                                    df_past.loc[idx, "Σύνολο_ML"] = original_ml * multiplier
+                                    df_past.loc[idx, "Στόχος_Γραμμάρια"] = original_g * multiplier
                                 else:
-                                    df_past.loc[idx, "Σύνολο_ML"] = float(updated_rows[idx]["Σύνολο_ML"])
-                                    df_past.loc[idx, "Στόχος_Γραμμάρια"] = float(updated_rows[idx]["Στόχος_Γραμμάρια"])
+                                    # ΑΝ ΔΕΝ ΑΛΛΑΞΑΝ ΤΑ ΤΕΜΑΧΙΑ: Κράτα ό,τι έγραψε ο χρήστης στα πεδία
+                                    df_past.loc[idx, "Σύνολο_ML"] = float(updated_rows[idx]["ML"])
+                                    df_past.loc[idx, "Στόχος_Γραμμάρια"] = float(updated_rows[idx]["G"])
                             
                             df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
                             
-                            # --- ΤΟ ΜΥΣΤΙΚΟ: ΚΑΘΑΡΙΣΜΟΣ ΜΝΗΜΗΣ ΠΕΔΙΩΝ ---
-                            # Διαγράφουμε τη μνήμη της φόρμας για να αναγκαστεί να δείξει τα νέα πολλαπλασιασμένα νούμερα!
-                            keys_to_clear = [f"cust_{first_idx}", f"cock_{first_idx}", f"pcs_{first_idx}", f"lotc_{first_idx}"]
-                            for idx in row_indices:
-                                keys_to_clear.extend([f"ing_{idx}", f"ml_{idx}", f"g_{idx}", f"lot_{idx}", f"exp_{idx}"])
-                            for k in keys_to_clear:
-                                if k in st.session_state:
+                            # ΚΑΘΑΡΙΣΜΟΣ ΜΝΗΜΗΣ (SESSION STATE)
+                            for k in list(st.session_state.keys()):
+                                if any(prefix in k for prefix in ["cust_", "cock_", "pcs_", "lotc_", "ing_", "ml_", "g_", "lot_", "exp_"]):
                                     del st.session_state[k]
                             
-                            st.success(f"✅ Η παραγωγή ενημερώθηκε επιτυχώς! (Τεμάχια: {new_p})")
-                            time.sleep(1.5)
+                            st.success(f"✅ Η παραγωγή ενημερώθηκε! (Νέα Τεμάχια: {new_p})")
+                            time.sleep(1.2)
                             st.rerun()
 
                         if delete_clicked:
                             df_past = df_past.drop(row_indices)
                             if df_past.empty:
-                                os.remove(file_path)
-                                st.warning("⚠️ Όλες οι εγγραφές διαγράφηκαν. Το αρχείο αφαιρέθηκε.")
+                                if os.path.exists(file_path): os.remove(file_path)
                             else:
                                 df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
-                                st.warning("🗑️ Η παραγωγή διαγράφηκε ολόκληρη!")
                             
-                            # Καθαρίζουμε τη μνήμη και στη διαγραφή για ασφάλεια
-                            keys_to_clear = [f"cust_{first_idx}", f"cock_{first_idx}", f"pcs_{first_idx}", f"lotc_{first_idx}"]
-                            for idx in row_indices:
-                                keys_to_clear.extend([f"ing_{idx}", f"ml_{idx}", f"g_{idx}", f"lot_{idx}", f"exp_{idx}"])
-                            for k in keys_to_clear:
-                                if k in st.session_state:
+                            # Καθαρισμός μνήμης και στη διαγραφή
+                            for k in list(st.session_state.keys()):
+                                if any(prefix in k for prefix in ["cust_", "cock_", "pcs_", "lotc_", "ing_", "ml_", "g_", "lot_", "exp_"]):
                                     del st.session_state[k]
-
-                            time.sleep(1.5)
+                            
+                            st.warning("🗑️ Η παραγωγή διαγράφηκε!")
+                            time.sleep(1)
                             st.rerun()
 
                 st.divider()
