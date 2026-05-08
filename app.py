@@ -247,40 +247,41 @@ if page == "📦 Αποθήκη":
                     
                     if col_btn1.form_submit_button("Update ✅"):
                         temp_ing, temp_rec, _, _ = load_data() 
-                        old_name = ing_to_edit 
+                        old_name = str(ing_to_edit)
                         
                         # Υπολογισμός τιμής ανά ML
                         c_price = float(str(edit_price).replace(",", ".").strip())
                         c_vol = float(str(edit_vol).replace(",", ".").strip())
                         p_ml = round(c_price / c_vol, 5) if c_vol > 0 else 0.0
                         
-                        # Χρήση mask για ασφαλή ενημέρωση (Λύση για το TypeError της γραμμής 261)
-                        mask = temp_ing["Name"] == old_name
-                        temp_ing.loc[mask, "Name"] = edit_name
-                        temp_ing.loc[mask, "Price"] = c_price
-                        temp_ing.loc[mask, "Volume"] = c_vol
-                        temp_ing.loc[mask, "Αλκοόλ %"] = edit_alc
-                        temp_ing.loc[mask, "Weight_Full"] = edit_weight
-                        temp_ing.loc[mask, "Τιμή/ml"] = p_ml
+                        # Εύρεση του index της συγκεκριμένης γραμμής
+                        idx = temp_ing[temp_ing["Name"] == old_name].index
                         
-                        save_to_sheet(temp_ing, "Ingredients")
+                        if not idx.empty:
+                            # Ενημέρωση μεμονωμένων τιμών (Αποφυγή TypeError στη γραμμή 264)
+                            temp_ing.at[idx[0], "Name"] = edit_name
+                            temp_ing.at[idx[0], "Price"] = c_price
+                            temp_ing.at[idx[0], "Volume"] = c_vol
+                            temp_ing.at[idx[0], "Αλκοόλ %"] = edit_alc
+                            temp_ing.at[idx[0], "Weight_Full"] = edit_weight
+                            temp_ing.at[idx[0], "Τιμή/ml"] = p_ml
+                            
+                            save_to_sheet(temp_ing, "Ingredients")
 
-                        if old_name != edit_name:
-                            for i in range(1, 14):
-                                col = f"ΣΥΣΤΑΤΙΚΟ{i}"
-                                if col in temp_rec.columns:
-                                    temp_rec[col] = temp_rec[col].astype(str).str.strip()
-                                    temp_rec.loc[temp_rec[col] == old_name.strip(), col] = edit_name
-                            save_to_sheet(temp_rec, "Recipes")
+                            # Ενημέρωση συνταγών αν άλλαξε το όνομα
+                            if old_name != edit_name:
+                                for i in range(1, 14):
+                                    col = f"ΣΥΣΤΑΤΙΚΟ{i}"
+                                    if col in temp_rec.columns:
+                                        temp_rec[col] = temp_rec[col].astype(str).str.strip()
+                                        rec_idx = temp_rec[temp_rec[col] == old_name.strip()].index
+                                        if not rec_idx.empty:
+                                            temp_rec.loc[rec_idx, col] = edit_name
+                                save_to_sheet(temp_rec, "Recipes")
 
-                        st.success(f"✅ Το υλικό '{edit_name}' ενημερώθηκε!")
-                        st.rerun()
-
-                    if col_btn2.form_submit_button("Διαγραφή 🗑️"):
-                        df_ing = df_ing[df_ing["Name"] != ing_to_edit]
-                        save_to_sheet(df_ing, "Ingredients")
-                        st.warning(f"Το υλικό {ing_to_edit} διαγράφηκε.")
-                        st.rerun()
+                            st.success(f"✅ Το υλικό '{edit_name}' ενημερώθηκε!")
+                            time.sleep(1)
+                            st.rerun()
 
     with tab3:
         st.subheader("Συνολική Εικόνα Αποθήκης")
