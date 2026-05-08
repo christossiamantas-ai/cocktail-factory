@@ -702,6 +702,11 @@ elif page == "🔍 Ανάλυση":
             name = recipe.get("Ονομα", "Χωρίς Όνομα")
             bc = recipe.get("Barcode", "-")
             
+            # --- ΔΙΑΒΑΣΜΑ ΤΩΝ ΕΤΟΙΜΩΝ ΠΛΗΡΟΦΟΡΙΩΝ ---
+            # Βάλε εδώ τα ΑΚΡΙΒΗ ονόματα των στηλών όπως τα γράφεις στο αρχείο σου!
+            abv_value = recipe.get("ABV", "-") 
+            retail_price = recipe.get("Προτεινόμενη Τιμή", "-") 
+            
             html_book += f"""
             <div class='recipe-card'>
                 <div class='recipe-header'>
@@ -740,9 +745,14 @@ elif page == "🔍 Ανάλυση":
             if found_ingredients == 0:
                 html_book += "<tr><td colspan='2'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
 
-            html_book += """
+            # --- ΠΡΟΣΘΗΚΗ ΤΩΝ ΣΤΟΙΧΕΙΩΝ ΣΤΟ ΚΑΤΩ ΜΕΡΟΣ ΤΗΣ ΚΑΡΤΑΣ ---
+            html_book += f"""
                     </tbody>
                 </table>
+                <div style='margin-top:20px; padding:12px; background:#fefefe; border-top:2px solid #d32f2f; border-radius: 0 0 8px 8px;'>
+                    <span style='font-size:16px; color:#444;'>Αλκοόλ (ABV): <b>{abv_value}</b></span>
+                    <span style='float:right; font-size:18px; color:#d32f2f;'>Προτεινόμενη Τιμή: <b>{retail_price}</b></span>
+                </div>
             </div>
             """
 
@@ -762,8 +772,6 @@ elif page == "🔍 Ανάλυση":
             mime="text/html",
             use_container_width=True
         )
-    else:
-        st.warning("⚠️ Η βάση δεδομένων των συνταγών είναι άδεια.")
 # --- 5. ΠΑΡΑΓΓΕΛΙΕΣ ---
 elif page == "🛒 Παραγγελίες":
     st.header("🛒 Παραγγελίες & Ανάγκες")
