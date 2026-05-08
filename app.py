@@ -653,7 +653,7 @@ elif page == "🔍 Ανάλυση":
 # --- 🖨️ ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΒΙΒΛΙΟΥ ΣΥΝΤΑΓΩΝ ---
     st.divider()
     st.subheader("🖨️ Εκτύπωση Βιβλίου Συνταγών")
-    st.info("Αυτό το κουμπί θα δημιουργήσει ένα επαγγελματικό αρχείο HTML με όλες τις καταχωρημένες συνταγές σας.")
+    st.info("Αυτό το κουμπί θα δημιουργήσει ένα επαγγελματικό αρχείο HTML με όλες τις καταχωρημένες συνταγές σας (αγνοώντας τα κενά πεδία).")
 
     if not df_rec.empty:
         # 1. Κατασκευή του HTML εγγράφου
@@ -671,7 +671,7 @@ elif page == "🔍 Ανάλυση":
                     padding: 25px; 
                     margin-bottom: 40px; 
                     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-                    page-break-inside: avoid; /* Αποτρέπει το σπάσιμο της συνταγής σε δύο σελίδες */
+                    page-break-inside: avoid;
                 }}
                 .recipe-header {{ 
                     background-color: #d32f2f; 
@@ -718,17 +718,20 @@ elif page == "🔍 Ανάλυση":
                     <tbody>
             """
             
-            # Έλεγχος και για τα 13 πιθανά συστατικά κάθε συνταγής
             found_ingredients = 0
             for i in range(1, 14):
-                ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
+                raw_ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
                 ml = recipe.get(f"ML{i}", 0)
                 
-                # Φιλτράρουμε τις κενές τιμές
-                if ing and ing.lower() not in ["nan", "κενό", "none", "", "0"]:
+                # ΚΑΘΑΡΙΣΜΟΣ: Αφαιρούμε κενά δεξιά-αριστερά και τα κάνουμε όλα κεφαλαία για τον έλεγχο
+                ing_clean = raw_ing.strip()
+                ing_check = ing_clean.upper()
+                
+                # Ο ΑΥΣΤΗΡΟΣ ΕΛΕΓΧΟΣ
+                if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"]:
                     html_book += f"""
                     <tr>
-                        <td class='ing-name'>{ing}</td>
+                        <td class='ing-name'>{ing_clean}</td>
                         <td>{ml} ml</td>
                     </tr>
                     """
