@@ -263,10 +263,8 @@ if page == "📦 Αποθήκη":
     with tab3:
         st.subheader("📋 Λίστα Αποθήκης")
         if not df_ing.empty:
-            # Εμφάνιση των στηλών που περιέχουν και το Αλκοόλ
             view_cols = ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %"]
             st.dataframe(df_ing[view_cols], use_container_width=True)
-
 
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
 elif page == "📝 Νέα Συνταγή":
