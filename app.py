@@ -196,24 +196,25 @@ if page == "📦 Αποθήκη":
             new_price = c1.number_input("Τιμή Αγοράς (€)", min_value=0.0, step=0.1)
             new_vol = c2.number_input("ML Φιάλης", min_value=1.0, value=700.0)
             new_alc = c3.number_input("Alc %", min_value=0.0, max_value=100.0, step=0.1)
-            new_weight = st.number_input("Βάρος Περιεχομένου σε Γραμμάρια (g)", min_value=0.0, help="Το βάρος μόνο του υγρού")
+            new_weight = st.number_input("Βάρος Περιεχομένου σε Γραμμάρια (g)", min_value=0.0)
             
             if st.form_submit_button("💾 Αποθήκευση Νέου Υλικού"):
                 if new_name:
                     max_id = pd.to_numeric(df_ing["ID"], errors="coerce").max() if not df_ing.empty else 1000
                     if pd.isna(max_id): max_id = 1000
                     
-                    val_price = float(str(new_price).replace(",", ".").strip())
-                    val_vol = float(str(new_vol).replace(",", ".").strip())
-                    price_per_ml = round(val_price / val_vol, 5) if val_vol > 0 else 0.0
+                    # Υπολογισμός τιμής ανά ML
+                    v_price = float(str(new_price).replace(",", ".").strip())
+                    v_vol = float(str(new_vol).replace(",", ".").strip())
+                    p_per_ml = round(v_price / v_vol, 5) if v_vol > 0 else 0.0
                     
                     new_row = {
                         "ID": int(max_id) + 1,
                         "Name": new_name,
-                        "Price": val_price,
-                        "Volume": val_vol,
+                        "Price": v_price,
+                        "Volume": v_vol,
                         "Weight_Full": new_weight,
-                        "Τιμή/ml": price_per_ml,
+                        "Τιμή/ml": p_per_ml,
                         "Αλκοόλ %": new_alc,
                         "Απόθεμα (ml)": 0.0
                     }
@@ -248,33 +249,29 @@ if page == "📦 Αποθήκη":
                         temp_ing, temp_rec, _, _ = load_data() 
                         old_name = ing_to_edit 
                         
-                        clean_price = float(str(edit_price).replace(",", ".").strip())
-                        clean_vol = float(str(edit_vol).replace(",", ".").strip())
-                        price_per_ml = round(clean_price / clean_vol, 5) if clean_vol > 0 else 0.0
+                        # Υπολογισμός τιμής ανά ML
+                        c_price = float(str(edit_price).replace(",", ".").strip())
+                        c_vol = float(str(edit_vol).replace(",", ".").strip())
+                        p_ml = round(c_price / c_vol, 5) if c_vol > 0 else 0.0
                         
-                        idx_ing = temp_ing[temp_ing["Name"] == old_name].index
-                        temp_ing.loc[idx_ing, "Name"] = edit_name
-                        temp_ing.loc[idx_ing, "Price"] = clean_price
-                        temp_ing.loc[idx_ing, "Volume"] = clean_vol
-                        temp_ing.loc[idx_ing, "Αλκοόλ %"] = edit_alc
-                        temp_ing.loc[idx_ing, "Weight_Full"] = edit_weight
-                        temp_ing.loc[idx_ing, "Τιμή/ml"] = price_per_ml
+                        # Χρήση mask για ασφαλή ενημέρωση (Λύση για το TypeError της γραμμής 261)
+                        mask = temp_ing["Name"] == old_name
+                        temp_ing.loc[mask, "Name"] = edit_name
+                        temp_ing.loc[mask, "Price"] = c_price
+                        temp_ing.loc[mask, "Volume"] = c_vol
+                        temp_ing.loc[mask, "Αλκοόλ %"] = edit_alc
+                        temp_ing.loc[mask, "Weight_Full"] = edit_weight
+                        temp_ing.loc[mask, "Τιμή/ml"] = p_ml
                         
                         save_to_sheet(temp_ing, "Ingredients")
 
                         if old_name != edit_name:
-                            changes_made = 0
                             for i in range(1, 14):
                                 col = f"ΣΥΣΤΑΤΙΚΟ{i}"
                                 if col in temp_rec.columns:
                                     temp_rec[col] = temp_rec[col].astype(str).str.strip()
-                                    mask = temp_rec[col] == old_name.strip()
-                                    if mask.any():
-                                        temp_rec.loc[mask, col] = edit_name
-                                        changes_made += 1
-                            if changes_made > 0:
-                                save_to_sheet(temp_rec, "Recipes")
-                                st.info(f"⚙️ Αυτόματη ενημέρωση σε {changes_made} συνταγές.")
+                                    temp_rec.loc[temp_rec[col] == old_name.strip(), col] = edit_name
+                            save_to_sheet(temp_rec, "Recipes")
 
                         st.success(f"✅ Το υλικό '{edit_name}' ενημερώθηκε!")
                         st.rerun()
@@ -287,8 +284,9 @@ if page == "📦 Αποθήκη":
 
     with tab3:
         st.subheader("Συνολική Εικόνα Αποθήκης")
-        df_display = df_ing[["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]].copy()
-        st.dataframe(df_display, use_container_width=True)
+        st.dataframe(df_ing[["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]], use_container_width=True)
+
+
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
 elif page == "📝 Νέα Συνταγή":
     st.header("📝 Καταχώρηση Νέας Συνταγής")
