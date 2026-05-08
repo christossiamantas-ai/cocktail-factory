@@ -1447,26 +1447,51 @@ elif page == "📦 Lot Παραγωγής":
 
                         st.markdown("<br>", unsafe_allow_html=True)
                         
-                        # --- ΚΟΥΜΠΙΑ ΑΠΟΘΗΚΕΥΣΗΣ & ΔΙΑΓΡΑΦΗΣ ---
+                        # --- ΑΠΟΘΗΚΕΥΣΗ ---
                         btn_save, btn_del = st.columns(2)
-                        save_clicked = btn_save.form_submit_button("💾 Αποθήκευση Παραγωγής", type="primary", use_container_width=True)
-                        delete_clicked = btn_del.form_submit_button("🗑️ Διαγραφή ΟΛΟΚΛΗΡΗΣ της Παραγωγής", use_container_width=True)
-
-                        if save_clicked:
+                        if btn_save.form_submit_button("💾 Αποθήκευση Παραγωγής", type="primary", use_container_width=True):
                             new_p = int(new_pieces)
-                            # Υπολογισμός αναλογίας
+                            # Υπολογισμός αναλογίας (πολλαπλασιαστής)
                             multiplier = new_p / old_pieces if old_pieces > 0 else 1
 
+                            # --- 🛡️ ΔΙΟΡΘΩΣΗ TYPEERROR (ΚΡΙΣΙΜΟ) ---
+                            # Μετατρέπουμε τις στήλες σε κείμενο για να δέχονται τα πάντα (γράμματα/κενά)
+                            df_past["LOT_Cocktail"] = df_past["LOT_Cocktail"].astype(str).replace('nan', '')
+                            df_past["Lot Number"] = df_past["Lot Number"].astype(str).replace('nan', '')
+                            # ---------------------------------------
+
                             for idx in row_indices:
-                                # Ενημέρωση βασικών στοιχείων στη μνήμη
+                                # Χρήση .loc για απόλυτη ασφάλεια στην εγγραφή
                                 df_past.loc[idx, "Πελάτης"] = str(new_customer)
                                 df_past.loc[idx, "Cocktail"] = str(new_cocktail)
-                                df_past.loc[idx, "Τεμάχια"] = new_p  
+                                df_past.loc[idx, "Τεμάχια"] = int(new_p)  
                                 df_past.loc[idx, "LOT_Cocktail"] = str(new_lot_cocktail)
                                 
                                 df_past.loc[idx, "Υλικό"] = str(updated_rows[idx]["Υλικό"])
                                 df_past.loc[idx, "Lot Number"] = str(updated_rows[idx]["Lot"])
                                 df_past.loc[idx, "Ημ_Λήξης"] = str(updated_rows[idx]["Exp"])
+                                
+                                # ΕΛΕΓΧΟΣ: Πώς θα ενημερωθούν οι ποσότητες;
+                                if new_p != old_pieces:
+                                    # ΑΝ ΑΛΛΑΞΑΝ ΤΑ ΤΕΜΑΧΙΑ: Πολλαπλασίασε τις αρχικές τιμές
+                                    df_past.loc[idx, "Σύνολο_ML"] *= multiplier
+                                    df_past.loc[idx, "Στόχος_Γραμμάρια"] *= multiplier
+                                else:
+                                    # ΑΝ ΔΕΝ ΑΛΛΑΞΑΝ: Κράτα ό,τι έγραψες στα κουτάκια
+                                    df_past.loc[idx, "Σύνολο_ML"] = float(updated_rows[idx]["ML"])
+                                    df_past.loc[idx, "Στόχος_Γραμμάρια"] = float(updated_rows[idx]["G"])
+                            
+                            # Εγγραφή στο CSV
+                            df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
+                            
+                            # Καθαρισμός μνήμης (Session State)
+                            for k in list(st.session_state.keys()):
+                                if any(prefix in k for prefix in ["cust_", "cock_", "pcs_", "lotc_", "ing_", "ml_", "g_", "lot_", "exp_"]):
+                                    del st.session_state[k]
+                            
+                            st.success(f"✅ Η παραγωγή ενημερώθηκε! (Τεμάχια: {new_p})")
+                            time.sleep(1.2)
+                            st.rerun()
                 
                 # --- ΕΚΤΥΠΩΣΕΙΣ & ΦΙΛΤΡΑ ---
                 if not df_past.empty:
