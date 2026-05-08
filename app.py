@@ -179,11 +179,11 @@ tax_factor = TAX_RATES[country]
 if page == "📦 Αποθήκη":
     st.header("📦 Διαχείριση Υλικών")
     
-    # ΠΡΟΣΟΧΗ: Εξασφάλιση ότι το df_ing είναι έγκυρο DataFrame
+    # ΠΡΟΣΟΧΗ: Εξασφάλιση ότι το df_ing δεν είναι None (Λύνει το σφάλμα NoneType)
     if df_ing is None or not isinstance(df_ing, pd.DataFrame):
         df_ing = pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
     
-    # 2. ΑΥΤΟΜΑΤΗ ΔΙΟΡΘΩΣΗ ΣΤΗΛΩΝ (Λύνει το KeyError: 'Price')
+    # Εξασφάλιση ότι υπάρχουν όλες οι στήλες (Λύνει το KeyError)
     expected_cols = ["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"]
     for col in expected_cols:
         if col not in df_ing.columns:
@@ -192,81 +192,81 @@ if page == "📦 Αποθήκη":
     tab1, tab2, tab3 = st.tabs(["➕ Νέο Υλικό", "📝 Επεξεργασία", "📋 Προβολή"])
 
     with tab1:
-        st.subheader("Προσθήκη Νέου Υλικού")
+        st.subheader("Προσθήκη Νέας Πρώτης ύλης")
         with st.form("add_ing_form", clear_on_submit=True):
-            n_name = st.text_input("Όνομα Υλικού")
+            new_name = st.text_input("Όνομα Υλικού")
             c1, c2 = st.columns(2)
-            n_price = c1.number_input("Τιμή (€)", min_value=0.0, step=0.01)
-            n_vol = c2.number_input("ML Φιάλης", min_value=1.0, value=700.0)
+            new_price = c1.number_input("Τιμή Αγοράς (€)", min_value=0.0, step=0.01)
+            new_vol = c2.number_input("ML Φιάλης", min_value=1.0, value=700.0)
             
             if st.form_submit_button("💾 Αποθήκευση"):
-                if n_name:
+                if new_name:
                     # Ασφαλής υπολογισμός ID
-                    try: 
-                        val_id = int(pd.to_numeric(df_ing["ID"], errors="coerce").max()) + 1
-                        if math.isnan(val_id): val_id = 1001
-                    except: 
-                        val_id = 1001
-
-                    p_ml = round(n_price / n_vol, 5) if n_vol > 0 else 0.0
-                    new_row = {
-                        "ID": val_id, 
-                        "Name": n_name.strip(), 
-                        "Price": float(n_price), 
-                        "Volume": float(n_vol), 
-                        "Τιμή/ml": float(p_ml), 
-                        "Απόθεμα (ml)": 0.0,
-                        "Weight_Full": 0.0,
-                        "Αλκοόλ %": 0.0
-                    }
+                    try:
+                        max_id = pd.to_numeric(df_ing["ID"], errors="coerce").max()
+                        max_id = 1000 if pd.isna(max_id) else max_id
+                    except:
+                        max_id = 1000
+                        
+                    p_ml = round(new_price / new_vol, 5) if new_vol > 0 else 0.0
                     
+                    new_row = {
+                        "ID": int(max_id) + 1,
+                        "Name": new_name.strip(),
+                        "Price": float(new_price),
+                        "Volume": float(new_vol),
+                        "Weight_Full": 0.0,
+                        "Τιμή/ml": float(p_ml),
+                        "Αλκοόλ %": 0.0,
+                        "Απόθεμα (ml)": 0.0
+                    }
                     df_ing = pd.concat([df_ing, pd.DataFrame([new_row])], ignore_index=True)
                     save_to_sheet(df_ing, "Ingredients")
-                    st.success("✅ Το υλικό προστέθηκε!")
+                    st.success(f"✅ Το υλικό '{new_name}' προστέθηκε!")
                     time.sleep(1)
                     st.rerun()
 
     with tab2:
-        st.subheader("📝 Επεξεργασία")
+        st.subheader("📝 Επεξεργασία Υλικού")
         if not df_ing.empty:
-            ing_names = sorted([str(x) for x in df_ing["Name"].unique() if str(x).strip() != ""])
-            to_edit = st.selectbox("Επιλέξτε υλικό:", options=ing_names, index=None)
+            # Καθαρίζουμε τα ονόματα για το selectbox
+            clean_options = sorted([str(x) for x in df_ing["Name"].unique() if str(x).strip() != ""])
+            ing_to_edit = st.selectbox("Επιλέξτε υλικό:", options=clean_options, index=None)
             
-            if to_edit:
-                mask = df_ing["Name"].astype(str) == to_edit
-                curr = df_ing[mask].iloc[0]
+            if ing_to_edit:
+                curr_row = df_ing[df_ing["Name"].astype(str) == ing_to_edit].iloc[0]
                 
-                with st.form("edit_form"):
-                    e_name = st.text_input("Όνομα", value=str(curr["Name"]))
+                with st.form("edit_ing_form"):
+                    e_name = st.text_input("Όνομα Υλικού", value=str(curr_row["Name"]))
                     e1, e2 = st.columns(2)
                     
-                    # Ασφαλής ανάγνωση τιμών (αντιμετώπιση KeyError και None)
-                    def get_val(row, col_name, default=0.0):
-                        val = row.get(col_name, default)
-                        try: return float(str(val).replace(",", "."))
-                        except: return default
+                    # Βοηθητική λειτουργία για μετατροπή κειμένου/κόμματος σε αριθμό
+                    def to_float(val):
+                        try: return float(str(val).replace(",", ".").strip())
+                        except: return 0.0
 
-                    e_price = e1.number_input("Τιμή (€)", value=get_val(curr, "Price"))
-                    e_vol = e2.number_input("ML", value=get_val(curr, "Volume", 700.0))
+                    edit_price = e1.number_input("Τιμή (€)", value=to_float(curr_row.get("Price", 0)))
+                    edit_vol = e2.number_input("ML Φιάλης", value=to_float(curr_row.get("Volume", 700)))
                     
                     if st.form_submit_button("Ενημέρωση ✅"):
+                        # Επαναφόρτωση δεδομένων για ασφάλεια
                         temp_ing, _, _, _ = load_data()
-                        # Ξαναελέγχουμε στήλες και στο temp_ing
-                        for col in expected_cols:
-                            if col not in temp_ing.columns: temp_ing[col] = 0.0
                         
-                        idx_list = temp_ing.index[temp_ing["Name"].astype(str).str.strip() == to_edit.strip()].tolist()
+                        # Εύρεση index
+                        idx_list = temp_ing.index[temp_ing["Name"].astype(str).str.strip() == str(ing_to_edit).strip()].tolist()
                         
                         if idx_list:
                             i = idx_list[0]
-                            p_ml = round(e_price / e_vol, 5) if e_vol > 0 else 0.0
-                            temp_ing.at[i, "Name"] = e_name.strip()
-                            temp_ing.at[i, "Price"] = float(e_price)
-                            temp_ing.at[i, "Volume"] = float(e_vol)
+                            p_ml = round(edit_price / edit_vol, 5) if edit_vol > 0 else 0.0
+                            
+                            # Ενημέρωση κελί-κελί (Η πιο σίγουρη μέθοδος)
+                            temp_ing.at[i, "Name"] = str(e_name).strip()
+                            temp_ing.at[i, "Price"] = float(edit_price)
+                            temp_ing.at[i, "Volume"] = float(edit_vol)
                             temp_ing.at[i, "Τιμή/ml"] = float(p_ml)
                             
                             save_to_sheet(temp_ing, "Ingredients")
-                            st.success("✅ Ενημερώθηκε!")
+                            st.success("✅ Ενημερώθηκε σωστά!")
                             time.sleep(1)
                             st.rerun()
         else:
@@ -274,8 +274,10 @@ if page == "📦 Αποθήκη":
 
     with tab3:
         st.subheader("📋 Λίστα Υλικών")
-        st.dataframe(df_ing, use_container_width=True)
-
+        if not df_ing.empty:
+            # Δείχνουμε μόνο τις βασικές στήλες
+            show_cols = ["ID", "Name", "Price", "Volume", "Τιμή/ml"]
+            st.dataframe(df_ing[show_cols], use_container_width=True)
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
 elif page == "📝 Νέα Συνταγή":
     st.header("📝 Καταχώρηση Νέας Συνταγής")
