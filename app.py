@@ -175,14 +175,14 @@ page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικ�
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
-# --- 1. ΑΠΟΘΗΚΗ (ΠΛΗΡΩΣ ΑΠΟΚΑΤΕΣΤΗΜΕΝΟ ΜΕ ΑΛΚΟΟΛ) ---
+# --- 1. ΑΠΟΘΗΚΗ (ΠΛΗΡΩΣ ΑΠΟΚΑΤΕΣΤΗΜΕΝΟ) ---
 if page == "📦 Αποθήκη":
     st.header("📦 Διαχείριση Υλικών")
     
-    # Εξασφάλιση ότι το df_ing είναι έγκυρο και περιέχει όλες τις στήλες
     if df_ing is None or not isinstance(df_ing, pd.DataFrame):
         df_ing = pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
     
+    # Εξασφάλιση στηλών
     for col in ["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"]:
         if col not in df_ing.columns:
             df_ing[col] = 0.0 if col != "Name" else "Νέο Υλικό"
@@ -259,16 +259,13 @@ if page == "📦 Αποθήκη":
                             st.success("✅ Η ενημέρωση ολοκληρώθηκε!")
                             time.sleep(1)
                             st.rerun()
-        else:
-            st.info("💡 Η αποθήκη είναι άδεια.")
 
     with tab3:
         st.subheader("📋 Λίστα Αποθήκης")
         if not df_ing.empty:
+            # Εμφάνιση των στηλών που περιέχουν και το Αλκοόλ
             view_cols = ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %"]
             st.dataframe(df_ing[view_cols], use_container_width=True)
-
-Μόλις το ανεβάσεις και κάνεις **Reboot**, το πεδίο θα εμφανιστεί ξανά και οι υπολογισμοί σου θα είναι 100% σωστοί!
 
 
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
