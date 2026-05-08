@@ -175,15 +175,17 @@ page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικ�
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
-# --- 1. ΑΠΟΘΗΚΗ (ΠΛΗΡΩΣ ΑΠΟΚΑΤΕΣΤΗΜΕΝΟ) ---
+# --- 1. ΑΠΟΘΗΚΗ (ANTI-BLOCKING VERSION) ---
 if page == "📦 Αποθήκη":
     st.header("📦 Διαχείριση Υλικών")
     
+    # Αρχικοποίηση αν το df_ing είναι None
     if df_ing is None or not isinstance(df_ing, pd.DataFrame):
         df_ing = pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
     
-    # Εξασφάλιση στηλών
-    for col in ["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"]:
+    # Εξασφάλιση όλων των στηλών
+    expected_cols = ["ID", "Name", "Price", "Volume", "Weight_Full", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"]
+    for col in expected_cols:
         if col not in df_ing.columns:
             df_ing[col] = 0.0 if col != "Name" else "Νέο Υλικό"
 
@@ -196,27 +198,25 @@ if page == "📦 Αποθήκη":
             c1, c2, c3 = st.columns(3)
             n_price = c1.number_input("Τιμή (€)", min_value=0.0, step=0.01)
             n_vol = c2.number_input("ML Φιάλης", min_value=1.0, value=700.0)
-            n_alc = c3.number_input("Alc %", min_value=0.0, max_value=100.0, step=0.1)
-            n_weight = st.number_input("Βάρος Full (g)", min_value=0.0)
+            n_alc = c3.number_input("Αλκοόλ %", min_value=0.0, max_value=100.0, step=0.1)
             
             if st.form_submit_button("💾 Αποθήκευση"):
                 if n_name.strip():
-                    try:
-                        max_id = pd.to_numeric(df_ing["ID"], errors="coerce").max()
-                        max_id = 1000 if pd.isna(max_id) else max_id
-                    except: max_id = 1000
+                    # Υπολογισμός ID
+                    max_id = pd.to_numeric(df_ing["ID"], errors="coerce").max()
+                    val_id = 1001 if pd.isna(max_id) else int(max_id) + 1
                     
                     p_ml = round(n_price / n_vol, 5) if n_vol > 0 else 0.0
                     new_row = {
-                        "ID": int(max_id) + 1, "Name": n_name.strip(),
+                        "ID": val_id, "Name": n_name.strip(),
                         "Price": float(n_price), "Volume": float(n_vol),
-                        "Weight_Full": float(n_weight), "Τιμή/ml": float(p_ml),
-                        "Αλκοόλ %": float(n_alc), "Απόθεμα (ml)": 0.0
+                        "Τιμή/ml": float(p_ml), "Αλκοόλ %": float(n_alc),
+                        "Weight_Full": 0.0, "Απόθεμα (ml)": 0.0
                     }
                     df_ing = pd.concat([df_ing, pd.DataFrame([new_row])], ignore_index=True)
                     save_to_sheet(df_ing, "Ingredients")
-                    st.success("✅ Αποθηκεύτηκε επιτυχώς!")
-                    time.sleep(1)
+                    st.success("✅ Το υλικό προστέθηκε!")
+                    time.sleep(2) # Καθυστέρηση για αποφυγή Quota Error
                     st.rerun()
 
     with tab2:
@@ -231,40 +231,38 @@ if page == "📦 Αποθήκη":
                     e_name = st.text_input("Όνομα", value=str(curr["Name"]))
                     e1, e2, e3 = st.columns(3)
                     
-                    def safe_f(v, default=0.0):
+                    def safe_val(v):
                         try: return float(str(v).replace(",", ".").strip())
-                        except: return default
+                        except: return 0.0
 
-                    e_price = e1.number_input("Τιμή (€)", value=safe_f(curr.get("Price")))
-                    e_vol = e2.number_input("ML", value=safe_f(curr.get("Volume", 700)))
-                    e_alc = e3.number_input("Alc %", value=safe_f(curr.get("Αλκοόλ %")))
-                    e_weight = st.number_input("Βάρος Full (g)", value=safe_f(curr.get("Weight_Full")))
+                    e_price = e1.number_input("Τιμή (€)", value=safe_val(curr.get("Price")))
+                    e_vol = e2.number_input("ML", value=safe_val(curr.get("Volume", 700.0)))
+                    e_alc = e3.number_input("Alc %", value=safe_val(curr.get("Αλκοόλ %")))
                     
-                    if st.form_submit_button("Update ✅"):
-                        t_ing, _, _, _ = load_data()
-                        if t_ing is None: t_ing = df_ing.copy()
-                        idx_list = t_ing.index[t_ing["Name"].astype(str).str.strip() == to_edit.strip()].tolist()
+                    if st.form_submit_button("Ενημέρωση & Υπολογισμός Τιμής/ml ✅"):
+                        # Τοπική ενημέρωση για ταχύτητα
+                        new_p_ml = round(e_price / e_vol, 5) if e_vol > 0 else 0.0
                         
-                        if idx_list:
-                            i = idx_list[0]
-                            new_p_ml = round(e_price / e_vol, 5) if e_vol > 0 else 0.0
-                            t_ing.at[i, "Name"] = str(e_name).strip()
-                            t_ing.at[i, "Price"] = float(e_price)
-                            t_ing.at[i, "Volume"] = float(e_vol)
-                            t_ing.at[i, "Αλκοόλ %"] = float(e_alc)
-                            t_ing.at[i, "Weight_Full"] = float(e_weight)
-                            t_ing.at[i, "Τιμή/ml"] = float(new_p_ml)
-                            
-                            save_to_sheet(t_ing, "Ingredients")
-                            st.success("✅ Η ενημέρωση ολοκληρώθηκε!")
-                            time.sleep(1)
-                            st.rerun()
+                        # Εύρεση της γραμμής και ενημέρωση
+                        idx = df_ing.index[df_ing["Name"].astype(str) == to_edit].tolist()[0]
+                        df_ing.at[idx, "Name"] = e_name.strip()
+                        df_ing.at[idx, "Price"] = float(e_price)
+                        df_ing.at[idx, "Volume"] = float(e_vol)
+                        df_ing.at[idx, "Αλκοόλ %"] = float(e_alc)
+                        df_ing.at[idx, "Τιμή/ml"] = float(new_p_ml)
+                        
+                        # Μία και μοναδική αποθήκευση στο Sheet
+                        save_to_sheet(df_ing, "Ingredients")
+                        st.success("✅ Η τιμή ανά ml υπολογίστηκε και αποθηκεύτηκε!")
+                        time.sleep(2) # Δίνουμε χρόνο στο API της Google
+                        st.rerun()
+        else:
+            st.info("💡 Η αποθήκη είναι άδεια.")
 
     with tab3:
         st.subheader("📋 Λίστα Αποθήκης")
         if not df_ing.empty:
-            view_cols = ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %"]
-            st.dataframe(df_ing[view_cols], use_container_width=True)
+            st.dataframe(df_ing[["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %"]], use_container_width=True)
 
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ ---
 elif page == "📝 Νέα Συνταγή":
