@@ -1458,16 +1458,14 @@ elif page == "📦 Lot Παραγωγής":
                         delete_clicked = btn_del.form_submit_button("🗑️ Διαγραφή ΟΛΟΚΛΗΡΗΣ της Παραγωγής", use_container_width=True)
 
                         if save_clicked:
-                            # Μετατροπή σε ακέραιους αυστηρά, για αποφυγή σφαλμάτων
                             new_p = int(new_pieces)
                             old_p = int(old_pieces)
                             multiplier = new_p / old_p if old_p > 0 else 1
 
                             for idx in row_indices:
-                                # Χρήση της .loc (αντί της .at) που είναι 100% ασφαλής στην εγγραφή
                                 df_past.loc[idx, "Πελάτης"] = str(new_customer)
                                 df_past.loc[idx, "Cocktail"] = str(new_cocktail)
-                                df_past.loc[idx, "Τεμάχια"] = new_p  # Αυστηρή καταχώρηση νέων τεμαχίων
+                                df_past.loc[idx, "Τεμάχια"] = new_p  
                                 df_past.loc[idx, "LOT_Cocktail"] = str(new_lot_cocktail)
                                 
                                 df_past.loc[idx, "Υλικό"] = str(updated_rows[idx]["Υλικό"])
@@ -1482,10 +1480,19 @@ elif page == "📦 Lot Παραγωγής":
                                     df_past.loc[idx, "Σύνολο_ML"] = float(updated_rows[idx]["Σύνολο_ML"])
                                     df_past.loc[idx, "Στόχος_Γραμμάρια"] = float(updated_rows[idx]["Στόχος_Γραμμάρια"])
                             
-                            # Αποθήκευση στο αρχείο
                             df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
-                            st.success(f"✅ Η παραγωγή ενημερώθηκε επιτυχώς! (Τεμάχια που σώθηκαν: {new_p})")
-                            time.sleep(1.5) # Δίνουμε μισό δευτερόλεπτο παραπάνω για ασφαλή εγγραφή στον δίσκο
+                            
+                            # --- ΤΟ ΜΥΣΤΙΚΟ: ΚΑΘΑΡΙΣΜΟΣ ΜΝΗΜΗΣ ΠΕΔΙΩΝ ---
+                            # Διαγράφουμε τη μνήμη της φόρμας για να αναγκαστεί να δείξει τα νέα πολλαπλασιασμένα νούμερα!
+                            keys_to_clear = [f"cust_{first_idx}", f"cock_{first_idx}", f"pcs_{first_idx}", f"lotc_{first_idx}"]
+                            for idx in row_indices:
+                                keys_to_clear.extend([f"ing_{idx}", f"ml_{idx}", f"g_{idx}", f"lot_{idx}", f"exp_{idx}"])
+                            for k in keys_to_clear:
+                                if k in st.session_state:
+                                    del st.session_state[k]
+                            
+                            st.success(f"✅ Η παραγωγή ενημερώθηκε επιτυχώς! (Τεμάχια: {new_p})")
+                            time.sleep(1.5)
                             st.rerun()
 
                         if delete_clicked:
@@ -1497,7 +1504,15 @@ elif page == "📦 Lot Παραγωγής":
                                 df_past.to_csv(file_path, index=False, encoding='utf-8-sig')
                                 st.warning("🗑️ Η παραγωγή διαγράφηκε ολόκληρη!")
                             
-                            time.sleep(1)
+                            # Καθαρίζουμε τη μνήμη και στη διαγραφή για ασφάλεια
+                            keys_to_clear = [f"cust_{first_idx}", f"cock_{first_idx}", f"pcs_{first_idx}", f"lotc_{first_idx}"]
+                            for idx in row_indices:
+                                keys_to_clear.extend([f"ing_{idx}", f"ml_{idx}", f"g_{idx}", f"lot_{idx}", f"exp_{idx}"])
+                            for k in keys_to_clear:
+                                if k in st.session_state:
+                                    del st.session_state[k]
+
+                            time.sleep(1.5)
                             st.rerun()
 
                 st.divider()
