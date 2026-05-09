@@ -7,21 +7,27 @@ import plotly.express as px
 import imaplib
 import email
 import time
+from supabase import create_client, Client
+
+# --- Ρυθμίσεις Σελίδας ---
+st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
+
+# --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
+url: str = st.secrets["supabase"]["url"]
+key: str = st.secrets["supabase"]["key"]
+supabase: Client = create_client(url, key)
 
 # --- SIDEBAR & REFRESH LOGIC ---
 with st.sidebar:
     st.header("⚙️ Διαχείριση")
     if st.button("🔄 Ανανέωση Δεδομένων"):
-        # Καθαρίζει όλη τη μνήμη cache της εφαρμογής
         st.cache_data.clear()
-        # Επανεκκινεί την εφαρμογή για να διαβάσει τα αρχεία από το Drive
         st.rerun()
     
-    st.info("Πατήστε ανανέωση αν ο συνεργάτης σας έκανε αλλαγές στο Excel.")
+    st.info("Πατήστε ανανέωση για συγχρονισμό με τη βάση (Supabase).")
     st.divider()
-    # Στο sidebar, κάτω από το button:
-now = datetime.now().strftime("%H:%M:%S") # Αφαίρεσα το ένα .datetime
-st.write(f"Τελευταίος έλεγχος: {now}")
+    now = datetime.now().strftime("%H:%M:%S")
+    st.write(f"Τελευταίος έλεγχος: {now}")
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
 def update_live_status(user_name):
@@ -35,54 +41,41 @@ def get_who_is_online():
             data = f.read().split("|")
             if len(data) == 2:
                 user, last_time = data[0], float(data[1])
-                # Αν η τελευταία ενημέρωση έγινε τα τελευταία 60 δευτερόλεπτα
                 if time.time() - last_time < 60:
                     return user
     return None
 
-# Επιλογή χρήστη στο sidebar (για να ξέρει το σύστημα ποιος είναι μέσα)
 current_user = st.sidebar.selectbox("👤 Είσαι ο:", ["Χρήστης Α", "Χρήστης Β"])
-
-# Ενημέρωση ότι είσαι ενεργός
 update_live_status(current_user)
-
-# Έλεγχος αν είναι ο άλλος μέσα
 online_user = get_who_is_online()
 
-# Εμφάνιση ένδειξης στο sidebar
 if online_user and online_user != current_user:
     st.sidebar.success(f"🟢 Ο {online_user} είναι online!")
 else:
     st.sidebar.info("⚪️ Μόνος στην εφαρμογή")
 
-# --- Ρυθμίσεις Σελίδας ---
-st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 # --- Σύστημα Password ---
 def check_password():
     """Επιστρέφει True αν ο χρήστης έδωσε σωστό κωδικό."""
     def password_entered():
-        # panatha1908
         if st.session_state["password"] == "panatha1908":
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Διαγραφή κωδικού από το state για ασφάλεια
+            del st.session_state["password"]  
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # Πρώτη φορά που ανοίγει η εφαρμογή
         st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        # Λάθος κωδικός
         st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
         st.error("❌ Λάθος κωδικός. Προσπαθήστε ξανά.")
         return False
     else:
-        # Σωστός κωδικός
         return True
 
 if not check_password():
-    st.stop()  # Σταματάει την εκτέλεση της εφαρμογής εδώ αν δεν είναι σωστός ο κωδικός
+    st.stop()
 
 # Προσθήκη CSS
 st.markdown("""
@@ -95,7 +88,7 @@ st.markdown("""
     /* Στυλ για τα Metrics (Κέρδος, Κόστος κλπ) */
     [data-testid="stMetricValue"] {
         font-size: 28px;
-        color: #00ffcc; /* Ένα neon κυανό χρώμα για τις τιμές */
+        color: #00ffcc;
     }
     
     /* Στυλ για τα κουτιά των metrics */
@@ -123,15 +116,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Αρχεία Βάσης
-# --- Δυναμικά Paths για να παίζει σε Mac & Windows ταυτόχρονα ---
-BASE_PATH = os.path.dirname(os.path.abspath(__file__))
-
-DB_INGREDIENTS = os.path.join(BASE_PATH, "db_ingredients.csv")
-DB_RECIPES = os.path.join(BASE_PATH, "db_recipes.csv")
-DB_ORDERS = os.path.join(BASE_PATH, "db_orders.csv")
-DB_HISTORY = os.path.join(BASE_PATH, "db_history.csv")
-
+# Σταθερές
 TOTAL_FIXED = 0.22  
 TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
 
@@ -140,36 +125,54 @@ def format_greek(value):
         return "{:.3f}".format(value).replace('.', ',')
     return value
 
-def load_data():
-    if os.path.exists(DB_INGREDIENTS):
-        ing = pd.read_csv(DB_INGREDIENTS)
+# --- ΣΥΝΑΡΤΗΣΕΙΣ ΦΟΡΤΩΣΗΣ ΔΕΔΟΜΕΝΩΝ (SUPABASE) ---
+@st.cache_data(ttl=600) 
+def load_all_ingredients():
+    res = supabase.table("ingredients").select("*").order("name").execute()
+    if res.data:
+        df = pd.DataFrame(res.data)
+        # Μετατροπή ονομάτων στηλών για να μην "σπάσουν" τα άλλα tabs
+        df = df.rename(columns={
+            "id": "ID", "name": "Name", "price": "Price", "volume": "Volume", 
+            "abv": "Αλκοόλ %", "weight_full": "Weight_Full"
+        })
+        df["Τιμή/ml"] = df["Price"] / df["Volume"]
+        df["Απόθεμα (ml)"] = 0.0
+        return df
     else:
-        ing = pd.DataFrame(columns=["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"])
+        return pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full", "Απόθεμα (ml)"])
+
+@st.cache_data(ttl=600)
+def load_all_recipes():
+    res_rec = supabase.table("recipes").select("*").order("name").execute()
+    res_items = supabase.table("recipe_items").select("*").execute()
     
-    for col in ["Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Απόθεμα (ml)"]:
-        if col not in ing.columns:
-            ing[col] = 0.0 if col != "Name" else "Νέο Υλικό"
+    if res_rec.data:
+        df_rec = pd.DataFrame(res_rec.data)
+        df_items = pd.DataFrame(res_items.data) if res_items.data else pd.DataFrame(columns=["recipe_id", "ingredient_name", "ml_per_unit"])
+        
+        # Ανακατασκευή της μορφής CSV (ΣΥΣΤΑΤΙΚΟ1, ML1...) για να παίζει με την Ανάλυση
+        reconstructed = []
+        for _, row in df_rec.iterrows():
+            rec_dict = {
+                "Ονομα": row["name"],
+                "Barcode": row["barcode"],
+                "Τιμή Καταλόγου": row.get("catalog_price", 0.0)
+            }
+            items = df_items[df_items["recipe_id"] == row["id"]]
+            for i, (_, item) in enumerate(items.iterrows(), start=1):
+                rec_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = item["ingredient_name"]
+                rec_dict[f"ML{i}"] = item["ml_per_unit"]
+            reconstructed.append(rec_dict)
             
-    if os.path.exists(DB_RECIPES):
-        rec = pd.read_csv(DB_RECIPES)
+        return pd.DataFrame(reconstructed)
     else:
-        cols_rec = ["Ονομα", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
-        rec = pd.DataFrame(columns=cols_rec)
-        
-    if os.path.exists(DB_ORDERS):
-        orders = pd.read_csv(DB_ORDERS, dtype={"Πελάτης": str, "Cocktail": str})
-    else:
-        orders = pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"])
-    orders["Πελάτης"] = orders["Πελάτης"].astype(str).replace("nan", "")
+        cols_rec = ["Ονομα", "Barcode", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
+        return pd.DataFrame(columns=cols_rec)
 
-    if os.path.exists(DB_HISTORY):
-        history = pd.read_csv(DB_HISTORY)
-    else:
-        history = pd.DataFrame(columns=["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
-        
-    return ing, rec, orders, history
+df_ing = load_all_ingredients()
+df_rec = load_all_recipes()
 
-df_ing, df_rec, df_orders, df_history = load_data()
 ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
 recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
@@ -179,6 +182,7 @@ st.sidebar.title("DC CABCLUB 2026 🏆")
 page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
+
 
 # --- 1. ΑΠΟΘΗΚΗ (ΦΟΡΜΑ ΑΝΤΙ ΓΙΑ ΠΙΝΑΚΑ) ---
 if page == "📦 Αποθήκη":
