@@ -179,7 +179,7 @@ recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.em
 # --- Sidebar ---
 st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
 st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
@@ -1227,120 +1227,7 @@ elif page == "📈 Dashboard":
     else:
         st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
 
-       # --- 7. SHOP SYNC (V30 - WOOCOMMERCE API & ANALYSIS) ---
-elif page == "🌐 Shop Sync":
-    st.header("🌐 Συγχρονισμός & Ανάλυση Ημέρας (WooCommerce API)")
-    
-    # Διαδρομές αρχείων
-    recipes_path = r"/Users/christossiamantas/Documents/recipes.xlsx"
-    WC_URL = "https://your-site-url.gr" # <--- Βάλε το URL του site σου εδώ
-
-    if 'sync_results' not in st.session_state:
-        st.session_state['sync_results'] = []
-
-    tab1, tab2 = st.tabs(["📥 Λήψη από WooCommerce", "📊 Ανάλυση Υλικών"])
-
-    with tab1:
-        st.subheader("Σύνδεση με το Κατάστημα")
-        c1, c2 = st.columns(2)
-        ck = c1.text_input("Consumer Key (ck_...)", type="password")
-        cs = c2.text_input("Consumer Secret (cs_...)", type="password")
-        g_date = st.date_input("Επιλέξτε Ημερομηνία:", value=datetime.now().date())
-
-        if st.button("🚀 Λήψη Παραγγελιών"):
-            if not ck or not cs:
-                st.warning("Παρακαλώ εισάγετε τα API Keys.")
-            else:
-                import requests
-                from requests.auth import HTTPBasicAuth
-                
-                # ISO Format για το API
-                date_start = f"{g_date}T00:00:00"
-                date_end = f"{g_date}T23:59:59"
-                
-                endpoint = f"{WC_URL}/wp-json/wc/v3/orders"
-                params = {"after": date_start, "before": date_end, "per_page": 100}
-                
-                try:
-                    with st.spinner("Επικοινωνία με το WooCommerce..."):
-                        response = requests.get(endpoint, auth=HTTPBasicAuth(ck, cs), params=params)
-                        
-                        if response.status_code == 200:
-                            orders = response.json()
-                            results = []
-                            
-                            for order in orders:
-                                # Λήψη Επωνυμίας ή Ονόματος
-                                customer = order.get("billing", {}).get("company", "")
-                                if not customer:
-                                    customer = f"{order.get('billing', {}).get('first_name')} {order.get('billing', {}).get('last_name')}"
-                                
-                                # Ανάλυση προϊόντων στην παραγγελία
-                                for item in order.get("line_items", []):
-                                    prod_name = item.get("name")
-                                    qty = item.get("quantity", 0)
-                                    
-                                    results.append({
-                                        "Ημερομηνία": g_date.strftime("%d/%m/%Y"),
-                                        "Πελάτης": customer.upper(),
-                                        "Cocktail": prod_name,
-                                        "Τεμάχια": int(qty) * 24 # Μετατροπή σε μπουκάλια
-                                    })
-                            
-                            st.session_state['sync_results'] = results
-                            if results:
-                                st.success(f"✅ Βρέθηκαν {len(results)} εγγραφές προϊόντων!")
-                                st.dataframe(pd.DataFrame(results), use_container_width=True)
-                            else:
-                                st.warning("Δεν βρέθηκαν παραγγελίες για αυτή την ημερομηνία.")
-                        else:
-                            st.error(f"Σφάλμα API: {response.status_code} - Ελέγξτε τα κλειδιά και το URL.")
-                except Exception as e:
-                    st.error(f"Αποτυχία σύνδεσης: {e}")
-
-    with tab2:
-        st.subheader("📊 Συνολικά Υλικά προς Προετοιμασία")
-        
-        if st.session_state['sync_results']:
-            if os.path.exists(recipes_path):
-                df_orders = pd.DataFrame(st.session_state['sync_results'])
-                df_recipes = pd.read_excel(recipes_path)
-                analysis = []
-                
-                for _, order in df_orders.iterrows():
-                    # Ψάχνουμε τη συνταγή (προσπάθησε να ταιριάξεις το όνομα)
-                    # Χρησιμοποιούμε "in" για να πιάνουμε ονόματα όπως "Aegean Kings 200ml"
-                    recipe = df_recipes[df_recipes['Cocktail'].apply(lambda x: str(x).lower() in order['Cocktail'].lower())]
-                    
-                    if recipe.empty:
-                        # Δεύτερη προσπάθεια αν το όνομα στη συνταγή είναι πιο μικρό
-                        recipe = df_recipes[df_recipes['Cocktail'].apply(lambda x: order['Cocktail'].lower() in str(x).lower())]
-
-                    for _, ing in recipe.iterrows():
-                        # Υπολογισμός (ml ανά 1L / 5) * συνολικά μπουκάλια 200ml
-                        total_needed = (ing['Ποσότητα'] / 5) * order['Τεμάχια']
-                        analysis.append({
-                            "Συστατικό": ing['Συστατικό'],
-                            "Ποσότητα": total_needed
-                        })
-                
-                if analysis:
-                    df_ana = pd.DataFrame(analysis)
-                    final_sum = df_ana.groupby("Συστατικό")["Ποσότητα"].sum().reset_index()
-                    
-                    st.write(f"**Ανάλυση για την ημέρα: {g_date.strftime('%d/%m/%Y')}**")
-                    st.dataframe(final_sum.style.format({"Ποσότητα": "{:.0f} ml/gr"}), use_container_width=True)
-                    
-                    if st.button("📉 Ενημέρωση Αποθήκης"):
-                        st.info("Η λειτουργία ενημέρωσης αποθήκης είναι έτοιμη για διασύνδεση.")
-                else:
-                    st.error("⚠️ Δεν βρέθηκαν αντιστοιχίες στις Συνταγές για τα προϊόντα του Shop.")
-            else:
-                st.error(f"❌ Δεν βρέθηκε το αρχείο συνταγών στο: {recipes_path}")
-        else:
-            st.info("Κάντε πρώτα λήψη παραγγελιών από το Tab 1.")
-
-    
+       
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΠΛΗΡΗΣ & ΔΙΟΡΘΩΜΕΝΟΣ ΚΩΔΙΚΑΣ - SUPABASE) ---
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
