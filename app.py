@@ -179,7 +179,7 @@ recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.em
 # --- Sidebar ---
 st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
 st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📦 Lot Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
@@ -1946,3 +1946,89 @@ if page == "🧼 Συντήρηση & HACCP":
                 st.error(f"Σφάλμα ανάγνωσης αρχείου: {e}")
         else:
             st.info("ℹ️ Δεν υπάρχουν ακόμη καταγραφές.")
+
+# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM) ---
+elif page == "👥 Πελατολόγιο":
+    st.header("👥 Διαχείριση Πελατολογίου")
+    
+    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ
+    res_cust = supabase.table("customers").select("*").order("name").execute()
+    df_cust = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
+
+    tab1, tab2 = st.tabs(["📋 Λίστα & Ιστορικό", "➕ Νέος Πελάτης"])
+
+    with tab1:
+        if not df_cust.empty:
+            col_sel, col_info = st.columns([1, 2])
+            
+            with col_sel:
+                st.subheader("Επιλογή Πελάτη")
+                sel_name = st.selectbox("Αναζήτηση:", options=df_cust["name"].tolist())
+                customer_data = df_cust[df_cust["name"] == sel_name].iloc[0]
+                
+                st.markdown(f"""
+                **Στοιχεία Επικοινωνίας:**
+                * 📞 {customer_data['phone'] if customer_data['phone'] else '-'}
+                * ✉️ {customer_data['email'] if customer_data['email'] else '-'}
+                * 📍 {customer_data['address'] if customer_data['address'] else '-'}
+                ---
+                **Σημειώσεις:**
+                {customer_data['notes'] if customer_data['notes'] else 'Καμία σημείωση'}
+                """)
+                
+                if st.button("🗑️ Διαγραφή Πελάτη"):
+                    supabase.table("customers").delete().eq("id", customer_data["id"]).execute()
+                    st.success("Ο πελάτης διαγράφηκε")
+                    st.rerun()
+
+            with col_info:
+                st.subheader(f"📜 Ιστορικό Παραγωγών: {sel_name}")
+                # Φέρνουμε τις παραγωγές του συγκεκριμένου πελάτη
+                res_prod = supabase.table("production_log").select("*").eq("customer", sel_name).order("prod_date", desc=True).execute()
+                
+                if res_prod.data:
+                    df_p = pd.DataFrame(res_prod.data)
+                    # Καθαρισμός για να βλέπουμε μόνο τις παραγγελίες (όχι τα υλικά)
+                    df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail"])
+                    
+                    st.dataframe(
+                        df_p_clean.rename(columns={
+                            "prod_date": "Ημερομηνία",
+                            "cocktail_name": "Cocktail",
+                            "pieces": "Τεμάχια",
+                            "lot_cocktail": "LOT"
+                        })[["Ημερομηνία", "Cocktail", "Τεμάχια", "LOT"]],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    
+                    # Στατιστικό για τον πελάτη
+                    total_bought = df_p_clean["pieces"].sum()
+                    st.info(f"💡 Ο πελάτης έχει παραγγείλει συνολικά **{total_bought}** τεμάχια.")
+                else:
+                    st.info("Δεν βρέθηκαν παραγγελίες για αυτόν τον πελάτη.")
+        else:
+            st.info("Δεν υπάρχουν καταχωρημένοι πελάτες.")
+
+    with tab2:
+        st.subheader("Προσθήκη Νέου Πελάτη")
+        with st.form("new_customer_form"):
+            n_name = st.text_input("Όνομα / Επωνυμία *")
+            n_phone = st.text_input("Τηλέφωνο")
+            n_email = st.text_input("Email")
+            n_addr = st.text_area("Διεύθυνση")
+            n_notes = st.text_area("Σημειώσεις (π.χ. ιδιαιτερότητες στην παράδοση)")
+            
+            if st.form_submit_button("💾 Αποθήκευση Πελάτη"):
+                if n_name:
+                    try:
+                        supabase.table("customers").insert({
+                            "name": n_name, "phone": n_phone, "email": n_email, 
+                            "address": n_addr, "notes": n_notes
+                        }).execute()
+                        st.success("Ο πελάτης αποθηκεύτηκε!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Σφάλμα: Ίσως ο πελάτης υπάρχει ήδη ({e})")
+                else:
+                    st.warning("Το όνομα είναι υποχρεωτικό.")
