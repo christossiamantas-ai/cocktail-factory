@@ -186,6 +186,39 @@ tax_factor = TAX_RATES[country]
 
 # --- 1. ΑΠΟΘΗΚΗ (ΦΟΡΜΑ ΑΝΤΙ ΓΙΑ ΠΙΝΑΚΑ) ---
 if page == "📦 Αποθήκη":
+    # --- ΠΡΟΣΩΡΙΝΟ ΚΟΥΜΠΙ ΜΕΤΑΦΟΡΑΣ ΔΕΔΟΜΕΝΩΝ ---
+    if st.button("🚀 ΜΑΓΙΚΗ ΜΕΤΑΦΟΡΑ: CSV -> SUPABASE", type="primary"):
+        try:
+            # Διαβάζει το αρχείο σου με το σωστό όνομα
+            temp_df = pd.read_csv("db_ingredients.csv") 
+            
+            new_entries = []
+            for _, row in temp_df.iterrows():
+                # Μετατροπή των κόμμα σε τελείες (αν υπάρχουν) για να περάσουν οι αριθμοί ομαλά
+                price_val = str(row.get("Price", 0)).replace(",", ".")
+                vol_val = str(row.get("Volume", 700)).replace(",", ".")
+                alc_val = str(row.get("Αλκοόλ %", 0)).replace(",", ".")
+                weight_val = str(row.get("Weight_Full", 0)).replace(",", ".")
+
+                new_entries.append({
+                    "name": str(row["Name"]).strip(),
+                    "price": float(price_val) if pd.notna(row["Price"]) else 0.0,
+                    "volume": float(vol_val) if pd.notna(row["Volume"]) else 700.0,
+                    "abv": float(alc_val) if pd.notna(row["Αλκοόλ %"]) else 0.0,
+                    "weight_full": float(weight_val) if pd.notna(row.get("Weight_Full")) else 0.0
+                })
+            
+            # Στέλνει τα πάντα στη Supabase!
+            supabase.table("ingredients").insert(new_entries).execute()
+            
+            st.success("🎉 ΕΠΙΤΥΧΙΑ! Όλα τα υλικά μεταφέρθηκαν στη Supabase!")
+            st.balloons()
+            st.cache_data.clear()
+            time.sleep(2)
+            st.rerun()
+        except Exception as e:
+            st.error(f"Σφάλμα κατά τη μεταφορά: {e}")
+    st.divider()
     st.header("📦 Διαχείριση Υλικών")
     
     # Εξασφάλιση στηλών
