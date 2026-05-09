@@ -1923,92 +1923,83 @@ if page == "🧼 Συντήρηση & HACCP":
         else:
             st.info("ℹ️ Δεν υπάρχουν ακόμη καταγραφές.")
 
-# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - 100% CLEAN - NO TRACEABILITY SEARCH) ---
+# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΤΕΛΙΚΗ ΔΙΟΡΘΩΣΗ: ΜΟΝΟ ΣΤΟΙΧΕΙΑ & ΠΩΛΗΣΕΙΣ) ---
 elif page == "👥 Πελατολόγιο":
     st.header("👥 Διαχείριση Πελατολογίου")
     
-    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ
+    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΑΠΟ ΤΟΝ ΠΙΝΑΚΑ CUSTOMERS
     res_cust = supabase.table("customers").select("*").order("name").execute()
     df_cust = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
 
-    tab1, tab2 = st.tabs(["📋 Καρτέλα & Ιστορικό", "➕ Νέος Πελάτης"])
+    # Χρήση Tabs για να είναι όλα νοικοκυρεμένα
+    tab1, tab2 = st.tabs(["📋 Καρτέλα & Ιστορικό Αγορών", "➕ Νέος Πελάτης"])
 
     with tab1:
         if not df_cust.empty:
             col_sel, col_info = st.columns([1, 2])
             
             with col_sel:
-                st.subheader("👤 Επιλογή Πελάτη")
-                # Μόνο επιλογή ονόματος, τίποτα άλλο
-                sel_name = st.selectbox("Πελάτης:", options=df_cust["name"].tolist())
+                st.subheader("👤 Στοιχεία Πελάτη")
+                sel_name = st.selectbox("Επιλέξτε από τη λίστα:", options=df_cust["name"].tolist(), key="crm_selectbox")
                 customer_data = df_cust[df_cust["name"] == sel_name].iloc[0]
                 
-                # Στοιχεία CRM
-                st.markdown(f"""
-                ### 📞 Στοιχεία Επικοινωνίας
-                * **Τηλέφωνο:** {customer_data['phone'] if customer_data['phone'] else '-'}
-                * **Email:** {customer_data['email'] if customer_data['email'] else '-'}
-                * **Διεύθυνση:** {customer_data['address'] if customer_data['address'] else '-'}
-                
+                # Εμφάνιση ΜΟΝΟ των στοιχείων επικοινωνίας
+                st.info(f"""
+                **📞 Τηλέφωνο:** {customer_data['phone'] if customer_data['phone'] else '-'}
+                **✉️ Email:** {customer_data['email'] if customer_data['email'] else '-'}
+                **📍 Διεύθυνση:** {customer_data['address'] if customer_data['address'] else '-'}
+                ---
                 **📝 Σημειώσεις:**
                 {customer_data['notes'] if customer_data['notes'] else 'Καμία σημείωση'}
                 """)
                 
-                st.divider()
-                if st.button("🗑️ Διαγραφή Πελάτη", use_container_width=True):
+                if st.button("🗑️ Διαγραφή Πελάτη", type="secondary", key="del_cust_btn"):
                     supabase.table("customers").delete().eq("id", customer_data["id"]).execute()
-                    st.success("Διαγράφηκε!")
+                    st.success("Ο πελάτης διαγράφηκε!")
                     st.rerun()
 
             with col_info:
                 st.subheader(f"🛒 Αγορές: {sel_name}")
-                # Φέρνουμε ΜΟΝΟ τα εμπορικά στοιχεία
-                res_prod = supabase.table("production_log").select("prod_date, cocktail_name, pieces, prod_time, lot_cocktail").eq("customer", sel_name).order("prod_date", desc=True).execute()
+                # Φέρνουμε ΜΟΝΟ τις πωλήσεις του συγκεκριμένου πελάτη
+                res_p = supabase.table("production_log").select("prod_date, cocktail_name, pieces, prod_time, lot_cocktail").eq("customer", sel_name).order("prod_date", desc=True).execute()
                 
-                if res_prod.data:
-                    df_p = pd.DataFrame(res_prod.data)
-                    # Καθαρισμός για να βλέπουμε μόνο πωλήσεις
+                if res_p.data:
+                    df_p = pd.DataFrame(res_p.data)
+                    # Καθαρισμός για να βλέπουμε προϊόντα (όχι υλικά)
                     df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail", "cocktail_name"])
                     
-                    # ΠΡΟΒΟΛΗ: Μόνο Ημερομηνία, Cocktail, Τεμάχια. ΤΕΛΟΣ.
-                    display_df = df_p_clean.rename(columns={
+                    # Ο ΠΙΝΑΚΑΣ ΠΟΥ ΘΕΣ: Ημερομηνία - Cocktail - Τεμάχια
+                    view_df = df_p_clean.rename(columns={
                         "prod_date": "Ημερομηνία",
                         "cocktail_name": "Cocktail",
                         "pieces": "Τεμάχια"
                     })[["Ημερομηνία", "Cocktail", "Τεμάχια"]]
                     
-                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    st.dataframe(view_df, use_container_width=True, hide_index=True)
                     st.metric("Συνολικές Αγορές", f"{int(df_p_clean['pieces'].sum())} τμχ")
-
-                    # --- ΕΚΤΥΠΩΣΗ HTML (Το LOT εμφανίζεται ΜΟΝΟ στο χαρτί) ---
-                    html_rep = f"""
-                    <html><head><meta charset='UTF-8'></head>
-                    <body style='font-family:sans-serif;'>
-                        <h2>ΚΑΡΤΕΛΑ ΠΕΛΑΤΗ: {sel_name}</h2>
-                        <table border='1' style='width:100%; border-collapse:collapse;'>
-                            <tr style='background:#f2f2f2;'><th>Ημερομηνία</th><th>Cocktail</th><th>Τεμάχια</th><th>LOT</th></tr>
-                    """
-                    for _, row in df_p_clean.iterrows():
-                        html_rep += f"<tr><td>{row['prod_date']}</td><td>{row['cocktail_name']}</td><td>{row['pieces']}</td><td>{row['lot_cocktail']}</td></tr>"
-                    html_rep += "</table></body></html>"
-                    
-                    st.download_button("📥 Εκτύπωση Ιστορικού (HTML)", data=html_rep, file_name=f"{sel_name}_History.html", mime="text/html", use_container_width=True)
                 else:
-                    st.info("Δεν υπάρχουν παραγγελίες.")
+                    st.info("Δεν υπάρχουν ακόμα παραγγελίες για αυτόν τον πελάτη.")
         else:
-            st.warning("Δεν υπάρχουν πελάτες στη βάση.")
+            st.warning("⚠️ Η λίστα πελατών είναι άδεια. Προσθέστε έναν πελάτη στο διπλανό Tab.")
 
     with tab2:
-        st.subheader("➕ Νέος Πελάτης")
-        with st.form("new_cust"):
-            n_name = st.text_input("Επωνυμία *")
+        st.subheader("➕ Καταχώρηση Νέου Πελάτη")
+        with st.form("crm_new_cust_form", clear_on_submit=True):
+            n_name = st.text_input("Όνομα / Επωνυμία *")
             c1, c2 = st.columns(2)
             n_phone = c1.text_input("Τηλέφωνο")
             n_email = c2.text_input("Email")
-            n_addr = st.text_area("Διεύθυνση")
+            n_addr = st.text_area("Διεύθυνση Παράδοσης")
             n_notes = st.text_area("Σημειώσεις")
+            
             if st.form_submit_button("💾 Αποθήκευση"):
                 if n_name:
-                    supabase.table("customers").insert({"name": n_name, "phone": n_phone, "email": n_email, "address": n_addr, "notes": n_notes}).execute()
-                    st.success("Ο πελάτης προστέθηκε!")
-                    st.rerun()
+                    try:
+                        supabase.table("customers").insert({
+                            "name": n_name, "phone": n_phone, "email": n_email, 
+                            "address": n_addr, "notes": n_notes
+                        }).execute()
+                        st.success(f"Ο πελάτης '{n_name}' προστέθηκε!")
+                        st.rerun()
+                    except: st.error("Σφάλμα: Ο πελάτης υπάρχει ήδη.")
+                else: st.error("Το όνομα είναι υποχρεωτικό!")
