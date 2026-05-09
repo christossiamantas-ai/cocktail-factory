@@ -1187,80 +1187,105 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-# --- 7. DASHBOARD (SUPABASE LIVE EDITION) ---
+# --- 7. DASHBOARD (THE ULTIMATE CLOUD ANALYTICS) ---
 elif page == "📈 Dashboard":
-    st.header("📈 Στατιστικά Πωλήσεων & Ιστορικό")
+    st.header("📈 Advanced Business Analytics")
     
     import plotly.express as px
 
-    # 1. Φέρνουμε τα δεδομένα από την παραγωγή
-    res_log = supabase.table("production_log").select("*").execute()
-    
+    # 1. ΦΟΡΤΩΣΗ ΟΛΩΝ ΤΩΝ ΔΕΔΟΜΕΝΩΝ ΓΙΑ ΣΥΝΔΥΑΣΤΙΚΗ ΑΝΑΛΥΣΗ
+    with st.spinner("Υπολογισμός οικονομικών στοιχείων..."):
+        res_log = supabase.table("production_log").select("*").execute()
+        res_rec = supabase.table("recipes").select("name, catalog_price").execute()
+        res_ing = supabase.table("ingredients").select("name, price, volume").execute()
+        
     if res_log.data:
-        # Μετατροπή σε DataFrame
+        # DataFrames
         df_raw = pd.DataFrame(res_log.data)
+        df_recipes_prices = pd.DataFrame(res_rec.data)
+        df_ing_costs = pd.DataFrame(res_ing.data)
         
-        # --- ΠΡΟΣΟΧΗ: Ξεκαθάρισμα για να μην διπλομετράμε τα τεμάχια ---
-        # Κρατάμε μόνο μία γραμμή ανά μοναδική παραγωγή (batch)
+        # Καθαρισμός Πωλήσεων (για να μην διπλομετράμε)
         df_sales = df_raw.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"]).copy()
-        
-        # Μετονομασία για συμβατότητα με τα γραφήματα
-        df_sales = df_sales.rename(columns={
-            "prod_date": "Ημερομηνία",
-            "cocktail_name": "Cocktail",
-            "pieces": "Τεμάχια",
-            "customer": "Πελάτης"
-        })
+        df_sales['Date_Obj'] = pd.to_datetime(df_sales['prod_date'], format='%d/%m/%Y')
+        df_sales['Month_Year'] = df_sales['Date_Obj'].dt.strftime('%m/%Y')
 
-        # 2. Γράφημα Πωλήσεων
-        fig = px.bar(
-            df_sales.groupby("Cocktail")["Τεμάχια"].sum().reset_index(), 
-            x="Cocktail", 
-            y="Τεμάχια", 
-            title="Συνολικές Πωλήσεις ανά Cocktail (Τεμάχια)", 
-            color="Cocktail",
-            template="plotly_white"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        # --- ΦΙΛΤΡΑ ---
+        st.sidebar.subheader("📅 Φίλτρα Περιόδου")
+        filter_type = st.sidebar.radio("Προβολή ανά:", ["Όλα", "Μήνα", "Ημέρα"])
         
-        # 3. Πίνακας Ιστορικού
-        st.subheader("📋 Πλήρες Ιστορικό Παραγωγής & Πωλήσεων")
-        st.dataframe(
-            df_sales[["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια", "lot_cocktail"]]
-            .sort_values("Ημερομηνία", ascending=False), 
-            use_container_width=True
-        )
+        df_filtered = df_sales.copy()
+        if filter_type == "Μήνα":
+            sel_month = st.sidebar.selectbox("Επιλέξτε Μήνα:", sorted(df_sales['Month_Year'].unique(), reverse=True))
+            df_filtered = df_sales[df_sales['Month_Year'] == sel_month]
+        elif filter_type == "Ημέρα":
+            sel_day = st.sidebar.date_input("Επιλέξτε Ημερομηνία:", value=datetime.now())
+            df_filtered = df_sales[df_sales['Date_Obj'].dt.date == sel_day]
+
+        # --- ΟΙΚΟΝΟΜΙΚΟΙ ΥΠΟΛΟΓΙΣΜΟΙ (THE MISSING PIECE) ---
+        # Υπολογισμός Τζίρου
+        df_filtered = df_filtered.merge(df_recipes_prices, left_on="cocktail_name", right_on="name", how="left")
+        df_filtered['Revenue'] = df_filtered['pieces'] * df_filtered['catalog_price'].fillna(0)
+        total_revenue = df_filtered['Revenue'].sum()
+
+        # Υπολογισμός Κόστους (από το df_raw που έχει τα ml)
+        valid_lots = df_filtered['lot_cocktail'].unique()
+        df_usage = df_raw[df_raw['lot_cocktail'].isin(valid_lots)].copy()
+        df_usage = df_usage.merge(df_ing_costs, left_on="ingredient_name", right_on="name", how="left")
+        df_usage['Cost'] = (df_usage['total_ml'] / df_usage['volume'].replace(0, 1)) * df_usage['price'].fillna(0)
+        total_cost = df_usage['Cost'].sum()
         
+        gross_profit = total_revenue - total_cost
+
+        # --- METRICS BAR ---
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("💰 Συνολικός Τζίρος", f"{total_revenue:.2f} €".replace('.', ','))
+        m2.metric("📉 Κόστος Υλικών", f"{total_cost:.2f} €".replace('.', ','))
+        m3.metric("💎 Μικτό Κέρδος", f"{gross_profit:.2f} €".replace('.', ','))
+        m4.metric("🍹 Τεμάχια", int(df_filtered['pieces'].sum()))
+
         st.divider()
-        
-        # 4. Διαχείριση Δεδομένων (Καθαρισμός)
-        st.subheader("⚠️ Διαχείριση Βάσης Δεδομένων")
-        if "delete_confirm" not in st.session_state:
-            st.session_state.delete_confirm = False
 
-        if not st.session_state.delete_confirm:
-            if st.button("🗑️ Καθαρισμός Όλου του Ιστορικού"):
-                st.session_state.delete_confirm = True
+        # --- ΓΡΑΦΗΜΑΤΑ ---
+        col1, col2 = st.columns(2)
+        with col1:
+            fig_bar = px.bar(df_filtered.groupby("cocktail_name")["Revenue"].sum().reset_index(), 
+                            x="cocktail_name", y="Revenue", title="Τζίρος ανά Προϊόν (€)",
+                            color="Revenue", color_continuous_scale="Viridis")
+            st.plotly_chart(fig_bar, use_container_width=True)
+        with col2:
+            fig_pie = px.pie(df_filtered.groupby("customer")["Revenue"].sum().reset_index(), 
+                            values="Revenue", names="customer", title="Πηγή Τζίρου ανά Πελάτη", hole=0.4)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        st.divider()
+
+        # --- ΑΝΑΛΩΣΗ & STOCK CHECK ---
+        st.subheader("🧪 Ανάλωση Υλικών & Πρόβλεψη Αποθέματος")
+        ing_summary = df_usage.groupby("ingredient_name").agg({"total_ml": "sum", "Cost": "sum"}).reset_index()
+        ing_summary['liters'] = ing_summary['total_ml'] / 1000
+        
+        # Format πίνακα
+        st.table(ing_summary.rename(columns={
+            'ingredient_name': 'Υλικό', 
+            'total_ml': 'Σύνολο (ml)', 
+            'liters': 'Λίτρα', 
+            'Cost': 'Κόστος (€)'
+        }).sort_values('Λίτρα', ascending=False))
+
+        st.divider()
+        # --- ΙΣΤΟΡΙΚΟ ---
+        with st.expander("📄 Προβολή Αναλυτικού Ιστορικού Περιόδου"):
+            st.dataframe(df_filtered[["prod_date", "prod_time", "customer", "cocktail_name", "pieces", "Revenue"]], use_container_width=True)
+
+        # --- DELETE BUTTON ---
+        if st.sidebar.button("🗑️ Εκκαθάριση Ιστορικού", use_container_width=True):
+            if st.sidebar.checkbox("Είμαι σίγουρος"):
+                supabase.table("production_log").delete().neq("id", 0).execute()
+                st.success("Το ιστορικό διαγράφηκε!")
                 st.rerun()
-        else:
-            st.warning("⚠️ ΠΡΟΣΟΧΗ: Είστε σίγουροι; Αυτή η ενέργεια θα διαγράψει ΟΡΙΣΤΙΚΑ όλες τις παραγωγές από το Cloud.")
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("✅ Ναι, Οριστική Διαγραφή", type="primary"):
-                    # Διαγραφή όλων των εγγραφών από τον πίνακα production_log
-                    # Στη Supabase το .delete().neq("id", 0) διαγράφει τα πάντα
-                    supabase.table("production_log").delete().neq("id", 0).execute()
-                    st.session_state.delete_confirm = False
-                    st.success("Το ιστορικό καθαρίστηκε!")
-                    st.cache_data.clear()
-                    time.sleep(1)
-                    st.rerun()
-            with c2:
-                if st.button("❌ Άκυρο"):
-                    st.session_state.delete_confirm = False
-                    st.rerun()
     else:
-        st.info("📭 Δεν υπάρχουν ακόμα δεδομένα παραγωγής για την εμφάνιση στατιστικών.")
+        st.info("📭 Δεν υπάρχουν δεδομένα παραγωγής στη βάση.")
 
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΠΛΗΡΗΣ & ΔΙΟΡΘΩΜΕΝΟΣ ΚΩΔΙΚΑΣ - SUPABASE) ---
