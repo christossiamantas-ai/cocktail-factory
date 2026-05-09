@@ -1596,7 +1596,91 @@ elif page == "📦 Lot Παραγωγής":
             col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}.html", mime="text/html", use_container_width=True)
             col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}.html", mime="text/html", use_container_width=True)
 
-    # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ (ΑΝΑΖΗΤΗΣΗ ΣΕ ΟΛΑ - RESTORED & CLOUD) ---
+    
+
+# --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (ΣΥΝΔΕΣΗ ΜΕ SUPABASE) ---
+st.divider()
+st.subheader("📊 Γενικό Αρχείο Παραγωγής")
+st.info("Εδώ μπορείτε να εκτυπώσετε ολόκληρο το ιστορικό παραγωγής από τη Supabase.")
+
+if st.button("📑 Προετοιμασία Πλήρους Ιστορικού για Εκτύπωση"):
+    if res_all.data:
+        # Μετατροπή και ταξινόμηση
+        df_full_hist = pd.DataFrame(res_all.data).rename(columns={
+            "prod_date": "Ημερομηνία",
+            "customer": "Πελάτης",
+            "cocktail_name": "Cocktail",
+            "lot_cocktail": "LOT_Cocktail",
+            "ingredient_name": "Υλικό",
+            "lot_number": "Lot Number",
+            "pieces": "Τεμάχια"
+        })
+        
+        df_full_hist['temp_date'] = pd.to_datetime(df_full_hist['Ημερομηνία'], format='%d/%m/%Y')
+        df_full_hist = df_full_hist.sort_values(by='temp_date', ascending=False)
+
+        # Δημιουργία HTML (ΑΚΡΙΒΩΣ ΟΠΩΣ ΗΤΑΝ Ο ΚΩΔΙΚΑΣ ΣΟΥ)
+        full_html = f"""
+        <html>
+        <head>
+            <meta charset='UTF-8'>
+            <style>
+                body {{ font-family: 'Helvetica', sans-serif; padding: 20px; }}
+                h1 {{ text-align: center; color: #2c3e50; border-bottom: 3px solid #2c3e50; }}
+                .summary {{ background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                th {{ background-color: #2c3e50; color: white; padding: 10px; font-size: 12px; text-transform: uppercase; }}
+                td {{ border: 1px solid #ddd; padding: 8px; font-size: 11px; }}
+                tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                .badge-lot {{ background: #d32f2f; color: white; padding: 2px 5px; border-radius: 3px; font-weight: bold; }}
+            </style>
+        </head>
+        <body>
+            <h1>ΚΑΤΑΣΤΑΣΗ ΟΛΙΚΗΣ ΠΑΡΑΓΩΓΗΣ - CABCLUB</h1>
+            <div class='summary'>
+                Συνολικές Εγγραφές: <b>{len(df_full_hist)}</b><br>
+                Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ημ/νία</th>
+                        <th>Πελάτης</th>
+                        <th>Cocktail</th>
+                        <th>LOT</th>
+                        <th>Υλικό</th>
+                        <th>Lot Ύλης</th>
+                        <th>Τμχ</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+
+        for _, row in df_full_hist.iterrows():
+            full_html += f"""
+                <tr>
+                    <td>{row['Ημερομηνία']}</td>
+                    <td>{row['Πελάτης']}</td>
+                    <td><b>{row['Cocktail']}</b></td>
+                    <td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td>
+                    <td>{row['Υλικό']}</td>
+                    <td>{row['Lot Number']}</td>
+                    <td>{row['Τεμάχια']}</td>
+                </tr>
+            """
+
+        full_html += "</tbody></table></body></html>"
+
+        st.download_button(
+            label="📥 Λήψη Πλήρους Ιστορικού (HTML)",
+            data=full_html,
+            file_name=f"Full_Production_History_{datetime.now().strftime('%d_%m_%y')}.html",
+            mime="text/html"
+        )
+    else:
+        st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
+
+# --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ (ΑΝΑΖΗΤΗΣΗ ΣΕ ΟΛΑ - RESTORED & CLOUD) ---
 st.divider()
 st.subheader("🔍 Αναζήτηση Ιχνηλασιμότητας (Φίλτρα)")
 
@@ -1717,88 +1801,6 @@ if res_all.data:
             file_name="Trace_Data.csv",
             mime="text/csv"
         )
-
-# --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (ΣΥΝΔΕΣΗ ΜΕ SUPABASE) ---
-st.divider()
-st.subheader("📊 Γενικό Αρχείο Παραγωγής")
-st.info("Εδώ μπορείτε να εκτυπώσετε ολόκληρο το ιστορικό παραγωγής από τη Supabase.")
-
-if st.button("📑 Προετοιμασία Πλήρους Ιστορικού για Εκτύπωση"):
-    if res_all.data:
-        # Μετατροπή και ταξινόμηση
-        df_full_hist = pd.DataFrame(res_all.data).rename(columns={
-            "prod_date": "Ημερομηνία",
-            "customer": "Πελάτης",
-            "cocktail_name": "Cocktail",
-            "lot_cocktail": "LOT_Cocktail",
-            "ingredient_name": "Υλικό",
-            "lot_number": "Lot Number",
-            "pieces": "Τεμάχια"
-        })
-        
-        df_full_hist['temp_date'] = pd.to_datetime(df_full_hist['Ημερομηνία'], format='%d/%m/%Y')
-        df_full_hist = df_full_hist.sort_values(by='temp_date', ascending=False)
-
-        # Δημιουργία HTML (ΑΚΡΙΒΩΣ ΟΠΩΣ ΗΤΑΝ Ο ΚΩΔΙΚΑΣ ΣΟΥ)
-        full_html = f"""
-        <html>
-        <head>
-            <meta charset='UTF-8'>
-            <style>
-                body {{ font-family: 'Helvetica', sans-serif; padding: 20px; }}
-                h1 {{ text-align: center; color: #2c3e50; border-bottom: 3px solid #2c3e50; }}
-                .summary {{ background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-                th {{ background-color: #2c3e50; color: white; padding: 10px; font-size: 12px; text-transform: uppercase; }}
-                td {{ border: 1px solid #ddd; padding: 8px; font-size: 11px; }}
-                tr:nth-child(even) {{ background-color: #f2f2f2; }}
-                .badge-lot {{ background: #d32f2f; color: white; padding: 2px 5px; border-radius: 3px; font-weight: bold; }}
-            </style>
-        </head>
-        <body>
-            <h1>ΚΑΤΑΣΤΑΣΗ ΟΛΙΚΗΣ ΠΑΡΑΓΩΓΗΣ - CABCLUB</h1>
-            <div class='summary'>
-                Συνολικές Εγγραφές: <b>{len(df_full_hist)}</b><br>
-                Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Ημ/νία</th>
-                        <th>Πελάτης</th>
-                        <th>Cocktail</th>
-                        <th>LOT</th>
-                        <th>Υλικό</th>
-                        <th>Lot Ύλης</th>
-                        <th>Τμχ</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
-
-        for _, row in df_full_hist.iterrows():
-            full_html += f"""
-                <tr>
-                    <td>{row['Ημερομηνία']}</td>
-                    <td>{row['Πελάτης']}</td>
-                    <td><b>{row['Cocktail']}</b></td>
-                    <td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td>
-                    <td>{row['Υλικό']}</td>
-                    <td>{row['Lot Number']}</td>
-                    <td>{row['Τεμάχια']}</td>
-                </tr>
-            """
-
-        full_html += "</tbody></table></body></html>"
-
-        st.download_button(
-            label="📥 Λήψη Πλήρους Ιστορικού (HTML)",
-            data=full_html,
-            file_name=f"Full_Production_History_{datetime.now().strftime('%d_%m_%y')}.html",
-            mime="text/html"
-        )
-    else:
-        st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
 # --- ΕΝΟΤΗΤΑ: ΣΥΝΤΗΡΗΣΗ & HACCP ---
 # Υποθέτουμε ότι η σελίδα 'page' έχει επιλεγεί από το πλευρικό μενού
 if page == "🧼 Συντήρηση & HACCP":
