@@ -186,46 +186,7 @@ tax_factor = TAX_RATES[country]
 
 # --- 1. ΑΠΟΘΗΚΗ (ΦΟΡΜΑ ΑΝΤΙ ΓΙΑ ΠΙΝΑΚΑ) ---
 if page == "📦 Αποθήκη":
-    # --- ΠΡΟΣΩΡΙΝΗ ΜΕΤΑΦΟΡΑ ΔΕΔΟΜΕΝΩΝ ΜΕ UPLOAD ---
-    st.info("💡 Ανέβασε το αρχείο db_ingredients.csv για να μεταφέρεις τα δεδομένα στη Supabase")
-    uploaded_file = st.file_uploader("Επιλογή αρχείου CSV", type="csv")
-
-    if uploaded_file is not None:
-        if st.button("🚀 ΕΝΑΡΞΗ ΜΕΤΑΦΟΡΑΣ ΤΩΡΑ", type="primary"):
-            try:
-                # Διαβάζει το αρχείο που μόλις ανέβασες
-                temp_df = pd.read_csv(uploaded_file) 
-                
-                new_entries = []
-                for _, row in temp_df.iterrows():
-                    # Καθαρισμός δεδομένων (κόμματα σε τελείες)
-                    price_val = str(row.get("Price", 0)).replace(",", ".")
-                    vol_val = str(row.get("Volume", 700)).replace(",", ".")
-                    alc_val = str(row.get("Αλκοόλ %", 0)).replace(",", ".")
-                    weight_val = str(row.get("Weight_Full", 0)).replace(",", ".")
-
-                    new_entries.append({
-                        "name": str(row["Name"]).strip(),
-                        "price": float(price_val) if pd.notna(row.get("Price")) else 0.0,
-                        "volume": float(vol_val) if pd.notna(row.get("Volume")) else 700.0,
-                        "abv": float(alc_val) if pd.notna(row.get("Αλκοόλ %")) else 0.0,
-                        "weight_full": float(weight_val) if pd.notna(row.get("Weight_Full")) else 0.0
-                    })
-                
-                # Αποστολή στη Supabase
-                if new_entries:
-                    supabase.table("ingredients").insert(new_entries).execute()
-                    st.success(f"🎉 Επιτυχία! Μεταφέρθηκαν {len(new_entries)} υλικά!")
-                    st.balloons()
-                    st.cache_data.clear()
-                    time.sleep(2)
-                    st.rerun()
-                else:
-                    st.warning("Το αρχείο φαίνεται να είναι άδειο.")
-
-            except Exception as e:
-                st.error(f"❌ Σφάλμα: {e}")
-    st.divider()
+    
     st.header("📦 Διαχείριση Υλικών")
     
     # Εξασφάλιση στηλών
