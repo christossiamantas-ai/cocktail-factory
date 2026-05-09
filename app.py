@@ -452,59 +452,104 @@ if page == "📝 Νέα Συνταγή":
                     # Το πιο πιθανό σφάλμα εδώ είναι να υπάρχει ήδη συνταγή με το ίδιο όνομα (UNIQUE constraint)
                     st.error(f"⚠️ Σφάλμα αποθήκευσης. Ίσως υπάρχει ήδη συνταγή με αυτό το όνομα! Λεπτομέρειες: {e}")
 
-# --- 5. ΔΙΑΧΕΙΡΙΣΗ ΣΥΝΤΑΓΩΝ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
+# --- 5. ΔΙΑΧΕΙΡΙΣΗ ΣΥΝΤΑΓΩΝ (SUPABASE EDITION) ---
 elif page == "📊 Διαχείριση":
     st.header("📊 Επεξεργασία & Διαγραφή Συνταγών")
+
+    # --- ΜΑΓΙΚΟ ΚΟΥΜΠΙ ΓΙΑ ΜΕΤΑΦΟΡΑ ΠΑΛΙΩΝ ΣΥΝΤΑΓΩΝ (ΠΡΟΣΩΡΙΝΟ) ---
+    with st.expander("🚀 Εισαγωγή παλιών συνταγών από CSV"):
+        st.info("Ανέβασε το αρχείο με τις συνταγές σου για να περαστούν μαζικά στη Supabase.")
+        uploaded_rec = st.file_uploader("Ανέβασε το DB_RECIPES.csv", type="csv")
+        if uploaded_rec and st.button("Μεταφορά Συνταγών Τώρα!", type="primary"):
+            try:
+                temp_df = pd.read_csv(uploaded_rec)
+                for _, row in temp_df.iterrows():
+                    name = str(row.get("Ονομα", "")).strip()
+                    barcode = str(row.get("Barcode", "")).replace(".0", "").replace("nan", "")
+                    price = float(row.get("Τιμή Καταλόγου", 0.0)) if pd.notna(row.get("Τιμή Καταλόγου")) else 0.0
+                    
+                    if name:
+                        # 1. Φτιάχνουμε τη συνταγή
+                        res = supabase.table("recipes").insert({"name": name, "barcode": barcode, "catalog_price": price}).execute()
+                        rec_id = res.data[0]["id"]
+                        
+                        # 2. Περνάμε τα υλικά της
+                        items_to_insert = []
+                        for i in range(1, 14):
+                            ing = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                            ml = float(row.get(f"ML{i}", 0.0)) if pd.notna(row.get(f"ML{i}")) else 0.0
+                            if ing and ing != "ΚΕΝΟ" and ing != "nan" and ml > 0:
+                                items_to_insert.append({
+                                    "recipe_id": rec_id,
+                                    "ingredient_name": ing,
+                                    "ml_per_unit": ml
+                                })
+                        if items_to_insert:
+                            supabase.table("recipe_items").insert(items_to_insert).execute()
+                st.success("🎉 Όλες οι συνταγές μεταφέρθηκαν!")
+                st.balloons()
+                st.cache_data.clear()
+                time.sleep(2)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Σφάλμα: {e}")
+
+    # Ζητάμε τα βασικά στοιχεία όλων των συνταγών από τη Supabase
+    res_rec = supabase.table("recipes").select("*").order("name").execute()
     
-    # Σιγουρευόμαστε ότι έχουμε τα τελευταία δεδομένα
-    if os.path.exists(DB_RECIPES):
-        df_rec = pd.read_csv(DB_RECIPES)
-    
-    if not df_rec.empty:
-        # Διασφάλιση σωστού format για τα Barcodes
-        if "Barcode" not in df_rec.columns:
-            df_rec.insert(0, "Barcode", "")
-        df_rec["Barcode"] = df_rec["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
+    if not res_rec.data:
+        st.info("Δεν βρέθηκαν αποθηκευμένες συνταγές. Πηγαίνετε στη 'Νέα Συνταγή' ή κάντε Εισαγωγή από πάνω.")
+    else:
+        df_recipes_base = pd.DataFrame(res_rec.data)
         
         # 1. Επιλογή Cocktail
-        recipe_options = sorted(df_rec["Ονομα"].unique(), key=lambda x: str(x).lower())
         recipe_to_edit = st.selectbox(
             "Αναζήτηση Cocktail:", 
-            options=df_rec["Ονομα"].unique(),
+            options=df_recipes_base["name"].tolist(),
             index=None,
             placeholder="Επιλέξτε ένα Cocktail..."
         )
         
         if recipe_to_edit:
-            # Φέρνουμε τη γραμμή της συγκεκριμένης συνταγής
-            row = df_rec[df_rec["Ονομα"] == recipe_to_edit].iloc[0]
+            # Βρίσκουμε τη γραμμή της επιλεγμένης συνταγής
+            rec_row = df_recipes_base[df_recipes_base["name"] == recipe_to_edit].iloc[0]
+            rec_id = int(rec_row["id"])
             
-            # Χωρισμός σε Tabs: Επεξεργασία και Διαγραφή
+            # Βρίσκουμε τα υλικά
+            res_items = supabase.table("recipe_items").select("*").eq("recipe_id", rec_id).execute()
+            items_data = res_items.data if res_items.data else []
+            
             tab_edit, tab_del = st.tabs(["📝 Επεξεργασία Στοιχείων", "🗑️ Διαγραφή Συνταγής"])
             
             with tab_edit:
-                with st.form(f"form_{recipe_to_edit}"): # Μοναδικό ID φόρμας
+                with st.form(f"form_{rec_id}"): 
                     col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
-                    edit_name = col_h1.text_input("Όνομα Cocktail", value=str(row["Ονομα"]))
-                    edit_barcode = col_h2.text_input("Barcode Shop", value=str(row["Barcode"]))
-                    current_price = float(row["Τιμή Καταλόγου"]) if "Τιμή Καταλόγου" in row else 0.0
-                    edit_price = col_h3.number_input("Τιμή (€)", value=current_price, step=0.10)
+                    edit_name = col_h1.text_input("Όνομα Cocktail", value=str(rec_row["name"]))
+                    
+                    current_barcode = str(rec_row.get("barcode", ""))
+                    if current_barcode == "None" or current_barcode == "nan": current_barcode = ""
+                    edit_barcode = col_h2.text_input("Barcode Shop", value=current_barcode)
+                    
+                    current_price = float(rec_row.get("catalog_price", 0.0)) if rec_row.get("catalog_price") else 0.0
+                    edit_price = col_h3.number_input("Τιμή Καταλόγου (€)", value=current_price, step=0.10)
                     
                     st.write("---")
-                    new_recipe_data = {}
                     c1, c2 = st.columns(2)
                     
-                    # Καθαρισμός λίστας επιλογών για σύγκριση
+                    new_ingredients_list = []
+                    
+                    # Καθαρισμός επιλογών για να μην σκάσει με κενά (όπως το είχες)
                     clean_options = [str(opt).strip() for opt in ing_options]
                     
                     for i in range(1, 14):
                         target_col = c1 if i <= 7 else c2
                         with target_col:
-                            # Παίρνουμε την τιμή από το CSV και καθαρίζουμε κενά
-                            val_from_db = str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
-                            ml_from_db = float(row.get(f"ML{i}", 0.0))
+                            val_from_db = "ΚΕΝΟ"
+                            ml_from_db = 0.0
+                            if i - 1 < len(items_data):
+                                val_from_db = items_data[i-1]["ingredient_name"].strip()
+                                ml_from_db = float(items_data[i-1]["ml_per_unit"])
                             
-                            # Εύρεση σωστού index (αν δεν υπάρχει, πάει στο 0 -> ΚΕΝΟ)
                             try:
                                 current_idx = clean_options.index(val_from_db)
                             except ValueError:
@@ -512,47 +557,82 @@ elif page == "📊 Διαχείριση":
                             
                             sub_c1, sub_c2 = st.columns([2, 1])
                             
-                            # Χρήση δυναμικού key (recipe_to_edit) για να ανανεώνονται τα πεδία
-                            new_recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = sub_c1.selectbox(
+                            ing_val = sub_c1.selectbox(
                                 f"Υλικό {i}", 
                                 options=ing_options, 
                                 index=current_idx, 
-                                key=f"s_{i}_{recipe_to_edit}"
+                                key=f"s_{i}_{rec_id}"
                             )
-                            new_recipe_data[f"ML{i}"] = sub_c2.number_input(
+                            ml_val = sub_c2.number_input(
                                 f"ML {i}", 
-                                value=ml_from_db, 
-                                key=f"m_{i}_{recipe_to_edit}"
+                                value=ml_from_db,
+                                min_value=0.0,
+                                step=0.5,
+                                key=f"m_{i}_{rec_id}"
                             )
+                            new_ingredients_list.append({"name": ing_val, "ml": ml_val})
 
                     if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
-                        idx_to_update = df_rec[df_rec["Ονομα"] == recipe_to_edit].index
-                        df_rec.loc[idx_to_update, "Ονομα"] = edit_name
-                        df_rec.loc[idx_to_update, "Barcode"] = edit_barcode
-                        df_rec.loc[idx_to_update, "Τιμή Καταλόγου"] = edit_price
-                        for k, v in new_recipe_data.items():
-                            df_rec.loc[idx_to_update, k] = v
-                        
-                        df_rec = df_rec.sort_values(by="Ονομα", key=lambda col: col.str.lower())
-                        
-                        df_rec.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                        st.success(f"✅ Η συνταγή '{edit_name}' ενημερώθηκε!")
-                        st.rerun()
+                        try:
+                            supabase.table("recipes").update({
+                                "name": edit_name.strip(),
+                                "barcode": edit_barcode.strip(),
+                                "catalog_price": edit_price
+                            }).eq("id", rec_id).execute()
+                            
+                            supabase.table("recipe_items").delete().eq("recipe_id", rec_id).execute()
+                            
+                            items_to_insert = []
+                            for item in new_ingredients_list:
+                                if item["name"] and item["name"] != "ΚΕΝΟ" and item["ml"] > 0:
+                                    items_to_insert.append({
+                                        "recipe_id": rec_id,
+                                        "ingredient_name": item["name"],
+                                        "ml_per_unit": float(item["ml"])
+                                    })
+                            
+                            if items_to_insert:
+                                supabase.table("recipe_items").insert(items_to_insert).execute()
+                            
+                            st.success(f"✅ Η συνταγή '{edit_name}' ενημερώθηκε!")
+                            st.cache_data.clear()
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Σφάλμα: {e}")
 
             with tab_del:
-                st.warning(f"⚠️ Είστε σίγουροι ότι θέλετε να διαγράψετε το **{recipe_to_edit}**; Αυτή η ενέργεια δεν αναιρείται.")
-                if st.button(f"🗑️ Οριστική Διαγραφή {recipe_to_edit}", key=f"del_{recipe_to_edit}"):
-                    df_rec = df_rec[df_rec["Ονομα"] != recipe_to_edit]
-                    df_rec.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                    st.error(f"❌ Η συνταγή '{recipe_to_edit}' διαγράφηκε.")
+                st.warning(f"⚠️ Είστε σίγουροι ότι θέλετε να διαγράψετε το **{recipe_to_edit}**;")
+                if st.button(f"🗑️ Οριστική Διαγραφή", key=f"del_{rec_id}", type="primary"):
+                    supabase.table("recipes").delete().eq("id", rec_id).execute()
+                    st.error(f"❌ Η συνταγή διαγράφηκε.")
+                    st.cache_data.clear()
+                    time.sleep(1)
                     st.rerun()
 
         st.write("---")
         with st.expander("📋 Προεπισκόπηση Όλων των Συνταγών (Πίνακας)"):
-            st.dataframe(df_rec, use_container_width=True)
+            # --- ΜΑΓΕΙΑ: Φτιάχνουμε το df_rec δυναμικά από τη Supabase! ---
+            all_items = supabase.table("recipe_items").select("*").execute().data
+            df_rec_list = []
+            for _, r in df_recipes_base.iterrows():
+                row_dict = {
+                    "Ονομα": r["name"],
+                    "Barcode": str(r.get("barcode", "")).replace(".0", "").replace("nan", ""),
+                    "Τιμή Καταλόγου": r.get("catalog_price", 0.0)
+                }
+                r_items = [item for item in all_items if item["recipe_id"] == r["id"]]
+                for i in range(1, 14):
+                    if i - 1 < len(r_items):
+                        row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = r_items[i-1]["ingredient_name"]
+                        row_dict[f"ML{i}"] = r_items[i-1]["ml_per_unit"]
+                    else:
+                        row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = "ΚΕΝΟ"
+                        row_dict[f"ML{i}"] = 0.0
+                df_rec_list.append(row_dict)
             
-    else:
-        st.info("Δεν βρέθηκαν αποθηκευμένες συνταγές. Πηγαίνετε στη 'Νέα Συνταγή' για να ξεκινήσετε.")
+            df_rec = pd.DataFrame(df_rec_list)
+            st.dataframe(df_rec, use_container_width=True)
 
 # --- 4. ΑΝΑΛΥΣΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΣΥΜΒΑΤΟΤΗΤΑ ΜΕ ID & ΟΝΟΜΑΤΑ) ---
 elif page == "🔍 Ανάλυση":
