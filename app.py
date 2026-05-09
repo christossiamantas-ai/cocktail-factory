@@ -971,7 +971,7 @@ elif page == "🔍 Ανάλυση":
                 html_book += "<tr><td colspan='2'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
 
             final_abv = (total_alcohol_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
-            suggested_price = total_cost / 0.25 # Food Cost 25%
+            suggested_price = float(recipe.get("Τιμή Καταλόγου", 0.0))
 
             html_book += f"""
                     </tbody>
