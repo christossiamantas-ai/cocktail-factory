@@ -1251,6 +1251,85 @@ elif page == "📈 Dashboard":
 
         st.divider()
 
+        # --- 8. HEATMAP ΚΕΡΔΟΦΟΡΙΑΣ (BUBBLE CHART) ---
+        st.divider()
+        st.subheader("🎯 Χάρτης Απόδοσης Cocktail (Volume vs Profit)")
+        
+        # Υπολογισμός Κόστους για κάθε Recipe για να βρούμε το κέρδος
+        # Φέρνουμε τα απαραίτητα δεδομένα
+        res_ing = supabase.table("ingredients").select("name, price, volume").execute()
+        df_ing_map = pd.DataFrame(res_ing.data)
+        df_ing_map['cost_per_ml'] = df_ing_map['price'] / df_ing_map['volume']
+        ing_price_dict = dict(zip(df_ing_map['name'], df_ing_map['cost_per_ml']))
+
+        res_items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute()
+        df_items_map = pd.DataFrame(res_items.data)
+
+        # Υπολογισμός κόστους ανά συνταγή
+        recipe_costs = {}
+        for rid in df_items_map['recipe_id'].unique():
+            items = df_items_map[df_items_map['recipe_id'] == rid]
+            cost = 0.22  # Σταθερά έξοδα
+            for _, item in items.iterrows():
+                cost += item['ml_per_unit'] * ing_price_dict.get(item['ingredient_name'], 0)
+            recipe_costs[rid] = cost
+
+        # Σύνδεση με τις πωλήσεις
+        # Παίρνουμε τις τιμές καταλόγου από το df_prices που ήδη έχεις φορτώσει στο Dashboard
+        res_rec_info = supabase.table("recipes").select("id, name, catalog_price").execute()
+        df_rec_info = pd.DataFrame(res_rec_info.data)
+
+        # Φτιάχνουμε το DataFrame για το Heatmap
+        heatmap_data = []
+        for _, rec in df_rec_info.iterrows():
+            # Πόσα πουλήθηκαν συνολικά (από το df_filtered που έχεις ήδη)
+            total_sold = df_filtered[df_filtered['cocktail_name'] == rec['name']]['pieces'].sum()
+            
+            if total_sold > 0:
+                cost_price = recipe_costs.get(rec['id'], 0)
+                retail_price = rec['catalog_price'] if rec['catalog_price'] else 0
+                profit_per_unit = retail_price - cost_price
+                total_net_profit = total_sold * profit_per_unit
+                
+                heatmap_data.append({
+                    "Cocktail": rec['name'],
+                    "Πωλήσεις (Τμχ)": total_sold,
+                    "Κέρδος ανά Τμχ (€)": round(profit_per_unit, 2),
+                    "Συνολικό Κέρδος (€)": round(total_net_profit, 2)
+                })
+
+        if heatmap_data:
+            df_hm = pd.DataFrame(heatmap_data)
+            
+            fig_hm = px.scatter(
+                df_hm, 
+                x="Πωλήσεις (Τμχ)", 
+                y="Κέρδος ανά Τμχ (€)",
+                size="Συνολικό Κέρδος (€)", 
+                color="Cocktail",
+                hover_name="Cocktail",
+                text="Cocktail",
+                size_max=60,
+                template="plotly_dark",
+                title="Ανάλυση: Πού βγάζουμε τα λεφτά μας;"
+            )
+            
+            # Βελτίωση εμφάνισης κειμένου
+            fig_hm.update_traces(textposition='top center')
+            fig_hm.update_layout(height=600)
+            
+            st.plotly_chart(fig_hm, use_container_width=True)
+            
+            st.info("""
+            **💡 Πώς να διαβάσετε το γράφημα:**
+            * **Πάνω Δεξιά (Stars):** Cocktail που πουλάνε πολύ ΚΑΙ έχουν μεγάλο κέρδος. Αυτά είναι η "μηχανή" σου.
+            * **Πάνω Αριστερά (High Margin):** Cocktail με μεγάλο κέρδος αλλά λίγες πωλήσεις. Χρειάζονται προώθηση!
+            * **Κάτω Δεξιά (Volume Drivers):** Cocktail που πουλάνε πολύ αλλά αφήνουν λίγα λεφτά. Εδώ ίσως πρέπει να ανεβάσεις την τιμή.
+            * **Μέγεθος Κύκλου:** Όσο μεγαλύτερος ο κύκλος, τόσο περισσότερα συνολικά λεφτά έφερε αυτό το προϊόν στο ταμείο.
+            """)
+        else:
+            st.info("Δεν υπάρχουν επαρκή δεδομένα για το Heatmap.")
+
         # --- ΓΡΑΦΗΜΑΤΑ ---
         col1, col2 = st.columns(2)
         
