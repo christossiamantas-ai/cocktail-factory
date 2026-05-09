@@ -385,7 +385,7 @@ if page == "📦 Αποθήκη":
 
 
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (SUPABASE EDITION) ---
-if page == "📝 Νέα Συνταγή":
+elif page == "📝 Νέα Συνταγή":
     st.header("📝 Προσθήκη Νέας Συνταγής (Cocktail)")
 
     with st.form("new_recipe_form", clear_on_submit=True):
