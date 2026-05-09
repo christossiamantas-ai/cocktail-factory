@@ -1620,137 +1620,16 @@ elif page == "📦 Lot Παραγωγής":
             col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}.html", mime="text/html", use_container_width=True)
             col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}.html", mime="text/html", use_container_width=True)
 
-    # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ (ΑΝΑΖΗΤΗΣΗ ΣΕ ΟΛΑ - RESTORED & CLOUD) ---
-st.divider()
-st.subheader("🔍 Αναζήτηση Ιχνηλασιμότητας (Φίλτρα)")
-
-# 1. Ανάκτηση όλων των δεδομένων από τη Supabase
-res_all = supabase.table("production_log").select("*").execute()
-
-if res_all.data:
-    # Μετατροπή σε DataFrame και ΑΜΕΣΗ μετονομασία στηλών για να "κουμπώσει" ο παλιός σου κώδικας
-    df_all = pd.DataFrame(res_all.data).rename(columns={
-        "prod_date": "Ημερομηνία",
-        "customer": "Πελάτης",
-        "cocktail_name": "Cocktail",
-        "lot_cocktail": "LOT_Cocktail",
-        "ingredient_name": "Υλικό",
-        "lot_number": "Lot Number",
-        "pieces": "Τεμάχια"
-    })
-
-    with st.expander("⚙️ Σύνθετα Φίλτρα (Πελάτης, Υλικά, Lot)"):
-        f1, f2, f3 = st.columns(3)
-        search_cust = f1.multiselect("Πελάτης:", sorted(df_all["Πελάτης"].unique()))
-        search_cock = f2.multiselect("Cocktail:", sorted(df_all["Cocktail"].unique()))
-        search_ing = f3.multiselect("Πρώτη Ύλη:", sorted(df_all["Υλικό"].unique()))
-        search_lot = st.text_input("🔢 Αναζήτηση βάσει οποιουδήποτε LOT (Προϊόντος ή Ύλης):", placeholder="π.χ. 040526 ή L123...")
-
-    # --- ΕΦΑΡΜΟΓΗ ΦΙΛΤΡΩΝ (ΑΚΡΙΒΩΣ ΟΠΩΣ ΗΤΑΝ) ---
-    dff = df_all.copy()
-    if search_cust: dff = dff[dff["Πελάτης"].isin(search_cust)]
-    if search_cock: dff = dff[dff["Cocktail"].isin(search_cock)]
-    if search_ing: dff = dff[dff["Υλικό"].isin(search_ing)]
-    if search_lot:
-        dff = dff[dff.apply(lambda x: search_lot.lower() in str(x).lower(), axis=1)]
-
-    st.write(f"Αποτελέσματα: **{len(dff)}** εγγραφές")
-    st.dataframe(dff, use_container_width=True)
-
-    if not dff.empty:
-        # --- ΔΗΜΙΟΥΡΓΙΑ ΕΠΑΓΓΕΛΜΑΤΙΚΗΣ ΑΝΑΦΟΡΑΣ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ (HTML - ΑΚΡΙΒΩΣ Ο ΚΩΔΙΚΑΣ ΣΟΥ) ---
-        trace_html = f"""
-        <html>
-        <head>
-            <meta charset='UTF-8'>
-            <style>
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #2c3e50; }}
-                .report-header {{ border-bottom: 3px solid #2c3e50; padding-bottom: 10px; margin-bottom: 25px; }}
-                .report-title {{ font-size: 24px; font-weight: bold; color: #2c3e50; margin: 0; }}
-                .filters-used {{ background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 4px solid #6c757d; margin-bottom: 20px; font-size: 13px; }}
-                table {{ width: 100%; border-collapse: collapse; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }}
-                th {{ background-color: #2c3e50; color: white; padding: 12px 8px; text-align: left; font-size: 13px; text-transform: uppercase; }}
-                td {{ border: 1px solid #dee2e6; padding: 10px 8px; font-size: 12px; }}
-                tr:nth-child(even) {{ background-color: #f2f2f2; }}
-                tr:hover {{ background-color: #e9ecef; }}
-                .badge-lot {{ background: #d32f2f; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; }}
-                .footer {{ margin-top: 40px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 11px; color: #7f8c8d; }}
-            </style>
-        </head>
-        <body>
-            <div class='report-header'>
-                <div class='report-title'>📊 ΑΝΑΦΟΡΑ ΕΛΕΓΧΟΥ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</div>
-                <div style='font-size: 14px;'>CABCLUB COCKTAILS - Quality Assurance System</div>
-            </div>
-
-            <div class='filters-used'>
-                <strong>Κριτήρια Αναζήτησης:</strong><br>
-                Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}<br>
-                Φίλτρο Lot: {search_lot if search_lot else 'Κανένα'}<br>
-                Πελάτες: {', '.join(search_cust) if search_cust else 'Όλοι'}
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>Ημ/νία</th>
-                        <th>Πελάτης</th>
-                        <th>Cocktail</th>
-                        <th>LOT Προϊόντος</th>
-                        <th>Υλικό (Πρ. Ύλη)</th>
-                        <th>Lot Ύλης</th>
-                        <th>Τμχ</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
-
-        for _, row in dff.iterrows():
-            trace_html += f"""
-                <tr>
-                    <td>{row['Ημερομηνία']}</td>
-                    <td>{row['Πελάτης']}</td>
-                    <td><b>{row['Cocktail']}</b></td>
-                    <td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td>
-                    <td>{row['Υλικό']}</td>
-                    <td>{row['Lot Number']}</td>
-                    <td>{row['Τεμάχια']}</td>
-                </tr>
-            """
-
-        trace_html += """
-                </tbody>
-            </table>
-            <div class='footer'>
-                Η παρούσα αναφορά παράχθηκε αυτόματα από το σύστημα διαχείρισης παραγωγής της CABCLUB.
-            </div>
-        </body>
-        </html>
-        """
-
-        c1, c2 = st.columns(2)
-        c1.download_button(
-            label="📥 Εξαγωγή Επαγγελματικής Αναφοράς (HTML)",
-            data=trace_html,
-            file_name=f"Traceability_Report_{datetime.now().strftime('%d_%m_%y')}.html",
-            mime="text/html"
-        )
-        c2.download_button(
-            label="📊 Εξαγωγή Raw Data (CSV)",
-            data=dff.to_csv(index=False, encoding="utf-8-sig"),
-            file_name="Trace_Data.csv",
-            mime="text/csv"
-        )
-
-# --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (ΣΥΝΔΕΣΗ ΜΕ SUPABASE) ---
-st.divider()
-st.subheader("📊 Γενικό Αρχείο Παραγωγής")
-st.info("Εδώ μπορείτε να εκτυπώσετε ολόκληρο το ιστορικό παραγωγής από τη Supabase.")
-
-if st.button("📑 Προετοιμασία Πλήρους Ιστορικού για Εκτύπωση"):
+        # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ (ΑΝΑΖΗΤΗΣΗ ΣΕ ΟΛΑ - RESTORED & CLOUD) ---
+    st.divider()
+    st.subheader("🔍 Αναζήτηση Ιχνηλασιμότητας (Φίλτρα)")
+    
+    # 1. Ανάκτηση όλων των δεδομένων από τη Supabase
+    res_all = supabase.table("production_log").select("*").execute()
+    
     if res_all.data:
-        # Μετατροπή και ταξινόμηση
-        df_full_hist = pd.DataFrame(res_all.data).rename(columns={
+        # Μετατροπή σε DataFrame και ΑΜΕΣΗ μετονομασία στηλών για να "κουμπώσει" ο παλιός σου κώδικας
+        df_all = pd.DataFrame(res_all.data).rename(columns={
             "prod_date": "Ημερομηνία",
             "customer": "Πελάτης",
             "cocktail_name": "Cocktail",
@@ -1759,73 +1638,194 @@ if st.button("📑 Προετοιμασία Πλήρους Ιστορικού γ
             "lot_number": "Lot Number",
             "pieces": "Τεμάχια"
         })
-        
-        df_full_hist['temp_date'] = pd.to_datetime(df_full_hist['Ημερομηνία'], format='%d/%m/%Y')
-        df_full_hist = df_full_hist.sort_values(by='temp_date', ascending=False)
-
-        # Δημιουργία HTML (ΑΚΡΙΒΩΣ ΟΠΩΣ ΗΤΑΝ Ο ΚΩΔΙΚΑΣ ΣΟΥ)
-        full_html = f"""
-        <html>
-        <head>
-            <meta charset='UTF-8'>
-            <style>
-                body {{ font-family: 'Helvetica', sans-serif; padding: 20px; }}
-                h1 {{ text-align: center; color: #2c3e50; border-bottom: 3px solid #2c3e50; }}
-                .summary {{ background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-                th {{ background-color: #2c3e50; color: white; padding: 10px; font-size: 12px; text-transform: uppercase; }}
-                td {{ border: 1px solid #ddd; padding: 8px; font-size: 11px; }}
-                tr:nth-child(even) {{ background-color: #f2f2f2; }}
-                .badge-lot {{ background: #d32f2f; color: white; padding: 2px 5px; border-radius: 3px; font-weight: bold; }}
-            </style>
-        </head>
-        <body>
-            <h1>ΚΑΤΑΣΤΑΣΗ ΟΛΙΚΗΣ ΠΑΡΑΓΩΓΗΣ - CABCLUB</h1>
-            <div class='summary'>
-                Συνολικές Εγγραφές: <b>{len(df_full_hist)}</b><br>
-                Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Ημ/νία</th>
-                        <th>Πελάτης</th>
-                        <th>Cocktail</th>
-                        <th>LOT</th>
-                        <th>Υλικό</th>
-                        <th>Lot Ύλης</th>
-                        <th>Τμχ</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
-
-        for _, row in df_full_hist.iterrows():
-            full_html += f"""
-                <tr>
-                    <td>{row['Ημερομηνία']}</td>
-                    <td>{row['Πελάτης']}</td>
-                    <td><b>{row['Cocktail']}</b></td>
-                    <td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td>
-                    <td>{row['Υλικό']}</td>
-                    <td>{row['Lot Number']}</td>
-                    <td>{row['Τεμάχια']}</td>
-                </tr>
+    
+        with st.expander("⚙️ Σύνθετα Φίλτρα (Πελάτης, Υλικά, Lot)"):
+            f1, f2, f3 = st.columns(3)
+            search_cust = f1.multiselect("Πελάτης:", sorted(df_all["Πελάτης"].unique()))
+            search_cock = f2.multiselect("Cocktail:", sorted(df_all["Cocktail"].unique()))
+            search_ing = f3.multiselect("Πρώτη Ύλη:", sorted(df_all["Υλικό"].unique()))
+            search_lot = st.text_input("🔢 Αναζήτηση βάσει οποιουδήποτε LOT (Προϊόντος ή Ύλης):", placeholder="π.χ. 040526 ή L123...")
+    
+        # --- ΕΦΑΡΜΟΓΗ ΦΙΛΤΡΩΝ (ΑΚΡΙΒΩΣ ΟΠΩΣ ΗΤΑΝ) ---
+        dff = df_all.copy()
+        if search_cust: dff = dff[dff["Πελάτης"].isin(search_cust)]
+        if search_cock: dff = dff[dff["Cocktail"].isin(search_cock)]
+        if search_ing: dff = dff[dff["Υλικό"].isin(search_ing)]
+        if search_lot:
+            dff = dff[dff.apply(lambda x: search_lot.lower() in str(x).lower(), axis=1)]
+    
+        st.write(f"Αποτελέσματα: **{len(dff)}** εγγραφές")
+        st.dataframe(dff, use_container_width=True)
+    
+        if not dff.empty:
+            # --- ΔΗΜΙΟΥΡΓΙΑ ΕΠΑΓΓΕΛΜΑΤΙΚΗΣ ΑΝΑΦΟΡΑΣ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ (HTML - ΑΚΡΙΒΩΣ Ο ΚΩΔΙΚΑΣ ΣΟΥ) ---
+            trace_html = f"""
+            <html>
+            <head>
+                <meta charset='UTF-8'>
+                <style>
+                    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #2c3e50; }}
+                    .report-header {{ border-bottom: 3px solid #2c3e50; padding-bottom: 10px; margin-bottom: 25px; }}
+                    .report-title {{ font-size: 24px; font-weight: bold; color: #2c3e50; margin: 0; }}
+                    .filters-used {{ background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 4px solid #6c757d; margin-bottom: 20px; font-size: 13px; }}
+                    table {{ width: 100%; border-collapse: collapse; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }}
+                    th {{ background-color: #2c3e50; color: white; padding: 12px 8px; text-align: left; font-size: 13px; text-transform: uppercase; }}
+                    td {{ border: 1px solid #dee2e6; padding: 10px 8px; font-size: 12px; }}
+                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                    tr:hover {{ background-color: #e9ecef; }}
+                    .badge-lot {{ background: #d32f2f; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; }}
+                    .footer {{ margin-top: 40px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 11px; color: #7f8c8d; }}
+                </style>
+            </head>
+            <body>
+                <div class='report-header'>
+                    <div class='report-title'>📊 ΑΝΑΦΟΡΑ ΕΛΕΓΧΟΥ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</div>
+                    <div style='font-size: 14px;'>CABCLUB COCKTAILS - Quality Assurance System</div>
+                </div>
+    
+                <div class='filters-used'>
+                    <strong>Κριτήρια Αναζήτησης:</strong><br>
+                    Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}<br>
+                    Φίλτρο Lot: {search_lot if search_lot else 'Κανένα'}<br>
+                    Πελάτες: {', '.join(search_cust) if search_cust else 'Όλοι'}
+                </div>
+    
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ημ/νία</th>
+                            <th>Πελάτης</th>
+                            <th>Cocktail</th>
+                            <th>LOT Προϊόντος</th>
+                            <th>Υλικό (Πρ. Ύλη)</th>
+                            <th>Lot Ύλης</th>
+                            <th>Τμχ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
             """
-
-        full_html += "</tbody></table></body></html>"
-
-        st.download_button(
-            label="📥 Λήψη Πλήρους Ιστορικού (HTML)",
-            data=full_html,
-            file_name=f"Full_Production_History_{datetime.now().strftime('%d_%m_%y')}.html",
-            mime="text/html"
-        )
-    else:
-        st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
+    
+            for _, row in dff.iterrows():
+                trace_html += f"""
+                    <tr>
+                        <td>{row['Ημερομηνία']}</td>
+                        <td>{row['Πελάτης']}</td>
+                        <td><b>{row['Cocktail']}</b></td>
+                        <td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td>
+                        <td>{row['Υλικό']}</td>
+                        <td>{row['Lot Number']}</td>
+                        <td>{row['Τεμάχια']}</td>
+                    </tr>
+                """
+    
+            trace_html += """
+                    </tbody>
+                </table>
+                <div class='footer'>
+                    Η παρούσα αναφορά παράχθηκε αυτόματα από το σύστημα διαχείρισης παραγωγής της CABCLUB.
+                </div>
+            </body>
+            </html>
+            """
+    
+            c1, c2 = st.columns(2)
+            c1.download_button(
+                label="📥 Εξαγωγή Επαγγελματικής Αναφοράς (HTML)",
+                data=trace_html,
+                file_name=f"Traceability_Report_{datetime.now().strftime('%d_%m_%y')}.html",
+                mime="text/html"
+            )
+            c2.download_button(
+                label="📊 Εξαγωγή Raw Data (CSV)",
+                data=dff.to_csv(index=False, encoding="utf-8-sig"),
+                file_name="Trace_Data.csv",
+                mime="text/csv"
+            )
+    
+    # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (ΣΥΝΔΕΣΗ ΜΕ SUPABASE) ---
+    st.divider()
+    st.subheader("📊 Γενικό Αρχείο Παραγωγής")
+    st.info("Εδώ μπορείτε να εκτυπώσετε ολόκληρο το ιστορικό παραγωγής από τη Supabase.")
+    
+    if st.button("📑 Προετοιμασία Πλήρους Ιστορικού για Εκτύπωση"):
+        if res_all.data:
+            # Μετατροπή και ταξινόμηση
+            df_full_hist = pd.DataFrame(res_all.data).rename(columns={
+                "prod_date": "Ημερομηνία",
+                "customer": "Πελάτης",
+                "cocktail_name": "Cocktail",
+                "lot_cocktail": "LOT_Cocktail",
+                "ingredient_name": "Υλικό",
+                "lot_number": "Lot Number",
+                "pieces": "Τεμάχια"
+            })
+            
+            df_full_hist['temp_date'] = pd.to_datetime(df_full_hist['Ημερομηνία'], format='%d/%m/%Y')
+            df_full_hist = df_full_hist.sort_values(by='temp_date', ascending=False)
+    
+            # Δημιουργία HTML (ΑΚΡΙΒΩΣ ΟΠΩΣ ΗΤΑΝ Ο ΚΩΔΙΚΑΣ ΣΟΥ)
+            full_html = f"""
+            <html>
+            <head>
+                <meta charset='UTF-8'>
+                <style>
+                    body {{ font-family: 'Helvetica', sans-serif; padding: 20px; }}
+                    h1 {{ text-align: center; color: #2c3e50; border-bottom: 3px solid #2c3e50; }}
+                    .summary {{ background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                    th {{ background-color: #2c3e50; color: white; padding: 10px; font-size: 12px; text-transform: uppercase; }}
+                    td {{ border: 1px solid #ddd; padding: 8px; font-size: 11px; }}
+                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                    .badge-lot {{ background: #d32f2f; color: white; padding: 2px 5px; border-radius: 3px; font-weight: bold; }}
+                </style>
+            </head>
+            <body>
+                <h1>ΚΑΤΑΣΤΑΣΗ ΟΛΙΚΗΣ ΠΑΡΑΓΩΓΗΣ - CABCLUB</h1>
+                <div class='summary'>
+                    Συνολικές Εγγραφές: <b>{len(df_full_hist)}</b><br>
+                    Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ημ/νία</th>
+                            <th>Πελάτης</th>
+                            <th>Cocktail</th>
+                            <th>LOT</th>
+                            <th>Υλικό</th>
+                            <th>Lot Ύλης</th>
+                            <th>Τμχ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+    
+            for _, row in df_full_hist.iterrows():
+                full_html += f"""
+                    <tr>
+                        <td>{row['Ημερομηνία']}</td>
+                        <td>{row['Πελάτης']}</td>
+                        <td><b>{row['Cocktail']}</b></td>
+                        <td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td>
+                        <td>{row['Υλικό']}</td>
+                        <td>{row['Lot Number']}</td>
+                        <td>{row['Τεμάχια']}</td>
+                    </tr>
+                """
+    
+            full_html += "</tbody></table></body></html>"
+    
+            st.download_button(
+                label="📥 Λήψη Πλήρους Ιστορικού (HTML)",
+                data=full_html,
+                file_name=f"Full_Production_History_{datetime.now().strftime('%d_%m_%y')}.html",
+                mime="text/html"
+            )
+        else:
+            st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
 # --- ΕΝΟΤΗΤΑ: ΣΥΝΤΗΡΗΣΗ & HACCP ---
 # Υποθέτουμε ότι η σελίδα 'page' έχει επιλεγεί από το πλευρικό μενού
-if page == "🧼 Συντήρηση & HACCP":
+elif page == "🧼 Συντήρηση & HACCP":
     st.header("🧼 Ημερολόγιο Συντήρησης & Καθαρισμού")
 
     # --- ΚΕΝΤΡΙΚΑ ΠΕΔΙΑ ΕΙΣΑΓΩΓΗΣ ---
