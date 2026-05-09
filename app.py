@@ -2062,10 +2062,10 @@ elif page == "👥 Πελατολόγιο":
                     st.error("Το όνομα είναι υποχρεωτικό!")
 
 
-# --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (ΜΕ ΠΛΗΡΗ ΣΥΓΚΡΙΣΗ ΤΙΜΩΝ) ---
+# --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (ΣΥΓΚΡΙΣΗ ΥΠΑΡΧΟΥΣΩΝ & ΝΕΩΝ ΤΙΜΩΝ) ---
 elif page == "🔄 Αντικατάσταση":
-    st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
-    st.info("Σύγκριση κερδοφορίας: Δείτε τις παλιές έναντι των νέων τιμών πριν την οριστικοποίηση.")
+    st.header("🔄 Καθολική Αντικατάσταση & Σύγκριση Τιμών Πώλησης")
+    st.info("Δείτε τη διαφορά μεταξύ των τιμών που έχετε ήδη και των νέων τιμών που προκύπτουν από την αλλαγή.")
 
     # 1. Ανάκτηση δεδομένων
     res_all_items = supabase.table("recipe_items").select("*").execute()
@@ -2075,7 +2075,7 @@ elif page == "🔄 Αντικατάσταση":
         used_ings = sorted(df_all_items["ingredient_name"].unique().tolist())
         
         col_r1, col_r2 = st.columns(2)
-        old_ing = col_r1.selectbox("❌ Υλικό προς αλλαγή (Παλιό):", options=used_ings, index=None)
+        old_ing = col_r1.selectbox("❌ Υλικό προς αντικατάσταση (Παλιό):", options=used_ings, index=None)
         new_ing = col_r2.selectbox("✅ Νέο υλικό (Από Αποθήκη):", options=sorted(df_ing["Name"].unique().tolist()), index=None)
 
         if old_ing and new_ing and old_ing != new_ing:
@@ -2095,9 +2095,10 @@ elif page == "🔄 Αντικατάσταση":
                 for rid in affected_recipes_ids:
                     r_items = df_all_items[df_all_items["recipe_id"] == rid]
                     r_name = rec_lookup[rid]['name']
-                    r_price = rec_lookup[rid]['catalog_price'] or 0.0
+                    # ΑΥΤΗ ΕΙΝΑΙ Η ΤΙΜΗ ΠΟΥ ΥΠΑΡΧΕΙ ΗΔΗ ΣΤΟ ΣΥΣΤΗΜΑ ΣΟΥ
+                    current_db_price = rec_lookup[rid]['catalog_price'] or 0.0
                     
-                    # 2. Υπολογισμός Τρέχοντος Κόστους (Παλιό)
+                    # Υπολογισμός Κόστους (Πριν την αλλαγή)
                     current_cost = 0.22 # TOTAL_FIXED
                     ml_of_old = 0
                     for _, item in r_items.iterrows():
@@ -2108,49 +2109,51 @@ elif page == "🔄 Αντικατάσταση":
                         if not ing_info.empty:
                             current_cost += ml * ing_info["Τιμή/ml"].values[0]
                     
-                    # 3. Υπολογισμός Παλαιών Κερδών
-                    old_retail_profit = r_price - current_cost
-                    old_agent_profit = (r_price * 0.74) - current_cost
+                    # --- ΥΠΟΛΟΓΙΣΜΟΙ ΤΙΜΩΝ ---
+                    # Υπάρχουσες (Αυτές που έχεις ορίσει εσύ)
+                    existing_retail = current_db_price
+                    existing_agent = existing_retail * 0.74
                     
-                    # 4. Υπολογισμός Νέων Δεδομένων
+                    # Νέες Προτεινόμενες (Βάσει του νέου κόστους)
                     cost_diff = ml_of_old * diff_ml
                     new_cost = current_cost + cost_diff
-                    new_retail_profit = r_price - new_cost
-                    new_agent_profit = (r_price * 0.74) - new_cost
+                    new_suggested_retail = new_cost / 0.25 # Στόχος Food Cost 25%
+                    new_suggested_agent = new_suggested_retail * 0.74
 
                     analysis_data.append({
                         "Cocktail": r_name,
-                        "ML": ml_of_old,
-                        "Μεταβολή (€)": round(cost_diff, 3),
-                        "Παλιό Κέρδος Λιαν. (€)": round(old_retail_profit, 2),
-                        "Νέο Κέρδος Λιαν. (€)": round(new_retail_profit, 2),
-                        "Παλιό Κέρδος Αντιπρ. (€)": round(old_agent_profit, 2),
-                        "Νέο Κέρδος Αντιπρ. (€)": round(new_agent_profit, 2)
+                        "Διαφορά Κόστους (€)": round(cost_diff, 3),
+                        "Τρέχουσα Λιανική (€)": round(existing_retail, 2),
+                        "Νέα Λιανική (€)": round(new_suggested_retail, 2),
+                        "Τρέχουσα Αντιπρ. (€)": round(existing_agent, 2),
+                        "Νέα Αντιπρ. (€)": round(new_suggested_agent, 2)
                     })
 
                 # --- ΠΡΟΒΟΛΗ ΠΙΝΑΚΑ ---
-                st.subheader(f"📊 Ανάλυση Μεταβολής: {old_ing} ➡️ {new_ing}")
+                st.subheader(f"📊 Οικονομική Σύγκριση: {old_ing} ➡️ {new_ing}")
                 df_res = pd.DataFrame(analysis_data)
 
-                # Χρωματισμός για τη μεταβολή (πράσινο αν κερδίζουμε, κόκκινο αν χάνουμε)
                 def style_diff(val):
-                    color = '#ff4b4b' if val > 0 else '#00ffcc'
+                    color = '#ff4b4b' if val > 0 else '#00ffcc' # Κόκκινο αν ακριβαίνει το κόστος
                     return f'color: {color}; font-weight: bold'
 
                 st.dataframe(
-                    df_res.style.map(style_diff, subset=['Μεταβολή (€)']),
+                    df_res.style.map(style_diff, subset=['Διαφορά Κόστους (€)']),
                     use_container_width=True,
                     hide_index=True
                 )
 
-                # --- ΕΚΤΕΛΕΣΗ ---
                 st.divider()
-                confirm = st.checkbox(f"Επιβεβαιώνω την αλλαγή σε {len(df_res)} συνταγές.")
+                st.caption("ℹ️ Οι 'Τρέχουσες' τιμές προέρχονται από τον κατάλογό σας. Οι 'Νέες' είναι οι προτεινόμενες τιμές για να διατηρηθεί το Food Cost στο 25%.")
+                
+                # --- ΕΚΤΕΛΕΣΗ ---
+                confirm = st.checkbox(f"Επιβεβαιώνω την αντικατάσταση σε {len(df_res)} συνταγές.")
                 if st.button("🚀 ΕΚΤΕΛΕΣΗ ΑΝΤΙΚΑΤΑΣΤΑΣΗΣ", type="primary", disabled=not confirm):
-                    supabase.table("recipe_items").update({"ingredient_name": new_ing}).eq("ingredient_name", old_ing).execute()
-                    st.success("✅ Η αντικατάσταση ολοκληρώθηκε!")
-                    st.cache_data.clear()
-                    time.sleep(1.5)
-                    st.rerun()
+                    with st.spinner("Ενημέρωση συστατικών..."):
+                        supabase.table("recipe_items").update({"ingredient_name": new_ing}).eq("ingredient_name", old_ing).execute()
+                        st.success("✅ Η αντικατάσταση ολοκληρώθηκε!")
+                        st.cache_data.clear()
+                        time.sleep(1.5)
+                        st.rerun()
             else:
-                st.info("Το υλικό δεν βρέθηκε σε συνταγές.")
+                st.info("Το υλικό δεν βρέθηκε σε καμία συνταγή.")
