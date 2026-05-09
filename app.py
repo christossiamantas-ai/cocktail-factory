@@ -179,7 +179,7 @@ recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.em
 # --- Sidebar ---
 st.sidebar.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
 st.sidebar.title("DC CABCLUB 2026 🏆")
-page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🛒 Παραγγελίες", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
+page = st.sidebar.radio("Μενού:", ["📦 Αποθήκη", "🔄 Αντικατάσταση","📝 Νέα Συνταγή", "📊 Διαχείριση", "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "🌐 Shop Sync", "📦 Lot Παραγωγής", "📈 Dashboard", "🧼 Συντήρηση & HACCP"])
 country = st.sidebar.selectbox("Χώρα για ΕΦΚ:", list(TAX_RATES.keys()))
 tax_factor = TAX_RATES[country]
 
@@ -998,56 +998,6 @@ elif page == "🔍 Ανάλυση":
             mime="text/html",
             use_container_width=True
         )
-# --- 5. ΠΑΡΑΓΓΕΛΙΕΣ ---
-elif page == "🛒 Παραγγελίες":
-    st.header("🛒 Παραγγελίες & Ανάγκες")
-    col_a, col_b = st.columns([1, 1.3])
-    with col_a:
-        order_config = {
-            "Πελάτης": st.column_config.TextColumn("Πελάτης"),
-            "Cocktail": st.column_config.SelectboxColumn("Cocktail", options=recipe_options),
-            "Τεμάχια": st.column_config.NumberColumn("Τεμάχια", min_value=1)
-        }
-        ed_orders = st.data_editor(df_orders, column_config=order_config, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Αποθήκευση Παραγγελιών"):
-            ed_orders.to_csv(DB_ORDERS, index=False)
-            st.rerun()
-
-        if st.button("✅ ΟΛΟΚΛΗΡΩΣΗ & ΑΡΧΕΙΟΘΕΤΗΣΗ"):
-            if not ed_orders.empty:
-                new_h = ed_orders.copy()
-                new_h["Ημερομηνία"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-                df_history = pd.concat([df_history, new_h], ignore_index=True)
-                df_history.to_csv(DB_HISTORY, index=False)
-                pd.DataFrame(columns=["Πελάτης", "Cocktail", "Τεμάχια"]).to_csv(DB_ORDERS, index=False)
-                st.success("Η παραγγελία μεταφέρθηκε στο ιστορικό!")
-                st.rerun()
-
-    with col_b:
-        st.subheader("Υπολογισμός με Κενό Απόθεμα")
-        if not ed_orders.empty:
-            needs = {}
-            for _, o in ed_orders.iterrows():
-                r_m = df_rec[df_rec["Ονομα"] == o["Cocktail"]]
-                if not r_m.empty:
-                    for i in range(1,14):
-                        ing, ml = str(r_m.iloc[0][f"ΣΥΣΤΑΤΙΚΟ{i}"]), float(r_m.iloc[0][f"ML{i}"])
-                        if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
-                            needs[ing] = needs.get(ing, 0) + (ml * o["Τεμάχια"])
-            
-            if needs:
-                calc_data = []
-                for ing, total_ml in needs.items():
-                    ing_info = df_ing[df_ing["Name"] == ing]
-                    vol = float(ing_info.iloc[0]["Volume"]) if not ing_info.empty else 700
-                    calc_data.append({"Υλικό": ing, "Ανάγκη (ml)": total_ml, "Απόθεμα στο Ράφι (ml)": 0.0, "_vol": vol})
-                
-                df_c = pd.DataFrame(calc_data)
-                ed_c = st.data_editor(df_c, column_config={"Ανάγκη (ml)": st.column_config.NumberColumn(disabled=True), "Απόθεμα στο Ράφι (ml)": st.column_config.NumberColumn(min_value=0.0), "_vol": None}, use_container_width=True)
-                
-                ed_c["Προς Αγορά (Φιάλες)"] = ed_c.apply(lambda x: math.ceil(max(0, x["Ανάγκη (ml)"] - x["Απόθεμα στο Ράφι (ml)"]) / x["_vol"]) if x["_vol"] > 0 else 0, axis=1)
-                st.subheader("📋 Λίστα Αγορών")
-                st.dataframe(ed_c[ed_c["Προς Αγορά (Φιάλες)"] > 0][["Υλικό", "Προς Αγορά (Φιάλες)"]], use_container_width=True)
 
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH GLOSSARY) ---
 elif page == "📊 Εμπορική Πολιτική":
