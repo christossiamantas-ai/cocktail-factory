@@ -2060,3 +2060,26 @@ elif page == "👥 Πελατολόγιο":
                     st.rerun()
                 else:
                     st.error("Το όνομα είναι υποχρεωτικό!")
+
+
+# --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (GLOBAL REPLACE) ---
+elif page == "🔄 Αντικατάσταση":
+    st.header("🔄 Καθολική Αντικατάσταση Πρώτης Ύλης")
+    st.info("Αντικαταστήστε ένα υλικό με ένα άλλο σε ΟΛΕΣ τις συνταγές ταυτόχρονα.")
+
+    # Φέρνουμε τα υλικά που χρησιμοποιούνται ήδη σε συνταγές
+    res_used = supabase.table("recipe_items").select("ingredient_name").execute()
+    used_ings = sorted(list(set([r['ingredient_name'] for r in res_used.data]))) if res_used.data else []
+    
+    col_r1, col_r2 = st.columns(2)
+    old_ing = col_r1.selectbox("Υλικό προς αντικατάσταση (Παλιό):", options=used_ings, index=None)
+    new_ing = col_r2.selectbox("Νέο υλικό (Από Αποθήκη):", options=sorted(df_ing["Name"].unique().tolist()), index=None)
+
+    if old_ing and new_ing and old_ing != new_ing:
+        st.warning(f"Θα αντικατασταθεί το '{old_ing}' με το '{new_ing}' παντού.")
+        if st.button("🚀 Εκτέλεση Αντικατάστασης", type="primary", use_container_width=True):
+            supabase.table("recipe_items").update({"ingredient_name": new_ing}).eq("ingredient_name", old_ing).execute()
+            st.success(f"✅ Έγινε! Το {old_ing} αντικαταστάθηκε από το {new_ing}.")
+            st.cache_data.clear()
+            time.sleep(1)
+            st.rerun()
