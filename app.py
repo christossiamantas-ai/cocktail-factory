@@ -1313,40 +1313,15 @@ elif page == "📈 Dashboard":
         st.info("📭 Δεν υπάρχουν ακόμα δεδομένα παραγωγής για ανάλυση.")
 
        
-# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΠΛΗΡΗΣ & ΔΙΟΡΘΩΜΕΝΟΣ ΚΩΔΙΚΑΣ - SUPABASE) ---
+# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΣΥΓΧΡΟΝΙΣΜΕΝΟ ΜΕ ΠΕΛΑΤΟΛΟΓΙΟ) ---
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
     
-    import requests
-    from requests.auth import HTTPBasicAuth
-    import base64
+    # 0.5 ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΑΠΟ ΤΟ CRM
+    res_customers = supabase.table("customers").select("name").order("name").execute()
+    db_customers = [c["name"] for c in res_customers.data] if res_customers.data else ["Πρώτα προσθέστε πελάτη στο Πελατολόγιο"]
 
-    # --- 0. ΦΟΡΤΩΣΗ & ΠΡΟΕΤΟΙΜΑΣΙΑ ΔΕΔΟΜΕΝΩΝ ΑΠΟ CLOUD ---
-    res_ing = supabase.table("ingredients").select("*").execute()
-    df_ing_raw = pd.DataFrame(res_ing.data) if res_ing.data else pd.DataFrame()
-    if not df_ing_raw.empty:
-        df_ing = df_ing_raw.rename(columns={"name": "Name", "price": "Price", "volume": "Volume", "abv": "Αλκοόλ %", "weight_full": "Weight_Full"})
-    else: df_ing = pd.DataFrame()
-
-    res_rec_base = supabase.table("recipes").select("*").execute()
-    rec_rows = res_rec_base.data if res_rec_base.data else []
-    all_recipe_items = supabase.table("recipe_items").select("*").execute().data if rec_rows else []
-    
-    df_rec_list = []
-    for r in rec_rows:
-        row_dict = {"Ονομα": r["name"], "Barcode": str(r.get("barcode", "")), "id": r["id"]}
-        items = [it for it in all_recipe_items if it["recipe_id"] == r["id"]]
-        for i in range(1, 14):
-            if i - 1 < len(items):
-                row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = items[i-1]["ingredient_name"]
-                row_dict[f"ML{i}"] = items[i-1]["ml_per_unit"]
-            else:
-                row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = "ΚΕΝΟ"
-                row_dict[f"ML{i}"] = 0.0
-        df_rec_list.append(row_dict)
-    df_rec = pd.DataFrame(df_rec_list)
-
-    # --- 1. ΚΕΝΤΡΙΚΟΣ ΟΡΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ & LOT ---
+    # 1. ΚΕΝΤΡΙΚΟΣ ΟΡΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ & LOT
     col_date1, col_date2 = st.columns([2, 1])
     with col_date1:
         selected_date = st.date_input("📅 Ημερομηνία LOT", value=datetime.now(), format="DD/MM/YYYY")
@@ -1357,53 +1332,24 @@ elif page == "📦 Lot Παραγωγής":
     date_lot_label = f"{formatted_date}-{prod_day}" 
     current_time = datetime.now().strftime('%H:%M')
 
-    if "auto_cocktails" not in st.session_state: st.session_state.auto_cocktails = []
-    if "auto_counts" not in st.session_state: st.session_state.auto_counts = {}
-
-    # --- 2. ΤΜΗΜΑ ΑΝΑΚΤΗΣΗΣ ΑΠΟ E-SHOP ---
-    st.subheader("🌐 Αυτόματη Ανάκτηση από E-shop")
-    c_api1, c_api2, c_api3 = st.columns([1, 1, 1])
-    ck = c_api1.text_input("Consumer Key", type="password")
-    cs = c_api2.text_input("Consumer Secret", type="password")
-    if c_api3.button("📥 Φόρτωση Παραγγελιών"):
-        try:
-            url = "https://cabclub.gr/wp-json/wc/v3/orders?status=processing&per_page=100"
-            res = requests.get(url, auth=HTTPBasicAuth(ck, cs))
-            if res.status_code == 200:
-                wc_data = res.json()
-                f_names, t_counts = [], {}
-                for order in wc_data:
-                    for item in order.get('line_items', []):
-                        sku = str(item.get('sku')).strip()
-                        qty = int(item.get('quantity', 0))
-                        match = df_rec[df_rec["Barcode"] == sku]
-                        if not match.empty:
-                            nm = match.iloc[0]["Ονομα"]
-                            f_names.append(nm)
-                            t_counts[nm] = t_counts.get(nm, 0) + qty
-                st.session_state.auto_cocktails = list(set(f_names))
-                st.session_state.auto_counts = t_counts
-                st.success(f"✅ Φορτώθηκαν {len(st.session_state.auto_cocktails)} κωδικοί!")
-                st.rerun()
-        except Exception as e: st.error(f"API Error: {e}")
-
     st.divider()
 
-    # --- 3. ΦΟΡΜΑ ΝΕΑΣ ΠΑΡΑΓΩΓΗΣ ---
+    # 2. ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ
     if not df_rec.empty:
         col_c1, col_c2 = st.columns([2, 1])
         with col_c1:
-            selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique(), default=st.session_state.auto_cocktails)
+            selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique())
+        
         with col_c2:
-            customer_name = st.text_input("👤 Πελάτης / Παραγγελία:", value="CabClub E-shop")
+            # ΕΔΩ Η ΑΛΛΑΓΗ: Αντί για κείμενο, έχουμε selectbox με τους πελάτες της Supabase
+            customer_name = st.selectbox("👤 Επιλογή Πελάτη:", options=db_customers)
 
         if selected_cocktails:
-            st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT Προϊόντος: {date_lot_label})")
+            st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
             counts = {}
             c_cols = st.columns(len(selected_cocktails))
             for i, name in enumerate(selected_cocktails):
-                val = st.session_state.auto_counts.get(name, 1)
-                counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=int(val), key=f"cnt_{name}")
+                counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=1, key=f"cnt_{name}")
 
             lot_entries = []
             with st.form("detailed_lot_form"):
@@ -1435,20 +1381,17 @@ elif page == "📦 Lot Παραγωγής":
                         lot_entries.append({
                             "prod_date": formatted_date, "prod_time": current_time, "customer": customer_name,
                             "cocktail_name": cocktail_name, "lot_cocktail": date_lot_label, "pieces": int(counts[cocktail_name]),
-                            "barcode": recipe_row["Barcode"], "ingredient_name": ing, "total_ml": float(tot_ml), 
-                            "target_g": round(float(tg_g), 1), "lot_number": l1 if not l2 else f"{l1} / {l2}", 
-                            "expiry_date": e1 if not e2 else f"{e1} / {e2}"
+                            "ingredient_name": ing, "total_ml": float(tot_ml), "target_g": round(float(tg_g), 1),
+                            "lot_number": l1 if not l2 else f"{l1} / {l2}", "expiry_date": e1 if not e2 else f"{e1} / {e2}"
                         })
                 
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud"):
                     if lot_entries:
                         supabase.table("production_log").insert(lot_entries).execute()
-                        st.success(f"✅ Αποθηκεύτηκε! LOT: {date_lot_label}")
-                        st.balloons()
+                        st.success("✅ Αποθηκεύτηκε!")
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
-
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
