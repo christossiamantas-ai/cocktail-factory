@@ -2133,69 +2133,59 @@ elif page == "📦 Lot Παραγωγής":
                 st.warning("Δεν βρέθηκαν αρχεία παραγωγής.")
 
 
-                # --- 9. ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΥΛΙΚΟΥ (BULK UPDATE) ---
+                # --- 9. ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΥΛΙΚΟΥ (SUPABASE BULK UPDATE) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Μαζική Αντικατάσταση Πρώτης Ύλης")
     st.info("Βρείτε σε ποιες συνταγές υπάρχει ένα υλικό και αντικαταστήστε το παντού με ένα νέο.")
 
-    if not df_rec.empty:
-        # 1. Συλλογή όλων των υλικών που χρησιμοποιούνται στις συνταγές
-        used_ingredients = []
-        for i in range(1, 14):
-            col_name = f"ΣΥΣΤΑΤΙΚΟ{i}"
-            if col_name in df_rec.columns:
-                used_ingredients.extend(df_rec[col_name].astype(str).unique())
-        
-        # Καθαρισμός λίστας από κενά και nan
-        unique_used = sorted(list(set([ing for ing in used_ingredients if ing not in ["ΚΕΝΟ", "nan", "None", ""]])))
+    # 1. Φέρνουμε όλα τα ΜΟΝΑΔΙΚΑ υλικά που χρησιμοποιούνται αυτή τη στιγμή στις συνταγές (από τον πίνακα recipe_items)
+    res_used = supabase.table("recipe_items").select("ingredient_name").execute()
+    
+    if res_used.data:
+        # Δημιουργούμε μια καθαρή λίστα μοναδικών ονομάτων
+        used_list = sorted(list(set([item["ingredient_name"] for item in res_used.data if item["ingredient_name"] not in ["ΚΕΝΟ", None, ""]])))
         
         col_src, col_dst = st.columns(2)
         
         with col_src:
-            target_ing = st.selectbox("1. Επιλέξτε υλικό προς αντικατάσταση:", options=unique_used)
+            target_ing = st.selectbox("1. Επιλέξτε υλικό προς αντικατάσταση:", options=used_list)
         
-        # 2. Εύρεση συνταγών που το περιέχουν
-        found_recipes = []
-        for index, row in df_rec.iterrows():
-            for i in range(1, 14):
-                if str(row.get(f"ΣΥΣΤΑΤΙΚΟ{i}")) == target_ing:
-                    found_recipes.append(row["Ονομα"])
-                    break
+        # 2. Εύρεση των συνταγών που θα επηρεαστούν (για να ξέρει ο χρήστης τι κάνει)
+        # Κάνουμε ένα join "μαϊμού" μέσω του recipe_id για να πάρουμε τα ονόματα των cocktail
+        res_affected = supabase.table("recipe_items").select("recipe_id, recipes(name)").eq("ingredient_name", target_ing).execute()
         
-        if found_recipes:
+        if res_affected.data:
+            # Παίρνουμε τα ονόματα των cocktail (αποφεύγοντας τα διπλότυπα)
+            found_recipes = sorted(list(set([item["recipes"]["name"] for item in res_affected.data if item["recipes"]])))
+            
             st.warning(f"🔎 Το υλικό **{target_ing}** βρέθηκε σε **{len(found_recipes)}** συνταγές:")
             st.write(", ".join(found_recipes))
             
             with col_dst:
-                # Επιλογή νέου υλικού από την Αποθήκη (df_ing)
-                new_ing = st.selectbox("2. Αντικατάσταση με:", options=df_ing["Name"].unique())
+                # Επιλογή νέου υλικού από την Αποθήκη (ing_options που φορτώθηκε στην αρχή)
+                new_ing = st.selectbox("2. Αντικατάσταση με:", options=ing_options)
             
             st.markdown("---")
-            if st.button("🚀 Εκτέλεση Αντικατάστασης ΠΑΝΤΟΥ"):
-                # Δημιουργούμε αντίγραφο
-                temp_recipes = df_rec.copy()
-                total_changes = 0
-                
-                for i in range(1, 14):
-                    col = f"ΣΥΣΤΑΤΙΚΟ{i}"
-                    mask = temp_recipes[col].astype(str) == target_ing
-                    total_changes += mask.sum()
-                    temp_recipes.loc[mask, col] = new_ing
-                
-                # Αποθήκευση στο CSV
-                temp_recipes.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                st.success(f"✅ Επιτυχία! Το '{target_ing}' αντικαταστάθηκε από το '{new_ing}' σε {total_changes} σημεία.")
-                st.balloons()
-                st.rerun()
+            if st.button("🚀 Εκτέλεση Αντικατάστασης ΠΑΝΤΟΥ", type="primary"):
+                try:
+                    # Η ΜΑΓΕΙΑ ΤΗΣ SUPABASE: Μία γραμμή κώδικα ενημερώνει τα πάντα!
+                    res_update = supabase.table("recipe_items")\
+                        .update({"ingredient_name": new_ing})\
+                        .eq("ingredient_name", target_ing)\
+                        .execute()
+                    
+                    changes = len(res_update.data)
+                    st.success(f"✅ Επιτυχία! Το '{target_ing}' αντικαταστάθηκε από το '{new_ing}' σε {changes} σημεία.")
+                    st.balloons()
+                    st.cache_data.clear() # Καθαρίζουμε τη μνήμη για να ενημερωθούν οι αναλύσεις και τα μενού
+                    time.sleep(2)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Σφάλμα κατά τη μαζική ενημέρωση: {e}")
         else:
-            st.info("Δεν βρέθηκαν συνταγές που να περιέχουν αυτό το υλικό.")
-
-            # ==============================================================================
-import streamlit as st
-import pandas as pd
-import os
-from datetime import datetime
-
+            st.info(f"Το υλικό '{target_ing}' δεν βρέθηκε σε καμία ενεργή συνταγή.")
+    else:
+        st.info("Δεν υπάρχουν ακόμα συνταγές με υλικά για να γίνει αντικατάσταση.")
 # --- ΕΝΟΤΗΤΑ: ΣΥΝΤΗΡΗΣΗ & HACCP ---
 # Υποθέτουμε ότι η σελίδα 'page' έχει επιλεγεί από το πλευρικό μενού
 if page == "🧼 Συντήρηση & HACCP":
