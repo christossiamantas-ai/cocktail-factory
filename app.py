@@ -384,85 +384,73 @@ if page == "📦 Αποθήκη":
         )
 
 
-# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
-elif page == "📝 Νέα Συνταγή":
-    st.header("📝 Καταχώρηση Νέας Συνταγής")
-    
-    with st.form("new_recipe_form"):
-        # Προσθήκη Barcode και Ονόματος στην ίδια γραμμή
-        c_top1, c_top2 = st.columns([1, 2])
-        with c_top1: 
-            barcode = st.text_input("Barcode (SKU Site)")
-        with c_top2: 
-            name = st.text_input("Όνομα Cocktail")
-            
-        cat_price = st.number_input("Τιμή Καταλόγου (€)", min_value=0.0, step=0.10)
+# --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (SUPABASE EDITION) ---
+if page == "📝 Νέα Συνταγή":
+    st.header("📝 Προσθήκη Νέας Συνταγής (Cocktail)")
+
+    with st.form("new_recipe_form", clear_on_submit=True):
+        st.subheader("Βασικά Στοιχεία")
+        col1, col2 = st.columns(2)
+        new_rec_name = col1.text_input("Όνομα Cocktail", placeholder="π.χ. CabClub Margarita")
+        new_barcode = col2.text_input("Barcode / Κωδικός", placeholder="Προαιρετικό")
         
-        st.markdown("---")
-        st.subheader("Συστατικά Συνταγής")
+        st.divider()
+        st.subheader("🧪 Υλικά & Ποσότητες")
         
-        recipe_data = {}
-        # Δημιουργία των 13 πεδίων για υλικά και ποσότητες
+        # Δημιουργούμε πεδία για 13 υλικά (για να ταιριάζει με το παλιό σου σύστημα)
+        ingredients_data = []
+        cols_ing = st.columns(2)
+        
         for i in range(1, 14):
-            c1, c2 = st.columns([3, 1])
-            with c1: 
-                # Χρήση του ing_options που ήδη έχεις ορίσει
-                val_ing = st.selectbox(f"Συστατικό {i}", ing_options, key=f"n_s_{i}")
-                recipe_data[f"ΣΥΣΤΑΤΙΚΟ{i}"] = val_ing if val_ing else "ΚΕΝΟ"
-            with c2: 
-                recipe_data[f"ML{i}"] = st.number_input(f"ML {i}", min_value=0.0, key=f"n_m_{i}")
-        
-        if st.form_submit_button("💾 Αποθήκευση Συνταγής"):
-            if name:
-                # 1. Προετοιμασία της νέας γραμμής
-                new_row = {
-                    "Barcode": str(barcode).strip(),
-                    "Ονομα": name, 
-                    "Τιμή Καταλόγου": cat_price, 
-                    **recipe_data
-                }
-                new_df = pd.DataFrame([new_row])
+            with cols_ing[i % 2]:  # Μοιράζουμε τα πεδία σε 2 στήλες για οικονομία χώρου
+                c_ing, c_ml = st.columns([2, 1])
+                # Το ing_options φορτώνεται στην αρχή του app.py από την Supabase!
+                ing_val = c_ing.selectbox(f"Συστατικό {i}", options=ing_options, key=f"ing_{i}")
+                ml_val = c_ml.number_input(f"ML {i}", min_value=0.0, step=0.5, key=f"ml_{i}")
                 
-                # Ορίζουμε την ακριβή σειρά στηλών που θέλουμε να έχει το CSV μας
-                cols_order = ["Barcode", "Ονομα", "Τιμή Καταλόγου"]
-                for i in range(1, 14):
-                    cols_order.append(f"ΣΥΣΤΑΤΙΚΟ{i}")
-                    cols_order.append(f"ML{i}")
+                # Αν έχει επιλεγεί υλικό και έχει μπει ποσότητα, το κρατάμε στη λίστα
+                if ing_val and ing_val != "ΚΕΝΟ" and ml_val > 0:
+                    ingredients_data.append({"name": ing_val, "ml": ml_val})
 
-                # 2. Φόρτωση και Συγχώνευση
-                if os.path.exists(DB_RECIPES):
-                    old_df = pd.read_csv(DB_RECIPES)
-                    
-                    # Διόρθωση στηλών αν το αρχείο είναι παλιό
-                    for col in cols_order:
-                        if col not in old_df.columns:
-                            old_df[col] = "ΚΕΝΟ" if "ΣΥΣΤΑΤΙΚΟ" in col else 0.0
-                    
-                    # Εξασφάλιση ότι το Barcode είναι string για τη σύγκριση
-                    old_df["Barcode"] = old_df["Barcode"].astype(str).replace(r'\.0$', '', regex=True).replace('nan', '')
-                    
-                    # Ένωση
-                    combined_df = pd.concat([old_df, new_df], ignore_index=True)
-                else:
-                    combined_df = new_df
+        st.divider()
+        submitted = st.form_submit_button("💾 Αποθήκευση Συνταγής", type="primary")
 
-                # 3. Τελική Τακτοποίηση στηλών και αφαίρεση διπλοτύπων
-                combined_df = combined_df.reindex(columns=cols_order)
-                combined_df = combined_df.drop_duplicates(subset=["Barcode", "Ονομα"], keep="last")
-
-                combined_df = combined_df.sort_values(
-                    by="Ονομα", 
-                    key=lambda col: col.str.lower(), 
-                    ascending=True
-                )
-                
-                # 4. Αποθήκευση με σωστό Encoding για Ελληνικά
-                combined_df.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                
-                st.success(f"✅ Το Cocktail '{name}' αποθηκεύτηκε επιτυχώς!")
-                st.rerun()
+        if submitted:
+            if not new_rec_name:
+                st.error("❌ Πρέπει να δώσετε όνομα στο Cocktail!")
+            elif not ingredients_data:
+                st.error("❌ Πρέπει να προσθέσετε τουλάχιστον 1 υλικό με ποσότητα μεγαλύτερη από 0.")
             else:
-                st.error("❌ Παρακαλώ εισάγετε το όνομα του Cocktail.")
+                try:
+                    # ΒΗΜΑ 1: Δημιουργία της Συνταγής (Title) στον πίνακα 'recipes'
+                    res = supabase.table("recipes").insert({
+                        "name": new_rec_name.strip(),
+                        "barcode": new_barcode.strip() if new_barcode else ""
+                    }).execute()
+                    
+                    # Παίρνουμε το ID που της έδωσε αυτόματα η βάση (π.χ. ID 5)
+                    new_recipe_id = res.data[0]["id"]
+                    
+                    # ΒΗΜΑ 2: Αποθήκευση των Υλικών στον πίνακα 'recipe_items'
+                    items_to_insert = []
+                    for item in ingredients_data:
+                        items_to_insert.append({
+                            "recipe_id": new_recipe_id,
+                            "ingredient_name": item["name"],
+                            "ml_per_unit": float(item["ml"])
+                        })
+                    
+                    # Τα στέλνουμε όλα μαζί στη βάση με μια κίνηση!
+                    supabase.table("recipe_items").insert(items_to_insert).execute()
+                    
+                    st.success(f"✅ Η συνταγή '{new_rec_name}' αποθηκεύτηκε επιτυχώς με {len(items_to_insert)} υλικά!")
+                    st.balloons()
+                    st.cache_data.clear() # Καθαρίζουμε τη μνήμη για να τη δει αμέσως στα άλλα μενού
+                    time.sleep(2)
+                    st.rerun()
+                except Exception as e:
+                    # Το πιο πιθανό σφάλμα εδώ είναι να υπάρχει ήδη συνταγή με το ίδιο όνομα (UNIQUE constraint)
+                    st.error(f"⚠️ Σφάλμα αποθήκευσης. Ίσως υπάρχει ήδη συνταγή με αυτό το όνομα! Λεπτομέρειες: {e}")
 
 # --- 5. ΔΙΑΧΕΙΡΙΣΗ ΣΥΝΤΑΓΩΝ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
 elif page == "📊 Διαχείριση":
