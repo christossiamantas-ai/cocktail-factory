@@ -2062,30 +2062,29 @@ elif page == "👥 Πελατολόγιο":
                     st.error("Το όνομα είναι υποχρεωτικό!")
 
 
-# --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (ΜΕ ΠΛΗΡΗ ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΛΥΣΗ) ---
+# --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (ΜΕ ΠΛΗΡΗ ΣΥΓΚΡΙΣΗ ΤΙΜΩΝ) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
-    st.info("Επιλέξτε υλικά για να δείτε πώς θα διαμορφωθούν τα κέρδη σας σε όλες τις συνταγές πριν την εκτέλεση.")
+    st.info("Σύγκριση κερδοφορίας: Δείτε τις παλιές έναντι των νέων τιμών πριν την οριστικοποίηση.")
 
-    # 1. Ανάκτηση όλων των δεδομένων για την ανάλυση
+    # 1. Ανάκτηση δεδομένων
     res_all_items = supabase.table("recipe_items").select("*").execute()
     df_all_items = pd.DataFrame(res_all_items.data) if res_all_items.data else pd.DataFrame()
     
     if not df_all_items.empty and not df_ing.empty:
-        # Λίστα υλικών που χρησιμοποιούνται ήδη σε συνταγές
         used_ings = sorted(df_all_items["ingredient_name"].unique().tolist())
         
         col_r1, col_r2 = st.columns(2)
-        old_ing = col_r1.selectbox("❌ Υλικό προς αλλαγή (Παλιό):", options=used_ings, index=None, placeholder="Επιλέξτε υλικό...")
-        new_ing = col_r2.selectbox("✅ Νέο υλικό (Από Αποθήκη):", options=sorted(df_ing["Name"].unique().tolist()), index=None, placeholder="Επιλέξτε αντικαταστάτη...")
+        old_ing = col_r1.selectbox("❌ Υλικό προς αλλαγή (Παλιό):", options=used_ings, index=None)
+        new_ing = col_r2.selectbox("✅ Νέο υλικό (Από Αποθήκη):", options=sorted(df_ing["Name"].unique().tolist()), index=None)
 
         if old_ing and new_ing and old_ing != new_ing:
-            # 2. Υπολογισμός τιμών ανά ml
-            price_old = df_ing[df_ing["Name"] == old_ing]["Τιμή/ml"].values[0]
-            price_new = df_ing[df_ing["Name"] == new_ing]["Τιμή/ml"].values[0]
-            diff_ml = price_new - price_old
+            # Τιμές ανά ml
+            price_old_ml = df_ing[df_ing["Name"] == old_ing]["Τιμή/ml"].values[0]
+            price_new_ml = df_ing[df_ing["Name"] == new_ing]["Τιμή/ml"].values[0]
+            diff_ml = price_new_ml - price_old_ml
 
-            # 3. Εύρεση συνταγών που επηρεάζονται
+            # Εύρεση επηρεαζόμενων συνταγών
             affected_recipes_ids = df_all_items[df_all_items["ingredient_name"] == old_ing]["recipe_id"].unique().tolist()
             
             if affected_recipes_ids:
@@ -2094,72 +2093,64 @@ elif page == "🔄 Αντικατάσταση":
 
                 analysis_data = []
                 for rid in affected_recipes_ids:
-                    # Όλα τα υλικά της συνταγής για υπολογισμό κόστους
                     r_items = df_all_items[df_all_items["recipe_id"] == rid]
                     r_name = rec_lookup[rid]['name']
                     r_price = rec_lookup[rid]['catalog_price'] or 0.0
                     
-                    # Υπολογισμός τρέχοντος κόστους (πριν την αλλαγή)
-                    current_cost = 0.22 # TOTAL_FIXED (Σταθερά έξοδα)
+                    # 2. Υπολογισμός Τρέχοντος Κόστους (Παλιό)
+                    current_cost = 0.22 # TOTAL_FIXED
                     ml_of_old = 0
                     for _, item in r_items.iterrows():
-                        ing_name = item['ingredient_name']
+                        ing_n = item['ingredient_name']
                         ml = item['ml_per_unit']
-                        if ing_name == old_ing: ml_of_old = ml
-                        
-                        ing_info = df_ing[df_ing["Name"] == ing_name]
+                        if ing_n == old_ing: ml_of_old = ml
+                        ing_info = df_ing[df_ing["Name"] == ing_n]
                         if not ing_info.empty:
                             current_cost += ml * ing_info["Τιμή/ml"].values[0]
                     
-                    # Υπολογισμός Νέων Δεδομένων
+                    # 3. Υπολογισμός Παλαιών Κερδών
+                    old_retail_profit = r_price - current_cost
+                    old_agent_profit = (r_price * 0.74) - current_cost
+                    
+                    # 4. Υπολογισμός Νέων Δεδομένων
                     cost_diff = ml_of_old * diff_ml
                     new_cost = current_cost + cost_diff
-                    retail_profit = r_price - new_cost
-                    agent_price = r_price * 0.74 # Τιμή Αντιπροσώπου (74% της λιανικής)
-                    agent_profit = agent_price - new_cost
+                    new_retail_profit = r_price - new_cost
+                    new_agent_profit = (r_price * 0.74) - new_cost
 
                     analysis_data.append({
                         "Cocktail": r_name,
                         "ML": ml_of_old,
-                        "Μεταβολή Κόστους (€)": round(cost_diff, 3),
-                        "Νέο Κόστος (€)": round(new_cost, 2),
-                        "Κέρδος Λιανικής (€)": round(retail_profit, 2),
-                        "Κέρδος Αντιπρ. (€)": round(agent_profit, 2)
+                        "Μεταβολή (€)": round(cost_diff, 3),
+                        "Παλιό Κέρδος Λιαν. (€)": round(old_retail_profit, 2),
+                        "Νέο Κέρδος Λιαν. (€)": round(new_retail_profit, 2),
+                        "Παλιό Κέρδος Αντιπρ. (€)": round(old_agent_profit, 2),
+                        "Νέο Κέρδος Αντιπρ. (€)": round(new_agent_profit, 2)
                     })
 
-                # --- ΠΡΟΒΟΛΗ ΠΙΝΑΚΑ ΠΡΟΣΟΜΟΙΩΣΗΣ ---
-                st.subheader(f"📊 Οικονομική Επίπτωση: {old_ing} ➡️ {new_ing}")
+                # --- ΠΡΟΒΟΛΗ ΠΙΝΑΚΑ ---
+                st.subheader(f"📊 Ανάλυση Μεταβολής: {old_ing} ➡️ {new_ing}")
                 df_res = pd.DataFrame(analysis_data)
 
-                # Χρωματισμός: Κόκκινο αν αυξάνεται το κόστος, Πράσινο αν μειώνεται
+                # Χρωματισμός για τη μεταβολή (πράσινο αν κερδίζουμε, κόκκινο αν χάνουμε)
                 def style_diff(val):
                     color = '#ff4b4b' if val > 0 else '#00ffcc'
                     return f'color: {color}; font-weight: bold'
 
                 st.dataframe(
-    df_res.style.map(style_diff, subset=['Μεταβολή Κόστους (€)']), # <--- Εδώ άλλαξε το applymap σε map
-    use_container_width=True,
-    hide_index=True
-)
-
-                # Επεξηγηματικό μήνυμα
-                if diff_ml > 0:
-                    st.error(f"⚠️ Προσοχή: Το νέο υλικό είναι ακριβότερο κατά {diff_ml:.4f}€/ml.")
-                else:
-                    st.success(f"✅ Καλά νέα: Το νέο υλικό είναι φθηνότερο κατά {abs(diff_ml):.4f}€/ml.")
+                    df_res.style.map(style_diff, subset=['Μεταβολή (€)']),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
                 # --- ΕΚΤΕΛΕΣΗ ---
                 st.divider()
-                confirm = st.checkbox(f"Επιβεβαιώνω την αντικατάσταση σε {len(df_res)} συνταγές.")
-                
-                if st.button("🚀 ΕΚΤΕΛΕΣΗ ΑΝΤΙΚΑΤΑΣΤΑΣΗΣ ΤΩΡΑ", type="primary", disabled=not confirm):
-                    with st.spinner("Ενημέρωση βάσης δεδομένων..."):
-                        supabase.table("recipe_items").update({"ingredient_name": new_ing}).eq("ingredient_name", old_ing).execute()
-                        st.success("✅ Η αντικατάσταση ολοκληρώθηκε επιτυχώς!")
-                        st.cache_data.clear()
-                        time.sleep(1.5)
-                        st.rerun()
+                confirm = st.checkbox(f"Επιβεβαιώνω την αλλαγή σε {len(df_res)} συνταγές.")
+                if st.button("🚀 ΕΚΤΕΛΕΣΗ ΑΝΤΙΚΑΤΑΣΤΑΣΗΣ", type="primary", disabled=not confirm):
+                    supabase.table("recipe_items").update({"ingredient_name": new_ing}).eq("ingredient_name", old_ing).execute()
+                    st.success("✅ Η αντικατάσταση ολοκληρώθηκε!")
+                    st.cache_data.clear()
+                    time.sleep(1.5)
+                    st.rerun()
             else:
-                st.info(f"Το υλικό '{old_ing}' δεν βρέθηκε σε καμία ενεργή συνταγή.")
-    else:
-        st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
+                st.info("Το υλικό δεν βρέθηκε σε συνταγές.")
