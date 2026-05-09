@@ -2137,10 +2137,10 @@ elif page == "🔄 Αντικατάσταση":
                     return f'color: {color}; font-weight: bold'
 
                 st.dataframe(
-                    df_res.style.applymap(style_diff, subset=['Μεταβολή Κόστους (€)']),
-                    use_container_width=True,
-                    hide_index=True
-                )
+    df_res.style.map(style_diff, subset=['Μεταβολή Κόστους (€)']), # <--- Εδώ άλλαξε το applymap σε map
+    use_container_width=True,
+    hide_index=True
+)
 
                 # Επεξηγηματικό μήνυμα
                 if diff_ml > 0:
