@@ -1533,16 +1533,53 @@ elif page == "📦 Lot Παραγωγής":
                         display_ingredients.append({"Υλικό": r_d["Υλικό"], "ML": r_d["Σύνολο_ML"] * mult, "Lot": r_d["Lot Number"], "Exp": r_d["Ημ_Λήξης"]})
 
                 with st.form("edit_batch_form"):
+                    # --- 1. ΠΡΟΣΘΗΚΗ ΚΕΦΑΛΙΔΩΝ (Headers) ---
+                    h_edit = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
+                    h_labels = ["Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
+                    for col, label in zip(h_edit, h_labels):
+                        col.caption(label)
+
                     final_updated = []
                     for i, itm in enumerate(display_ingredients):
-                        r = st.columns([2, 1, 1.5, 1.5])
-                        r[0].write(itm["Υλικό"])
+                        # --- 2. ΔΙΑΧΩΡΙΣΜΟΣ ΥΠΑΡΧΟΝΤΩΝ LOT (Αν είναι της μορφής L1 / L2) ---
+                        # Αν το Lot περιέχει το "/", το σπάμε στα δύο, αλλιώς βάζουμε το δεύτερο κενό
+                        raw_lot = str(itm["Lot"])
+                        raw_exp = str(itm["Exp"])
+                        
+                        lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
+                        exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
+                        
+                        # Εξασφαλίζουμε ότι έχουμε τουλάχιστον 2 στοιχεία στις λίστες
+                        while len(lot_parts) < 2: lot_parts.append("")
+                        while len(exp_parts) < 2: exp_parts.append("")
+
+                        # --- 3. ΔΗΜΙΟΥΡΓΙΑ ΤΩΝ ΣΤΗΛΩΝ (7 στήλες όπως στην παραγωγή) ---
+                        r = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
+                        r[0].write(f"**{itm['Υλικό']}**")
                         r[1].write(f"{itm['ML']:.0f}")
-                        lt = r[2].text_input("Lot", value=itm["Lot"], key=f"lt_{i}", label_visibility="collapsed")
-                        ex = r[3].text_input("Exp", value=itm["Exp"], key=f"ex_{i}", label_visibility="collapsed")
-                        final_updated.append({"ing": itm["Υλικό"], "ml": itm["ML"], "lot": lt, "exp": ex})
+                        
+                        # Πεδία για Lot 1 & Λήξη 1
+                        lt1 = r[2].text_input("L1", value=lot_parts[0], key=f"ed_l1_{i}", label_visibility="collapsed")
+                        ex1 = r[3].text_input("E1", value=exp_parts[0], key=f"ed_e1_{i}", label_visibility="collapsed")
+                        
+                        # Πεδία για Lot 2 & Λήξη 2
+                        lt2 = r[4].text_input("L2", value=lot_parts[1], key=f"ed_l2_{i}", label_visibility="collapsed")
+                        ex2 = r[5].text_input("E2", value=exp_parts[1], key=f"ed_e2_{i}", label_visibility="collapsed")
+                        
+                        # Συνένωση για την αποθήκευση στη βάση (όπως το είχες στην παραγωγή)
+                        final_lot = lt1 if not lt2 else f"{lt1} / {lt2}"
+                        final_exp = ex1 if not ex2 else f"{ex1} / {ex2}"
+                        
+                        final_updated.append({
+                            "ing": itm["Υλικό"], 
+                            "ml": itm["ML"], 
+                            "lot": final_lot, 
+                            "exp": final_exp
+                        })
                     
+                    st.divider()
                     b_save, b_del = st.columns(2)
+                    # ... (εδώ συνεχίζει το κουμπί αποθήκευσης και διαγραφής που ήδη έχεις)
                     if b_save.form_submit_button("💾 Αποθήκευση Αλλαγών", type="primary"):
                         ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
                         for di in ids_to_del: supabase.table("production_log").delete().eq("id", di).execute()
