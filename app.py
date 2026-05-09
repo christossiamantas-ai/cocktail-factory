@@ -1923,7 +1923,7 @@ if page == "🧼 Συντήρηση & HACCP":
         else:
             st.info("ℹ️ Δεν υπάρχουν ακόμη καταγραφές.")
 
-# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM) ---
+# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΔΙΟΡΘΩΜΕΝΟ ΙΣΤΟΡΙΚΟ) ---
 elif page == "👥 Πελατολόγιο":
     st.header("👥 Διαχείριση Πελατολογίου")
     
@@ -1959,13 +1959,15 @@ elif page == "👥 Πελατολόγιο":
 
             with col_info:
                 st.subheader(f"📜 Ιστορικό Παραγωγών: {sel_name}")
-                # Φέρνουμε τις παραγωγές του συγκεκριμένου πελάτη
+                # Φέρνουμε όλες τις εγγραφές παραγωγής για τον πελάτη
                 res_prod = supabase.table("production_log").select("*").eq("customer", sel_name).order("prod_date", desc=True).execute()
                 
                 if res_prod.data:
                     df_p = pd.DataFrame(res_prod.data)
-                    # Καθαρισμός για να βλέπουμε μόνο τις παραγγελίες (όχι τα υλικά)
-                    df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail"])
+                    
+                    # --- Η ΔΙΟΡΘΩΣΗ ΕΙΝΑΙ ΕΔΩ ---
+                    # Προσθέσαμε το "cocktail_name" στο subset για να μην σβήνονται τα διαφορετικά κοκτέιλ του ίδιου LOT
+                    df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail", "cocktail_name"])
                     
                     st.dataframe(
                         df_p_clean.rename(columns={
@@ -1978,7 +1980,6 @@ elif page == "👥 Πελατολόγιο":
                         hide_index=True
                     )
                     
-                    # Στατιστικό για τον πελάτη
                     total_bought = df_p_clean["pieces"].sum()
                     st.info(f"💡 Ο πελάτης έχει παραγγείλει συνολικά **{total_bought}** τεμάχια.")
                 else:
@@ -1993,7 +1994,7 @@ elif page == "👥 Πελατολόγιο":
             n_phone = st.text_input("Τηλέφωνο")
             n_email = st.text_input("Email")
             n_addr = st.text_area("Διεύθυνση")
-            n_notes = st.text_area("Σημειώσεις (π.χ. ιδιαιτερότητες στην παράδοση)")
+            n_notes = st.text_area("Σημειώσεις")
             
             if st.form_submit_button("💾 Αποθήκευση Πελάτη"):
                 if n_name:
@@ -2005,6 +2006,7 @@ elif page == "👥 Πελατολόγιο":
                         st.success("Ο πελάτης αποθηκεύτηκε!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Σφάλμα: Ίσως ο πελάτης υπάρχει ήδη ({e})")
+                        st.error(f"Σφάλμα: Ίσως ο πελάτης υπάρχει ήδη.")
                 else:
+                    st.warning("Το όνομα είναι υποχρεωτικό.")
                     st.warning("Το όνομα είναι υποχρεωτικό.")
