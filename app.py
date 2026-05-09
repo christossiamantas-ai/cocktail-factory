@@ -1187,45 +1187,80 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-# --- 7. DASHBOARD ---
+# --- 7. DASHBOARD (SUPABASE LIVE EDITION) ---
 elif page == "📈 Dashboard":
     st.header("📈 Στατιστικά Πωλήσεων & Ιστορικό")
-    if not df_history.empty:
-        fig = px.bar(df_history.groupby("Cocktail")["Τεμάχια"].sum().reset_index(), 
-                     x="Cocktail", y="Τεμάχια", 
-                     title="Συνολικές Πωλήσεις ανά Cocktail", 
-                     color="Cocktail")
+    
+    import plotly.express as px
+
+    # 1. Φέρνουμε τα δεδομένα από την παραγωγή
+    res_log = supabase.table("production_log").select("*").execute()
+    
+    if res_log.data:
+        # Μετατροπή σε DataFrame
+        df_raw = pd.DataFrame(res_log.data)
+        
+        # --- ΠΡΟΣΟΧΗ: Ξεκαθάρισμα για να μην διπλομετράμε τα τεμάχια ---
+        # Κρατάμε μόνο μία γραμμή ανά μοναδική παραγωγή (batch)
+        df_sales = df_raw.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"]).copy()
+        
+        # Μετονομασία για συμβατότητα με τα γραφήματα
+        df_sales = df_sales.rename(columns={
+            "prod_date": "Ημερομηνία",
+            "cocktail_name": "Cocktail",
+            "pieces": "Τεμάχια",
+            "customer": "Πελάτης"
+        })
+
+        # 2. Γράφημα Πωλήσεων
+        fig = px.bar(
+            df_sales.groupby("Cocktail")["Τεμάχια"].sum().reset_index(), 
+            x="Cocktail", 
+            y="Τεμάχια", 
+            title="Συνολικές Πωλήσεις ανά Cocktail (Τεμάχια)", 
+            color="Cocktail",
+            template="plotly_white"
+        )
         st.plotly_chart(fig, use_container_width=True)
         
-        st.subheader("Πλήρες Ιστορικό")
-        st.dataframe(df_history.sort_values("Ημερομηνία", ascending=False), use_container_width=True)
+        # 3. Πίνακας Ιστορικού
+        st.subheader("📋 Πλήρες Ιστορικό Παραγωγής & Πωλήσεων")
+        st.dataframe(
+            df_sales[["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια", "lot_cocktail"]]
+            .sort_values("Ημερομηνία", ascending=False), 
+            use_container_width=True
+        )
         
         st.divider()
-        st.subheader("⚠️ Διαχείριση Δεδομένων")
         
+        # 4. Διαχείριση Δεδομένων (Καθαρισμός)
+        st.subheader("⚠️ Διαχείριση Βάσης Δεδομένων")
         if "delete_confirm" not in st.session_state:
             st.session_state.delete_confirm = False
 
         if not st.session_state.delete_confirm:
-            if st.button("🗑️ Καθαρισμός Ιστορικού"):
+            if st.button("🗑️ Καθαρισμός Όλου του Ιστορικού"):
                 st.session_state.delete_confirm = True
                 st.rerun()
         else:
-            st.warning("Είστε σίγουροι ότι θέλετε να διαγράψετε όλο το ιστορικό;")
+            st.warning("⚠️ ΠΡΟΣΟΧΗ: Είστε σίγουροι; Αυτή η ενέργεια θα διαγράψει ΟΡΙΣΤΙΚΑ όλες τις παραγωγές από το Cloud.")
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("✅ Ναι, Διαγραφή"):
-                    new_df = pd.DataFrame(columns=["Ημερομηνία", "Πελάτης", "Cocktail", "Τεμάχια"])
-                    new_df.to_csv(DB_HISTORY, index=False)
+                if st.button("✅ Ναι, Οριστική Διαγραφή", type="primary"):
+                    # Διαγραφή όλων των εγγραφών από τον πίνακα production_log
+                    # Στη Supabase το .delete().neq("id", 0) διαγράφει τα πάντα
+                    supabase.table("production_log").delete().neq("id", 0).execute()
                     st.session_state.delete_confirm = False
-                    st.success("Διαγράφηκε!")
+                    st.success("Το ιστορικό καθαρίστηκε!")
+                    st.cache_data.clear()
+                    time.sleep(1)
                     st.rerun()
             with c2:
                 if st.button("❌ Άκυρο"):
                     st.session_state.delete_confirm = False
                     st.rerun()
     else:
-        st.info("Δεν υπάρχουν ακόμα δεδομένα στο ιστορικό.")
+        st.info("📭 Δεν υπάρχουν ακόμα δεδομένα παραγωγής για την εμφάνιση στατιστικών.")
 
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΠΛΗΡΗΣ & ΔΙΟΡΘΩΜΕΝΟΣ ΚΩΔΙΚΑΣ - SUPABASE) ---
