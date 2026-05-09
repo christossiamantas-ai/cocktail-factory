@@ -1187,14 +1187,14 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-# --- 7. DASHBOARD (CUSTOMER FOCUS & SALES) ---
+# --- 7. DASHBOARD (CENTRAL CUSTOMER FILTER & SALES) ---
 elif page == "📈 Dashboard":
-    st.header("📈 Στατιστικά Πωλήσεων & Ιστορικό Πελατών")
+    st.header("📈 Business Analytics & Πωλήσεις")
     
     import plotly.express as px
 
-    # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
-    with st.spinner("Φόρτωση δεδομένων πωλήσεων..."):
+    # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ ΑΠΟ SUPABASE
+    with st.spinner("Ενημέρωση στατιστικών..."):
         res_log = supabase.table("production_log").select("*").execute()
         res_rec = supabase.table("recipes").select("name, catalog_price").execute()
         
@@ -1203,29 +1203,28 @@ elif page == "📈 Dashboard":
         df_raw = pd.DataFrame(res_log.data)
         df_prices = pd.DataFrame(res_rec.data)
         
-        # Καθαρισμός για σωστή καταμέτρηση (ένα batch = μία πώληση)
+        # Καθαρισμός για σωστή καταμέτρηση (1 batch = 1 πώληση)
         df_sales = df_raw.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"]).copy()
         df_sales['Date_Obj'] = pd.to_datetime(df_sales['prod_date'], format='%d/%m/%Y')
         df_sales['Month_Year'] = df_sales['Date_Obj'].dt.strftime('%m/%Y')
 
-        # --- SIDEBAR ΦΙΛΤΡΑ ---
-        st.sidebar.subheader("🎯 Φίλτρα Αναζήτησης")
+        # --- ΚΕΝΤΡΙΚΟ ΦΙΛΤΡΟ ΠΕΛΑΤΗ (ΠΑΝΩ ΑΠΟ ΤΗ ΣΥΝΟΨΗ) ---
+        st.markdown("### 🎯 Επιλογή Πεδίου Ανάλυσης")
+        all_customers = ["ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ"] + sorted(df_sales['customer'].unique().tolist())
+        sel_customer = st.selectbox("Εμφάνιση στατιστικών για:", options=all_customers)
         
-        # 1. Φίλτρο Πελάτη (ΤΟ ΝΕΟ ΣΤΟΙΧΕΙΟ)
-        all_customers = ["ΟΛΟΙ"] + sorted(df_sales['customer'].unique().tolist())
-        sel_customer = st.sidebar.selectbox("👤 Επιλέξτε Πελάτη:", all_customers)
-        
-        # 2. Φίλτρο Χρόνου
+        # Φίλτρα Χρόνου στο Sidebar (για να μην γεμίζει η κεντρική σελίδα)
+        st.sidebar.subheader("📅 Περίοδος")
         filter_type = st.sidebar.radio("Προβολή ανά:", ["Όλα", "Μήνα", "Ημέρα"])
         
         # Εφαρμογή Φίλτρων
         df_filtered = df_sales.copy()
         
-        # Φιλτράρισμα βάσει Πελάτη
-        if sel_customer != "ΟΛΟΙ":
+        # 1. Φιλτράρισμα Πελάτη
+        if sel_customer != "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ":
             df_filtered = df_filtered[df_filtered['customer'] == sel_customer]
             
-        # Φιλτράρισμα βάσει Χρόνου
+        # 2. Φιλτράρισμα Χρόνου
         if filter_type == "Μήνα":
             sel_month = st.sidebar.selectbox("Επιλέξτε Μήνα:", sorted(df_sales['Month_Year'].unique(), reverse=True))
             df_filtered = df_filtered[df_filtered['Month_Year'] == sel_month]
@@ -1233,18 +1232,22 @@ elif page == "📈 Dashboard":
             sel_day = st.sidebar.date_input("Επιλέξτε Ημερομηνία:", value=datetime.now())
             df_filtered = df_filtered[df_filtered['Date_Obj'].dt.date == sel_day]
 
-        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΤΖΙΡΟΥ ---
+        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΟΙΚΟΝΟΜΙΚΩΝ ---
         df_filtered = df_filtered.merge(df_prices, left_on="cocktail_name", right_on="name", how="left")
         df_filtered['Revenue'] = df_filtered['pieces'] * df_filtered['catalog_price'].fillna(0)
+        
         total_rev = df_filtered['Revenue'].sum()
         total_units = df_filtered['pieces'].sum()
+        total_orders = len(df_filtered)
 
-        # --- METRICS ---
-        st.subheader(f"📊 Σύνοψη για: {sel_customer}")
+        # --- ΣΥΝΟΨΗ (METRICS) ---
+        st.divider()
+        st.subheader(f"📊 Σύνοψη: {sel_customer}")
+        
         m1, m2, m3 = st.columns(3)
         m1.metric("💰 Συνολικός Τζίρος", f"{total_rev:.2f} €".replace('.', ','))
         m2.metric("🍹 Τεμάχια", f"{int(total_units)} τμχ")
-        m3.metric("📦 Αριθμός Παραγγελιών", len(df_filtered))
+        m3.metric("📦 Αριθμός Παραγγελιών", total_orders)
 
         st.divider()
 
@@ -1252,20 +1255,19 @@ elif page == "📈 Dashboard":
         col1, col2 = st.columns(2)
         
         with col1:
-            # Πωλήσεις ανά Cocktail (σε τεμάχια)
+            # Ποσότητες ανά Cocktail
             fig_units = px.bar(
                 df_filtered.groupby("cocktail_name")["pieces"].sum().reset_index(),
                 x="cocktail_name", y="pieces",
                 title="Ποσότητες ανά Cocktail",
-                labels={'cocktail_name': 'Cocktail', 'pieces': 'Τεμάχια'},
+                labels={'cocktail_name': 'Product', 'pieces': 'Τεμάχια'},
                 color="pieces", color_continuous_scale="Reds"
             )
             st.plotly_chart(fig_units, use_container_width=True)
             
         with col2:
-            # Αν ο χρήστης βλέπει "ΟΛΟΥΣ", δείξε Pie Chart Πελατών. 
-            # Αν βλέπει "Συγκεκριμένο", δείξε την εξέλιξη των αγορών του στο χρόνο.
-            if sel_customer == "ΟΛΟΙ":
+            # Αν είναι "ΟΛΟΙ", δείξε Pie Chart Πελατών. Αν είναι "Ένας", δείξε την εξέλιξη των πωλήσεων.
+            if sel_customer == "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ":
                 fig_pie = px.pie(
                     df_filtered.groupby("customer")["Revenue"].sum().reset_index(),
                     values="Revenue", names="customer",
@@ -1274,32 +1276,41 @@ elif page == "📈 Dashboard":
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
             else:
+                # Χρονοδιάγραμμα αγορών για τον συγκεκριμένο πελάτη
                 fig_trend = px.line(
                     df_filtered.sort_values("Date_Obj"),
                     x="prod_date", y="Revenue",
-                    title=f"Ιστορικό Αγορών: {sel_customer}",
+                    title=f"Πορεία Αγορών: {sel_customer}",
                     markers=True
                 )
                 st.plotly_chart(fig_trend, use_container_width=True)
 
         st.divider()
 
-        # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ΑΓΟΡΩΝ ---
-        st.subheader(f"📋 Λίστα Αγορών / Παραγγελιών")
-        view_df = df_filtered[["prod_date", "cocktail_name", "pieces", "Revenue", "lot_cocktail"]].copy()
-        st.dataframe(
-            view_df.rename(columns={
-                "prod_date": "Ημερομηνία",
-                "cocktail_name": "Cocktail",
-                "pieces": "Τεμάχια",
-                "Revenue": "Αξία (€)",
-                "lot_cocktail": "LOT"
-            }).sort_values("Ημερομηνία", ascending=False),
-            use_container_width=True
-        )
+        # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
+        with st.expander("📄 Δείτε το αναλυτικό ιστορικό των παραπάνω πωλήσεων"):
+            view_df = df_filtered[["prod_date", "customer", "cocktail_name", "pieces", "Revenue", "lot_cocktail"]].copy()
+            st.dataframe(
+                view_df.rename(columns={
+                    "prod_date": "Ημερομηνία",
+                    "customer": "Πελάτης",
+                    "cocktail_name": "Cocktail",
+                    "pieces": "Τεμάχια",
+                    "Revenue": "Αξία (€)",
+                    "lot_cocktail": "LOT"
+                }).sort_values("Ημερομηνία", ascending=False),
+                use_container_width=True
+            )
+
+        # --- DELETE OPTION (SIDEBAR) ---
+        if st.sidebar.button("🗑️ Εκκαθάριση Ιστορικού", use_container_width=True):
+            if st.sidebar.checkbox("Επιβεβαίωση Διαγραφής"):
+                supabase.table("production_log").delete().neq("id", 0).execute()
+                st.success("Το ιστορικό διαγράφηκε!")
+                st.rerun()
 
     else:
-        st.info("📭 Δεν υπάρχουν δεδομένα παραγωγής για ανάλυση.")
+        st.info("📭 Δεν υπάρχουν ακόμα δεδομένα παραγωγής για ανάλυση.")
 
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΠΛΗΡΗΣ & ΔΙΟΡΘΩΜΕΝΟΣ ΚΩΔΙΚΑΣ - SUPABASE) ---
