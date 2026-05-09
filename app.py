@@ -2099,7 +2099,7 @@ elif page == "🔄 Αντικατάσταση":
                     r_name = rec_lookup[rid]['name']
                     r_price = rec_lookup[rid]['catalog_price'] or 0.0
                     
-                    # Υπολογισμός τρέχοντος κόστους (με το παλιό υλικό)
+                    # Υπολογισμός τρέχοντος κόστους (πριν την αλλαγή)
                     current_cost = 0.22 # TOTAL_FIXED (Σταθερά έξοδα)
                     ml_of_old = 0
                     for _, item in r_items.iterrows():
@@ -2115,7 +2115,7 @@ elif page == "🔄 Αντικατάσταση":
                     cost_diff = ml_of_old * diff_ml
                     new_cost = current_cost + cost_diff
                     retail_profit = r_price - new_cost
-                    agent_price = r_price * 0.74 # Τιμή Αντιπροσώπου
+                    agent_price = r_price * 0.74 # Τιμή Αντιπροσώπου (74% της λιανικής)
                     agent_profit = agent_price - new_cost
 
                     analysis_data.append({
@@ -2144,9 +2144,9 @@ elif page == "🔄 Αντικατάσταση":
 
                 # Επεξηγηματικό μήνυμα
                 if diff_ml > 0:
-                    st.error(f"⚠️ Το νέο υλικό είναι ακριβότερο κατά {diff_ml:.4f}€/ml. Το κέρδος σας θα μειωθεί.")
+                    st.error(f"⚠️ Προσοχή: Το νέο υλικό είναι ακριβότερο κατά {diff_ml:.4f}€/ml.")
                 else:
-                    st.success(f"✅ Το νέο υλικό είναι φθηνότερο κατά {abs(diff_ml):.4f}€/ml. Το κέρδος σας θα αυξηθεί!")
+                    st.success(f"✅ Καλά νέα: Το νέο υλικό είναι φθηνότερο κατά {abs(diff_ml):.4f}€/ml.")
 
                 # --- ΕΚΤΕΛΕΣΗ ---
                 st.divider()
@@ -2163,4 +2163,3 @@ elif page == "🔄 Αντικατάσταση":
                 st.info(f"Το υλικό '{old_ing}' δεν βρέθηκε σε καμία ενεργή συνταγή.")
     else:
         st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
-        
