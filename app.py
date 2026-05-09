@@ -210,22 +210,22 @@ if page == "📦 Αποθήκη":
             
             if st.form_submit_button("💾 Αποθήκευση Νέου Υλικού"):
                 if new_name:
-                    max_id = df_ing["ID"].max() if not df_ing.empty else 1000
-                    new_row = {
-                        "ID": int(max_id) + 1,
-                        "Name": new_name,
-                        "Price": new_price,
-                        "Volume": new_vol,
-                        "Weight_Full": new_weight,
-                        "Τιμή/ml": new_price / new_vol,
-                        "Αλκοόλ %": new_alc,
-                        "Απόθεμα (ml)": 0.0
-                    }
-                    df_ing = pd.concat([df_ing, pd.DataFrame([new_row])], ignore_index=True)
-                    df_ing = df_ing.sort_values(by="Name", key=lambda col: col.str.lower())
-                    df_ing.to_csv(DB_INGREDIENTS, index=False, encoding='utf-8-sig')
-                    st.success(f"✅ Το υλικό '{new_name}' προστέθηκε!")
-                    st.rerun()
+                    try:
+                        # Το ID μπαίνει αυτόματα από τη Supabase (SERIAL)
+                        supabase.table("ingredients").insert({
+                            "name": new_name,
+                            "price": new_price,
+                            "volume": new_vol,
+                            "abv": new_alc,
+                            "weight_full": new_weight
+                        }).execute()
+                        
+                        st.success(f"✅ Το υλικό '{new_name}' προστέθηκε στη βάση!")
+                        st.cache_data.clear() # Καθαρίζουμε τη μνήμη για να φέρει τα νέα δεδομένα
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Σφάλμα κατά την αποθήκευση (Ίσως υπάρχει ήδη;): {e}")
                 else:
                     st.error("Παρακαλώ δώστε όνομα στο υλικό.")
 
@@ -249,55 +249,45 @@ if page == "📦 Αποθήκη":
                     
                     col_btn1, col_btn2 = st.columns([1,1])
                     
-                    # --- ΕΔΩ ΜΠΑΙΝΕΙ Ο ΝΕΟΣ ΚΩΔΙΚΑΣ UPDATE ---
+                    # --- Ο ΝΕΟΣ ΚΩΔΙΚΑΣ UPDATE ---
                     if col_btn1.form_submit_button("Update ✅"):
-                        # 1. Φόρτωση των αρχείων απευθείας από το δίσκο
-                        temp_ing = pd.read_csv(DB_INGREDIENTS)
-                        temp_rec = pd.read_csv(DB_RECIPES)
-                        
-                        old_name = ing_to_edit 
-                        
-                        # 2. Ενημέρωση στην Αποθήκη
-                        idx_ing = temp_ing[temp_ing["Name"] == old_name].index
-                        temp_ing.loc[idx_ing, "Name"] = edit_name
-                        temp_ing.loc[idx_ing, "Price"] = edit_price
-                        temp_ing.loc[idx_ing, "Volume"] = edit_vol
-                        temp_ing.loc[idx_ing, "Αλκοόλ %"] = edit_alc
-                        temp_ing.loc[idx_ing, "Weight_Full"] = edit_weight
-                        temp_ing.loc[idx_ing, "Τιμή/ml"] = edit_price / edit_vol
-                        
-                        # Σώσιμο Αποθήκης
-                        temp_ing.to_csv(DB_INGREDIENTS, index=False, encoding='utf-8-sig')
+                        try:
+                            # 1. Ενημέρωση στην Αποθήκη (Supabase)
+                            supabase.table("ingredients").update({
+                                "name": edit_name,
+                                "price": edit_price,
+                                "volume": edit_vol,
+                                "abv": edit_alc,
+                                "weight_full": edit_weight
+                            }).eq("id", int(curr_row["ID"])).execute()
 
-                        # 3. Ενημέρωση στις Συνταγές (Αν άλλαξε το όνομα)
-                        if old_name != edit_name:
-                            changes_made = 0
-                            for i in range(1, 14):
-                                col = f"ΣΥΣΤΑΤΙΚΟ{i}"
-                                if col in temp_rec.columns:
-                                    # Καθαρισμός κενών για σωστή σύγκριση
-                                    temp_rec[col] = temp_rec[col].astype(str).str.strip()
-                                    mask = temp_rec[col] == old_name.strip()
-                                    if mask.any():
-                                        temp_rec.loc[mask, col] = edit_name
-                                        changes_made += 1
-                            
-                            if changes_made > 0:
-                                temp_rec.to_csv(DB_RECIPES, index=False, encoding='utf-8-sig')
-                                st.info(f"⚙️ Έγινε αυτόματη ενημέρωση σε {changes_made} πεδία συνταγών.")
+                            # 2. Ενημέρωση στις Συνταγές (Αν άλλαξε το όνομα)
+                            if ing_to_edit != edit_name:
+                                # Η Supabase βρίσκει και ενημερώνει όλα τα υλικά με αυτό το όνομα με 1 εντολή!
+                                supabase.table("recipe_items").update({
+                                    "ingredient_name": edit_name
+                                }).eq("ingredient_name", ing_to_edit).execute()
+                                st.info("⚙️ Το νέο όνομα ενημερώθηκε αυτόματα και στις συνταγές!")
 
-                        st.success(f"✅ Το υλικό '{edit_name}' ενημερώθηκε!")
-                        st.rerun()
-                    
-                    # --- ΤΕΛΟΣ ΝΕΟΥ ΚΩΔΙΚΑ UPDATE ---
+                            st.success(f"✅ Το υλικό '{edit_name}' ενημερώθηκε!")
+                            st.cache_data.clear()
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
+                    # --- Ο ΝΕΟΣ ΚΩΔΙΚΑΣ ΔΙΑΓΡΑΦΗΣ ---
                     if col_btn2.form_submit_button("Διαγραφή 🗑️"):
-                        df_ing = df_ing[df_ing["Name"] != ing_to_edit]
-                        df_ing.to_csv(DB_INGREDIENTS, index=False, encoding='utf-8-sig')
-                        st.warning(f"Το υλικό {ing_to_edit} διαγράφηκε.")
-                        st.rerun()
+                        try:
+                            supabase.table("ingredients").delete().eq("id", int(curr_row["ID"])).execute()
+                            st.warning(f"Το υλικό {ing_to_edit} διαγράφηκε.")
+                            st.cache_data.clear()
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
 
-    # --- TAB 3: ΠΡΟΒΟΛΗ ΠΙΝΑΚΑ ---
+    # --- TAB 3: ΠΡΟΒΟΛΗ ΠΙΝΑΚΑ & HTML ---
     with tab3:
         st.subheader("Συνολική Εικόνα Αποθήκης")
         st.dataframe(df_ing[["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]], use_container_width=True)
