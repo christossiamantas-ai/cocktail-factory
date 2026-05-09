@@ -634,10 +634,50 @@ elif page == "📊 Διαχείριση":
             df_rec = pd.DataFrame(df_rec_list)
             st.dataframe(df_rec, use_container_width=True)
 
-# --- 4. ΑΝΑΛΥΣΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΣΥΜΒΑΤΟΤΗΤΑ ΜΕ ID & ΟΝΟΜΑΤΑ) ---
+# --- 4. ΑΝΑΛΥΣΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΣΥΜΒΑΤΟΤΗΤΑ ΜΕ SUPABASE) ---
 elif page == "🔍 Ανάλυση":
     st.header("🔍 Οικονομική Ανάλυση & Κερδοφορία")
-    df_ing, df_rec, df_orders, df_history = load_data() 
+    
+    # --- ΜΑΓΕΙΑ SUPABASE: Φτιάχνουμε τα df_ing & df_rec όπως ακριβώς τα περιμένει ο κώδικάς σου! ---
+    # 1. Φόρτωση Αποθήκης
+    res_ing = supabase.table("ingredients").select("*").execute()
+    ing_data = res_ing.data if res_ing.data else []
+    df_ing_list = []
+    for item in ing_data:
+        df_ing_list.append({
+            "Name": item["name"],
+            "Price": item["price"],
+            "Volume": item["volume"],
+            "Αλκοόλ %": item["abv"],
+            "ABV": item["abv"], # Το χρειάζεται το HTML book πιο κάτω
+            "Τιμή/ml": item["price"] / item["volume"] if item["volume"] > 0 else 0
+        })
+    df_ing = pd.DataFrame(df_ing_list)
+
+    # 2. Φόρτωση & Μετατροπή Συνταγών (σε οριζόντια μορφή με 13 υλικά)
+    res_rec_base = supabase.table("recipes").select("*").order("name").execute()
+    rec_data = res_rec_base.data if res_rec_base.data else []
+    all_items = supabase.table("recipe_items").select("*").execute().data if rec_data else []
+    
+    df_rec_list = []
+    for r in rec_data:
+        row_dict = {
+            "Ονομα": r["name"],
+            "Barcode": str(r.get("barcode", "")).replace(".0", "").replace("nan", ""),
+            "Τιμή Καταλόγου": r.get("catalog_price", 0.0)
+        }
+        r_items = [item for item in all_items if item["recipe_id"] == r["id"]]
+        for i in range(1, 14):
+            if i - 1 < len(r_items):
+                row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = r_items[i-1]["ingredient_name"]
+                row_dict[f"ML{i}"] = r_items[i-1]["ml_per_unit"]
+            else:
+                row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = "ΚΕΝΟ"
+                row_dict[f"ML{i}"] = 0.0
+        df_rec_list.append(row_dict)
+    df_rec = pd.DataFrame(df_rec_list)
+    # --- ΤΕΛΟΣ ΦΟΡΤΩΣΗΣ SUPABASE ---
+
     recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
     if not df_rec.empty:
@@ -667,7 +707,7 @@ elif page == "🔍 Ανάλυση":
                 if ing_n == "Νερό":
                     breakdown.append({"Υλικό": "Νερό", "ML": ml, "Κόστος": 0.0, "Alc %": 0.0})
                 elif ing_n not in ["nan", ""]:
-                    # ΕΔΩ Η ΔΙΟΡΘΩΣΗ: Αναζήτηση στην Αποθήκη
+                    # Αναζήτηση στην Αποθήκη
                     match = df_ing[df_ing["Name"] == ing_n]
                     
                     if not match.empty:
@@ -704,8 +744,15 @@ elif page == "🔍 Ανάλυση":
 
         # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
         final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
-        efk_informational = pure_alc_ml * tax_factor
-        total_production = raw_cost + TOTAL_FIXED 
+        
+        # Πρόβλεψη αν το tax_factor δεν έχει οριστεί
+        try: efk_informational = pure_alc_ml * tax_factor
+        except NameError: efk_informational = pure_alc_ml * 0.0255
+        
+        try: fixed_cost = TOTAL_FIXED
+        except NameError: fixed_cost = 0.50
+        
+        total_production = raw_cost + fixed_cost 
         
         profit_retail = p_retail - total_production
         profit_agent = p_agent - total_production
@@ -735,7 +782,7 @@ elif page == "🔍 Ανάλυση":
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("Κόστος Υλικών", f"{raw_cost:.2f} €".replace('.', ','))
         k2.metric("ΕΦΚ (Ενσωμ.)", f"{efk_informational:.2f} €".replace('.', ','))
-        k3.metric("Σταθερά Έξοδα", f"{TOTAL_FIXED:.2f} €".replace('.', ','))
+        k3.metric("Σταθερά Έξοδα", f"{fixed_cost:.2f} €".replace('.', ','))
         k4.metric("ΣΥΝΟΛΟ ΚΟΣΤΟΥΣ", f"{total_production:.2f} €".replace('.', ','))
 
         # --- ΠΙΝΑΚΑΣ ΥΛΙΚΩΝ ΣΤΗΝ ΟΘΟΝΗ ---
@@ -775,7 +822,7 @@ elif page == "🔍 Ανάλυση":
             ["ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΛΥΣΗ", ""],
             ["Κόστος Υλικών (με ΕΦΚ)", f"{clean_val(raw_cost)} €"],
             ["ΕΦΚ (Ενημερωτικά)", f"{clean_val(efk_informational)} €"],
-            ["Σταθερά Έξοδα Μονάδας", f"{clean_val(TOTAL_FIXED)} €"],
+            ["Σταθερά Έξοδα Μονάδας", f"{clean_val(fixed_cost)} €"],
             ["ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ ΠΑΡΑΓΩΓΗΣ", f"{clean_val(total_production)} €"],
             ["---------------------------", "---------------------------"],
             ["ΤΙΜΕΣ & ΚΕΡΔΗ", ""],
