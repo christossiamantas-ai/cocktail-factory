@@ -297,6 +297,96 @@ if page == "📦 Αποθήκη":
     with tab3:
         st.subheader("Συνολική Εικόνα Αποθήκης")
         st.dataframe(df_ing[["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]], use_container_width=True)
+        
+        st.divider()
+        
+        # --- ΚΑΤΑΣΚΕΥΗ HTML ΓΙΑ ΛΙΣΤΑ ΠΡΩΤΩΝ ΥΛΩΝ ---
+        import base64
+        from datetime import datetime
+
+        def get_base64_image(image_path):
+            try:
+                with open(image_path, "rb") as img_file:
+                    return base64.b64encode(img_file.read()).decode()
+            except: return ""
+
+        logo_base64 = get_base64_image("logo.png")
+
+        # 1. CSS & Layout
+        html_ing = f"""
+        <html>
+        <head>
+            <meta charset='UTF-8'>
+            <style>
+                body {{ font-family: 'Helvetica', sans-serif; padding: 30px; color: #333; background-color: #f4f4f4; }}
+                .container {{ background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }}
+                .header {{ text-align: center; border-bottom: 4px solid #ffcc00; padding-bottom: 20px; margin-bottom: 30px; }}
+                .logo-img {{ max-width: 120px; margin-bottom: 10px; }}
+                h1 {{ margin: 0; color: #1a1a1a; text-transform: uppercase; letter-spacing: 2px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }}
+                th {{ background-color: #ffcc00; color: #1a1a1a; padding: 12px; text-align: left; border: 1px solid #ddd; }}
+                td {{ padding: 10px; border: 1px solid #eee; font-size: 14px; }}
+                tr:nth-child(even) {{ background-color: #fff9e6; }}
+                tr:hover {{ background-color: #f2f2f2; }}
+                .footer {{ text-align: center; margin-top: 30px; font-size: 12px; color: #888; border-top: 1px solid #ddd; padding-top: 10px; }}
+                .price-tag {{ font-weight: bold; color: #d32f2f; }}
+            </style>
+        </head>
+        <body>
+            <div class='container'>
+                <div class='header'>
+                    {f'<img src="data:image/png;base64,{logo_base64}" class="logo-img"><br>' if logo_base64 else ''}
+                    <h1>CABCLUB | LISTA ΠΡΩΤΩΝ ΥΛΩΝ</h1>
+                    <p>Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Όνομα Υλικού</th>
+                            <th>Τιμή (€)</th>
+                            <th>ML Φιάλης</th>
+                            <th>Τιμή/ml</th>
+                            <th>Alc %</th>
+                            <th>Βάρος (g)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        """
+
+        # 2. Προσθήκη Δεδομένων
+        for _, row in df_ing.iterrows():
+            html_ing += f"""
+                <tr>
+                    <td><b>{row['ID']}</b></td>
+                    <td>{row['Name']}</td>
+                    <td class='price-tag'>{row['Price']:.2f} €</td>
+                    <td>{row['Volume']:.0f} ml</td>
+                    <td>{row['Τιμή/ml']:.4f} €</td>
+                    <td>{row['Αλκοόλ %']:.1f}%</td>
+                    <td>{row['Weight_Full']:.1f} g</td>
+                </tr>
+            """
+
+        html_ing += """
+                    </tbody>
+                </table>
+                <div class='footer'>
+                    © CabClub Cocktails Management System - Warehouse Report
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        # 3. Κουμπί Λήψης
+        st.download_button(
+            label="📄 Λήψη Λίστας Αποθήκης (HTML)",
+            data=html_ing,
+            file_name=f"CabClub_Warehouse_{datetime.now().strftime('%d_%m_%Y')}.html",
+            mime="text/html",
+            use_container_width=True
+        )
 
 
 # --- 2. ΝΕΑ ΣΥΝΤΑΓΗ (ΒΕΛΤΙΩΜΕΝΗ ΕΚΔΟΣΗ) ---
