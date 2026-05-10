@@ -1009,12 +1009,15 @@ elif page == "🔍 Ανάλυση":
             
             total_ml_cocktail = 0
             total_alcohol_ml = 0
+            total_cost = 0
             found_ingredients = 0
             
             for i in range(1, 14):
                 raw_ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
                 try:
-                    ml = float(recipe.get(f"ML{i}", 0))
+                    # Καθαρισμός των ML σε περίπτωση που έχουν κόμμα αντί για τελεία
+                    ml_str = str(recipe.get(f"ML{i}", 0)).replace(',', '.')
+                    ml = float(ml_str)
                 except:
                     ml = 0
                 
@@ -1025,28 +1028,46 @@ elif page == "🔍 Ανάλυση":
                     html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.0f} ml</td></tr>"
                     found_ingredients += 1
                     
-                    # --- ΔΙΟΡΘΩΣΗ: Προσθέτουμε ΠΑΝΤΑ τα ml στο σύνολο του cocktail για να γίνεται σωστά η αραίωση ---
+                    # Προσθέτουμε ΠΑΝΤΑ τα ml στο σύνολο του cocktail
                     total_ml_cocktail += ml
                     
                     if not df_ing.empty and ing_clean in df_ing["Name"].values:
                         ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
                         
-                        # Ανάκτηση ABV (Δοκιμάζουμε και 'ABV' και 'Αλκοόλ' για ασφάλεια)
+                        # --- ΑΛΕΞΙΣΦΑΙΡΗ ΑΝΑΚΤΗΣΗ ΑΛΚΟΟΛ (ABV) ---
                         try:
-                            abv = float(ing_row.get("ABV", ing_row.get("Αλκοόλ", 0)))
+                            # Παίρνουμε την τιμή (ABV ή Αλκοόλ)
+                            raw_abv = str(ing_row.get("ABV", ing_row.get("Αλκοόλ", 0)))
+                            # Καθαρίζουμε κόμματα και σύμβολα %
+                            clean_abv = raw_abv.replace(',', '.').replace('%', '').strip()
+                            abv = float(clean_abv)
+                            
+                            # ΑΝ ΤΟ ΕΧΕΙΣ ΠΕΡΑΣΕΙ ΩΣ 0.4 ΑΝΤΙ ΓΙΑ 40, ΤΟ ΦΤΙΑΧΝΕΙ ΑΥΤΟΜΑΤΑ
+                            if 0 < abv <= 1.0:
+                                abv = abv * 100
+                                
                         except:
                             abv = 0
+                        
+                        # Ανακτούμε και το κόστος για να είμαστε καλυμμένοι
+                        try:
+                            price = float(str(ing_row.get("Price", 0)).replace(',', '.'))
+                            vol = float(str(ing_row.get("Volume", 700)).replace(',', '.'))
+                            cost_per_ml = price / vol if vol > 0 else 0
+                        except:
+                            cost_per_ml = 0
                             
-                        # Υπολογισμός καθαρών ml αλκοόλ
+                        # Υπολογισμός καθαρών ml αλκοόλ και κόστους
                         total_alcohol_ml += ml * (abv / 100)
+                        total_cost += ml * cost_per_ml
             
             if found_ingredients == 0:
                 html_book += "<tr><td colspan='2'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
 
-            # --- Ο ΣΩΣΤΟΣ ΤΥΠΟΣ ΥΠΟΛΟΓΙΣΜΟΥ ---
+            # --- Ο ΣΩΣΤΟΣ ΤΥΠΟΣ ΥΠΟΛΟΓΙΣΜΟΥ ABV ---
             final_abv = (total_alcohol_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
             
-            suggested_price = float(recipe.get("Τιμή Καταλόγου", 0.0))
+            suggested_price = float(str(recipe.get("Τιμή Καταλόγου", 0.0)).replace(',', '.'))
 
             html_book += f"""
                     </tbody>
