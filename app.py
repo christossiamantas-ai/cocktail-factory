@@ -1936,129 +1936,151 @@ elif page == "📦 Lot Παραγωγής":
             st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
 
 
-# --- ΕΝΟΤΗΤΑ: ΣΥΝΤΗΡΗΣΗ & HACCP ---
-# Υποθέτουμε ότι η σελίδα 'page' έχει επιλεγεί από το πλευρικό μενού
+# --- 1.6 ΣΥΝΤΗΡΗΣΗ & HACCP (PROFESSIONAL VERSION) ---
 elif page == "🧼 Συντήρηση & HACCP":
-    st.header("🧼 Ημερολόγιο Συντήρησης & Καθαρισμού")
-
-    # --- ΚΕΝΤΡΙΚΑ ΠΕΔΙΑ ΕΙΣΑΓΩΓΗΣ ---
-    col_u1, col_u2 = st.columns(2)
-    with col_u1:
-        # ΝΕΟ ΠΕΔΙΟ: Πληκτρολόγηση ονόματος υπευθύνου
-        staff_name = st.text_input("👤 Ονοματεπώνυμο Υπευθύνου:", placeholder="π.χ. Νίκος Παπαδόπουλος")
-    with col_u2:
-        # ΕΠΙΛΟΓΗ ΗΜΕΡΟΜΗΝΙΑΣ (ηη/μμ/εε)
-        selected_date = st.date_input("📅 Ημερομηνία Καταγραφής:", value=datetime.now())
-        date_str = selected_date.strftime("%d/%m/%y")
+    st.header("🧼 Ψηφιακό Μητρώο HACCP & Καθαρισμού")
     
-    tab1, tab2, tab3 = st.tabs(["🌡️ Θερμοκρασίες", "🧹 Checklist Καθαρισμού", "📄 Εκτυπώσεις & Ιστορικό"])
+    # CSS για βελτίωση της εμφάνισης των Checklists
+    st.markdown("""
+        <style>
+        .stCheckbox { background-color: #f8f9fa; padding: 5px; border-radius: 5px; margin-bottom: 2px; }
+        .report-header { text-align: center; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # --- ΚΕΝΤΡΙΚΑ ΠΕΔΙΑ ---
+    col_u1, col_u2 = st.columns([2, 1])
+    with col_u1:
+        staff_name = st.text_input("👤 Υπεύθυνος Καταγραφής:", placeholder="Ονοματεπώνυμο...")
+    with col_u2:
+        selected_date = st.date_input("📅 Ημερομηνία:", value=datetime.now())
+        date_str = selected_date.strftime("%d/%m/%Y")
+    
+    tab1, tab2, tab3 = st.tabs(["🌡️ Θερμοκρασίες", "🧹 Checklists Καθαρισμού", "📋 Αρχείο & Εκτυπώσεις"])
     
     # --- TAB 1: ΘΕΡΜΟΚΡΑΣΙΕΣ ---
     with tab1:
-        st.subheader(f"🌡️ Καταγραφή Θερμοκρασίας ({date_str})")
-        with st.form("temp_form"):
-            device = st.selectbox("Συσκευή:", ["Ψυγείο 1", "Ψυγείο 2", "Ψυγείο 3", "Κατάψυξη 1", "Κατάψυξη 2"])
-            is_freezer = "Κατάψυξη" in device
-            temp = st.number_input("Θερμοκρασία (°C):", 
-                                   min_value=-25.0 if is_freezer else 0.0, 
-                                   max_value=-10.0 if is_freezer else 10.0, 
-                                   value=-18.0 if is_freezer else 4.0, step=0.5)
-            notes = st.text_input("Σημειώσεις:")
+        st.subheader("🌡️ Έλεγχος Ψυκτικών Θαλάμων")
+        
+        with st.form("temp_form_new"):
+            c1, c2, c3 = st.columns([2, 2, 2])
+            device = c1.selectbox("Συσκευή:", ["Ψυγείο 1 (Πρώτες Ύλες)", "Ψυγείο 2 (Έτοιμα)", "Ψυγείο 3", "Κατάψυξη 1", "Κατάψυξη 2"])
             
-            if st.form_submit_button("💾 Καταγραφή"):
-                if not staff_name.strip():
-                    st.error("⚠️ Παρακαλώ συμπληρώστε το όνομα υπευθύνου!")
+            is_freezer = "Κατάψυξη" in device
+            default_t = -18.0 if is_freezer else 4.0
+            
+            temp = c2.number_input("Θερμοκρασία (°C):", value=default_t, step=0.5)
+            notes = c3.text_input("Παρατηρήσεις / Διορθωτικές Ενέργειες:")
+            
+            # Έλεγχος ορίων
+            is_ok = True
+            if is_freezer and temp > -15.0: is_ok = False
+            if not is_freezer and temp > 7.0: is_ok = False
+            
+            if not is_ok:
+                st.warning(f"⚠️ Η θερμοκρασία είναι εκτός ορίων για {device}!")
+
+            if st.form_submit_button("💾 Αποθήκευση Μέτρησης", type="primary"):
+                if not staff_name:
+                    st.error("Συμπληρώστε το όνομα υπευθύνου!")
                 else:
                     log_data = {
                         "Ημερομηνία": date_str, "Ώρα": datetime.now().strftime("%H:%M"),
                         "Χρήστης": staff_name, "Τύπος": "Θερμοκρασία",
-                        "Στοιχείο": device, "Τιμή": f"{temp} °C",
+                        "Στοιχείο": device, "Τιμή": f"{temp}°C",
+                        "Κατάσταση": "ΕΝΤΟΣ ΟΡΙΩΝ" if is_ok else "ΕΚΤΟΣ ΟΡΙΩΝ",
                         "Καθαριστικό": "-", "Σημειώσεις": notes
                     }
-                    pd.DataFrame([log_data]).to_csv("HACCP_Log.csv", mode='a', header=not os.path.exists("HACCP_Log.csv"), index=False, encoding='utf-8-sig')
-                    st.success(f"✅ Η μέτρηση για το {device} αποθηκεύτηκε!")
+                    df_to_save = pd.DataFrame([log_data])
+                    df_to_save.to_csv("HACCP_Log.csv", mode='a', header=not os.path.exists("HACCP_Log.csv"), index=False, encoding='utf-8-sig')
+                    st.success(f"Καταγράφηκε: {device} -> {temp}°C")
 
-    # --- TAB 2: CHECKLIST ΚΑΘΑΡΙΣΜΟΥ (Ανά εργασία) ---
+    # --- TAB 2: CHECKLISTS ---
     with tab2:
         tasks_data = {
-            "Ημερήσιο Checklist": ["Σκεύη & Εργαλεία", "Εξοπλισμός", "Επιφάνειες επαφής", "Δάπεδα παραγωγής", "Τουαλέτες", "Απορρίμματα"],
-            "Εβδομαδιαίο Checklist": ["Δάπεδα αποθηκών", "Ψυγεία", "Τοίχοι", "Κάδοι", "Τζαμαρία", "Ράφια"],
-            "Μηνιαίο Checklist": ["Παράθυρα", "Οροφές", "Φώτα", "Εξαερισμός"]
+            "Ημερήσιος Καθαρισμός": ["Πάγκοι Εργασίας", "Εξοπλισμός (Blenders/Shakers)", "Δάπεδο Εργαστηρίου", "Απομάκρυνση Απορριμμάτων", "Απολύμανση Χεριών"],
+            "Εβδομαδιαίος Καθαρισμός": ["Εσωτερικό Ψυγείων", "Ράφια Αποθήκης", "Τοίχοι & Πλακάκια", "Γενική Απολύμανση"],
+            "Μηνιαίος Καθαρισμός": ["Φίλτρα Εξαερισμού", "Σύστημα Κλιματισμού", "Καθαρισμός Οροφής"]
         }
-
-        category = st.radio("Επιλέξτε τύπο εργασιών:", list(tasks_data.keys()), horizontal=True)
-        current_tasks = tasks_data[category]
-        responses = {}
-
+        
+        category = st.radio("Πρόγραμμα:", list(tasks_data.keys()), horizontal=True)
+        
         with st.form(f"form_{category}"):
-            st.subheader(f"Καταγραφή: {category}")
-            for task in current_tasks:
-                c1, c2 = st.columns([0.4, 0.6])
-                with c1:
-                    done = st.checkbox(task, key=f"ch_{task}")
-                with c2:
-                    cleaner = st.text_input("Καθαριστικό:", key=f"cl_{task}", placeholder="π.χ. Χλωρίνη")
-                responses[task] = {"done": done, "cleaner": cleaner}
+            st.markdown(f"### {category}")
+            responses = []
             
-            if st.form_submit_button("💾 Οριστικοποίηση"):
-                if not staff_name.strip():
-                    st.error("⚠️ Συμπληρώστε το όνομα υπευθύνου!")
-                elif all(res["done"] for res in responses.values()) and all(res["cleaner"].strip() != "" for res in responses.values()):
-                    summary_cleaners = " | ".join([f"{t}: {res['cleaner']}" for t, res in responses.items()])
+            cols = st.columns(2)
+            for i, task in enumerate(tasks_data[category]):
+                with cols[i % 2]:
+                    done = st.checkbox(task, key=f"task_{i}")
+                    cleaner = st.text_input(f"Καθαριστικό ({task})", key=f"cl_{i}", placeholder="π.χ. Sanitas / Χλώριο")
+                    if done: responses.append(f"{task} ({cleaner})")
+            
+            if st.form_submit_button("🚀 Οριστικοποίηση Προγράμματος"):
+                if len(responses) < len(tasks_data[category]):
+                    st.error("Πρέπει να επιλέξετε όλες τις εργασίες!")
+                elif not staff_name:
+                    st.error("Συμπληρώστε το όνομα υπευθύνου!")
+                else:
                     log_data = {
                         "Ημερομηνία": date_str, "Ώρα": datetime.now().strftime("%H:%M"),
                         "Χρήστης": staff_name, "Τύπος": "Καθαρισμός",
                         "Στοιχείο": category, "Τιμή": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
-                        "Καθαριστικό": summary_cleaners, "Σημειώσεις": "-"
+                        "Κατάσταση": "ΟΚ",
+                        "Καθαριστικό": " | ".join(responses), "Σημειώσεις": "-"
                     }
                     pd.DataFrame([log_data]).to_csv("HACCP_Log.csv", mode='a', header=not os.path.exists("HACCP_Log.csv"), index=False, encoding='utf-8-sig')
-                    st.success("✨ Το checklist αποθηκεύτηκε με επιτυχία!")
-                else:
-                    st.error("⚠️ Πρέπει να ολοκληρώσετε όλες τις εργασίες και να γράψετε τα καθαριστικά!")
+                    st.success("✨ Το μητρώο καθαρισμού ενημερώθηκε!")
 
-    # --- TAB 3: ΙΣΤΟΡΙΚΟ & ΕΚΤΥΠΩΣΕΙΣ ---
+    # --- TAB 3: ΙΣΤΟΡΙΚΟ & ΕΠΑΓΓΕΛΜΑΤΙΚΑ REPORTS ---
     with tab3:
         if os.path.exists("HACCP_Log.csv"):
-            try:
-                # Ορισμός στηλών για αποφυγή ParserError
-                cols = ["Ημερομηνία", "Ώρα", "Χρήστης", "Τύπος", "Στοιχείο", "Τιμή", "Καθαριστικό", "Σημειώσεις"]
-                df_haccp = pd.read_csv("HACCP_Log.csv", names=cols, header=0, on_bad_lines='skip', encoding='utf-8-sig').fillna("-")
+            df_haccp = pd.read_csv("HACCP_Log.csv", encoding='utf-8-sig').fillna("-")
+            
+            # --- ΕΠΑΓΓΕΛΜΑΤΙΚΟ HTML REPORT GENERATOR ---
+            def get_haccp_report(filter_type, title):
+                report_df = df_haccp[df_haccp["Τύπος"] == filter_type]
+                if "Καθαρισμός" in filter_type:
+                    headers = ["Ημερομηνία", "Υπεύθυνος", "Πρόγραμμα", "Λεπτομέρειες (Καθαριστικά)"]
+                    rows_html = "".join([f"<tr><td>{r['Ημερομηνία']}</td><td>{r['Χρήστης']}</td><td>{r['Στοιχείο']}</td><td>{str(r['Καθαριστικό']).replace(' | ', '<br>')}</td></tr>" for _, r in report_df.iterrows()])
+                else:
+                    headers = ["Ημερομηνία", "Ώρα", "Συσκευή", "Θερμοκρασία", "Κατάσταση", "Υπεύθυνος"]
+                    rows_html = "".join([f"<tr><td>{r['Ημερομηνία']}</td><td>{r['Ώρα']}</td><td>{r['Στοιχείο']}</td><td>{r['Τιμή']}</td><td>{r['Κατάσταση']}</td><td>{r['Χρήστης']}</td></tr>" for _, r in report_df.iterrows()])
 
-                # ΣΥΝΑΡΤΗΣΗ ΕΚΤΥΠΩΣΗΣ (Με σωστές εσοχές)
-                def generate_report(filter_type, title):
-                    report_df = df_haccp[df_haccp["Στοιχείο"].astype(str).str.strip() == filter_type]
-                    if report_df.empty:
-                        return f"<html><body><h3>Δεν υπάρχουν δεδομένα για: {title}</h3></body></html>"
-                    
-                    html = f"""
-                    <html><head><meta charset='UTF-8'><style>
-                        table {{ width: 100%; border-collapse: collapse; }}
-                        th, td {{ border: 1px solid black; padding: 8px; text-align: left; font-size: 12px; }}
-                        th {{ background-color: #f2f2f2; }}
-                    </style></head><body>
-                    <h2 style='text-align:center;'>CABCLUB COCKTAILS</h2>
-                    <h3 style='text-align:center;'>{title}</h3>
-                    <p>Ημερομηνία Εκτύπωσης: {date_str}</p>
-                    <table><tr><th>Ημερομηνία</th><th>Χρήστης</th><th>Κατάσταση</th><th>Καθαριστικά</th></tr>
-                    """
-                    for _, r in report_df.iterrows():
-                        cleaners_fmt = str(r['Καθαριστικό']).replace(" | ", "<br>")
-                        html += f"<tr><td>{r['Ημερομηνία']}</td><td>{r['Χρήστης']}</td><td>{r['Τιμή']}</td><td>{cleaners_fmt}</td></tr>"
-                    html += "</table></body></html>"
-                    return html
+                headers_html = "".join([f"<th>{h}</th>" for h in headers])
+                
+                html = f"""
+                <html><head><meta charset='UTF-8'>
+                <style>
+                    body {{ font-family: 'Arial', sans-serif; padding: 20px; }}
+                    .header {{ text-align: center; border-bottom: 3px solid #1e3a8a; padding-bottom: 10px; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                    th {{ background-color: #1e3a8a; color: white; padding: 10px; font-size: 13px; }}
+                    td {{ border: 1px solid #ccc; padding: 8px; font-size: 12px; }}
+                    .footer {{ margin-top: 50px; display: flex; justify-content: space-between; }}
+                    .sig {{ border-top: 1px solid #000; width: 200px; text-align: center; padding-top: 5px; }}
+                </style>
+                </head><body>
+                    <div class='header'>
+                        <h1 style='margin:0;'>CABCLUB COCKTAILS</h1>
+                        <h3 style='margin:5px;'>ΠΡΩΤΟΚΟΛΛΟ HACCP: {title}</h3>
+                    </div>
+                    <table><thead><tr>{headers_html}</tr></thead><tbody>{rows_html}</tbody></table>
+                    <div class='footer'>
+                        <div class='sig'>Ο Υπεύθυνος Παραγωγής</div>
+                        <div class='sig'>Ημερομηνία Ελέγχου</div>
+                    </div>
+                </body></html>
+                """
+                return html
 
-                # Κουμπιά Λήψης
-                c_btn1, c_btn2, c_btn3 = st.columns(3)
-                c_btn1.download_button("📄 Ημερήσια", generate_report("Ημερήσιο Checklist", "ΗΜΕΡΗΣΙΟ ΜΗΤΡΩΟ"), f"Daily_{date_str}.html", "text/html")
-                c_btn2.download_button("📄 Εβδομαδιαία", generate_report("Εβδομαδιαίο Checklist", "ΕΒΔΟΜΑΔΙΑΙΟ ΜΗΤΡΩΟ"), f"Weekly_{date_str}.html", "text/html")
-                c_btn3.download_button("📄 Μηνιαία", generate_report("Μηνιαίο Checklist", "ΜΗΝΙΑΙΟ ΜΗΤΡΩΟ"), f"Monthly_{date_str}.html", "text/html")
+            # Buttons
+            c1, c2 = st.columns(2)
+            c1.download_button("📥 Report Θερμοκρασιών (HTML)", get_haccp_report("Θερμοκρασία", "ΜΗΤΡΩΟ ΘΕΡΜΟΚΡΑΣΙΩΝ"), "Temperatures_Log.html", "text/html", use_container_width=True)
+            c2.download_button("📥 Report Καθαρισμού (HTML)", get_haccp_report("Καθαρισμός", "ΜΗΤΡΩΟ ΚΑΘΑΡΙΣΜΟΥ"), "Cleaning_Log.html", "text/html", use_container_width=True)
 
-                st.divider()
-                st.dataframe(df_haccp.sort_values(by="Ημερομηνία", ascending=False), use_container_width=True)
-            except Exception as e:
-                st.error(f"Σφάλμα ανάγνωσης αρχείου: {e}")
-        else:
-            st.info("ℹ️ Δεν υπάρχουν ακόμη καταγραφές.")
+            st.divider()
+            st.dataframe(df_haccp.sort_values(by="Ημερομηνία", ascending=False), use_container_width=True, hide_index=True)
 
 # --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΔΙΟΡΘΩΣΗ ΣΤΟΙΧΕΙΩΝ) ---
 elif page == "👥 Πελατολόγιο":
