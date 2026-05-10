@@ -2033,17 +2033,37 @@ elif page == "🧼 Συντήρηση & HACCP":
     # --- TAB 3: ΙΣΤΟΡΙΚΟ & ΕΠΑΓΓΕΛΜΑΤΙΚΑ REPORTS ---
     with tab3:
         if os.path.exists("HACCP_Log.csv"):
-            # --- ΕΞΥΠΝΗ ΑΝΑΓΝΩΣΗ ΑΡΧΕΙΟΥ (Πρόληψη Σφαλμάτων) ---
+            import csv
             expected_cols = ["Ημερομηνία", "Ώρα", "Χρήστης", "Τύπος", "Στοιχείο", "Τιμή", "Κατάσταση", "Καθαριστικό", "Σημειώσεις"]
+            records = []
             
             try:
-                df_haccp = pd.read_csv("HACCP_Log.csv", encoding='utf-8-sig')
-                if "Κατάσταση" not in df_haccp.columns:
-                    df_haccp["Κατάσταση"] = "-"
+                # Διαβάζουμε το αρχείο χειροκίνητα και με απόλυτη ασφάλεια (αγνοώντας λάθη στηλών)
+                with open("HACCP_Log.csv", mode="r", encoding="utf-8-sig") as f:
+                    reader = csv.reader(f)
+                    for row in reader:
+                        # Αγνοούμε την κεφαλίδα ή εντελώς κενές γραμμές
+                        if not row or row[0] == "Ημερομηνία": 
+                            continue 
+                        
+                        # Αν είναι ΠΑΛΙΑ εγγραφή (8 στήλες - έλειπε η "Κατάσταση")
+                        if len(row) == 8:
+                            records.append({
+                                "Ημερομηνία": row[0], "Ώρα": row[1], "Χρήστης": row[2], 
+                                "Τύπος": row[3], "Στοιχείο": row[4], "Τιμή": row[5], 
+                                "Κατάσταση": "-", "Καθαριστικό": row[6], "Σημειώσεις": row[7]
+                            })
+                        # Αν είναι ΝΕΑ εγγραφή (9 στήλες)
+                        elif len(row) >= 9:
+                            records.append({
+                                "Ημερομηνία": row[0], "Ώρα": row[1], "Χρήστης": row[2], 
+                                "Τύπος": row[3], "Στοιχείο": row[4], "Τιμή": row[5], 
+                                "Κατάσταση": row[6], "Καθαριστικό": row[7], "Σημειώσεις": row[8]
+                            })
+                            
+                df_haccp = pd.DataFrame(records, columns=expected_cols).fillna("-")
             except Exception:
-                df_haccp = pd.read_csv("HACCP_Log.csv", names=expected_cols, header=0, engine='python', encoding='utf-8-sig')
-            
-            df_haccp = df_haccp.fillna("-")
+                df_haccp = pd.DataFrame(columns=expected_cols)
             
             # --- ΕΠΑΓΓΕΛΜΑΤΙΚΟ HTML REPORT GENERATOR ---
             def get_haccp_report(filter_type, title):
@@ -2098,7 +2118,6 @@ elif page == "🧼 Συντήρηση & HACCP":
             st.dataframe(df_haccp.sort_values(by="Ημερομηνία", ascending=False), use_container_width=True, hide_index=True)
         else:
             st.info("ℹ️ Δεν υπάρχουν ακόμη καταγραφές.")
-
 # --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΔΙΟΡΘΩΣΗ ΣΤΟΙΧΕΙΩΝ) ---
 elif page == "👥 Πελατολόγιο":
     st.header("👥 Διαχείριση Πελατολογίου")
