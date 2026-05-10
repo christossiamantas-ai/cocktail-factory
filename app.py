@@ -2040,12 +2040,19 @@ elif page == "🧼 Συντήρηση & HACCP":
             # --- ΕΠΑΓΓΕΛΜΑΤΙΚΟ HTML REPORT GENERATOR ---
             def get_haccp_report(filter_type, title):
                 report_df = df_haccp[df_haccp["Τύπος"] == filter_type]
+                
                 if "Καθαρισμός" in filter_type:
                     headers = ["Ημερομηνία", "Υπεύθυνος", "Πρόγραμμα", "Λεπτομέρειες (Καθαριστικά)"]
-                    rows_html = "".join([f"<tr><td>{r['Ημερομηνία']}</td><td>{r['Χρήστης']}</td><td>{r['Στοιχείο']}</td><td>{str(r['Καθαριστικό']).replace(' | ', '<br>')}</td></tr>" for _, r in report_df.iterrows()])
+                    rows_html = "".join([
+                        f"<tr><td>{r.get('Ημερομηνία', '-')}</td><td>{r.get('Χρήστης', '-')}</td><td>{r.get('Στοιχείο', '-')}</td><td>{str(r.get('Καθαριστικό', '-')).replace(' | ', '<br>')}</td></tr>" 
+                        for _, r in report_df.iterrows()
+                    ])
                 else:
                     headers = ["Ημερομηνία", "Ώρα", "Συσκευή", "Θερμοκρασία", "Κατάσταση", "Υπεύθυνος"]
-                    rows_html = "".join([f"<tr><td>{r['Ημερομηνία']}</td><td>{r['Ώρα']}</td><td>{r['Στοιχείο']}</td><td>{r['Τιμή']}</td><td>{r['Κατάσταση']}</td><td>{r['Χρήστης']}</td></tr>" for _, r in report_df.iterrows()])
+                    rows_html = "".join([
+                        f"<tr><td>{r.get('Ημερομηνία', '-')}</td><td>{r.get('Ώρα', '-')}</td><td>{r.get('Στοιχείο', '-')}</td><td>{r.get('Τιμή', '-')}</td><td>{r.get('Κατάσταση', '-')}</td><td>{r.get('Χρήστης', '-')}</td></tr>" 
+                        for _, r in report_df.iterrows()
+                    ])
 
                 headers_html = "".join([f"<th>{h}</th>" for h in headers])
                 
