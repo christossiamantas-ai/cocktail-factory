@@ -1025,7 +1025,8 @@ elif page == "🔍 Ανάλυση":
                 ing_check = ing_clean.upper()
                 
                 if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"] and ml > 0:
-                    html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.0f} ml</td></tr>"
+                    # ΑΛΛΑΓΗ: Βάλαμε .2f για να δείχνει 2 δεκαδικά ψηφία και στα ml (π.χ. 22.50 ml)
+                    html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.2f} ml</td></tr>"
                     found_ingredients += 1
                     
                     # Προσθέτουμε ΠΑΝΤΑ τα ml στο σύνολο του cocktail
@@ -1034,7 +1035,6 @@ elif page == "🔍 Ανάλυση":
                     if not df_ing.empty and ing_clean in df_ing["Name"].values:
                         ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
                         
-                        # --- ΑΛΕΞΙΣΦΑΙΡΗ ΑΝΑΚΤΗΣΗ ΑΛΚΟΟΛ (ABV) ---
                         try:
                             # Παίρνουμε την τιμή (ABV ή Αλκοόλ)
                             raw_abv = str(ing_row.get("ABV", ing_row.get("Αλκοόλ", 0)))
@@ -1049,7 +1049,6 @@ elif page == "🔍 Ανάλυση":
                         except:
                             abv = 0
                         
-                        # Ανακτούμε και το κόστος για να είμαστε καλυμμένοι
                         try:
                             price = float(str(ing_row.get("Price", 0)).replace(',', '.'))
                             vol = float(str(ing_row.get("Volume", 700)).replace(',', '.'))
@@ -1073,12 +1072,11 @@ elif page == "🔍 Ανάλυση":
                     </tbody>
                 </table>
                 <div class='analysis-box'>
-                    <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{final_abv:.1f}%</b></span>
+                    <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{final_abv:.2f}%</b></span>
                     <span style='float:right; font-size:18px; color:#b38f00;'>Προτεινόμενη Λιανική: <b>{suggested_price:.2f} €</b></span>
                 </div>
             </div>
             """
-
         html_book += f"""
             <div class='footer'>
                 Αυτόματη εξαγωγή από το σύστημα διαχείρισης CABCLUB: {datetime.now().strftime('%d/%m/%Y %H:%M')}
