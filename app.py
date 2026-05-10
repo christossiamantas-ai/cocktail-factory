@@ -796,59 +796,120 @@ elif page == "🔍 Ανάλυση":
                     df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
             st.table(df_render[["Υλικό", "ML", "Alc %", "Κόστος"]])
 
-        # --- ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ REPORT ---
-        st.markdown("### 📜 Εξαγωγή Επαγγελματικού Report")
-        
-        def clean_val(val, decimals=3):
-            try:
-                return f"{float(val):.{decimals}f}".replace('.', ',')
-            except:
-                return str(val).replace('.', ',')
+      # --- 📜 ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ ΕΠΑΓΓΕΛΜΑΤΙΚΟΥ REPORT (HTML) ---
+        st.divider()
+        st.subheader("📜 Εξαγωγή Τεχνικού Φακέλου")
 
-        try:
-            current_barcode = df_rec[df_rec['Ονομα'] == choice]['Barcode'].values[0]
-            if not current_barcode or str(current_barcode).lower() == 'nan':
-                current_barcode = "Δεν ορίστηκε"
-        except:
-            current_barcode = "Δεν βρέθηκε"
+        # Υπολογισμός τιμών αντιπροσώπου (βάσει του -26% που είπαμε)
+        p_agent = p_retail * 0.74
+        profit_agent = p_agent - total_production
 
-        report_data = [
-            ["ΗΜΕΡΟΜΗΝΙΑ REPORT", datetime.now().strftime("%d/%m/%Y %H:%M")],
-            ["COCKTAIL", choice],
-            ["BARCODE (SKU)", current_barcode],
-            ["ΣΥΝΟΛΙΚΗ ΠΟΣΟΤΗΤΑ (ML)", clean_val(total_ml_cocktail, 1)],
-            ["ΑΛΚΟΟΛΙΚΟΣ ΒΑΘΜΟΣ (ABV) %", clean_val(final_abv, 2)],
-            ["---------------------------", "---------------------------"],
-            ["ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΛΥΣΗ", ""],
-            ["Κόστος Υλικών (με ΕΦΚ)", f"{clean_val(raw_cost)} €"],
-            ["ΕΦΚ (Ενημερωτικά)", f"{clean_val(efk_informational)} €"],
-            ["Σταθερά Έξοδα Μονάδας", f"{clean_val(fixed_cost)} €"],
-            ["ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ ΠΑΡΑΓΩΓΗΣ", f"{clean_val(total_production)} €"],
-            ["---------------------------", "---------------------------"],
-            ["ΤΙΜΕΣ & ΚΕΡΔΗ", ""],
-            ["Τιμή Λιανικής", f"{clean_val(p_retail, 2)} €"],
-            ["Κέρδος Λιανικής", f"{clean_val(profit_retail)} €"],
-            ["Margin Λιανικής %", f"{clean_val(margin_retail, 2)} %"],
-            ["---------------------------", "---------------------------"]
-        ]
-        
+        # Δημιουργία των γραμμών του πίνακα συστατικών για το HTML
+        ingredients_rows = ""
         for item in breakdown:
-            val_alc = item.get('Alc %', 0.0)
-            report_data.append([
-                f"Υλικό: {item['Υλικό']}", 
-                f"{clean_val(item['ML'], 1)} ml | {clean_val(val_alc, 1)}% Alc | {clean_val(item['Κόστος'])} €"
-            ])
+            ingredients_rows += f"""
+            <tr>
+                <td>{item['Υλικό']}</td>
+                <td style='text-align:right;'>{item['ML']:g} ml</td>
+                <td style='text-align:right;'>{item.get('Alc %', 0):g}%</td>
+                <td style='text-align:right;'>{item['Κόστος']:.3f} €</td>
+            </tr>
+            """
 
-        df_export = pd.DataFrame(report_data, columns=["ΠΕΡΙΓΡΑΦΗ", "ΤΙΜΗ / ΠΟΣΟΤΗΤΑ"])
-        csv_final = df_export.to_csv(index=False, sep=';', encoding='utf-8-sig')
-        
-        st.download_button(
-            label=f"📥 Λήψη Πλήρους Report: {choice}", 
-            data=csv_final, 
-            file_name=f"Report_{choice.replace(' ', '_')}.csv",
-            mime="text/csv",
-            key="download_report_btn"
-        )
+        # --- ΤΟ HTML TEMPLATE ---
+        report_html = f"""
+        <html>
+        <head>
+            <meta charset='UTF-8'>
+            <style>
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #2c3e50; line-height: 1.5; padding: 30px; }}
+                .report-card {{ max-width: 800px; margin: auto; border: 1px solid #eee; padding: 40px; border-radius: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.05); }}
+                .header {{ text-align: center; border-bottom: 3px solid #d32f2f; padding-bottom: 20px; margin-bottom: 30px; }}
+                .header h1 {{ margin: 0; color: #d32f2f; font-size: 28px; text-transform: uppercase; }}
+                .meta-info {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 30px; }}
+                .meta-item {{ font-size: 14px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-bottom: 30px; }}
+                th {{ background-color: #34495e; color: white; padding: 12px; text-align: left; font-size: 13px; }}
+                td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }}
+                .summary-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
+                .stat-box {{ padding: 15px; border-radius: 8px; background: #2c3e50; color: white; }}
+                .stat-label {{ font-size: 11px; text-transform: uppercase; opacity: 0.8; }}
+                .stat-value {{ font-size: 18px; font-weight: bold; color: #00ffcc; }}
+                .footer {{ margin-top: 40px; text-align: center; font-size: 11px; color: #95a5a6; border-top: 1px solid #eee; padding-top: 15px; }}
+            </style>
+        </head>
+        <body>
+            <div class='report-card'>
+                <div class='header'>
+                    <h1>CABCLUB COCKTAILS</h1>
+                    <div style='font-size: 12px; color: #7f8c8d;'>ΤΕΧΝΙΚΟ ΔΕΛΤΙΟ & ΑΝΑΛΥΣΗ ΚΟΣΤΟΥΣ</div>
+                </div>
+
+                <div class='meta-info'>
+                    <div class='meta-item'><strong>Cocktail:</strong> {choice}</div>
+                    <div class='meta-item'><strong>Barcode:</strong> {current_barcode}</div>
+                    <div class='meta-item'><strong>Συνολικά ML:</strong> {total_ml_cocktail:g} ml</div>
+                    <div class='meta-item'><strong>Αλκοόλ (ABV):</strong> {final_abv:g}%</div>
+                    <div class='meta-item'><strong>Ημερομηνία:</strong> {datetime.now().strftime('%d/%m/%Y')}</div>
+                </div>
+
+                <h3 style='color: #2c3e50; border-left: 4px solid #d32f2f; padding-left: 10px;'>📋 Συνταγή</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Υλικό</th>
+                            <th style='text-align:right;'>Ποσότητα</th>
+                            <th style='text-align:right;'>ABV</th>
+                            <th style='text-align:right;'>Κόστος</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {ingredients_rows}
+                    </tbody>
+                </table>
+
+                <h3 style='color: #2c3e50; border-left: 4px solid #d32f2f; padding-left: 10px;'>💰 Οικονομικά Στοιχεία</h3>
+                <div class='summary-grid'>
+                    <div class='stat-box'>
+                        <div class='stat-label'>Κόστος Παραγωγής</div>
+                        <div class='stat-value'>{total_production:.2f} €</div>
+                    </div>
+                    <div class='stat-box'>
+                        <div class='stat-label'>Margin Λιανικής</div>
+                        <div class='stat-value'>{margin_retail:.1f}%</div>
+                    </div>
+                    <div class='stat-box' style='background: #f1f2f6; color: #2c3e50;'>
+                        <div class='stat-label' style='color: #7f8c8d;'>Κέρδος Λιανικής</div>
+                        <div class='stat-value' style='color: #2c3e50;'>{profit_retail:.2f} €</div>
+                        <div style='font-size: 9px;'>Τιμή: {p_retail:.2f} €</div>
+                    </div>
+                    <div class='stat-box' style='background: #f1f2f6; color: #2c3e50;'>
+                        <div class='stat-label' style='color: #7f8c8d;'>Κέρδος Αντιπροσώπου</div>
+                        <div class='stat-value' style='color: #2c3e50;'>{profit_agent:.2f} €</div>
+                        <div style='font-size: 9px;'>Τιμή: {p_agent:.2f} €</div>
+                    </div>
+                </div>
+
+                <div class='footer'>
+                    Το παρόν έγγραφο αποτελεί πνευματική ιδιοκτησία της CABCLUB.<br>
+                    Υπολογισμένο με σταθερά έξοδα μονάδας {fixed_cost:g} €.
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        col_btn1, col_btn2 = st.columns([2, 1])
+        with col_btn1:
+            st.info(f"Το επαγγελματικό report για το {choice} είναι έτοιμο για λήψη.")
+        with col_btn2:
+            st.download_button(
+                label="📥 Λήψη Report (HTML)",
+                data=report_html,
+                file_name=f"Report_{choice.replace(' ', '_')}.html",
+                mime="text/html",
+                key="html_report_download"
+            )
 
 # --- 🖨️ ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΒΙΒΛΙΟΥ ΣΥΝΤΑΓΩΝ (Yellow Theme + Logo) ---
     st.divider()
