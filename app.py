@@ -1009,7 +1009,6 @@ elif page == "🔍 Ανάλυση":
             
             total_ml_cocktail = 0
             total_alcohol_ml = 0
-            total_cost = 0
             found_ingredients = 0
             
             for i in range(1, 14):
@@ -1026,20 +1025,27 @@ elif page == "🔍 Ανάλυση":
                     html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.0f} ml</td></tr>"
                     found_ingredients += 1
                     
+                    # --- ΔΙΟΡΘΩΣΗ: Προσθέτουμε ΠΑΝΤΑ τα ml στο σύνολο του cocktail για να γίνεται σωστά η αραίωση ---
+                    total_ml_cocktail += ml
+                    
                     if not df_ing.empty and ing_clean in df_ing["Name"].values:
                         ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
-                        abv = float(ing_row.get("ABV", 0))
-                        price = float(ing_row.get("Price", 0))
-                        vol = float(ing_row.get("Volume", 700))
-                        cost_per_ml = price / vol if vol > 0 else 0
-                        total_ml_cocktail += ml
+                        
+                        # Ανάκτηση ABV (Δοκιμάζουμε και 'ABV' και 'Αλκοόλ' για ασφάλεια)
+                        try:
+                            abv = float(ing_row.get("ABV", ing_row.get("Αλκοόλ", 0)))
+                        except:
+                            abv = 0
+                            
+                        # Υπολογισμός καθαρών ml αλκοόλ
                         total_alcohol_ml += ml * (abv / 100)
-                        total_cost += ml * cost_per_ml
             
             if found_ingredients == 0:
                 html_book += "<tr><td colspan='2'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
 
+            # --- Ο ΣΩΣΤΟΣ ΤΥΠΟΣ ΥΠΟΛΟΓΙΣΜΟΥ ---
             final_abv = (total_alcohol_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
+            
             suggested_price = float(recipe.get("Τιμή Καταλόγου", 0.0))
 
             html_book += f"""
