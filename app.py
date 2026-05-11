@@ -2003,28 +2003,35 @@ elif page == "📦 Lot Παραγωγής":
             st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
 
 
-# --- 1.6 ΣΥΝΤΗΡΗΣΗ & HACCP (THE "NO-MERCY" VERSION) ---
+# --- 1.6 ΣΥΝΤΗΡΗΣΗ & HACCP (ULΤΙΜΑΤΕ VERSION) ---
 elif page == "🧼 Συντήρηση & HACCP":
     st.header("🧼 Ψηφιακό Μητρώο HACCP & Καθαρισμού")
 
-    # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ ΓΙΑ REPORT ---
+    # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ ΓΙΑ REPORT ΜΕ ΥΠΟΓΡΑΦΗ ---
     def generate_haccp_report_html(data, title="ΑΡΧΕΙΟ HACCP"):
         rows_html = ""
         for _, r in data.iterrows():
-            # Αν είναι καθαρισμός, δείχνουμε τα καθαριστικά, αλλιώς τις σημειώσεις
             extra_info = r['cleaner'] if r['log_type'] == "Καθαρισμός" else r['notes']
             rows_html += f"<tr><td>{r['date']}</td><td>{r['time']}</td><td>{r['item']}</td><td>{r['value']}</td><td>{r['status']}</td><td>{extra_info}</td><td>{r['user_name']}</td></tr>"
         
         return f"""
         <html><head><meta charset='UTF-8'><style>
-            table {{ width: 100%; border-collapse: collapse; font-family: sans-serif; }}
-            th {{ background: #1e3a8a; color: white; padding: 10px; font-size: 13px; }}
-            td {{ border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px; }}
-            h2 {{ text-align: center; color: #1e3a8a; }}
+            body {{ font-family: DejaVu Sans, Arial, sans-serif; padding: 30px; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+            th {{ background: #1e3a8a; color: white; padding: 10px; font-size: 12px; }}
+            td {{ border: 1px solid #000; padding: 8px; text-align: center; font-size: 10px; }}
+            h2 {{ text-align: center; color: #1e3a8a; text-transform: uppercase; }}
+            .signature-section {{ margin-top: 50px; width: 100%; }}
+            .sig-box {{ float: right; width: 250px; text-align: center; border-top: 1px solid #000; padding-top: 10px; margin-top: 20px; font-weight: bold; }}
+            .date-box {{ float: left; width: 200px; text-align: center; border-top: 1px solid #000; padding-top: 10px; margin-top: 20px; }}
         </style></head><body>
             <h2>CABCLUB COCKTAILS - {title}</h2>
             <table><thead><tr><th>Ημ/νία</th><th>Ώρα</th><th>Στοιχείο</th><th>Τιμή/Τύπος</th><th>Κατάσταση</th><th>Λεπτομέρειες/Καθαριστικά</th><th>Υπεύθυνος</th></tr></thead>
             <tbody>{rows_html}</tbody></table>
+            <div class='signature-section'>
+                <div class='date-box'>Ημερομηνία Ελέγχου</div>
+                <div class='sig-box'>Υπογραφή Υπευθύνου</div>
+            </div>
         </body></html>"""
 
     # --- ΚΕΝΤΡΙΚΑ ΠΕΔΙΑ ---
@@ -2034,20 +2041,18 @@ elif page == "🧼 Συντήρηση & HACCP":
     with col_u2:
         selected_date = st.date_input("📅 Ημερομηνία:", value=datetime.now())
         date_str = selected_date.strftime("%d/%m/%Y")
-        st.caption(f"Καταγραφή για: {date_str}")
     
     tab1, tab2, tab3 = st.tabs(["🌡️ Θερμοκρασίες", "🧹 Checklists Καθαρισμού", "📋 Αρχείο & Εκτυπώσεις"])
     
     # --- TAB 1: ΘΕΡΜΟΚΡΑΣΙΕΣ ---
     with tab1:
         st.subheader("🌡️ Έλεγχος Ψυκτικών Θαλάμων")
-        with st.form("temp_form_final"):
+        with st.form("temp_form_final_supabase"):
             c1, c2, c3 = st.columns([2, 1, 2])
             device = c1.selectbox("Συσκευή:", ["Ψυγείο 1", "Ψυγείο 2", "Ψυγείο 3", "Κατάψυξη 1", "Κατάψυξη 2"])
             is_freezer = "Κατάψυξη" in device
             temp = c2.number_input("Θερμοκρασία (°C):", value=-18.0 if is_freezer else 4.0, step=0.5)
             notes = c3.text_input("Παρατηρήσεις / Διορθωτικές Ενέργειες:")
-            
             is_ok = not ((is_freezer and temp > -15.0) or (not is_freezer and temp > 7.0))
             
             if st.form_submit_button("💾 Αποθήκευση Μέτρησης", type="primary"):
@@ -2056,80 +2061,58 @@ elif page == "🧼 Συντήρηση & HACCP":
                            "log_type": "Θερμοκρασία", "item": device, "value": f"{temp}°C", 
                            "status": "ΕΝΤΟΣ ΟΡΙΩΝ" if is_ok else "ΕΚΤΟΣ ΟΡΙΩΝ", "cleaner": "-", "notes": notes if notes else "-"}
                     supabase.table("haccp_log").insert([log]).execute()
-                    st.success(f"Η μέτρηση για {device} αποθηκεύτηκε!")
+                    st.success("Καταγράφηκε!")
                     time.sleep(1); st.rerun()
-                else: st.error("Παρακαλώ συμπληρώστε το όνομα υπευθύνου!")
+                else: st.error("Συμπληρώστε το όνομα!")
 
-    # --- TAB 2: CHECKLISTS ΚΑΘΑΡΙΣΜΟΥ (RESTORING EVERYTHING) ---
+    # --- TAB 2: CHECKLISTS ΚΑΘΑΡΙΣΜΟΥ (ΑΚΡΙΒΩΣ ΟΙ ΕΡΓΑΣΙΕΣ ΣΟΥ) ---
     with tab2:
-        st.subheader("🧹 Πρόγραμμα Καθαρισμού & Απολύμανσης")
         tasks_data = {
             "Ημερήσιος Καθαρισμός": ["Πάγκοι Εργασίας", "Εξοπλισμός (Blenders/Shakers)", "Δάπεδο Εργαστηρίου", "Απομάκρυνση Απορριμμάτων", "Απολύμανση Χεριών"],
-            "Εβδομαδιαίος Καθαρισμός": ["Εσωτερικό Ψυγείων", "Ράφια Αποθήκης", "Τοίχοι & Πλακάκια", "Γενική Απολύμανση Χώρου"],
-            "Μηνιαίος Καθαρισμός": ["Φίλτρα Εξαερισμού", "Σύστημα Κλιματισμού", "Καθαρισμός Οροφής", "Αποθήκη Πρώτων Υλών"]
+            "Εβδομαδιαίος Καθαρισμός": ["Εσωτερικό Ψυγείων", "Ράφια Αποθήκης", "Τοίχοι & Πλακάκια", "Γενική Απολύμανση"],
+            "Μηνιαίος Καθαρισμός": ["Φίλτρα Εξαερισμού", "Σύστημα Κλιματισμού", "Καθαρισμός Οροφής"]
         }
-        
-        category = st.radio("Επιλέξτε Κατηγορία:", list(tasks_data.keys()), horizontal=True)
-        
-        with st.form(f"haccp_cleaning_{category}"):
+        category = st.radio("Πρόγραμμα:", list(tasks_data.keys()), horizontal=True)
+        with st.form(f"cleaning_{category}"):
             st.markdown(f"#### {category}")
-            current_responses = []
-            
-            # Επαναφορά των πεδίων για τα καθαριστικά
+            responses = []
             for i, task in enumerate(tasks_data[category]):
-                col_task, col_cleaner = st.columns([0.5, 0.5])
-                with col_task:
-                    is_done = st.checkbox(task, key=f"chk_{category}_{i}")
-                with col_cleaner:
-                    cleaner_used = st.text_input("Καθαριστικό / Απολυμαντικό", key=f"input_{category}_{i}", 
-                                               placeholder="π.χ. Χλώριο, Detol...", label_visibility="collapsed")
-                
-                if is_done:
-                    current_responses.append(f"{task}: {cleaner_used if cleaner_used else 'Όχι αναφορά'}")
-
-            st.divider()
-            if st.form_submit_button("🚀 Οριστικοποίηση & Αποστολή στο Cloud"):
-                if not staff_name:
-                    st.error("Συμπληρώστε το όνομα υπευθύνου!")
-                elif len(current_responses) < len(tasks_data[category]):
-                    st.warning("Πρέπει να ολοκληρώσετε όλες τις εργασίες της λίστας!")
-                else:
-                    log_data = {
-                        "date": date_str, "time": datetime.now().strftime("%H:%M"),
-                        "user_name": staff_name, "log_type": "Καθαρισμός",
-                        "item": category, "value": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
-                        "status": "ΟΚ", "cleaner": " | ".join(current_responses), "notes": "-"
-                    }
-                    supabase.table("haccp_log").insert([log_data]).execute()
-                    st.success("✨ Το μητρώο καθαρισμού ενημερώθηκε!")
+                c_task, c_clean = st.columns([0.5, 0.5])
+                done = c_task.checkbox(task, key=f"c_{category}_{i}")
+                cleaner = c_clean.text_input("Καθαριστικό", key=f"cl_{category}_{i}", placeholder="π.χ. Χλώριο", label_visibility="collapsed")
+                if done: responses.append(f"{task} ({cleaner if cleaner else 'Νερό'})")
+            
+            if st.form_submit_button("🚀 Οριστικοποίηση"):
+                if staff_name and len(responses) == len(tasks_data[category]):
+                    log = {"date": date_str, "time": datetime.now().strftime("%H:%M"), "user_name": staff_name, 
+                           "log_type": "Καθαρισμός", "item": category, "value": "ΟΛΟΚΛΗΡΩΘΗΚΕ", 
+                           "status": "ΟΚ", "cleaner": " | ".join(responses), "notes": "-"}
+                    supabase.table("haccp_log").insert([log]).execute()
+                    st.success("Ενημερώθηκε!")
                     time.sleep(1); st.rerun()
+                else: st.error("Επιλέξτε όλες τις εργασίες και βάλτε όνομα!")
 
-    # --- TAB 3: ΑΡΧΕΙΟ & ΕΚΤΥΠΩΣΕΙΣ (NESTED EXPANDERS) ---
+    # --- TAB 3: ΑΡΧΕΙΟ & ΕΚΤΥΠΩΣΕΙΣ ---
     with tab3:
-        st.subheader("📋 Ιστορικό Καταγραφών")
         res = supabase.table("haccp_log").select("*").execute()
-        
         if res.data:
             df = pd.DataFrame(res.data)
             df['dt_obj'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
             df = df.sort_values(by=['dt_obj', 'time'], ascending=[False, False])
 
             # --- ΦΙΛΤΡΑ ΕΚΤΥΠΩΣΗΣ ---
-            with st.expander("🖨️ Φίλτρα Εκτύπωσης Report", expanded=False):
+            with st.expander("🖨️ Επιλεκτική Εκτύπωση (Φίλτρα)", expanded=False):
                 c1, c2 = st.columns(2)
-                p_days = c1.multiselect("Επιλέξτε Ημερομηνίες:", options=df['date'].unique())
-                p_types = c2.multiselect("Επιλέξτε Τύπο:", ["Θερμοκρασία", "Καθαρισμός"], default=["Θερμοκρασία", "Καθαρισμός"])
-                
+                p_days = c1.multiselect("Ημερομηνίες:", options=df['date'].unique())
+                p_types = c2.multiselect("Τύπος:", ["Θερμοκρασία", "Καθαρισμός"], default=["Θερμοκρασία", "Καθαρισμός"])
                 df_rep = df.copy()
                 if p_days: df_rep = df_rep[df_rep['date'].isin(p_days)]
                 df_rep = df_rep[df_rep['log_type'].isin(p_types)]
-                
-                st.download_button("📥 Λήψη Επιλεγμένου Report (HTML)", generate_haccp_report_html(df_rep), 
-                                 "HACCP_Report.html", "text/html", use_container_width=True)
+                st.download_button("📥 Λήψη Επιλεγμένου Report", generate_haccp_report_html(df_rep), "HACCP_Custom.html", "text/html", use_container_width=True)
 
             st.divider()
-
-            # Ομαδοποίηση ανά Μήνα
+            
+            # --- ΙΣΤΟΡΙΚΟ ΜΕ NESTED EXPANDERS ---
             greek_months = {1:"Ιανουάριος", 2:"Φεβρουάριος", 3:"Μάρτιος", 4:"Απρίλιος", 5:"Μάιος", 6:"Ιούνιος", 
                             7:"Ιούλιος", 8:"Αύγουστος", 9:"Σεπτέμβριος", 10:"Οκτώβριος", 11:"Νοέμβριος", 12:"Δεκέμβριος"}
             df['m_label'] = df['dt_obj'].dt.month.map(greek_months) + " " + df['dt_obj'].dt.year.astype(str)
@@ -2138,7 +2121,6 @@ elif page == "🧼 Συντήρηση & HACCP":
                 with st.expander(f"📅 {m}", expanded=False):
                     m_df = df[df['m_label'] == m]
                     for d in m_df['date'].unique():
-                        # NESTED EXPANDER ΓΙΑ ΤΗΝ ΗΜΕΡΑ
                         with st.expander(f"🗓️ Ημέρα: {d}", expanded=False):
                             d_df = m_df[m_df['date'] == d]
                             for _, row in d_df.iterrows():
@@ -2147,14 +2129,25 @@ elif page == "🧼 Συντήρηση & HACCP":
                                     ic = "🌡️" if row['log_type']=="Θερμοκρασία" else "🧹"
                                     st.write(f"**{ic} {row['item']}** ({row['time']}) -> {row['value']}")
                                     if row['cleaner'] != "-": st.caption(f"🧪 {row['cleaner']}")
-                                    if row['notes'] != "-": st.caption(f"📝 {row['notes']}")
                                 with col_del:
                                     if st.button("🗑️", key=f"del_{row['id']}"):
                                         supabase.table("haccp_log").delete().eq("id", row['id']).execute()
                                         st.rerun()
-                            st.write("---")
+
+            # --- ΚΟΥΜΠΙ ΕΚΤΥΠΩΣΗΣ ΟΛΩΝ ΣΤΟ ΤΕΛΟΣ ---
+            st.divider()
+            st.download_button(
+                label="🖨️ ΕΚΤΥΠΩΣΗ ΟΛΟΥ ΤΟΥ ΑΡΧΕΙΟΥ (Χωρίς Φίλτρα)",
+                data=generate_haccp_report_html(df, "ΠΛΗΡΕΣ ΜΗΤΡΩΟ HACCP"),
+                file_name="HACCP_Full_Archive.html",
+                mime="text/html",
+                use_container_width=True,
+                type="primary"
+            )
         else:
-            st.info("Δεν βρέθηκαν καταγραφές.")
+            st.info("Καμία καταγραφή.")
+
+
 # --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΔΙΟΡΘΩΣΗ ΣΤΟΙΧΕΙΩΝ) ---
 elif page == "👥 Πελατολόγιο":
     st.header("👥 Διαχείριση Πελατολογίου")
