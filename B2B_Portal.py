@@ -32,7 +32,7 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
     st.divider()
     
     st.subheader("🍹 Κατάλογος Προϊόντων")
-    st.info("💡 Στις παρακάτω τιμές έχει εφαρμοστεί η έκπτωση συνεργάτη (-26%).")
+    
     
     # Τραβάμε τις συνταγές από τη βάση (πίνακας recipes)
     res_r = supabase.table("recipes").select("*").execute()
