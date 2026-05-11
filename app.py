@@ -1631,6 +1631,7 @@ elif page == "📦 Lot Παραγωγής":
                             st.rerun()
                         except Exception as e:
                             st.error(f"Σφάλμα: {e}")
+                            
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
