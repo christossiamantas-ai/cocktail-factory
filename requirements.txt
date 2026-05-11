@@ -4,3 +4,4 @@ plotly
 gspread
 oauth2client
 supabase
+streamlit-lottie
