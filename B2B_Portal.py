@@ -5,10 +5,10 @@ import time
 import requests
 from streamlit_lottie import st_lottie
 
-# --- ΡΥΘΜΙΣΗ ΣΕΛΙΔΑΣ (Responsive για κινητά) ---
-st.set_page_config(page_title="CabClub B2B", page_icon="🍹", layout="centered")
+# --- 1. ΡΥΘΜΙΣΗ ΣΕΛΙΔΑΣ ---
+st.set_page_config(page_title="CabClub B2B Portal", page_icon="🍹", layout="centered")
 
-# --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
+# --- 2. ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 @st.cache_resource
 def init_connection():
     url = st.secrets["supabase"]["url"]
@@ -17,32 +17,33 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- ΛΕΙΤΟΥΡΓΙΑ ΓΙΑ ΤΟ ANIMATION (SHAKER) ---
+# --- 3. ΦΟΡΤΩΣΗ ANIMATION (SHAKER) ---
 def load_lottieurl(url):
     r = requests.get(url)
     if r.status_code != 200:
         return None
     return r.json()
 
-# Link για το animation του shaker
+# Το animation shaker που θα εμφανιστεί στην επιτυχία
 lottie_shaker = load_lottieurl("https://lottie.host/82540134-8b65-4f74-9721-a1286c078832/t9HAtvP0P0.json")
 
-# --- ΕΛΕΓΧΟΣ ΕΙΣΟΔΟΥ (SESSION STATE) ---
+# --- 4. ΜΝΗΜΗ ΕΦΑΡΜΟΓΗΣ (SESSION STATE) ---
 if "authenticated_shop" not in st.session_state:
     st.session_state.authenticated_shop = None
 if "reset_key" not in st.session_state:
     st.session_state.reset_key = 0
 
-# --- ΟΘΟΝΗ ΕΙΣΟΔΟΥ (LOGIN) ---
+# --- 5. ΟΘΟΝΗ ΕΙΣΟΔΟΥ (LOGIN) ---
 if st.session_state.authenticated_shop is None:
     st.markdown("<h1 style='text-align: center; color: #d32f2f;'>CABCLUB B2B</h1>", unsafe_allow_html=True)
     st.subheader("🔑 Είσοδος Καταστήματος")
-    st.write("Παρακαλούμε εισάγετε το κινητό τηλέφωνο που έχετε δηλώσει στην επιχείρηση.")
+    st.write("Παρακαλούμε εισάγετε το κινητό τηλέφωνο που έχετε δηλώσει στην CabClub.")
     
     user_pin = st.text_input("Κινητό Τηλέφωνο (PIN):", type="password", placeholder="π.χ. 6970000000")
     
     if st.button("Είσοδος", use_container_width=True):
         if user_pin:
+            # Έλεγχος στη βάση αν το νούμερο υπάρχει στη στήλη phone
             res = supabase.table("customers").select("name").eq("phone", user_pin).execute()
             
             if res.data and len(res.data) > 0:
@@ -51,14 +52,15 @@ if st.session_state.authenticated_shop is None:
                 time.sleep(1)
                 st.rerun()
             else:
-                st.error("❌ Το κινητό δεν βρέθηκε. Επικοινωνήστε με την CabClub για την ενεργοποίηση.")
+                st.error("❌ Το κινητό δεν βρέθηκε. Επικοινωνήστε με την CabClub για ενεργοποίηση.")
         else:
             st.warning("Παρακαλώ πληκτρολογήστε το τηλέφωνό σας.")
     st.stop()
 
-# --- ΑΝ ΕΙΝΑΙ ΣΥΝΔΕΔΕΜΕΝΟΣ Ο ΠΕΛΑΤΗΣ ---
+# --- 6. ΚΥΡΙΑ ΣΕΛΙΔΑ ΠΑΡΑΓΓΕΛΙΑΣ (ΑΝ ΕΙΝΑΙ ΣΥΝΔΕΔΕΜΕΝΟΣ) ---
 client_name = st.session_state.authenticated_shop
 
+# Header με Logout
 c_top1, c_top2 = st.columns([3, 1])
 with c_top1:
     st.markdown(f"### 🍹 {client_name}")
@@ -67,26 +69,27 @@ with c_top2:
         st.session_state.authenticated_shop = None
         st.rerun()
 
-# --- ΕΝΗΜΕΡΩΣΗ ΚΑΤΑΣΤΑΣΗΣ ---
+# Ενημέρωση Κατάστασης Τελευταίας Παραγγελίας
 res_last = supabase.table("b2b_orders").select("status").eq("customer_name", client_name).order("created_at", desc=True).limit(1).execute()
 if res_last.data:
     status = res_last.data[0]["status"]
     icon = "🔵" if status == "ΝΕΑ" else "🟡" if status == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "✅"
-    st.info(f"{icon} Κατάσταση τελευταίας παραγγελίας: **{status}**")
+    st.info(f"{icon} Η τελευταία σας παραγγελία είναι: **{status}**")
 
 st.divider()
 
-# --- ΚΑΤΑΛΟΓΟΣ ΠΡΟΪΟΝΤΩΝ ---
+# --- 7. ΚΑΤΑΛΟΓΟΣ ΠΡΟΪΟΝΤΩΝ ---
 res_r = supabase.table("recipes").select("*").execute()
 df_rec = pd.DataFrame(res_r.data) if res_r.data else pd.DataFrame()
 
 if not df_rec.empty:
-    # ΤΑΞΙΝΟΜΗΣΗ ΑΛΦΑΒΗΤΙΚΑ
+    # --- ΤΑΞΙΝΟΜΗΣΗ ΑΛΦΑΒΗΤΙΚΑ ---
     df_rec = df_rec.sort_values(by="name")
 
     order_items = {}
     total_cost = 0.0
     
+    # Επικεφαλίδες
     h1, h2, h3 = st.columns([3, 1, 1.5])
     h1.caption("ΠΡΟΪΟΝ")
     h2.caption("ΤΜΧ")
@@ -95,13 +98,15 @@ if not df_rec.empty:
 
     for _, row in df_rec.iterrows():
         c_name = row.get("name", "Άγνωστο")
+        
+        # Υπολογισμός τιμής με έκπτωση 26%
         try:
             raw_price = str(row.get("catalog_price", 0)).replace(',', '.')
             price_cat = float(raw_price)
         except: 
             price_cat = 0.0
         
-        # Υπολογισμός 26% έκπτωσης (0.74)
+        # Τύπος: $Price_{B2B} = Price_{Catalog} \times 0.74$
         price_b2b = round(price_cat * 0.74, 2)
         
         if price_b2b > 0:
@@ -109,6 +114,7 @@ if not df_rec.empty:
             with c1:
                 st.markdown(f"**{c_name}**<br><small>{price_b2b:.2f} € / τμχ</small>", unsafe_allow_html=True)
             with c2:
+                # number_input χωρίς φόρμα για να μην υποβάλλει με το Enter
                 qty = st.number_input("Τμχ", min_value=0, step=1, key=f"qty_{c_name}_{st.session_state.reset_key}", label_visibility="collapsed")
             with c3:
                 subtotal = round(qty * price_b2b, 2)
@@ -122,12 +128,12 @@ if not df_rec.empty:
     total_cost = round(total_cost, 2)
     st.markdown(f"<h3 style='text-align: right; color: #d32f2f;'>Σύνολο: {total_cost:.2f} €</h3>", unsafe_allow_html=True)
     
-    notes = st.text_area("📝 Σημειώσεις / Ημέρα Παράδοσης:", key=f"notes_{st.session_state.reset_key}")
+    notes = st.text_area("📝 Σημειώσεις / Ημέρα Παράδοσης:", key=f"notes_{st.session_state.reset_key}", placeholder="π.χ. Παράδοση Πέμπτη πρωί...")
 
-    # --- ΑΠΟΣΤΟΛΗ ΠΑΡΑΓΓΕΛΙΑΣ ---
+    # --- 8. ΥΠΟΒΟΛΗ ΠΑΡΑΓΓΕΛΙΑΣ ---
     if st.button("🚀 Αποστολή Παραγγελίας", type="primary", use_container_width=True):
         if not order_items:
-            st.error("Το καλάθι είναι άδειο!")
+            st.error("Το καλάθι σας είναι άδειο! Επιλέξτε ποσότητα σε τουλάχιστον ένα προϊόν.")
         else:
             order_details = "\n".join([f"• {v['qty']}x {k} ({v['subtotal']:.2f}€)" for k, v in order_items.items()])
             insert_data = {
@@ -138,18 +144,21 @@ if not df_rec.empty:
                 "notes": notes
             }
             try:
+                # Αποθήκευση στη Supabase
                 supabase.table("b2b_orders").insert([insert_data]).execute()
                 
-                # --- ΤΟ ΕΦΕ ΜΕ ΤΟ SHAKER ---
+                # Εμφάνιση του Shaker Animation
                 if lottie_shaker:
-                    st_lottie(lottie_shaker, height=200, key="shaker")
+                    st_lottie(lottie_shaker, height=250, key="shaker_success")
                 
                 st.success("✅ Η παραγγελία στάλθηκε στην CabClub! Στην υγειά σας!")
                 
-                time.sleep(4) # Λίγο παραπάνω χρόνο για να φανεί το shaker
+                # Αναμονή για να δει το εφέ και μετά reset
+                time.sleep(5)
                 st.session_state.reset_key += 1
                 st.rerun()
+                
             except Exception as e:
-                st.error(f"Σφάλμα: {e}")
+                st.error(f"Σφάλμα κατά την αποστολή: {e}")
 else:
-    st.warning("Δεν υπάρχουν προϊόντα.")
+    st.warning("Δεν υπάρχουν προϊόντα διαθέσιμα στον κατάλογο.")
