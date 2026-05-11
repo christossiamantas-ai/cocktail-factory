@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
+import time
 
 # --- ΡΥΘΜΙΣΗ ΣΕΛΙΔΑΣ (Φιλική για κινητά) ---
 st.set_page_config(page_title="CabClub B2B Portal", page_icon="🍹", layout="centered")
@@ -25,14 +26,18 @@ res_c = supabase.table("customers").select("name").order("name").execute()
 customers = [c["name"] for c in res_c.data] if res_c.data else []
 
 st.write("Καλώς ήρθατε! Επιλέξτε το κατάστημά σας για να δείτε τον κατάλογο χονδρικής και να καταχωρήσετε την παραγγελία σας.")
-client_name = st.selectbox("👤 Κατάστημα:", ["-- Επιλέξτε το Κατάστημά σας --"] + customers)
+
+# Χρήση session_state για το όνομα του πελάτη ώστε να μπορούμε να το κάνουμε reset
+if "client_selection" not in st.session_state:
+    st.session_state.client_selection = "-- Επιλέξτε το Κατάστημά σας --"
+
+client_name = st.selectbox("👤 Κατάστημα:", ["-- Επιλέξτε το Κατάστημά σας --"] + customers, key="client_name_box")
 
 if client_name != "-- Επιλέξτε το Κατάστημά σας --":
     st.success(f"Συνδεθήκατε ως: **{client_name}**")
     st.divider()
     
     st.subheader("🍹 Κατάλογος Προϊόντων")
-    
     
     # Τραβάμε τις συνταγές από τη βάση (πίνακας recipes)
     res_r = supabase.table("recipes").select("*").execute()
@@ -42,7 +47,7 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
         order_items = {}
         total_cost = 0.0
         
-        with st.form("b2b_order_form"):
+        with st.form("b2b_order_form", clear_on_submit=True):
             # Επικεφαλίδες για να μοιάζει με e-shop
             c_head1, c_head2, c_head3 = st.columns([3, 1, 1.5])
             c_head1.caption("ΠΡΟΪΟΝ")
@@ -52,10 +57,10 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
 
             # Λίστα Κοκτέιλ
             for _, row in df_rec.iterrows():
-                # ΣΩΣΤΑ ΟΝΟΜΑΤΑ ΣΤΗΛΩΝ ΒΑΣΕΙ ΤΗΣ SUPABASE
+                # ΣΩΣΤΑ ΟΝΟΜΑΤΑ ΣΤΗΛΩΝ
                 c_name = row.get("name", "Άγνωστο")
                 
-                # Υπολογισμός χονδρικής (διαβάζουμε το 'catalog_price')
+                # Υπολογισμός χονδρικής
                 try:
                     price_cat = float(str(row.get("catalog_price", 0)).replace(',', '.'))
                 except:
@@ -63,7 +68,7 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
                     
                 price_b2b = price_cat * 0.74 # Έκπτωση B2B
                 
-                if price_b2b > 0: # Δείχνουμε μόνο όσα έχουν ορισμένη τιμή
+                if price_b2b > 0:
                     c1, c2, c3 = st.columns([3, 1, 1.5])
                     with c1:
                         st.markdown(f"**{c_name}**<br><span style='font-size:12px; color:gray;'>{price_b2b:.2f} € / τμχ</span>", unsafe_allow_html=True)
@@ -89,7 +94,7 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
                 if not order_items:
                     st.error("Το καλάθι σας είναι άδειο. Επιλέξτε ποσότητα σε τουλάχιστον ένα προϊόν.")
                 else:
-                    # Προετοιμασία κειμένου παραγγελίας για τη βάση
+                    # Προετοιμασία κειμένου παραγγελίας
                     order_text = "\n".join([f"• {v['qty']}x {k} ({v['subtotal']:.2f}€)" for k, v in order_items.items()])
                     
                     insert_data = {
@@ -101,11 +106,21 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
                     }
                     
                     try:
-                        # Αποθήκευση στον πίνακα b2b_orders
+                        # Αποθήκευση
                         supabase.table("b2b_orders").insert([insert_data]).execute()
                         st.success("✅ Η παραγγελία σας καταχωρήθηκε με επιτυχία! Ευχαριστούμε.")
                         st.balloons()
+                        
+                        # --- ΤΟ RESET ---
+                        time.sleep(3) # Περιμένουμε να δει την επιβεβαίωση
+                        st.cache_data.clear()
+                        # Καθαρίζουμε τα πάντα και ανανεώνουμε τη σελίδα για τον επόμενο
+                        st.rerun()
+                        
                     except Exception as e:
-                        st.error(f"Υπήρξε σφάλμα κατά την αποστολή. Επικοινωνήστε μαζί μας. ({e})")
+                        st.error(f"Υπήρξε σφάλμα κατά την αποστολή: {e}")
     else:
         st.warning("Δεν βρέθηκαν διαθέσιμα προϊόντα στον κατάλογο.")
+else:
+    # Μήνυμα όταν δεν έχει επιλεγεί πελάτης
+    st.info("Παρακαλούμε επιλέξτε το κατάστημά σας από την παραπάνω λίστα για να ξεκινήσετε.")
