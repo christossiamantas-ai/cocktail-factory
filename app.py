@@ -1486,9 +1486,34 @@ elif page == "📈 Dashboard":
         st.info("📭 Δεν υπάρχουν ακόμα δεδομένα παραγωγής για ανάλυση.")
 
        
-# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΣΥΓΧΡΟΝΙΣΜΕΝΟ ΜΕ ΠΕΛΑΤΟΛΟΓΙΟ) ---
+# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΣΥΓΧΡΟΝΙΣΜΕΝΟ ΜΕ ΠΕΛΑΤΟΛΟΓΙΟ & B2B PORTAL) ---
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
+
+    # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΑΠΟ B2B ---
+    st.subheader("📋 Εκκρεμείς Παραγγελίες Πελατών (B2B)")
+    res_b2b = supabase.table("b2b_orders").select("*").in_("status", ["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ"]).execute()
+    
+    selected_b2b_order = None
+    default_customer = None
+    
+    if res_b2b.data:
+        df_pending = pd.DataFrame(res_b2b.data)
+        st.info(f"Υπάρχουν {len(df_pending)} εκκρεμείς παραγγελίες από το Portal.")
+        
+        for _, order in df_pending.iterrows():
+            col_a, col_b = st.columns([4, 1])
+            with col_a:
+                st.markdown(f"**Πελάτης:** {order['customer_name']} | **Προϊόντα:** {order['order_details'].replace('•', '')}")
+            with col_b:
+                if st.button("📥 Φόρτωση", key=f"load_{order['id']}"):
+                    selected_b2b_order = order
+                    default_customer = order['customer_name']
+                    st.success(f"Φορτώθηκε η παραγγελία του {order['customer_name']}! Επιλέξτε τα προϊόντα παρακάτω.")
+    else:
+        st.write("✅ Καμία εκκρεμής παραγγελία από το B2B Portal.")
+
+    st.divider()
     
     # 0.5 ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΑΠΟ ΤΟ CRM
     res_customers = supabase.table("customers").select("name").order("name").execute()
@@ -1514,8 +1539,12 @@ elif page == "📦 Lot Παραγωγής":
             selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique())
         
         with col_c2:
-            # ΕΔΩ Η ΑΛΛΑΓΗ: Αντί για κείμενο, έχουμε selectbox με τους πελάτες της Supabase
-            customer_name = st.selectbox("👤 Επιλογή Πελάτη:", options=db_customers)
+            # Αν πατήθηκε φόρτωση, βάζουμε ως default τον πελάτη της παραγγελίας
+            c_index = 0
+            if default_customer and default_customer in db_customers:
+                c_index = db_customers.index(default_customer)
+                
+            customer_name = st.selectbox("👤 Επιλογή Πελάτη:", options=db_customers, index=c_index)
 
         if selected_cocktails:
             st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
@@ -1558,13 +1587,24 @@ elif page == "📦 Lot Παραγωγής":
                             "lot_number": l1 if not l2 else f"{l1} / {l2}", "expiry_date": e1 if not e2 else f"{e1} / {e2}"
                         })
                 
+                # --- ΕΝΗΜΕΡΩΜΕΝΟ ΚΟΥΜΠΙ ΑΠΟΘΗΚΕΥΣΗΣ ---
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud"):
                     if lot_entries:
-                        supabase.table("production_log").insert(lot_entries).execute()
-                        st.success("✅ Αποθηκεύτηκε!")
-                        st.cache_data.clear()
-                        time.sleep(1)
-                        st.rerun()
+                        try:
+                            # Καταγραφή του Lot
+                            supabase.table("production_log").insert(lot_entries).execute()
+                            
+                            # ΝΕΟ: Ενημέρωση κατάστασης B2B
+                            if selected_b2b_order:
+                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", selected_b2b_order['id']).execute()
+                                st.success(f"✅ Η παραγγελία του {selected_b2b_order['customer_name']} επισημάνθηκε ως Ολοκληρωμένη!")
+                            
+                            st.success("✅ Η παρτίδα αποθηκεύτηκε!")
+                            st.cache_data.clear()
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Σφάλμα αποθήκευσης: {e}")
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
