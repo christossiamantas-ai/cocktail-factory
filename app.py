@@ -2402,7 +2402,7 @@ elif page == "📦 Παραγγελίες B2B":
     
     tab1, tab2 = st.tabs(["🔔 Τρέχουσες Παραγγελίες", "📜 Ιστορικό & Αναζήτηση"])
 
-    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ ---
+    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ (ΜΕ ΔΙΑΓΡΑΦΗ) ---
     with tab1:
         res_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).execute()
         if res_orders.data:
@@ -2421,30 +2421,28 @@ elif page == "📦 Παραγγελίες B2B":
                     with c2:
                         new_status = st.selectbox("Κατάσταση:", ["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"], 
                                                  index=["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"].index(row['status']),
-                                                 key=f"status_select_{row['id']}")
-                        if st.button("Ενημέρωση", key=f"upd_{row['id']}", use_container_width=True):
+                                                 key=f"status_curr_{row['id']}")
+                        if st.button("Ενημέρωση", key=f"upd_curr_{row['id']}", use_container_width=True):
                             supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
                             st.success("Ενημερώθηκε!")
                             st.rerun()
                         st.divider()
-                        if st.button("🗑️ Διαγραφή", key=f"del_{row['id']}", type="secondary", use_container_width=True):
+                        if st.button("🗑️ Διαγραφή", key=f"del_curr_{row['id']}", type="secondary", use_container_width=True):
                             supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
                             st.rerun()
         else:
             st.info("Δεν υπάρχουν παραγγελίες.")
 
-    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ ---
+    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ (ΜΕ ΔΙΑΓΡΑΦΗ ΣΤΟ EXPANDER) ---
     with tab2:
         st.subheader("🔍 Αναζήτηση στο Ιστορικό")
         if res_orders.data:
             df_hist = pd.DataFrame(res_orders.data)
             
-            # Φίλτρα Αναζήτησης
             search_col1, search_col2 = st.columns(2)
             with search_col1:
                 cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hist["customer_name"].unique()))
             with search_col2:
-                # Εξαγωγή μοναδικών κοκτέιλ από το κείμενο των παραγγελιών
                 all_cocktails = set()
                 for details in df_hist["order_details"]:
                     for line in details.split('\n'):
@@ -2453,12 +2451,9 @@ elif page == "📦 Παραγγελίες B2B":
                             all_cocktails.add(name)
                 cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=sorted(list(all_cocktails)))
 
-            # Εφαρμογή Φίλτρων
             mask = pd.Series([True] * len(df_hist))
-            if cust_search:
-                mask &= df_hist["customer_name"].isin(cust_search)
+            if cust_search: mask &= df_hist["customer_name"].isin(cust_search)
             if cocktail_search:
-                # Αναζήτηση αν το όνομα του κοκτέιλ περιέχεται στο order_details
                 cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in x for c in cocktail_search))
                 mask &= cocktail_mask
 
@@ -2468,8 +2463,19 @@ elif page == "📦 Παραγγελίες B2B":
                 st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
                 for _, row in df_results.iterrows():
                     with st.expander(f"📅 {row['created_at'][:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
-                        st.markdown(f"**Κατάσταση:** {row['status']}")
-                        st.text(row['order_details'])
-                        if row['notes']: st.caption(f"Σημειώσεις: {row['notes']}")
+                        col_hist1, col_hist2 = st.columns([2, 1])
+                        with col_hist1:
+                            st.markdown(f"**Κατάσταση:** {row['status']}")
+                            st.text(row['order_details'])
+                            if row['notes']: st.caption(f"Σημειώσεις: {row['notes']}")
+                        
+                        with col_hist2:
+                            # Κουμπί Διαγραφής μέσα στο Ιστορικό
+                            st.write("---")
+                            if st.button("🗑️ Διαγραφή από Ιστορικό", key=f"del_hist_{row['id']}", type="secondary", use_container_width=True):
+                                supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
+                                st.warning("Η παραγγελία διαγράφηκε.")
+                                time.sleep(1)
+                                st.rerun()
             else:
-                st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
+                st.warning("Δεν βρέθηκαν παραγγελίες.")
