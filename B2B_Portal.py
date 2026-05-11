@@ -115,7 +115,7 @@ if not df_rec.empty:
     total_cost = round(total_cost, 2)
     st.markdown(f"<h3 style='text-align: right; color: #d32f2f;'>Σύνολο: {total_cost:.2f} €</h3>", unsafe_allow_html=True)
     
-    notes = st.text_area("📝 Σημειώσεις / Ημέρα Παράδοσης:", key=f"notes_{st.session_state.reset_key}"
+    notes = st.text_area("📝 Σημειώσεις / Ημέρα Παράδοσης:", key=f"notes_{st.session_state.reset_key}", placeholder="π.χ. Παράδοση Πέμπτη πρωί...")
 
     if st.button("🚀 Αποστολή Παραγγελίας", type="primary", use_container_width=True):
         if not order_items:
