@@ -2412,26 +2412,41 @@ elif page == "📦 Παραγγελίες B2B":
         df_filtered = df_orders[df_orders["status"].isin(status_filter)]
 
         for _, row in df_filtered.iterrows():
-            with st.expander(f"🛒 {row['customer_name']} - {row['total_amount']:.2f} € ({row['status']})"):
+            # Χρωματισμός ανάλογα με την κατάσταση
+            label_icon = "🔵" if row['status'] == "ΝΕΑ" else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "✅"
+            
+            with st.expander(f"{label_icon} {row['customer_name']} - {row['total_amount']:.2f} €"):
                 c1, c2 = st.columns([2, 1])
                 
                 with c1:
-                    st.markdown("**Λεπτομέρειες:**")
+                    st.markdown("**Λεπτομέρειες Παραγγελίας:**")
                     st.code(row['order_details'])
                     if row['notes']:
                         st.info(f"📝 Σημειώσεις: {row['notes']}")
+                    st.caption(f"ID: {row['id']} | Ημερομηνία: {row['created_at']}")
                 
                 with c2:
                     st.markdown("**Διαχείριση:**")
+                    # Αλλαγή Κατάστασης
                     new_status = st.selectbox("Αλλαγή Κατάστασης:", ["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"], 
                                              index=["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"].index(row['status']),
-                                             key=f"status_{row['id']}")
+                                             key=f"status_select_{row['id']}")
                     
-                    if st.button("Ενημέρωση Κατάστασης", key=f"btn_{row['id']}"):
+                    if st.button("Ενημέρωση", key=f"upd_{row['id']}", use_container_width=True):
                         supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
                         st.success("Η κατάσταση ενημερώθηκε!")
+                        time.sleep(1)
+                        st.rerun()
+                    
+                    st.divider()
+                    
+                    # --- Η ΕΠΙΛΟΓΗ ΔΙΑΓΡΑΦΗΣ ---
+                    if st.button("🗑️ Διαγραφή Παραγγελίας", key=f"del_{row['id']}", type="secondary", use_container_width=True):
+                        # Διαγραφή από τη βάση της Supabase
+                        supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
+                        st.warning(f"Η παραγγελία του {row['customer_name']} διαγράφηκε οριστικά.")
+                        time.sleep(1.5)
                         st.rerun()
                         
-                st.caption(f"Ημερομηνία Παραγγελίας: {row['created_at']}")
     else:
         st.info("Δεν υπάρχουν ακόμη παραγγελίες στο σύστημα.")
