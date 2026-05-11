@@ -20,7 +20,7 @@ st.markdown("<h3 style='text-align: center;'>🤝 B2B Portal Παραγγελι�
 st.divider()
 
 # --- 1. ΤΑΥΤΟΠΟΙΗΣΗ ΠΕΛΑΤΗ ---
-# Τραβάμε τους πελάτες από τη βάση σου
+# Τραβάμε τους πελάτες από τη βάση (πίνακας customers)
 res_c = supabase.table("customers").select("name").order("name").execute()
 customers = [c["name"] for c in res_c.data] if res_c.data else []
 
@@ -34,7 +34,7 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
     st.subheader("🍹 Κατάλογος Προϊόντων")
     st.info("💡 Στις παρακάτω τιμές έχει εφαρμοστεί η έκπτωση συνεργάτη (-26%).")
     
-    # Τραβάμε τις συνταγές από τη βάση
+    # Τραβάμε τις συνταγές από τη βάση (πίνακας recipes)
     res_r = supabase.table("recipes").select("*").execute()
     df_rec = pd.DataFrame(res_r.data) if res_r.data else pd.DataFrame()
     
@@ -52,11 +52,12 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
 
             # Λίστα Κοκτέιλ
             for _, row in df_rec.iterrows():
-                c_name = row.get("Ονομα", "Άγνωστο")
+                # ΣΩΣΤΑ ΟΝΟΜΑΤΑ ΣΤΗΛΩΝ ΒΑΣΕΙ ΤΗΣ SUPABASE
+                c_name = row.get("name", "Άγνωστο")
                 
-                # Υπολογισμός χονδρικής
+                # Υπολογισμός χονδρικής (διαβάζουμε το 'catalog_price')
                 try:
-                    price_cat = float(str(row.get("Τιμή Καταλόγου", 0)).replace(',', '.'))
+                    price_cat = float(str(row.get("catalog_price", 0)).replace(',', '.'))
                 except:
                     price_cat = 0.0
                     
@@ -100,7 +101,7 @@ if client_name != "-- Επιλέξτε το Κατάστημά σας --":
                     }
                     
                     try:
-                        # Αποθήκευση στον νέο πίνακα b2b_orders που έφτιαξες
+                        # Αποθήκευση στον πίνακα b2b_orders
                         supabase.table("b2b_orders").insert([insert_data]).execute()
                         st.success("✅ Η παραγγελία σας καταχωρήθηκε με επιτυχία! Ευχαριστούμε.")
                         st.balloons()
