@@ -1506,13 +1506,15 @@ elif page == "📦 Lot Παραγωγής":
                 st.markdown(f"**Πελάτης:** {order['customer_name']} | **Προϊόντα:** {order['order_details'].replace('•', '')}")
             with col_b:
                 if st.button("📥 Φόρτωση", key=f"load_{order['id']}"):
-                    st.session_state.active_b2b_order = order # Αποθήκευση στη μνήμη
+                    # Η ΜΑΓΙΚΗ ΛΥΣΗ: Μετατροπή σε dict για να μην κρασάρει το pandas
+                    st.session_state.active_b2b_order = order.to_dict() 
                     st.success(f"Φορτώθηκε η παραγγελία του {order['customer_name']}!")
                     st.rerun()
     else:
         st.write("✅ Καμία εκκρεμής παραγγελία.")
 
-    if st.session_state.active_b2b_order:
+    # Ασφαλής έλεγχος αν υπάρχει κάτι στη μνήμη
+    if st.session_state.active_b2b_order is not None:
         if st.button("❌ Ακύρωση Φόρτωσης"):
             st.session_state.active_b2b_order = None
             st.rerun()
@@ -1540,7 +1542,7 @@ elif page == "📦 Lot Παραγωγής":
     default_cocktails_list = []
     default_quantities = {}
     
-    if st.session_state.active_b2b_order and not df_rec.empty:
+    if st.session_state.active_b2b_order is not None and not df_rec.empty:
         details = st.session_state.active_b2b_order['order_details']
         lines = details.split('\n')
         for line in lines:
@@ -1560,12 +1562,11 @@ elif page == "📦 Lot Παραγωγής":
     if not df_rec.empty:
         col_c1, col_c2 = st.columns([2, 1])
         with col_c1:
-            # Το πεδίο πλέον διαβάζει τα default κοκτέιλ και τα επιλέγει αυτόματα!
             selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique(), default=default_cocktails_list)
         
         with col_c2:
             c_index = 0
-            if st.session_state.active_b2b_order:
+            if st.session_state.active_b2b_order is not None:
                 cust_name = st.session_state.active_b2b_order['customer_name']
                 if cust_name in db_customers:
                     c_index = db_customers.index(cust_name)
@@ -1577,7 +1578,6 @@ elif page == "📦 Lot Παραγωγής":
             counts = {}
             c_cols = st.columns(len(selected_cocktails))
             
-            # Εδώ μπαίνουν αυτόματα οι ποσότητες που ζήτησε ο πελάτης!
             for i, name in enumerate(selected_cocktails):
                 def_qty = default_quantities.get(name, 1)
                 counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=def_qty, key=f"cnt_{name}")
@@ -1621,7 +1621,7 @@ elif page == "📦 Lot Παραγωγής":
                         try:
                             supabase.table("production_log").insert(lot_entries).execute()
                             
-                            if st.session_state.active_b2b_order:
+                            if st.session_state.active_b2b_order is not None:
                                 supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", st.session_state.active_b2b_order['id']).execute()
                                 st.session_state.active_b2b_order = None 
                             
