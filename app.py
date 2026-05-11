@@ -2113,65 +2113,84 @@ elif page == "🧼 Συντήρηση & HACCP":
                     except Exception as e:
                         st.error(f"Σφάλμα: {e}")
 
-    # --- TAB 3: ΑΡΧΕΙΟ & ΔΙΑΓΡΑΦΗ ---
+    # --- TAB 3: ΑΡΧΕΙΟ & ΔΙΑΓΡΑΦΗ (ΟΜΑΔΟΠΟΙΗΜΕΝΟ ΑΝΑ ΜΗΝΑ/ΗΜΕΡΑ) ---
     with tab3:
         st.subheader("📋 Ιστορικό Καταγραφών HACCP")
         
-        # Ανάκτηση από Supabase
-        res_haccp = supabase.table("haccp_log").select("*").order("id", desc=True).execute()
+        # 1. Ανάκτηση όλων των δεδομένων από Supabase
+        res_haccp = supabase.table("haccp_log").select("*").execute()
         
         if res_haccp.data:
             df_haccp = pd.DataFrame(res_haccp.data)
             
-            # Φίλτρα εμφάνισης
-            f_col1, f_col2 = st.columns(2)
-            type_filter = f_col1.multiselect("Φίλτρο Τύπου:", ["Θερμοκρασία", "Καθαρισμός"], default=["Θερμοκρασία", "Καθαρισμός"])
-            df_filtered = df_haccp[df_haccp["log_type"].isin(type_filter)]
-
-            # Εμφάνιση εγγραφών σε expanders με επιλογή διαγραφής
-            for _, row in df_filtered.iterrows():
-                with st.expander(f"📅 {row['date']} | {row['log_type']} - {row['item']} ({row['status']})"):
-                    c_info, c_del = st.columns([3, 1])
-                    with c_info:
-                        st.write(f"**Ώρα:** {row['time']} | **Υπεύθυνος:** {row['user_name']}")
-                        st.write(f"**Τιμή/Αποτέλεσμα:** {row['value']}")
-                        if row['cleaner'] != "-":
-                            st.caption(f"Λεπτομέρειες: {row['cleaner']}")
-                        if row['notes'] != "-":
-                            st.info(f"Παρατηρήσεις: {row['notes']}")
-                    
-                    with c_del:
-                        # --- ΚΟΥΜΠΙ ΔΙΑΓΡΑΦΗΣ ---
-                        if st.button("🗑️ Διαγραφή", key=f"del_haccp_{row['id']}", use_container_width=True):
-                            supabase.table("haccp_log").delete().eq("id", row['id']).execute()
-                            st.warning("Η εγγραφή διαγράφηκε.")
-                            time.sleep(1)
-                            st.rerun()
-
-            st.divider()
+            # Μετατροπή της ημερομηνίας (κείμενο ηη/μμ/εεεε) σε αντικείμενο datetime για σωστή ταξινόμηση
+            df_haccp['dt_obj'] = pd.to_datetime(df_haccp['date'], format='%d/%m/%Y')
             
-            # --- HTML EXPORT (Προσαρμοσμένο για Supabase Data) ---
-            def get_haccp_report_html(data, title):
-                rows_html = ""
-                for _, r in data.iterrows():
-                    rows_html += f"<tr><td>{r['date']}</td><td>{r['time']}</td><td>{r['item']}</td><td>{r['value']}</td><td>{r['status']}</td><td>{r['user_name']}</td></tr>"
-                
-                return f"""
-                <html><head><meta charset='UTF-8'><style>
-                    table {{ width: 100%; border-collapse: collapse; }}
-                    th {{ background: #1e3a8a; color: white; padding: 10px; }}
-                    td {{ border: 1px solid #ccc; padding: 8px; text-align: center; }}
-                </style></head><body>
-                    <h2 style='text-align:center;'>CABCLUB - {title}</h2>
-                    <table><thead><tr><th>Ημ/νία</th><th>Ώρα</th><th>Στοιχείο</th><th>Τιμή</th><th>Κατάσταση</th><th>Υπεύθυνος</th></tr></thead>
-                    <tbody>{rows_html}</tbody></table>
-                </body></html>"""
+            # Ταξινόμηση: Πρώτα τα πιο πρόσφατα
+            df_haccp = df_haccp.sort_values(by=['dt_obj', 'time'], ascending=[False, False])
 
-            if st.download_button("📥 Εξαγωγή Report (HTML)", get_haccp_report_html(df_filtered, "ΜΗΤΡΩΟ HACCP"), "HACCP_Report.html", "text/html"):
+            # Δημιουργία στηλών για Μήνα και Έτος για την ομαδοποίηση
+            # Χάρτης για Ελληνικούς Μήνες
+            greek_months = {
+                1: "Ιανουάριος", 2: "Φεβρουάριος", 3: "Μάρτιος", 4: "Απρίλιος",
+                5: "Μάιος", 6: "Ιούνιος", 7: "Ιούλιος", 8: "Αύγουστος",
+                9: "Σεπτέμβριος", 10: "Οκτώβριος", 11: "Νοέμβριος", 12: "Δεκέμβριος"
+            }
+            
+            df_haccp['month_int'] = df_haccp['dt_obj'].dt.month
+            df_haccp['year'] = df_haccp['dt_obj'].dt.year
+            df_haccp['month_name'] = df_haccp['month_int'].map(greek_months)
+            df_haccp['month_year_label'] = df_haccp['month_name'] + " " + df_haccp['year'].astype(str)
+
+            # --- ΕΜΦΑΝΙΣΗ ΑΝΑ ΜΗΝΑ ---
+            unique_months = df_haccp['month_year_label'].unique()
+            
+            for m_label in unique_months:
+                with st.expander(f"📅 {m_label}", expanded=False):
+                    # Φιλτράρουμε τις εγγραφές του συγκεκριμένου μήνα
+                    month_df = df_haccp[df_haccp['month_year_label'] == m_label]
+                    
+                    # --- ΕΜΦΑΝΙΣΗ ΑΝΑ ΗΜΕΡΑ ΜΕΣΑ ΣΤΟ ΜΗΝΑ ---
+                    unique_days = month_df['date'].unique()
+                    
+                    for d_label in unique_days:
+                        st.markdown(f"#### 🗓️ Ημέρα: {d_label}")
+                        day_df = month_df[month_df['date'] == d_label]
+                        
+                        # Εμφάνιση κάθε εγγραφής της ημέρας
+                        for _, row in day_df.iterrows():
+                            # Χρωματική σήμανση ανάλογα με τον τύπο
+                            icon = "🌡️" if row['log_type'] == "Θερμοκρασία" else "🧹"
+                            status_color = "green" if row['status'] in ["ΕΝΤΟΣ ΟΡΙΩΝ", "ΟΚ"] else "red"
+                            
+                            col_rec, col_del = st.columns([4, 1])
+                            
+                            with col_rec:
+                                st.markdown(f"""
+                                **{icon} {row['item']}** | 🕒 {row['time']} | Υπεύθυνος: {row['user_name']}  
+                                Αποτέλεσμα: :{status_color}[{row['value']}] | Κατάσταση: :{status_color}[{row['status']}]
+                                """)
+                                if row['cleaner'] != "-":
+                                    st.caption(f"🧪 Καθαριστικά: {row['cleaner']}")
+                                if row['notes'] != "-":
+                                    st.caption(f"📝 Σημειώσεις: {row['notes']}")
+                            
+                            with col_del:
+                                if st.button("🗑️ Διαγραφή", key=f"del_{row['id']}", use_container_width=True):
+                                    supabase.table("haccp_log").delete().eq("id", row['id']).execute()
+                                    st.toast(f"Η εγγραφή {row['id']} διαγράφηκε!", icon="🗑️")
+                                    time.sleep(1)
+                                    st.rerun()
+                            st.divider()
+            
+            # --- ΕΞΑΓΩΓΗ ΣΕ HTML (Προαιρετικό) ---
+            st.write("---")
+            if st.download_button("📥 Λήψη Πλήρους Αρχείου (HTML)", 
+                                 get_haccp_report_html(df_haccp, "ΠΛΗΡΕΣ ΑΡΧΕΙΟ HACCP"), 
+                                 "HACCP_Archive.html", "text/html"):
                 st.balloons()
         else:
-            st.info("ℹ️ Δεν υπάρχουν ακόμη καταγραφές στη βάση δεδομένων.")
-
+            st.info("ℹ️ Το αρχείο είναι άδειο. Ξεκινήστε τις καταγραφές από τα διπλανά Tabs!")
 
 
 # --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΔΙΟΡΘΩΣΗ ΣΤΟΙΧΕΙΩΝ) ---
