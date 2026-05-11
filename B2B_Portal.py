@@ -3,7 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 import time
 
-# --- ΡΥΘΜΙΣΗ ΣΕΛΙΔΑΣ ---
+# --- ΡΥΘΜΙΣΗ ΣΕΛΙΔΑΣ (Responsive για κινητά) ---
 st.set_page_config(page_title="CabClub B2B", page_icon="🍹", layout="centered")
 
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
@@ -31,7 +31,6 @@ if st.session_state.authenticated_shop is None:
     
     if st.button("Είσοδος", use_container_width=True):
         if user_pin:
-            # Έλεγχος στη βάση αν το νούμερο υπάρχει στη στήλη phone
             res = supabase.table("customers").select("name").eq("phone", user_pin).execute()
             
             if res.data and len(res.data) > 0:
@@ -48,7 +47,6 @@ if st.session_state.authenticated_shop is None:
 # --- ΑΝ ΕΙΝΑΙ ΣΥΝΔΕΔΕΜΕΝΟΣ Ο ΠΕΛΑΤΗΣ ---
 client_name = st.session_state.authenticated_shop
 
-# Header με όνομα και κουμπί Logout
 c_top1, c_top2 = st.columns([3, 1])
 with c_top1:
     st.markdown(f"### 🍹 {client_name}")
@@ -71,10 +69,12 @@ res_r = supabase.table("recipes").select("*").execute()
 df_rec = pd.DataFrame(res_r.data) if res_r.data else pd.DataFrame()
 
 if not df_rec.empty:
+    # 1. ΤΑΞΙΝΟΜΗΣΗ ΑΝΑ ΟΝΟΜΑ (ΑΛΦΑΒΗΤΙΚΑ)
+    df_rec = df_rec.sort_values(by="name")
+
     order_items = {}
     total_cost = 0.0
     
-    # Επικεφαλίδες
     h1, h2, h3 = st.columns([3, 1, 1.5])
     h1.caption("ΠΡΟΪΟΝ")
     h2.caption("ΤΜΧ")
@@ -83,20 +83,27 @@ if not df_rec.empty:
 
     for _, row in df_rec.iterrows():
         c_name = row.get("name", "Άγνωστο")
-        try:
-            price_cat = float(str(row.get("catalog_price", 0)).replace(',', '.'))
-        except: price_cat = 0.0
         
-        price_b2b = price_cat * 0.74 # Έκπτωση 26%
+        # 2. ΔΙΟΡΘΩΜΕΝΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΤΙΜΗΣ
+        try:
+            # Μετατροπή σε float και χειρισμός κόμματος
+            raw_price = str(row.get("catalog_price", 0)).replace(',', '.')
+            price_cat = float(raw_price)
+        except: 
+            price_cat = 0.0
+        
+        # Υπολογισμός 26% έκπτωσης (Price * 0.74) με στρογγυλοποίηση
+        price_b2b = round(price_cat * 0.74, 2)
         
         if price_b2b > 0:
             c1, c2, c3 = st.columns([3, 1, 1.5])
             with c1:
-                st.markdown(f"**{c_name}**<br><small>{price_b2b:.2f} €</small>", unsafe_allow_html=True)
+                st.markdown(f"**{c_name}**<br><small>{price_b2b:.2f} € / τμχ</small>", unsafe_allow_html=True)
             with c2:
                 qty = st.number_input("Τμχ", min_value=0, step=1, key=f"qty_{c_name}_{st.session_state.reset_key}", label_visibility="collapsed")
             with c3:
-                subtotal = qty * price_b2b
+                # Υπολογισμός μερικού συνόλου με στρογγυλοποίηση
+                subtotal = round(qty * price_b2b, 2)
                 st.markdown(f"**{subtotal:.2f} €**")
                 
             if qty > 0:
@@ -104,14 +111,15 @@ if not df_rec.empty:
                 total_cost += subtotal
 
     st.divider()
+    # Εμφάνιση Τελικού Συνόλου
+    total_cost = round(total_cost, 2)
     st.markdown(f"<h3 style='text-align: right; color: #d32f2f;'>Σύνολο: {total_cost:.2f} €</h3>", unsafe_allow_html=True)
     
-    notes = st.text_area("📝 Σημειώσεις / Ημέρα Παράδοσης:", key=f"notes_{st.session_state.reset_key}")
+    notes = st.text_area("📝 Σημειώσεις / Ημέρα Παράδοσης:", key=f"notes_{st.session_state.reset_key}", placeholder="π.χ. Παράδοση Πέμπτη πρωί...")
 
-    # Κουμπί αποστολής
     if st.button("🚀 Αποστολή Παραγγελίας", type="primary", use_container_width=True):
         if not order_items:
-            st.error("Το καλάθι είναι άδειο!")
+            st.error("Το καλάθι είναι άδειο! Επιλέξτε ποσότητα σε τουλάχιστον ένα προϊόν.")
         else:
             order_details = "\n".join([f"• {v['qty']}x {k} ({v['subtotal']:.2f}€)" for k, v in order_items.items()])
             insert_data = {
