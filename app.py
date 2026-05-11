@@ -2328,3 +2328,43 @@ elif page == "🔄 Αντικατάσταση":
                 st.info("Το υλικό δεν βρέθηκε σε καμία συνταγή.")
     else:
         st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
+
+# --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B ---
+elif page == "📦 Παραγγελίες B2B":
+    st.header("📦 Διαχείριση Παραγγελιών B2B")
+    st.write("Εδώ εμφανίζονται οι παραγγελίες που έρχονται ζωντανά από το Portal των πελατών.")
+
+    # 1. Ανάκτηση παραγγελιών από τη Supabase
+    res_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).execute()
+    
+    if res_orders.data:
+        df_orders = pd.DataFrame(res_orders.data)
+        
+        # Φίλτρα κατάστασης
+        status_filter = st.multiselect("Φίλτρο Κατάστασης:", ["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"], default=["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ"])
+        df_filtered = df_orders[df_orders["status"].isin(status_filter)]
+
+        for _, row in df_filtered.iterrows():
+            with st.expander(f"🛒 {row['customer_name']} - {row['total_amount']:.2f} € ({row['status']})"):
+                c1, c2 = st.columns([2, 1])
+                
+                with c1:
+                    st.markdown("**Λεπτομέρειες:**")
+                    st.code(row['order_details'])
+                    if row['notes']:
+                        st.info(f"📝 Σημειώσεις: {row['notes']}")
+                
+                with c2:
+                    st.markdown("**Διαχείριση:**")
+                    new_status = st.selectbox("Αλλαγή Κατάστασης:", ["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"], 
+                                             index=["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"].index(row['status']),
+                                             key=f"status_{row['id']}")
+                    
+                    if st.button("Ενημέρωση Κατάστασης", key=f"btn_{row['id']}"):
+                        supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
+                        st.success("Η κατάσταση ενημερώθηκε!")
+                        st.rerun()
+                        
+                st.caption(f"Ημερομηνία Παραγγελίας: {row['created_at']}")
+    else:
+        st.info("Δεν υπάρχουν ακόμη παραγγελίες στο σύστημα.")
