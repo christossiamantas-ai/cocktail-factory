@@ -1490,28 +1490,32 @@ elif page == "📈 Dashboard":
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
-    # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΑΠΟ B2B ---
+    # --- ΜΝΗΜΗ ΕΦΑΡΜΟΓΗΣ ΓΙΑ ΤΗ ΦΟΡΤΩΣΗ ---
+    if "active_b2b_order" not in st.session_state:
+        st.session_state.active_b2b_order = None
+
+    # --- ΕΚΚΡΕΜΟΤΗΤΕΣ ΑΠΟ B2B ---
     st.subheader("📋 Εκκρεμείς Παραγγελίες Πελατών (B2B)")
     res_b2b = supabase.table("b2b_orders").select("*").in_("status", ["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ"]).execute()
     
-    selected_b2b_order = None
-    default_customer = None
-    
     if res_b2b.data:
         df_pending = pd.DataFrame(res_b2b.data)
-        st.info(f"Υπάρχουν {len(df_pending)} εκκρεμείς παραγγελίες από το Portal.")
-        
         for _, order in df_pending.iterrows():
             col_a, col_b = st.columns([4, 1])
             with col_a:
                 st.markdown(f"**Πελάτης:** {order['customer_name']} | **Προϊόντα:** {order['order_details'].replace('•', '')}")
             with col_b:
                 if st.button("📥 Φόρτωση", key=f"load_{order['id']}"):
-                    selected_b2b_order = order
-                    default_customer = order['customer_name']
-                    st.success(f"Φορτώθηκε η παραγγελία του {order['customer_name']}! Επιλέξτε τα προϊόντα παρακάτω.")
+                    st.session_state.active_b2b_order = order # Αποθήκευση στη μνήμη
+                    st.success(f"Φορτώθηκε η παραγγελία του {order['customer_name']}!")
+                    st.rerun()
     else:
-        st.write("✅ Καμία εκκρεμής παραγγελία από το B2B Portal.")
+        st.write("✅ Καμία εκκρεμής παραγγελία.")
+
+    if st.session_state.active_b2b_order:
+        if st.button("❌ Ακύρωση Φόρτωσης"):
+            st.session_state.active_b2b_order = None
+            st.rerun()
 
     st.divider()
     
@@ -1532,17 +1536,39 @@ elif page == "📦 Lot Παραγωγής":
 
     st.divider()
 
+    # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ ---
+    default_cocktails_list = []
+    default_quantities = {}
+    
+    if st.session_state.active_b2b_order and not df_rec.empty:
+        details = st.session_state.active_b2b_order['order_details']
+        lines = details.split('\n')
+        for line in lines:
+            try:
+                # Παράδειγμα γραμμής: "• 24x ZOMBIE (107.98€)"
+                parts = line.split('x ')
+                qty = int(parts[0].replace('•', '').strip())
+                c_name = parts[1].split(' (')[0].strip()
+                
+                if c_name in df_rec["Ονομα"].unique():
+                    default_cocktails_list.append(c_name)
+                    default_quantities[c_name] = qty
+            except Exception:
+                pass
+
     # 2. ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ
     if not df_rec.empty:
         col_c1, col_c2 = st.columns([2, 1])
         with col_c1:
-            selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique())
+            # Το πεδίο πλέον διαβάζει τα default κοκτέιλ και τα επιλέγει αυτόματα!
+            selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique(), default=default_cocktails_list)
         
         with col_c2:
-            # Αν πατήθηκε φόρτωση, βάζουμε ως default τον πελάτη της παραγγελίας
             c_index = 0
-            if default_customer and default_customer in db_customers:
-                c_index = db_customers.index(default_customer)
+            if st.session_state.active_b2b_order:
+                cust_name = st.session_state.active_b2b_order['customer_name']
+                if cust_name in db_customers:
+                    c_index = db_customers.index(cust_name)
                 
             customer_name = st.selectbox("👤 Επιλογή Πελάτη:", options=db_customers, index=c_index)
 
@@ -1550,8 +1576,11 @@ elif page == "📦 Lot Παραγωγής":
             st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
             counts = {}
             c_cols = st.columns(len(selected_cocktails))
+            
+            # Εδώ μπαίνουν αυτόματα οι ποσότητες που ζήτησε ο πελάτης!
             for i, name in enumerate(selected_cocktails):
-                counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=1, key=f"cnt_{name}")
+                def_qty = default_quantities.get(name, 1)
+                counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=def_qty, key=f"cnt_{name}")
 
             lot_entries = []
             with st.form("detailed_lot_form"):
@@ -1587,24 +1616,21 @@ elif page == "📦 Lot Παραγωγής":
                             "lot_number": l1 if not l2 else f"{l1} / {l2}", "expiry_date": e1 if not e2 else f"{e1} / {e2}"
                         })
                 
-                # --- ΕΝΗΜΕΡΩΜΕΝΟ ΚΟΥΜΠΙ ΑΠΟΘΗΚΕΥΣΗΣ ---
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud"):
                     if lot_entries:
                         try:
-                            # Καταγραφή του Lot
                             supabase.table("production_log").insert(lot_entries).execute()
                             
-                            # ΝΕΟ: Ενημέρωση κατάστασης B2B
-                            if selected_b2b_order:
-                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", selected_b2b_order['id']).execute()
-                                st.success(f"✅ Η παραγγελία του {selected_b2b_order['customer_name']} επισημάνθηκε ως Ολοκληρωμένη!")
+                            if st.session_state.active_b2b_order:
+                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", st.session_state.active_b2b_order['id']).execute()
+                                st.session_state.active_b2b_order = None 
                             
-                            st.success("✅ Η παρτίδα αποθηκεύτηκε!")
+                            st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς!")
                             st.cache_data.clear()
                             time.sleep(1.5)
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Σφάλμα αποθήκευσης: {e}")
+                            st.error(f"Σφάλμα: {e}")
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
