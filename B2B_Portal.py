@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 import time
+import requests
+from streamlit_lottie import st_lottie
 
 # --- ΡΥΘΜΙΣΗ ΣΕΛΙΔΑΣ (Responsive για κινητά) ---
 st.set_page_config(page_title="CabClub B2B", page_icon="🍹", layout="centered")
@@ -14,6 +16,16 @@ def init_connection():
     return create_client(url, key)
 
 supabase = init_connection()
+
+# --- ΛΕΙΤΟΥΡΓΙΑ ΓΙΑ ΤΟ ANIMATION (SHAKER) ---
+def load_lottieurl(url):
+    r = requests.get(url)
+    if r.status_code != 200:
+        return None
+    return r.json()
+
+# Link για το animation του shaker
+lottie_shaker = load_lottieurl("https://lottie.host/82540134-8b65-4f74-9721-a1286c078832/t9HAtvP0P0.json")
 
 # --- ΕΛΕΓΧΟΣ ΕΙΣΟΔΟΥ (SESSION STATE) ---
 if "authenticated_shop" not in st.session_state:
@@ -69,7 +81,7 @@ res_r = supabase.table("recipes").select("*").execute()
 df_rec = pd.DataFrame(res_r.data) if res_r.data else pd.DataFrame()
 
 if not df_rec.empty:
-    # 1. ΤΑΞΙΝΟΜΗΣΗ ΑΝΑ ΟΝΟΜΑ (ΑΛΦΑΒΗΤΙΚΑ)
+    # ΤΑΞΙΝΟΜΗΣΗ ΑΛΦΑΒΗΤΙΚΑ
     df_rec = df_rec.sort_values(by="name")
 
     order_items = {}
@@ -83,16 +95,13 @@ if not df_rec.empty:
 
     for _, row in df_rec.iterrows():
         c_name = row.get("name", "Άγνωστο")
-        
-        # 2. ΔΙΟΡΘΩΜΕΝΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΤΙΜΗΣ
         try:
-            # Μετατροπή σε float και χειρισμός κόμματος
             raw_price = str(row.get("catalog_price", 0)).replace(',', '.')
             price_cat = float(raw_price)
         except: 
             price_cat = 0.0
         
-        # Υπολογισμός 26% έκπτωσης (Price * 0.74) με στρογγυλοποίηση
+        # Υπολογισμός 26% έκπτωσης (0.74)
         price_b2b = round(price_cat * 0.74, 2)
         
         if price_b2b > 0:
@@ -102,7 +111,6 @@ if not df_rec.empty:
             with c2:
                 qty = st.number_input("Τμχ", min_value=0, step=1, key=f"qty_{c_name}_{st.session_state.reset_key}", label_visibility="collapsed")
             with c3:
-                # Υπολογισμός μερικού συνόλου με στρογγυλοποίηση
                 subtotal = round(qty * price_b2b, 2)
                 st.markdown(f"**{subtotal:.2f} €**")
                 
@@ -111,15 +119,15 @@ if not df_rec.empty:
                 total_cost += subtotal
 
     st.divider()
-    # Εμφάνιση Τελικού Συνόλου
     total_cost = round(total_cost, 2)
     st.markdown(f"<h3 style='text-align: right; color: #d32f2f;'>Σύνολο: {total_cost:.2f} €</h3>", unsafe_allow_html=True)
     
-    notes = st.text_area("📝 Σχόλια", key=f"notes_{st.session_state.reset_key}", placeholder="...")
+    notes = st.text_area("📝 Σημειώσεις / Ημέρα Παράδοσης:", key=f"notes_{st.session_state.reset_key}")
 
+    # --- ΑΠΟΣΤΟΛΗ ΠΑΡΑΓΓΕΛΙΑΣ ---
     if st.button("🚀 Αποστολή Παραγγελίας", type="primary", use_container_width=True):
         if not order_items:
-            st.error("Το καλάθι είναι άδειο! Επιλέξτε ποσότητα σε τουλάχιστον ένα προϊόν.")
+            st.error("Το καλάθι είναι άδειο!")
         else:
             order_details = "\n".join([f"• {v['qty']}x {k} ({v['subtotal']:.2f}€)" for k, v in order_items.items()])
             insert_data = {
@@ -131,12 +139,17 @@ if not df_rec.empty:
             }
             try:
                 supabase.table("b2b_orders").insert([insert_data]).execute()
-                st.success("✅ Η παραγγελία στάλθηκε επιτυχώς!")
-                st.balloons()
-                time.sleep(3)
+                
+                # --- ΤΟ ΕΦΕ ΜΕ ΤΟ SHAKER ---
+                if lottie_shaker:
+                    st_lottie(lottie_shaker, height=200, key="shaker")
+                
+                st.success("✅ Η παραγγελία στάλθηκε στην CabClub! Στην υγειά σας!")
+                
+                time.sleep(4) # Λίγο παραπάνω χρόνο για να φανεί το shaker
                 st.session_state.reset_key += 1
                 st.rerun()
             except Exception as e:
-                st.error(f"Σφάλμα κατά την αποστολή: {e}")
+                st.error(f"Σφάλμα: {e}")
 else:
-    st.warning("Δεν υπάρχουν προϊόντα στον κατάλογο.")
+    st.warning("Δεν υπάρχουν προϊόντα.")
