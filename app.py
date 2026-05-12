@@ -1663,112 +1663,109 @@ elif page == "📦 Lot Παραγωγής":
 
             selected_batch = st.selectbox("🛠️ Επεξεργασία Συγκεκριμένης Παραγωγής:", options)
             if selected_batch != "-- Επιλέξτε Παραγωγή --":
-    # Δημιουργούμε ένα μοναδικό ID για το συγκεκριμένο batch (για τα κλειδιά των widgets)
-    batch_id = str(hash(selected_batch))
-    
-    row_indices = batch_mapping[selected_batch]
-    base_data = df_past.loc[row_indices[0]]
-    old_pieces = int(base_data["Τεμάχια"])
-    
-    c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1.5])
-    
-    # Προσθήκη batch_id στα keys για να ανανεώνονται σωστά
-    new_cust = c1.text_input("Πελάτης", value=base_data["Πελάτης"], key=f"ed_cust_{batch_id}")
-    
-    cocktail_list = list(df_rec["Ονομα"].unique())
-    try: current_idx = cocktail_list.index(base_data["Cocktail"])
-    except: current_idx = 0
-    
-    new_cock = c2.selectbox("Cocktail", options=cocktail_list, index=current_idx, key=f"ed_cock_{batch_id}")
-    new_pcs = c3.number_input("Τεμάχια", value=old_pieces, min_value=1, key=f"ed_pcs_{batch_id}")
-    new_lot_c = c4.text_input("LOT", value=base_data["LOT_Cocktail"], key=f"ed_lot_{batch_id}")
+            # Δημιουργούμε ένα μοναδικό κλειδί βάσει του batch για να μην "κολλάνε" οι τιμές
+            batch_id = str(hash(selected_batch))
+            
+            row_indices = batch_mapping[selected_batch]
+            base_data = df_past.loc[row_indices[0]]
+            old_pieces = int(base_data["Τεμάχια"])
+            
+            c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1.5])
+            
+            # Χρήση batch_id στα keys για αυτόματο reset των τιμών
+            new_cust = c1.text_input("Πελάτης", value=base_data["Πελάτης"], key=f"ed_cust_{batch_id}")
+            
+            cocktail_list = list(df_rec["Ονομα"].unique())
+            try: current_idx = cocktail_list.index(base_data["Cocktail"])
+            except: current_idx = 0
+            
+            new_cock = c2.selectbox("Cocktail", options=cocktail_list, index=current_idx, key=f"ed_cock_{batch_id}")
+            new_pcs = c3.number_input("Τεμάχια", value=old_pieces, min_value=1, key=f"ed_pcs_{batch_id}")
+            new_lot_c = c4.text_input("LOT", value=base_data["LOT_Cocktail"], key=f"ed_lot_{batch_id}")
 
-    # Live Recalculation
-    cocktail_changed = (new_cock != base_data["Cocktail"])
-    display_ingredients = []
-    if cocktail_changed:
-        new_r = df_rec[df_rec["Ονομα"] == new_cock].iloc[0]
-        for i in range(1, 14):
-            ing_n = str(new_r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-            if ing_n not in ["ΚΕΝΟ", "nan", ""]:
-                ml_calc = float(new_r.get(f"ML{i}", 0)) * new_pcs
-                display_ingredients.append({"Υλικό": ing_n, "ML": ml_calc, "Lot": "", "Exp": ""})
-    else:
-        for idx in row_indices:
-            r_d = df_past.loc[idx]
-            mult = new_pcs / old_pieces
-            display_ingredients.append({"Υλικό": r_d["Υλικό"], "ML": r_d["Σύνολο_ML"] * mult, "Lot": r_d["Lot Number"], "Exp": r_d["Ημ_Λήξης"]})
+            # Live Recalculation
+            cocktail_changed = (new_cock != base_data["Cocktail"])
+            display_ingredients = []
+            if cocktail_changed:
+                new_r = df_rec[df_rec["Ονομα"] == new_cock].iloc[0]
+                for i in range(1, 14):
+                    ing_n = str(new_r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                    if ing_n not in ["ΚΕΝΟ", "nan", ""]:
+                        ml_calc = float(new_r.get(f"ML{i}", 0)) * new_pcs
+                        display_ingredients.append({"Υλικό": ing_n, "ML": ml_calc, "Lot": "", "Exp": ""})
+            else:
+                for idx in row_indices:
+                    r_d = df_past.loc[idx]
+                    mult = new_pcs / old_pieces
+                    display_ingredients.append({"Υλικό": r_d["Υλικό"], "ML": r_d["Σύνολο_ML"] * mult, "Lot": r_d["Lot Number"], "Exp": r_d["Ημ_Λήξης"]})
 
-    with st.form("edit_batch_form"):
-        h_edit = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
-        h_labels = ["Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
-        for col, label in zip(h_edit, h_labels):
-            col.caption(label)
+            with st.form(f"edit_form_{batch_id}"):
+                h_edit = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
+                h_labels = ["Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
+                for col, label in zip(h_edit, h_labels):
+                    col.caption(label)
 
-        final_updated = []
-        for i, itm in enumerate(display_ingredients):
-            raw_lot = str(itm["Lot"])
-            raw_exp = str(itm["Exp"])
-            
-            lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
-            exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
-            
-            while len(lot_parts) < 2: lot_parts.append("")
-            while len(exp_parts) < 2: exp_parts.append("")
+                final_updated = []
+                for i, itm in enumerate(display_ingredients):
+                    raw_lot = str(itm["Lot"])
+                    raw_exp = str(itm["Exp"])
+                    
+                    lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
+                    exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
+                    
+                    while len(lot_parts) < 2: lot_parts.append("")
+                    while len(exp_parts) < 2: exp_parts.append("")
 
-            r = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
-            r[0].write(f"**{itm['Υλικό']}**")
-            r[1].write(f"{itm['ML']:.0f}")
-            
-            # Χρήση του batch_id και εδώ για να καθαρίζουν τα υλικά
-            lt1 = r[2].text_input("L1", value=lot_parts[0], key=f"ed_l1_{batch_id}_{i}", label_visibility="collapsed")
-            ex1 = r[3].text_input("E1", value=exp_parts[0], key=f"ed_e1_{batch_id}_{i}", label_visibility="collapsed")
-            
-            lt2 = r[4].text_input("L2", value=lot_parts[1], key=f"ed_l2_{batch_id}_{i}", label_visibility="collapsed")
-            ex2 = r[5].text_input("E2", value=exp_parts[1], key=f"ed_e2_{batch_id}_{i}", label_visibility="collapsed")
-            
-            final_lot = lt1 if not lt2 else f"{lt1} / {lt2}"
-            final_exp = ex1 if not ex2 else f"{ex1} / {ex2}"
-            
-            final_updated.append({
-                "ing": itm["Υλικό"], 
-                "ml": itm["ML"], 
-                "lot": final_lot, 
-                "exp": final_exp
-            })
-        
-        st.divider()
-        b_save, b_del = st.columns(2)
-        
-        if b_save.form_submit_button("💾 Αποθήκευση Αλλαγών", type="primary"):
-            ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
-            for di in ids_to_del: supabase.table("production_log").delete().eq("id", di).execute()
-            
-            new_batch = []
-            for fd in final_updated:
-                g_calc = fd["ml"]
-                match_i = df_ing[df_ing["Name"] == fd["ing"]]
-                if not match_i.empty: 
-                    g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
+                    r = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
+                    r[0].write(f"**{itm['Υλικό']}**")
+                    r[1].write(f"{itm['ML']:.0f}")
+                    
+                    # Μοναδικά keys για κάθε υλικό μέσα στο συγκεκριμένο batch
+                    lt1 = r[2].text_input("L1", value=lot_parts[0], key=f"ed_l1_{batch_id}_{i}", label_visibility="collapsed")
+                    ex1 = r[3].text_input("E1", value=exp_parts[0], key=f"ed_e1_{batch_id}_{i}", label_visibility="collapsed")
+                    lt2 = r[4].text_input("L2", value=lot_parts[1], key=f"ed_l2_{batch_id}_{i}", label_visibility="collapsed")
+                    ex2 = r[5].text_input("E2", value=exp_parts[1], key=f"ed_e2_{batch_id}_{i}", label_visibility="collapsed")
+                    
+                    final_lot = lt1 if not lt2 else f"{lt1} / {lt2}"
+                    final_exp = ex1 if not ex2 else f"{ex1} / {ex2}"
+                    
+                    final_updated.append({"ing": itm["Υλικό"], "ml": itm["ML"], "lot": final_lot, "exp": final_exp})
                 
-                new_batch.append({
-                    "prod_date": base_data["Ημερομηνία"], "prod_time": base_data["Ώρα"], "customer": new_cust, 
-                    "cocktail_name": new_cock, "lot_cocktail": new_lot_c, "pieces": int(new_pcs), 
-                    "ingredient_name": fd["ing"], "total_ml": fd["ml"], "target_g": round(g_calc, 1), 
-                    "lot_number": fd["lot"], "expiry_date": fd["exp"]
-                })
-            supabase.table("production_log").insert(new_batch).execute()
-            st.success("✅ Ενημερώθηκε!")
-            st.cache_data.clear()
-            time.sleep(1)
-            st.rerun()
+                st.divider()
+                b_save, b_del = st.columns(2)
+                
+                if b_save.form_submit_button("💾 Αποθήκευση Αλλαγών", type="primary"):
+                    ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
+                    for di in ids_to_del: 
+                        supabase.table("production_log").delete().eq("id", di).execute()
+                    
+                    new_batch_data = []
+                    for fd in final_updated:
+                        g_calc = fd["ml"]
+                        match_i = df_ing[df_ing["Name"] == fd["ing"]]
+                        if not match_i.empty: 
+                            g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
+                        
+                        new_batch_data.append({
+                            "prod_date": base_data["Ημερομηνία"], "prod_time": base_data["Ώρα"], "customer": new_cust, 
+                            "cocktail_name": new_cock, "lot_cocktail": new_lot_c, "pieces": int(new_pcs), 
+                            "ingredient_name": fd["ing"], "total_ml": fd["ml"], "target_g": round(g_calc, 1), 
+                            "lot_number": fd["lot"], "expiry_date": fd["exp"]
+                        })
+                    supabase.table("production_log").insert(new_batch_data).execute()
+                    st.success("✅ Η παραγωγή ενημερώθηκε επιτυχώς!")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
 
-        if b_del.form_submit_button("🗑️ Διαγραφή"):
-            ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
-            for di in ids_to_del: supabase.table("production_log").delete().eq("id", di).execute()
-            st.warning("Διαγράφηκε!")
-            st.cache_data.clear()
-            st.rerun()
+                if b_del.form_submit_button("🗑️ Διαγραφή Παραγωγής"):
+                    ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
+                    for di in ids_to_del: 
+                        supabase.table("production_log").delete().eq("id", di).execute()
+                    st.warning("Η παραγωγή διαγράφηκε.")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
             st.divider()
             
             # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
