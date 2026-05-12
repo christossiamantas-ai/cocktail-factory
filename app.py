@@ -1490,9 +1490,11 @@ elif page == "📈 Dashboard":
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
-    # --- ΜΝΗΜΗ ΕΦΑΡΜΟΓΗΣ ΓΙΑ ΤΗ ΦΟΡΤΩΣΗ ---
+    # --- ΜΝΗΜΗ ΕΦΑΡΜΟΓΗΣ ΓΙΑ ΤΗ ΦΟΡΤΩΣΗ (ΑΣΦΑΛΗΣ ΤΡΟΠΟΣ ΜΕ GET) ---
     if "active_b2b_order" not in st.session_state:
-        st.session_state.active_b2b_order = None
+        st.session_state["active_b2b_order"] = None
+
+    active_order = st.session_state.get("active_b2b_order")
 
     # --- ΕΚΚΡΕΜΟΤΗΤΕΣ ΑΠΟ B2B ---
     st.subheader("📋 Εκκρεμείς Παραγγελίες Πελατών (B2B)")
@@ -1506,16 +1508,16 @@ elif page == "📦 Lot Παραγωγής":
                 st.markdown(f"**Πελάτης:** {order['customer_name']} | **Προϊόντα:** {order['order_details'].replace('•', '')}")
             with col_b:
                 if st.button("📥 Φόρτωση", key=f"load_{order['id']}"):
-                    st.session_state.active_b2b_order = order.to_dict() 
+                    st.session_state["active_b2b_order"] = order.to_dict() 
                     st.success(f"Φορτώθηκε η παραγγελία του {order['customer_name']}!")
                     time.sleep(1)
                     st.rerun()
     else:
         st.write("✅ Καμία εκκρεμής παραγγελία.")
 
-    if st.session_state.active_b2b_order is not None:
+    if active_order is not None:
         if st.button("❌ Ακύρωση Φόρτωσης"):
-            st.session_state.active_b2b_order = None
+            st.session_state["active_b2b_order"] = None
             st.rerun()
 
     st.divider()
@@ -1537,8 +1539,8 @@ elif page == "📦 Lot Παραγωγής":
     default_cocktails_list = []
     default_quantities = {}
     
-    if st.session_state.active_b2b_order is not None and not df_rec.empty:
-        details = st.session_state.active_b2b_order['order_details']
+    if active_order is not None and not df_rec.empty:
+        details = active_order.get('order_details', '')
         lines = details.split('\n')
         for line in lines:
             try:
@@ -1559,8 +1561,8 @@ elif page == "📦 Lot Παραγωγής":
         
         with col_c2:
             default_cust_name = ""
-            if st.session_state.active_b2b_order is not None:
-                default_cust_name = st.session_state.active_b2b_order['customer_name']
+            if active_order is not None:
+                default_cust_name = active_order.get('customer_name', '')
             customer_name = st.text_input("👤 Πελάτης:", value=default_cust_name, placeholder="Πληκτρολογήστε όνομα πελάτη...")
 
         if selected_cocktails:
@@ -1586,7 +1588,6 @@ elif page == "📦 Lot Παραγωγής":
                 mh[2].caption("ΛΗΞΗ ΗΜΕΡΑΣ")
                 
                 for ing in sorted(unique_ings):
-                    # Αρχικοποίηση μνήμης για να μην έχουμε errors
                     if f"mlot_{ing}" not in st.session_state: st.session_state[f"mlot_{ing}"] = ""
                     if f"mexp_{ing}" not in st.session_state: st.session_state[f"mexp_{ing}"] = ""
                     
@@ -1629,8 +1630,8 @@ elif page == "📦 Lot Παραγωγής":
                         r[2].markdown(f"**{tg_g:.1f}g**")
                         
                         # --- ΑΝΤΛΗΣΗ ΤΙΜΩΝ ΑΠΟ ΤΟΝ ΚΕΝΤΡΙΚΟ ΠΙΝΑΚΑ ---
-                        m_lot = st.session_state[f"mlot_{ing}"]
-                        m_exp = st.session_state[f"mexp_{ing}"]
+                        m_lot = st.session_state.get(f"mlot_{ing}", "")
+                        m_exp = st.session_state.get(f"mexp_{ing}", "")
                         
                         l1 = r[3].text_input("L1", value=m_lot, key=f"l1_{cocktail_name}_{i}", label_visibility="collapsed")
                         e1 = r[4].text_input("E1", value=m_exp, key=f"e1_{cocktail_name}_{i}", label_visibility="collapsed")
@@ -1654,13 +1655,13 @@ elif page == "📦 Lot Παραγωγής":
                             
                         try:
                             supabase.table("production_log").insert(lot_entries).execute()
-                            if st.session_state.active_b2b_order is not None:
-                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", st.session_state.active_b2b_order['id']).execute()
-                                st.session_state.active_b2b_order = None 
+                            if active_order is not None:
+                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
+                                st.session_state["active_b2b_order"] = None 
                             
                             st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς!")
                             
-                            # Καθαρισμός του Master Πίνακα για την επόμενη χρήση!
+                            # Καθαρισμός του Master Πίνακα για την επόμενη χρήση
                             for key in st.session_state.keys():
                                 if key.startswith("mlot_") or key.startswith("mexp_"):
                                     st.session_state[key] = ""
