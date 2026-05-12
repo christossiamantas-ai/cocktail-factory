@@ -1860,27 +1860,72 @@ elif page == "📦 Lot Παραγωγής":
                     html_pro += "</tbody></table>"
             html_pro += "</body></html>"
 
-            # 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME)
+            # --- 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME) ---
             df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
+            
+            # Υπολογισμός Γενικού Συνόλου Ημέρας
+            grand_total_pcs = df_daily["Τεμάχια"].sum()
+
             html_daily = f"""
             <html><head><meta charset='UTF-8'><style>
                 body {{ font-family: sans-serif; padding: 20px; }}
                 .header {{ text-align: center; border-bottom: 3px solid #d32f2f; margin-bottom: 30px; }}
-                .cocktail-header {{ background-color: #d32f2f; color: white; padding: 10px; }}
+                .cocktail-header {{ background-color: #d32f2f; color: white; padding: 10px; margin-top: 20px; border-radius: 5px 5px 0 0; }}
                 table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
-                th {{ background-color: #444; color: white; padding: 10px; }}
+                th {{ background-color: #444; color: white; padding: 10px; text-align: left; }}
                 td {{ padding: 10px; border: 1px solid #ddd; }}
+                .grand-total {{ 
+                    margin-top: 30px; 
+                    padding: 20px; 
+                    background-color: #f8f9fa; 
+                    border: 2px solid #d32f2f; 
+                    text-align: center; 
+                    font-size: 1.4em; 
+                    border-radius: 10px;
+                }}
+                .grand-total b {{ color: #d32f2f; font-size: 1.6em; }}
             </style></head>
-            <body><div class='header'><h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1><p>Ημερομηνία: <b>{sel_hist_date}</b></p></div>
+            <body>
+                <div class='header'>
+                    <h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1>
+                    <p>Ημερομηνία: <b>{sel_hist_date}</b></p>
+                </div>
             """
+            
             for cock in df_daily["Cocktail"].unique():
                 c_data = df_daily[df_daily["Cocktail"] == cock]
-                html_daily += f"<h2 class='cocktail-header'>{cock}</h2><table><thead><tr><th>LOT Number</th><th>Πελάτης</th><th>Ποσότητα (τμχ)</th></tr></thead><tbody>"
+                html_daily += f"""
+                <h2 class='cocktail-header'>🍹 {cock}</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>LOT Number</th>
+                            <th>Πελάτης</th>
+                            <th>Ποσότητα (τμχ)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                """
                 for _, row in c_data.iterrows():
                     html_daily += f"<tr><td>{row['LOT_Cocktail']}</td><td>{row['Πελάτης']}</td><td>{row['Τεμάχια']}</td></tr>"
-                html_daily += f"<tr style='background:#f2f2f2;font-weight:bold;'><td colspan='2' style='text-align: right;'>ΣΥΝΟΛΟ:</td><td>{c_data['Τεμάχια'].sum()} τμχ</td></tr></tbody></table>"
-            html_daily += "</body></html>"
+                
+                # Υποσύνολο ανά Cocktail
+                html_daily += f"""
+                    <tr style='background:#f9f9f9; font-weight:bold;'>
+                        <td colspan='2' style='text-align: right;'>ΜΕΡΙΚΟ ΣΥΝΟΛΟ {cock}:</td>
+                        <td>{c_data['Τεμάχια'].sum()} τμχ</td>
+                    </tr>
+                </tbody></table>
+                """
 
+            # Προσθήκη του Γενικού Συνόλου στο τέλος της σελίδας
+            html_daily += f"""
+                <div class='grand-total'>
+                    ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΗΜΕΡΑΣ ({sel_hist_date}):<br>
+                    <b>{grand_total_pcs} Τεμάχια</b>
+                </div>
+            </body></html>
+            """
             # --- 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME) ---
             # Συγκεντρώνουμε τα δεδομένα ανά υλικό, αθροίζοντας ποσότητες και ενώνοντας τα μοναδικά LOT/Λήξεις
             # Χρησιμοποιούμε πιο αυστηρό φιλτράρισμα για να αγνοούμε κενά ή "None"
