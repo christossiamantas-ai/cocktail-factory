@@ -1883,11 +1883,12 @@ elif page == "📦 Lot Παραγωγής":
 
             # --- 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME) ---
             # Συγκεντρώνουμε τα δεδομένα ανά υλικό, αθροίζοντας ποσότητες και ενώνοντας τα μοναδικά LOT/Λήξεις
+            # Χρησιμοποιούμε πιο αυστηρό φιλτράρισμα για να αγνοούμε κενά ή "None"
             df_prep = df_past.groupby("Υλικό").agg({
                 "Σύνολο_ML": "sum", 
                 "Στόχος_Γραμμάρια": "sum",
-                "Lot Number": lambda x: " / ".join(sorted(set(str(v) for v in x if v and str(v).lower() != 'none'))),
-                "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v) for v in x if v and str(v).lower() != 'none')))
+                "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan']))),
+                "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan'])))
             }).reset_index()
 
             html_prep = f"""
@@ -1916,8 +1917,15 @@ elif page == "📦 Lot Παραγωγής":
                     <tbody>
             """
             for _, row in df_prep.iterrows():
-                # Δημιουργία κειμένου για Lot και Λήξη
-                lot_text = f"{row['Lot Number']} | {row['Ημ_Λήξης']}" if row['Lot Number'] else "-"
+                # ΔΙΟΡΘΩΜΕΝΗ ΛΟΓΙΚΗ: Δημιουργία κειμένου με ό,τι είναι διαθέσιμο (Lot ή/και Λήξη)
+                display_parts = []
+                if row['Lot Number']: 
+                    display_parts.append(row['Lot Number'])
+                if row['Ημ_Λήξης']: 
+                    display_parts.append(row['Ημ_Λήξης'])
+                
+                # Αν υπάρχουν στοιχεία τα ενώνουμε με |, αλλιώς βάζουμε παύλα
+                lot_text = " | ".join(display_parts) if display_parts else "-"
                 
                 html_prep += f"""
                     <tr>
