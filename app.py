@@ -24,56 +24,43 @@ import io
 with st.sidebar:
     st.header("⚙️ Διαχείριση")
     
-    # 1. Κουμπί Ανανέωσης
     if st.button("🔄 Ανανέωση Δεδομένων", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
     
     st.divider()
 
-    # 2. ΠΛΗΡΕΣ BACKUP (ZIP)
     st.subheader("🗄️ Πλήρες Backup")
     try:
-        # Δημιουργία ενός Buffer στη μνήμη για το ZIP
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "x", zipfile.ZIP_DEFLATED) as zf:
-            
-            # Λίστα με τους πίνακες που θέλουμε να πάρουμε
+            # ΠΡΟΣΟΧΗ: Άλλαξα το haccp_logs σε haccp_log
             tables = {
                 "Production_LOT": "production_log",
                 "B2B_Orders": "b2b_orders",
                 "Inventory": "ingredients",
-                "HACCP_Logs": "haccp_logs"
+                "HACCP_Logs": "haccp_log" 
             }
             
             for file_name, table_name in tables.items():
                 res = supabase.table(table_name).select("*").execute()
                 if res.data:
                     df_temp = pd.DataFrame(res.data)
-                    # Μετατροπή σε CSV (με utf-8-sig για Ελληνικά)
                     csv_data = df_temp.to_csv(index=False).encode('utf-8-sig')
                     zf.writestr(f"{file_name}_{datetime.now().strftime('%d_%m_%Y')}.csv", csv_data)
         
-        # Κουμπί για κατέβασμα του ZIP
         st.download_button(
             label="📥 Λήψη Όλων των Δεδομένων (.zip)",
             data=buf.getvalue(),
             file_name=f"FULL_BACKUP_CABCLUB_{datetime.now().strftime('%d_%m_%Y')}.zip",
             mime="application/zip",
-            use_container_width=True,
-            help="Ένα αρχείο ZIP που περιέχει τα πάντα (Παραγωγή, B2B, Αποθήκη, HACCP)"
+            use_container_width=True
         )
-        st.success("Το Backup είναι έτοιμο!")
-
     except Exception as e:
         st.error(f"Σφάλμα Backup: {e}")
 
     st.divider()
-    
-    # 3. Ένδειξη ώρας
-    now = datetime.now().strftime("%H:%M:%S")
-    st.write(f"Τελευταίος έλεγχος: {now}")
-    st.caption("CABCLUB v3.0 - 2026")
+    st.write(f"Τελευταίος έλεγχος: {datetime.now().strftime('%H:%M:%S')}")
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
 def update_live_status(user_name):
