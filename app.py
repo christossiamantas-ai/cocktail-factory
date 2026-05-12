@@ -1591,16 +1591,13 @@ elif page == "📦 Lot Παραγωγής":
             st.info("💡 Πατήστε το '+' κάτω από κάθε πίνακα για να προσθέσετε κι άλλο πελάτη στο ίδιο κοκτέιλ.")
             
             all_assignments = {}
-            # Προεπιλογή πελάτη αν υπάρχει ενεργή παραγγελία B2B
             default_global_cust = active_order.get('customer_name', 'Λιανική') if active_order else "Λιανική"
 
             for name in selected_cocktails:
                 st.markdown(f"**🍹 {name}**")
-                # Αρχικό dataframe για τον data_editor
                 init_data = [{"Πελάτης": default_global_cust, "Τεμάχια": default_quantities.get(name, 1)}]
                 df_init = pd.DataFrame(init_data)
                 
-                # Ο Δυναμικός Πίνακας
                 edited_df = st.data_editor(
                     df_init,
                     num_rows="dynamic",
@@ -1616,15 +1613,17 @@ elif page == "📦 Lot Παραγωγής":
             # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML ---
             ing_totals = {}
             for cocktail_name in selected_cocktails:
-                # Άθροισμα όλων των τεμαχίων από όλους τους πελάτες για αυτό το κοκτέιλ
-                total_qty_for_cocktail = all_assignments[cocktail_name]["Τεμάχια"].sum()
+                df_assign = all_assignments[cocktail_name]
+                # ΔΙΟΡΘΩΣΗ: Ασφαλής έλεγχος αν υπάρχει η στήλη "Τεμάχια" (για την περίπτωση που σβηστούν όλες οι γραμμές)
+                total_qty_for_cocktail = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
                 
-                recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
-                for i in range(1, 14):
-                    ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                    if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
-                        ml_u = get_recipe_ml(recipe_row, i)
-                        ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * total_qty_for_cocktail)
+                if total_qty_for_cocktail > 0:
+                    recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
+                    for i in range(1, 14):
+                        ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                        if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
+                            ml_u = get_recipe_ml(recipe_row, i)
+                            ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * total_qty_for_cocktail)
 
             # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
             st.markdown("### 🔄 2. Συνολικά LOT Πρώτων Υλών Ημέρας")
@@ -1632,7 +1631,6 @@ elif page == "📦 Lot Παραγωγής":
                 mh = st.columns([2, 1, 1.5, 1.5])
                 mh[0].caption("ΠΡΩΤΗ ΥΛΗ"); mh[1].caption("ΣΥΝΟΛΟ (ml)"); mh[2].caption("LOT ΗΜΕΡΑΣ"); mh[3].caption("ΛΗΞΗ ΗΜΕΡΑΣ")
                 
-                # Αποθήκευση των LOTs σε λεξικό για να τα χρησιμοποιήσουμε μετά
                 day_lots = {}
                 day_exps = {}
 
@@ -1651,11 +1649,16 @@ elif page == "📦 Lot Παραγωγής":
                 for cocktail_name in selected_cocktails:
                     recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
                     df_assign = all_assignments[cocktail_name]
-                    total_qty_this = df_assign["Τεμάχια"].sum()
+                    
+                    # ΔΙΟΡΘΩΣΗ: Ασφαλής υπολογισμός τεμαχίων
+                    total_qty_this = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
+
+                    if total_qty_this == 0:
+                        st.warning(f"⚠️ Δεν έχετε ορίσει τεμάχια για το {cocktail_name}.")
+                        continue
 
                     st.markdown(f"#### 🍹 {cocktail_name} (Σύνολο: {total_qty_this} τμχ)")
                     
-                    # Εμφάνιση υλικών για επιβεβαίωση βάρους
                     h = st.columns([2, 1, 1, 3])
                     h[0].caption("Υλικό"); h[1].caption("ml"); h[2].caption("Βάρος(g)"); h[3].caption("LOT Ημέρας")
                     
@@ -1678,8 +1681,12 @@ elif page == "📦 Lot Παραγωγής":
 
                         # ΔΗΜΙΟΥΡΓΙΑ ΕΓΓΡΑΦΩΝ ΓΙΑ ΚΑΘΕ ΠΕΛΑΤΗ ΞΕΧΩΡΙΣΤΑ
                         for _, row_assign in df_assign.iterrows():
-                            c_name = str(row_assign["Πελάτης"]).strip() if str(row_assign["Πελάτης"]).strip() else "Λιανική"
-                            c_qty = int(row_assign["Τεμάχια"])
+                            # ΔΙΟΡΘΩΣΗ: Ασφαλής ανάγνωση πελάτη και τεμαχίων από τη γραμμή
+                            c_name = str(row_assign.get("Πελάτης", "Λιανική")).strip()
+                            if not c_name: c_name = "Λιανική"
+                            
+                            c_qty = int(row_assign.get("Τεμάχια", 0))
+                            if c_qty <= 0: continue
                             
                             lot_entries.append({
                                 "prod_date": formatted_date, "prod_time": current_time, "customer": c_name,
