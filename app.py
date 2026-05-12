@@ -1486,7 +1486,7 @@ elif page == "📈 Dashboard":
         st.info("📭 Δεν υπάρχουν ακόμα δεδομένα παραγωγής για ανάλυση.")
 
        
-# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΣΥΓΧΡΟΝΙΣΜΕΝΟ ΜΕ ΠΕΛΑΤΟΛΟΓΙΟ & B2B PORTAL) ---
+# --- 8. LOT ΠΑΡΑΓΩΓΗΣ ---
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
@@ -1506,7 +1506,6 @@ elif page == "📦 Lot Παραγωγής":
                 st.markdown(f"**Πελάτης:** {order['customer_name']} | **Προϊόντα:** {order['order_details'].replace('•', '')}")
             with col_b:
                 if st.button("📥 Φόρτωση", key=f"load_{order['id']}"):
-                    # Η ΜΑΓΙΚΗ ΛΥΣΗ: Μετατροπή σε dict για να μην κρασάρει το pandas
                     st.session_state.active_b2b_order = order.to_dict() 
                     st.success(f"Φορτώθηκε η παραγγελία του {order['customer_name']}!")
                     time.sleep(1)
@@ -1521,10 +1520,6 @@ elif page == "📦 Lot Παραγωγής":
             st.rerun()
 
     st.divider()
-    
-    # 0.5 ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΑΠΟ ΤΟ CRM
-    res_customers = supabase.table("customers").select("name").order("name").execute()
-    db_customers = [c["name"] for c in res_customers.data] if res_customers.data else ["Πρώτα προσθέστε πελάτη στο Πελατολόγιο"]
 
     # 1. ΚΕΝΤΡΙΚΟΣ ΟΡΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ & LOT
     col_date1, col_date2 = st.columns([2, 1])
@@ -1566,13 +1561,12 @@ elif page == "📦 Lot Παραγωγής":
             selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique(), default=default_cocktails_list)
         
         with col_c2:
-            c_index = 0
+            # --- ΧΕΙΡΟΚΙΝΗΤΗ ΕΙΣΑΓΩΓΗ ΠΕΛΑΤΗ ΕΛΕΥΘΕΡΟΥ ΚΕΙΜΕΝΟΥ ---
+            default_cust_name = ""
             if st.session_state.active_b2b_order is not None:
-                cust_name = st.session_state.active_b2b_order['customer_name']
-                if cust_name in db_customers:
-                    c_index = db_customers.index(cust_name)
+                default_cust_name = st.session_state.active_b2b_order['customer_name']
                 
-            customer_name = st.selectbox("👤 Επιλογή Πελάτη:", options=db_customers, index=c_index)
+            customer_name = st.text_input("👤 Πελάτης:", value=default_cust_name, placeholder="Πληκτρολογήστε όνομα πελάτη...")
 
         if selected_cocktails:
             st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
@@ -1618,7 +1612,14 @@ elif page == "📦 Lot Παραγωγής":
                         })
                 
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud"):
+                    # Αν δεν έχει βάλει πελάτη, τον βάζουμε ως "Άγνωστος" για να μην έχουμε κενά στη βάση
+                    if not customer_name.strip(): customer_name = "Λιανική / Άγνωστος"
+                    
                     if lot_entries:
+                        # Ενημερώνουμε ξανά το customer_name στα lot_entries σε περίπτωση που το διόρθωσε το από πάνω if
+                        for entry in lot_entries:
+                            entry["customer"] = customer_name
+                            
                         try:
                             supabase.table("production_log").insert(lot_entries).execute()
                             
@@ -1640,7 +1641,6 @@ elif page == "📦 Lot Παραγωγής":
     res_log = supabase.table("production_log").select("*").order("prod_date", desc=True).execute()
     if res_log.data:
         df_all_logs = pd.DataFrame(res_log.data)
-        # Rename για συμβατότητα με τα reports
         df_all_logs_renamed = df_all_logs.rename(columns={
             "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
             "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια", "ingredient_name": "Υλικό",
@@ -1665,7 +1665,6 @@ elif page == "📦 Lot Παραγωγής":
             selected_batch = st.selectbox("🛠️ Επεξεργασία Συγκεκριμένης Παραγωγής:", options)
             
             if selected_batch != "-- Επιλέξτε Παραγωγή --":
-                # Δημιουργούμε ένα μοναδικό ID για το συγκεκριμένο batch για τα κλειδιά των widgets
                 batch_id = str(hash(selected_batch))
                 
                 row_indices = batch_mapping[selected_batch]
@@ -1674,7 +1673,7 @@ elif page == "📦 Lot Παραγωγής":
                 
                 c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1.5])
                 
-                # Προσθήκη batch_id στα keys για να ανανεώνονται σωστά οι τιμές
+                # Το πεδίο πελάτη είναι text_input και εδώ στην επεξεργασία
                 new_cust = c1.text_input("Πελάτης", value=base_data["Πελάτης"], key=f"ed_cust_{batch_id}")
                 
                 cocktail_list = list(df_rec["Ονομα"].unique())
@@ -1685,7 +1684,6 @@ elif page == "📦 Lot Παραγωγής":
                 new_pcs = c3.number_input("Τεμάχια", value=old_pieces, min_value=1, key=f"ed_pcs_{batch_id}")
                 new_lot_c = c4.text_input("LOT", value=base_data["LOT_Cocktail"], key=f"ed_lot_{batch_id}")
 
-                # Live Recalculation
                 cocktail_changed = (new_cock != base_data["Cocktail"])
                 display_ingredients = []
                 if cocktail_changed:
@@ -1701,7 +1699,6 @@ elif page == "📦 Lot Παραγωγής":
                         mult = new_pcs / old_pieces
                         display_ingredients.append({"Υλικό": r_d["Υλικό"], "ML": r_d["Σύνολο_ML"] * mult, "Lot": r_d["Lot Number"], "Exp": r_d["Ημ_Λήξης"]})
 
-                # Η φόρμα πρέπει επίσης να έχει μοναδικό key
                 with st.form(f"edit_batch_form_{batch_id}"):
                     h_edit = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
                     h_labels = ["Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
@@ -1723,10 +1720,8 @@ elif page == "📦 Lot Παραγωγής":
                         r[0].write(f"**{itm['Υλικό']}**")
                         r[1].write(f"{itm['ML']:.0f}")
                         
-                        # Χρήση του batch_id και εδώ για τα υλικά
                         lt1 = r[2].text_input("L1", value=lot_parts[0], key=f"ed_l1_{batch_id}_{i}", label_visibility="collapsed")
                         ex1 = r[3].text_input("E1", value=exp_parts[0], key=f"ed_e1_{batch_id}_{i}", label_visibility="collapsed")
-                        
                         lt2 = r[4].text_input("L2", value=lot_parts[1], key=f"ed_l2_{batch_id}_{i}", label_visibility="collapsed")
                         ex2 = r[5].text_input("E2", value=exp_parts[1], key=f"ed_e2_{batch_id}_{i}", label_visibility="collapsed")
                         
@@ -1755,7 +1750,7 @@ elif page == "📦 Lot Παραγωγής":
                                 g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
                             
                             new_batch.append({
-                                "prod_date": base_data["Ημερομηνία"], "prod_time": base_data["Ώρα"], "customer": new_cust, 
+                                "prod_date": base_data["Ημερομηνία"], "prod_time": base_data["Ώρα"], "customer": new_cust if new_cust.strip() else "Άγνωστος", 
                                 "cocktail_name": new_cock, "lot_cocktail": new_lot_c, "pieces": int(new_pcs), 
                                 "ingredient_name": fd["ing"], "total_ml": fd["ml"], "target_g": round(g_calc, 1), 
                                 "lot_number": fd["lot"], "expiry_date": fd["exp"]
