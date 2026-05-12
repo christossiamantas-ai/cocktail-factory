@@ -1605,7 +1605,7 @@ elif page == "📦 Lot Παραγωγής":
                     use_container_width=True,
                     column_config={
                         "Τεμάχια": st.column_config.NumberColumn(min_value=1, step=1, default=1),
-                        "Πελάτης": st.column_config.TextColumn(placeholder="Όνομα Πελάτη")
+                        "Πελάτης": st.column_config.TextColumn()
                     }
                 )
                 all_assignments[name] = edited_df
