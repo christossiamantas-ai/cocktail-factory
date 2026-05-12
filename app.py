@@ -17,37 +17,56 @@ url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
 
-# --- SIDEBAR & REFRESH LOGIC ---
+# --- SIDEBAR & FULL BACKUP LOGIC ---
+import zipfile
+import io
+
 with st.sidebar:
     st.header("⚙️ Διαχείριση")
     
     # 1. Κουμπί Ανανέωσης
-    if st.button("🔄 Ανανέωση Δεδομένων"):
+    if st.button("🔄 Ανανέωση Δεδομένων", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    st.info("Πατήστε ανανέωση για συγχρονισμό με τη βάση (Supabase).")
     
     st.divider()
 
-    # 2. ΕΔΩ ΜΠΑΙΝΕΙ ΤΟ ΓΡΗΓΟΡΟ BACKUP
-    st.subheader("⚡ Γρήγορο Backup")
+    # 2. ΠΛΗΡΕΣ BACKUP (ZIP)
+    st.subheader("🗄️ Πλήρες Backup")
     try:
-        # Τραβάμε τα δεδομένα του production_log που είναι τα πιο κρίσιμα
-        res_quick_back = supabase.table("production_log").select("*").execute()
-        if res_quick_back.data:
-            df_quick = pd.DataFrame(res_quick_back.data)
-            csv_quick = df_quick.to_csv(index=False).encode('utf-8-sig')
+        # Δημιουργία ενός Buffer στη μνήμη για το ZIP
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "x", zipfile.ZIP_DEFLATED) as zf:
             
-            st.download_button(
-                label="📥 Λήψη Ιστορικού (CSV)",
-                data=csv_quick,
-                file_name=f"Quick_Backup_LOT_{datetime.now().strftime('%d_%m_%Y')}.csv",
-                mime="text/csv",
-                use_container_width=True,
-                help="Κατεβάστε άμεσα όλο το ιστορικό παραγωγής σε αρχείο Excel/CSV"
-            )
+            # Λίστα με τους πίνακες που θέλουμε να πάρουμε
+            tables = {
+                "Production_LOT": "production_log",
+                "B2B_Orders": "b2b_orders",
+                "Inventory": "ingredients",
+                "HACCP_Logs": "haccp_logs"
+            }
+            
+            for file_name, table_name in tables.items():
+                res = supabase.table(table_name).select("*").execute()
+                if res.data:
+                    df_temp = pd.DataFrame(res.data)
+                    # Μετατροπή σε CSV (με utf-8-sig για Ελληνικά)
+                    csv_data = df_temp.to_csv(index=False).encode('utf-8-sig')
+                    zf.writestr(f"{file_name}_{datetime.now().strftime('%d_%m_%Y')}.csv", csv_data)
+        
+        # Κουμπί για κατέβασμα του ZIP
+        st.download_button(
+            label="📥 Λήψη Όλων των Δεδομένων (.zip)",
+            data=buf.getvalue(),
+            file_name=f"FULL_BACKUP_CABCLUB_{datetime.now().strftime('%d_%m_%Y')}.zip",
+            mime="application/zip",
+            use_container_width=True,
+            help="Ένα αρχείο ZIP που περιέχει τα πάντα (Παραγωγή, B2B, Αποθήκη, HACCP)"
+        )
+        st.success("Το Backup είναι έτοιμο!")
+
     except Exception as e:
-        st.error("Αποτυχία σύνδεσης για backup")
+        st.error(f"Σφάλμα Backup: {e}")
 
     st.divider()
     
