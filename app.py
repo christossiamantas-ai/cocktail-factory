@@ -1881,27 +1881,56 @@ elif page == "📦 Lot Παραγωγής":
                 html_daily += f"<tr style='background:#f2f2f2;font-weight:bold;'><td colspan='2' style='text-align: right;'>ΣΥΝΟΛΟ:</td><td>{c_data['Τεμάχια'].sum()} τμχ</td></tr></tbody></table>"
             html_daily += "</body></html>"
 
-            # 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME)
-            df_prep = df_past.groupby("Υλικό").agg({"Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum"}).reset_index()
-            html_prep = f"""
-            <html><head><meta charset='UTF-8'><style>
-                body {{ font-family: sans-serif; padding: 30px; }}
-                .header {{ text-align: center; border-bottom: 4px solid #2980b9; margin-bottom: 30px; }}
-                table {{ width: 100%; border-collapse: collapse; }}
-                th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
-                td {{ border: 1px solid #bdc3c7; padding: 10px; }}
+            # --- 🛠️ ΕΚΤΥΠΩΣΗ ΗΜΕΡΗΣΙΟΥ ΦΥΛΛΟΥ (ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ) ---
+            df_daily = df_past.copy()
+            html_daily = f"""
+            <html><head><meta charset='UTF-8'>
+            <style>
+                body {{ font-family: 'Helvetica', sans-serif; padding: 20px; }}
+                .header {{ text-align: center; border-bottom: 3px solid #d32f2f; margin-bottom: 30px; }}
+                .cocktail-header {{ background-color: #d32f2f; color: white; padding: 10px; margin-top: 20px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
+                th {{ background-color: #444; color: white; padding: 10px; text-align: left; }}
+                td {{ padding: 10px; border: 1px solid #ddd; }}
             </style></head>
-            <body><div class='header'><h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1><p>Ημερομηνία: <b>{sel_hist_date}</b></p></div>
-            <table><thead><tr><th>Πρώτη Ύλη</th><th>Συνολική Ποσότητα (ml)</th><th>Συνολικό Βάρος (g)</th></tr></thead><tbody>
+            <body>
+            <div class='header'>
+                <h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ / ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ</h1>
+                <p>Ημερομηνία: <b>{sel_hist_date}</b></p>
+            </div>
             """
-            for _, row in df_prep.iterrows():
-                html_prep += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f} ml</td><td>{row['Στόχος_Γραμμάρια']:.1f} g</td></tr>"
-            html_prep += "</tbody></table></body></html>"
 
-            col_p1, col_p2, col_p3 = st.columns(3)
-            col_p1.download_button("🖨️ Δελτίο Ιχνηλασιμότητας", data=html_pro, file_name=f"Trace_{sel_hist_date}.html", mime="text/html", use_container_width=True)
-            col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}.html", mime="text/html", use_container_width=True)
-            col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}.html", mime="text/html", use_container_width=True)
+            for cock in df_daily["Cocktail"].unique():
+                c_data = df_daily[df_daily["Cocktail"] == cock]
+                # Παίρνουμε πληροφορίες από την πρώτη γραμμή του Cocktail (Τμχ, LOT, Πελάτης)
+                first_row = c_data.iloc[0]
+                html_daily += f"""
+                <div class='cocktail-header'>
+                    🍹 {cock} | {first_row['Τεμάχια']} Τμχ | LOT: {first_row['LOT_Cocktail']} | Πελάτης: {first_row['Πελάτης']}
+                </div>
+                """
+                
+                # Προσθήκη κεφαλίδας με τη νέα στήλη "Lot & Λήξη Ύλης"
+                html_daily += "<table><thead><tr><th>Συστατικό</th><th>Ποσότητα</th><th>Lot & Λήξη Πρ. Ύλης</th></tr></thead><tbody>"
+                
+                for _, item in c_data.iterrows():
+                    # Συνδυάζουμε το Lot και τη Λήξη της πρώτης ύλης
+                    lot_info = f"{item['Lot Number']} | {item['Ημ_Λήξης']}"
+                    html_daily += f"<tr><td>{item['Υλικό']}</td><td>{item['Σύνολο_ML']:.0f} ml</td><td>{lot_info}</td></tr>"
+                
+                html_daily += "</tbody></table>"
+
+            html_daily += "</body></html>"
+
+            # Κουμπί Εκτύπωσης
+            st.download_button(
+                label="🖨️ Εκτύπωση Λίστας Προετοιμασίας",
+                data=html_daily,
+                file_name=f"Prep_List_{sel_hist_date}.html",
+                mime="text/html",
+                use_container_width=True,
+                type="primary"
+            )
 
         # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
