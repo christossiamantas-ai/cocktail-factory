@@ -1490,11 +1490,13 @@ elif page == "📈 Dashboard":
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
-    # --- ΜΝΗΜΗ ΕΦΑΡΜΟΓΗΣ ΓΙΑ ΤΗ ΦΟΡΤΩΣΗ (ΑΣΦΑΛΗΣ ΤΡΟΠΟΣ ΜΕ GET) ---
-    if "active_b2b_order" not in st.session_state:
-        st.session_state["active_b2b_order"] = None
+    # --- 100% ΑΣΦΑΛΗΣ ΜΝΗΜΗ ΕΦΑΡΜΟΓΗΣ ---
+    if 'active_b2b_order' not in st.session_state:
+        st.session_state['active_b2b_order'] = None
+    if 'lot_reset_key' not in st.session_state:
+        st.session_state['lot_reset_key'] = 0
 
-    active_order = st.session_state.get("active_b2b_order")
+    active_order = st.session_state.get('active_b2b_order')
 
     # --- ΕΚΚΡΕΜΟΤΗΤΕΣ ΑΠΟ B2B ---
     st.subheader("📋 Εκκρεμείς Παραγγελίες Πελατών (B2B)")
@@ -1508,7 +1510,7 @@ elif page == "📦 Lot Παραγωγής":
                 st.markdown(f"**Πελάτης:** {order['customer_name']} | **Προϊόντα:** {order['order_details'].replace('•', '')}")
             with col_b:
                 if st.button("📥 Φόρτωση", key=f"load_{order['id']}"):
-                    st.session_state["active_b2b_order"] = order.to_dict() 
+                    st.session_state['active_b2b_order'] = order.to_dict() 
                     st.success(f"Φορτώθηκε η παραγγελία του {order['customer_name']}!")
                     time.sleep(1)
                     st.rerun()
@@ -1517,7 +1519,7 @@ elif page == "📦 Lot Παραγωγής":
 
     if active_order is not None:
         if st.button("❌ Ακύρωση Φόρτωσης"):
-            st.session_state["active_b2b_order"] = None
+            st.session_state['active_b2b_order'] = None
             st.rerun()
 
     st.divider()
@@ -1560,15 +1562,13 @@ elif page == "📦 Lot Παραγωγής":
             selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique(), default=default_cocktails_list)
         
         with col_c2:
-            default_cust_name = ""
-            if active_order is not None:
-                default_cust_name = active_order.get('customer_name', '')
+            default_cust_name = active_order.get('customer_name', '') if active_order else ""
             customer_name = st.text_input("👤 Πελάτης:", value=default_cust_name, placeholder="Πληκτρολογήστε όνομα πελάτη...")
 
         if selected_cocktails:
             st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
             
-            # --- NEW: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ---
+            # --- ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ---
             unique_ings = set()
             for cocktail_name in selected_cocktails:
                 recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
@@ -1577,11 +1577,11 @@ elif page == "📦 Lot Παραγωγής":
                     if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
                         unique_ings.add(ing)
 
-            # --- NEW: ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
+            # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
             st.markdown("### 🔄 1. Συνολικά LOT Πρώτων Υλών Ημέρας")
-            st.info("Πληκτρολογήστε εδώ το LOT και τη Λήξη μία φορά. Θα μεταφερθούν αυτόματα σε όλες τις συνταγές παρακάτω!")
+            st.info("Πληκτρολογήστε το LOT μία φορά. Αν αφήσετε τα πεδία κενά στις συνταγές, θα χρησιμοποιηθούν αυτάματα αυτές οι τιμές!")
             
-            with st.expander("📋 Πίνακας Μοναδικών Υλικών (Αυτόματη Συμπλήρωση)", expanded=True):
+            with st.expander("📋 Πίνακας Μοναδικών Υλικών", expanded=True):
                 mh = st.columns([2, 1.5, 1.5])
                 mh[0].caption("ΠΡΩΤΗ ΥΛΗ")
                 mh[1].caption("LOT ΗΜΕΡΑΣ")
@@ -1607,7 +1607,9 @@ elif page == "📦 Lot Παραγωγής":
             # --- ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ ---
             st.markdown("### 🏷️ 3. Αναλυτικό Δελτίο & Οριστικοποίηση")
             lot_entries = []
-            with st.form("detailed_lot_form"):
+            
+            # Το reset key εξασφαλίζει ότι η φόρμα αδειάζει τελείως μετά από αποθήκευση
+            with st.form(f"detailed_lot_form_{st.session_state['lot_reset_key']}"):
                 for cocktail_name in selected_cocktails:
                     recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
                     st.markdown(f"#### 🍹 {cocktail_name}")
@@ -1629,20 +1631,28 @@ elif page == "📦 Lot Παραγωγής":
                         r[1].write(f"{tot_ml:.0f}")
                         r[2].markdown(f"**{tg_g:.1f}g**")
                         
-                        # --- ΑΝΤΛΗΣΗ ΤΙΜΩΝ ΑΠΟ ΤΟΝ ΚΕΝΤΡΙΚΟ ΠΙΝΑΚΑ ---
+                        # Παίρνουμε την τιμή από τον κεντρικό πίνακα
                         m_lot = st.session_state.get(f"mlot_{ing}", "")
                         m_exp = st.session_state.get(f"mexp_{ing}", "")
                         
-                        l1 = r[3].text_input("L1", value=m_lot, key=f"l1_{cocktail_name}_{i}", label_visibility="collapsed")
-                        e1 = r[4].text_input("E1", value=m_exp, key=f"e1_{cocktail_name}_{i}", label_visibility="collapsed")
+                        # Χρησιμοποιούμε placeholders για να βλέπει ο χρήστης τι θα αποθηκευτεί
+                        l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}", placeholder=m_lot, label_visibility="collapsed")
+                        e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}", placeholder=m_exp, label_visibility="collapsed")
                         l2 = r[5].text_input("L2", key=f"l2_{cocktail_name}_{i}", label_visibility="collapsed")
                         e2 = r[6].text_input("E2", key=f"e2_{cocktail_name}_{i}", label_visibility="collapsed")
+
+                        # Η ΜΑΓΕΙΑ ΕΔΩ: Αν το l1 είναι άδειο, πάρε το m_lot αυτόματα!
+                        val_l1 = l1.strip() if l1.strip() else m_lot.strip()
+                        val_e1 = e1.strip() if e1.strip() else m_exp.strip()
+                        val_l2 = l2.strip()
+                        val_e2 = e2.strip()
 
                         lot_entries.append({
                             "prod_date": formatted_date, "prod_time": current_time, "customer": customer_name,
                             "cocktail_name": cocktail_name, "lot_cocktail": date_lot_label, "pieces": int(counts[cocktail_name]),
                             "ingredient_name": ing, "total_ml": float(tot_ml), "target_g": round(float(tg_g), 1),
-                            "lot_number": l1 if not l2 else f"{l1} / {l2}", "expiry_date": e1 if not e2 else f"{e1} / {e2}"
+                            "lot_number": val_l1 if not val_l2 else f"{val_l1} / {val_l2}", 
+                            "expiry_date": val_e1 if not val_e2 else f"{val_e1} / {val_e2}"
                         })
                 
                 st.divider()
@@ -1655,22 +1665,26 @@ elif page == "📦 Lot Παραγωγής":
                             
                         try:
                             supabase.table("production_log").insert(lot_entries).execute()
+                            
+                            # Ενημέρωση B2B 
                             if active_order is not None:
                                 supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
-                                st.session_state["active_b2b_order"] = None 
+                                st.session_state['active_b2b_order'] = None 
                             
-                            st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς!")
+                            # Καθαρισμός του Master Πίνακα
+                            keys_to_clear = [k for k in st.session_state.keys() if k.startswith("mlot_") or k.startswith("mexp_")]
+                            for k in keys_to_clear:
+                                st.session_state[k] = ""
                             
-                            # Καθαρισμός του Master Πίνακα για την επόμενη χρήση
-                            for key in st.session_state.keys():
-                                if key.startswith("mlot_") or key.startswith("mexp_"):
-                                    st.session_state[key] = ""
-                                    
+                            # Αλλαγή του reset key για να καταστραφεί και να καθαρίσει εντελώς η φόρμα
+                            st.session_state['lot_reset_key'] += 1
+                            
+                            st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς! Τα LOT και οι Ημερομηνίες καταχωρήθηκαν σωστά.")
                             st.cache_data.clear()
-                            time.sleep(1.5)
+                            time.sleep(2)
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Σφάλμα: {e}")
+                            st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
                             
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
