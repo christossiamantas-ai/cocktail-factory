@@ -1491,10 +1491,23 @@ elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
     # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ: ΑΣΦΑΛΗΣ ΜΕΤΑΤΡΟΠΗ ML ---
-    def parse_ml_value(raw_val):
+    def get_recipe_ml(row_series, idx):
+        raw_val = None
+        exact_key = f"ML{idx}"
+        
+        if exact_key in row_series:
+            raw_val = row_series[exact_key]
+        else:
+            target = exact_key.lower()
+            for col in row_series.index:
+                if str(col).lower().replace(" ", "").replace("_", "") == target:
+                    raw_val = row_series[col]
+                    break
+        
+        if raw_val is None or pd.isna(raw_val):
+            return 0.0
+            
         try:
-            if pd.isna(raw_val): return 0.0
-            # Αντικαθιστούμε τα κόμματα με τελείες (για ελληνικά δεκαδικά) και αφαιρούμε κενά
             val_str = str(raw_val).replace(',', '.').replace(' ', '')
             return float(val_str) if val_str else 0.0
         except Exception:
@@ -1507,6 +1520,7 @@ elif page == "📦 Lot Παραγωγής":
         st.session_state['lot_reset_key'] = 0
 
     active_order = st.session_state.get('active_b2b_order')
+    reset_key = st.session_state['lot_reset_key']
 
     # --- ΕΚΚΡΕΜΟΤΗΤΕΣ ΑΠΟ B2B ---
     st.subheader("📋 Εκκρεμείς Παραγγελίες Πελατών (B2B)")
@@ -1584,7 +1598,7 @@ elif page == "📦 Lot Παραγωγής":
             c_cols = st.columns(len(selected_cocktails))
             for i, name in enumerate(selected_cocktails):
                 def_qty = default_quantities.get(name, 1)
-                counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=def_qty, key=f"cnt_{name}")
+                counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=def_qty, key=f"cnt_{name}_{reset_key}")
 
             # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML ---
             ing_totals = {}
@@ -1593,8 +1607,7 @@ elif page == "📦 Lot Παραγωγής":
                 for i in range(1, 14):
                     ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                     if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
-                        # Χρήση της νέας ασφαλούς συνάρτησης!
-                        ml_u = parse_ml_value(recipe_row.get(f"ML{i}", 0.0))
+                        ml_u = get_recipe_ml(recipe_row, i)
                         ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * counts[cocktail_name])
 
             # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
@@ -1608,22 +1621,19 @@ elif page == "📦 Lot Παραγωγής":
                 mh[2].caption("LOT ΗΜΕΡΑΣ")
                 mh[3].caption("ΛΗΞΗ ΗΜΕΡΑΣ")
                 
-                # Εμφάνιση αλφαβητικά
                 for ing in sorted(ing_totals.keys()):
-                    if f"mlot_{ing}" not in st.session_state: st.session_state[f"mlot_{ing}"] = ""
-                    if f"mexp_{ing}" not in st.session_state: st.session_state[f"mexp_{ing}"] = ""
-                    
                     mr = st.columns([2, 1, 1.5, 1.5])
                     mr[0].write(f"**{ing}**")
                     mr[1].write(f"**{ing_totals[ing]:.0f} ml**")
-                    mr[2].text_input("LOT", key=f"mlot_{ing}", label_visibility="collapsed")
-                    mr[3].text_input("EXP", key=f"mexp_{ing}", label_visibility="collapsed")
+                    # Το reset_key εξασφαλίζει ότι τα πεδία καθαρίζουν μετά την αποθήκευση
+                    mr[2].text_input("LOT", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
+                    mr[3].text_input("EXP", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
 
             # --- ΒΗΜΑ 3: ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ ---
             st.markdown("### 🏷️ 3. Αναλυτικό Δελτίο & Οριστικοποίηση")
             lot_entries = []
             
-            with st.form(f"detailed_lot_form_{st.session_state['lot_reset_key']}"):
+            with st.form(f"detailed_lot_form_{reset_key}"):
                 for cocktail_name in selected_cocktails:
                     recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
                     st.markdown(f"#### 🍹 {cocktail_name}")
@@ -1634,8 +1644,7 @@ elif page == "📦 Lot Παραγωγής":
                         ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
                         
-                        # Χρήση της νέας ασφαλούς συνάρτησης!
-                        ml_u = parse_ml_value(recipe_row.get(f"ML{i}", 0.0))
+                        ml_u = get_recipe_ml(recipe_row, i)
                         tot_ml = ml_u * counts[cocktail_name]
                         tg_g = tot_ml
                         match_ing = df_ing[df_ing["Name"] == ing]
@@ -1647,13 +1656,14 @@ elif page == "📦 Lot Παραγωγής":
                         r[1].write(f"{tot_ml:.0f}")
                         r[2].markdown(f"**{tg_g:.1f}g**")
                         
-                        m_lot = st.session_state.get(f"mlot_{ing}", "")
-                        m_exp = st.session_state.get(f"mexp_{ing}", "")
+                        # Παίρνουμε με ασφάλεια τις τιμές από τα πεδία του κεντρικού πίνακα
+                        m_lot = st.session_state.get(f"mlot_{ing}_{reset_key}", "")
+                        m_exp = st.session_state.get(f"mexp_{ing}_{reset_key}", "")
                         
-                        l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}", placeholder=m_lot, label_visibility="collapsed")
-                        e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}", placeholder=m_exp, label_visibility="collapsed")
-                        l2 = r[5].text_input("L2", key=f"l2_{cocktail_name}_{i}", label_visibility="collapsed")
-                        e2 = r[6].text_input("E2", key=f"e2_{cocktail_name}_{i}", label_visibility="collapsed")
+                        l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}_{reset_key}", placeholder=m_lot, label_visibility="collapsed")
+                        e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}_{reset_key}", placeholder=m_exp, label_visibility="collapsed")
+                        l2 = r[5].text_input("L2", key=f"l2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
+                        e2 = r[6].text_input("E2", key=f"e2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
 
                         val_l1 = l1.strip() if l1.strip() else m_lot.strip()
                         val_e1 = e1.strip() if e1.strip() else m_exp.strip()
@@ -1683,10 +1693,8 @@ elif page == "📦 Lot Παραγωγής":
                                 supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
                                 st.session_state['active_b2b_order'] = None 
                             
-                            keys_to_clear = [k for k in st.session_state.keys() if k.startswith("mlot_") or k.startswith("mexp_")]
-                            for k in keys_to_clear:
-                                st.session_state[k] = ""
-                            
+                            # Η ΑΛΛΑΓΗ ΠΟΥ ΛΥΝΕΙ ΤΟ ΚΟΚΚΙΝΟ ΣΦΑΛΜΑ (Crash):
+                            # Αντί να σβήνουμε μεταβλητές, απλά αλλάζουμε το κλειδί της φόρμας!
                             st.session_state['lot_reset_key'] += 1
                             
                             st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς! Τα LOT και οι Ημερομηνίες καταχωρήθηκαν σωστά.")
@@ -1749,7 +1757,7 @@ elif page == "📦 Lot Παραγωγής":
                     for i in range(1, 14):
                         ing_n = str(new_r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing_n not in ["ΚΕΝΟ", "nan", ""]:
-                            ml_calc = parse_ml_value(new_r.get(f"ML{i}", 0.0)) * new_pcs
+                            ml_calc = get_recipe_ml(new_r, i) * new_pcs
                             display_ingredients.append({"Υλικό": ing_n, "ML": ml_calc, "Lot": "", "Exp": ""})
                 else:
                     for idx in row_indices:
