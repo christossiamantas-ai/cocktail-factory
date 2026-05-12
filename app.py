@@ -20,14 +20,41 @@ supabase: Client = create_client(url, key)
 # --- SIDEBAR & REFRESH LOGIC ---
 with st.sidebar:
     st.header("⚙️ Διαχείριση")
+    
+    # 1. Κουμπί Ανανέωσης
     if st.button("🔄 Ανανέωση Δεδομένων"):
         st.cache_data.clear()
         st.rerun()
-    
     st.info("Πατήστε ανανέωση για συγχρονισμό με τη βάση (Supabase).")
+    
     st.divider()
+
+    # 2. ΕΔΩ ΜΠΑΙΝΕΙ ΤΟ ΓΡΗΓΟΡΟ BACKUP
+    st.subheader("⚡ Γρήγορο Backup")
+    try:
+        # Τραβάμε τα δεδομένα του production_log που είναι τα πιο κρίσιμα
+        res_quick_back = supabase.table("production_log").select("*").execute()
+        if res_quick_back.data:
+            df_quick = pd.DataFrame(res_quick_back.data)
+            csv_quick = df_quick.to_csv(index=False).encode('utf-8-sig')
+            
+            st.download_button(
+                label="📥 Λήψη Ιστορικού (CSV)",
+                data=csv_quick,
+                file_name=f"Quick_Backup_LOT_{datetime.now().strftime('%d_%m_%Y')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                help="Κατεβάστε άμεσα όλο το ιστορικό παραγωγής σε αρχείο Excel/CSV"
+            )
+    except Exception as e:
+        st.error("Αποτυχία σύνδεσης για backup")
+
+    st.divider()
+    
+    # 3. Ένδειξη ώρας
     now = datetime.now().strftime("%H:%M:%S")
     st.write(f"Τελευταίος έλεγχος: {now}")
+    st.caption("CABCLUB v3.0 - 2026")
 
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
 def update_live_status(user_name):
