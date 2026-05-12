@@ -1490,6 +1490,16 @@ elif page == "📈 Dashboard":
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
+    # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ: ΑΣΦΑΛΗΣ ΜΕΤΑΤΡΟΠΗ ML ---
+    def parse_ml_value(raw_val):
+        try:
+            if pd.isna(raw_val): return 0.0
+            # Αντικαθιστούμε τα κόμματα με τελείες (για ελληνικά δεκαδικά) και αφαιρούμε κενά
+            val_str = str(raw_val).replace(',', '.').replace(' ', '')
+            return float(val_str) if val_str else 0.0
+        except Exception:
+            return 0.0
+
     # --- 100% ΑΣΦΑΛΗΣ ΜΝΗΜΗ ΕΦΑΡΜΟΓΗΣ ---
     if 'active_b2b_order' not in st.session_state:
         st.session_state['active_b2b_order'] = None
@@ -1568,7 +1578,7 @@ elif page == "📦 Lot Παραγωγής":
         if selected_cocktails:
             st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
             
-            # --- ΒΗΜΑ 1: ΤΕΜΑΧΙΑ ΑΝΑ COCKTAIL (Μπήκε πρώτο για να υπολογίζει ml) ---
+            # --- ΒΗΜΑ 1: ΤΕΜΑΧΙΑ ΑΝΑ COCKTAIL ---
             st.markdown("### 🔢 1. Τεμάχια Παραγωγής")
             counts = {}
             c_cols = st.columns(len(selected_cocktails))
@@ -1583,11 +1593,8 @@ elif page == "📦 Lot Παραγωγής":
                 for i in range(1, 14):
                     ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                     if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
-                        try:
-                            ml_u = float(recipe_row.get(f"ML{i}", 0.0))
-                        except ValueError:
-                            ml_u = 0.0
-                        # Προσθέτουμε τα ml (ml ανά τεμάχιο * συνολικά τεμάχια)
+                        # Χρήση της νέας ασφαλούς συνάρτησης!
+                        ml_u = parse_ml_value(recipe_row.get(f"ML{i}", 0.0))
                         ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * counts[cocktail_name])
 
             # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
@@ -1626,7 +1633,9 @@ elif page == "📦 Lot Παραγωγής":
                     for i in range(1, 14):
                         ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
-                        ml_u = float(recipe_row.get(f"ML{i}", 0.0))
+                        
+                        # Χρήση της νέας ασφαλούς συνάρτησης!
+                        ml_u = parse_ml_value(recipe_row.get(f"ML{i}", 0.0))
                         tot_ml = ml_u * counts[cocktail_name]
                         tg_g = tot_ml
                         match_ing = df_ing[df_ing["Name"] == ing]
@@ -1740,7 +1749,7 @@ elif page == "📦 Lot Παραγωγής":
                     for i in range(1, 14):
                         ing_n = str(new_r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing_n not in ["ΚΕΝΟ", "nan", ""]:
-                            ml_calc = float(new_r.get(f"ML{i}", 0)) * new_pcs
+                            ml_calc = parse_ml_value(new_r.get(f"ML{i}", 0.0)) * new_pcs
                             display_ingredients.append({"Υλικό": ing_n, "ML": ml_calc, "Lot": "", "Exp": ""})
                 else:
                     for idx in row_indices:
