@@ -1881,8 +1881,15 @@ elif page == "📦 Lot Παραγωγής":
                 html_daily += f"<tr style='background:#f2f2f2;font-weight:bold;'><td colspan='2' style='text-align: right;'>ΣΥΝΟΛΟ:</td><td>{c_data['Τεμάχια'].sum()} τμχ</td></tr></tbody></table>"
             html_daily += "</body></html>"
 
-            # 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME)
-            df_prep = df_past.groupby("Υλικό").agg({"Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum"}).reset_index()
+            # --- 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME) ---
+            # Συγκεντρώνουμε τα δεδομένα ανά υλικό, αθροίζοντας ποσότητες και ενώνοντας τα μοναδικά LOT/Λήξεις
+            df_prep = df_past.groupby("Υλικό").agg({
+                "Σύνολο_ML": "sum", 
+                "Στόχος_Γραμμάρια": "sum",
+                "Lot Number": lambda x: " / ".join(sorted(set(str(v) for v in x if v and str(v).lower() != 'none'))),
+                "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v) for v in x if v and str(v).lower() != 'none')))
+            }).reset_index()
+
             html_prep = f"""
             <html><head><meta charset='UTF-8'><style>
                 body {{ font-family: sans-serif; padding: 30px; }}
@@ -1890,19 +1897,43 @@ elif page == "📦 Lot Παραγωγής":
                 table {{ width: 100%; border-collapse: collapse; }}
                 th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
                 td {{ border: 1px solid #bdc3c7; padding: 10px; }}
+                .lot-info {{ font-size: 0.9em; color: #555; }}
             </style></head>
-            <body><div class='header'><h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1><p>Ημερομηνία: <b>{sel_hist_date}</b></p></div>
-            <table><thead><tr><th>Πρώτη Ύλη</th><th>Συνολική Ποσότητα (ml)</th><th>Συνολικό Βάρος (g)</th></tr></thead><tbody>
+            <body>
+                <div class='header'>
+                    <h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1>
+                    <p>Ημερομηνία: <b>{sel_hist_date}</b></p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Πρώτη Ύλη</th>
+                            <th>Συνολική Ποσότητα (ml)</th>
+                            <th>Συνολικό Βάρος (g)</th>
+                            <th>Lot & Λήξη Πρ. Ύλης</th>
+                        </tr>
+                    </thead>
+                    <tbody>
             """
             for _, row in df_prep.iterrows():
-                html_prep += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f} ml</td><td>{row['Στόχος_Γραμμάρια']:.1f} g</td></tr>"
+                # Δημιουργία κειμένου για Lot και Λήξη
+                lot_text = f"{row['Lot Number']} | {row['Ημ_Λήξης']}" if row['Lot Number'] else "-"
+                
+                html_prep += f"""
+                    <tr>
+                        <td><b>{row['Υλικό']}</b></td>
+                        <td>{row['Σύνολο_ML']:.0f} ml</td>
+                        <td>{row['Στόχος_Γραμμάρια']:.1f} g</td>
+                        <td class='lot-info'>{lot_text}</td>
+                    </tr>
+                """
             html_prep += "</tbody></table></body></html>"
 
+            # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD ---
             col_p1, col_p2, col_p3 = st.columns(3)
             col_p1.download_button("🖨️ Δελτίο Ιχνηλασιμότητας", data=html_pro, file_name=f"Trace_{sel_hist_date}.html", mime="text/html", use_container_width=True)
             col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}.html", mime="text/html", use_container_width=True)
             col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}.html", mime="text/html", use_container_width=True)
-
         # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
