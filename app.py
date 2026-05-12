@@ -2177,10 +2177,66 @@ elif page == "📦 Lot Παραγωγής":
             st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
 
 
-# --- 1.6 ΣΥΝΤΗΡΗΣΗ & HACCP (ULΤΙΜΑΤΕ VERSION) ---
-elif page == "🧼 Συντήρηση & HACCP":
-    st.header("🧼 Ψηφιακό Μητρώο HACCP & Καθαρισμού")
+# --- 13. ΣΥΝΤΗΡΗΣΗ & HACCP (ΠΡΟΣΘΗΚΗ BACKUP) ---
+elif page == "🛠️ Συντήρηση & HACCP":
+    st.header("🛠️ Διαχείριση Συστήματος & HACCP")
+    
+    st.subheader("📥 Κέντρο Αντιγράφων Ασφαλείας (Backup)")
+    st.info("Συνιστάται η λήψη backup τουλάχιστον μία φορά την εβδομάδα για την εξασφάλιση των δεδομένων σας.")
+    
+    col_back1, col_back2, col_back3 = st.columns(3)
+    
+    # --- 1. BACKUP ΠΑΡΑΓΓΕΛΙΩΝ B2B ---
+    with col_back1:
+        st.markdown("### 📋 Παραγγελίες")
+        res_b2b_back = supabase.table("b2b_orders").select("*").execute()
+        if res_b2b_back.data:
+            df_b2b_back = pd.DataFrame(res_b2b_back.data)
+            csv_b2b = df_b2b_back.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Download B2B Orders",
+                data=csv_b2b,
+                file_name=f"Backup_B2B_Orders_{datetime.now().strftime('%d_%m_%Y')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            st.caption(f"Σύνολο εγγραφών: {len(df_b2b_back)}")
 
+    # --- 2. BACKUP ΙΣΤΟΡΙΚΟΥ ΠΑΡΑΓΩΓΗΣ (LOT) ---
+    with col_back2:
+        st.markdown("### 📦 Ιστορικό LOT")
+        res_lot_back = supabase.table("production_log").select("*").execute()
+        if res_lot_back.data:
+            df_lot_back = pd.DataFrame(res_lot_back.data)
+            csv_lot = df_lot_back.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Download Production Logs",
+                data=csv_lot,
+                file_name=f"Backup_Production_LOT_{datetime.now().strftime('%d_%m_%Y')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            st.caption(f"Σύνολο εγγραφών: {len(df_lot_back)}")
+
+    # --- 3. BACKUP HACCP & ΑΠΟΘΗΚΗΣ ---
+    with col_back3:
+        st.markdown("### 🧪 HACCP & Αποθήκη")
+        # Εδώ παίρνουμε τις πρώτες ύλες και το ιστορικό αντικαταστάσεων
+        res_ing_back = supabase.table("ingredients").select("*").execute()
+        if res_ing_back.data:
+            df_ing_back = pd.DataFrame(res_ing_back.data)
+            csv_ing = df_ing_back.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Download Inventory",
+                data=csv_ing,
+                file_name=f"Backup_Inventory_{datetime.now().strftime('%d_%m_%Y')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            st.caption(f"Σύνολο υλικών: {len(df_ing_back)}")
+
+    st.divider()
+    # Εδώ συνεχίζει ο υπόλοιπος κώδικας της σελίδας HACCP (π.χ. καθαρισμοί, θερμοκρασίες κλπ)
     # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ ΓΙΑ REPORT ΜΕ ΥΠΟΓΡΑΦΗ ---
     def generate_haccp_report_html(data, title="ΑΡΧΕΙΟ HACCP"):
         rows_html = ""
