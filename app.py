@@ -1568,47 +1568,54 @@ elif page == "📦 Lot Παραγωγής":
         if selected_cocktails:
             st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
             
-            # --- ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ---
-            unique_ings = set()
-            for cocktail_name in selected_cocktails:
-                recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
-                for i in range(1, 14):
-                    ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                    if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
-                        unique_ings.add(ing)
-
-            # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
-            st.markdown("### 🔄 1. Συνολικά LOT Πρώτων Υλών Ημέρας")
-            st.info("Πληκτρολογήστε το LOT μία φορά. Αν αφήσετε τα πεδία κενά στις συνταγές, θα χρησιμοποιηθούν αυτάματα αυτές οι τιμές!")
-            
-            with st.expander("📋 Πίνακας Μοναδικών Υλικών", expanded=True):
-                mh = st.columns([2, 1.5, 1.5])
-                mh[0].caption("ΠΡΩΤΗ ΥΛΗ")
-                mh[1].caption("LOT ΗΜΕΡΑΣ")
-                mh[2].caption("ΛΗΞΗ ΗΜΕΡΑΣ")
-                
-                for ing in sorted(unique_ings):
-                    if f"mlot_{ing}" not in st.session_state: st.session_state[f"mlot_{ing}"] = ""
-                    if f"mexp_{ing}" not in st.session_state: st.session_state[f"mexp_{ing}"] = ""
-                    
-                    mr = st.columns([2, 1.5, 1.5])
-                    mr[0].write(f"**{ing}**")
-                    mr[1].text_input("LOT", key=f"mlot_{ing}", label_visibility="collapsed")
-                    mr[2].text_input("EXP", key=f"mexp_{ing}", label_visibility="collapsed")
-
-            # --- ΤΕΜΑΧΙΑ ΑΝΑ COCKTAIL ---
-            st.markdown("### 🔢 2. Τεμάχια Παραγωγής")
+            # --- ΒΗΜΑ 1: ΤΕΜΑΧΙΑ ΑΝΑ COCKTAIL (Μπήκε πρώτο για να υπολογίζει ml) ---
+            st.markdown("### 🔢 1. Τεμάχια Παραγωγής")
             counts = {}
             c_cols = st.columns(len(selected_cocktails))
             for i, name in enumerate(selected_cocktails):
                 def_qty = default_quantities.get(name, 1)
                 counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=def_qty, key=f"cnt_{name}")
 
-            # --- ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ ---
+            # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML ---
+            ing_totals = {}
+            for cocktail_name in selected_cocktails:
+                recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
+                for i in range(1, 14):
+                    ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                    if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
+                        try:
+                            ml_u = float(recipe_row.get(f"ML{i}", 0.0))
+                        except ValueError:
+                            ml_u = 0.0
+                        # Προσθέτουμε τα ml (ml ανά τεμάχιο * συνολικά τεμάχια)
+                        ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * counts[cocktail_name])
+
+            # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
+            st.markdown("### 🔄 2. Συνολικά LOT Πρώτων Υλών Ημέρας")
+            st.info("Δείτε τα συνολικά ml που απαιτούνται. Πληκτρολογήστε το LOT και θα περαστεί αυτόματα στις συνταγές!")
+            
+            with st.expander("📋 Πίνακας Μοναδικών Υλικών & Συνολικών Ποσοτήτων", expanded=True):
+                mh = st.columns([2, 1, 1.5, 1.5])
+                mh[0].caption("ΠΡΩΤΗ ΥΛΗ")
+                mh[1].caption("ΣΥΝΟΛΟ (ml)")
+                mh[2].caption("LOT ΗΜΕΡΑΣ")
+                mh[3].caption("ΛΗΞΗ ΗΜΕΡΑΣ")
+                
+                # Εμφάνιση αλφαβητικά
+                for ing in sorted(ing_totals.keys()):
+                    if f"mlot_{ing}" not in st.session_state: st.session_state[f"mlot_{ing}"] = ""
+                    if f"mexp_{ing}" not in st.session_state: st.session_state[f"mexp_{ing}"] = ""
+                    
+                    mr = st.columns([2, 1, 1.5, 1.5])
+                    mr[0].write(f"**{ing}**")
+                    mr[1].write(f"**{ing_totals[ing]:.0f} ml**")
+                    mr[2].text_input("LOT", key=f"mlot_{ing}", label_visibility="collapsed")
+                    mr[3].text_input("EXP", key=f"mexp_{ing}", label_visibility="collapsed")
+
+            # --- ΒΗΜΑ 3: ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ ---
             st.markdown("### 🏷️ 3. Αναλυτικό Δελτίο & Οριστικοποίηση")
             lot_entries = []
             
-            # Το reset key εξασφαλίζει ότι η φόρμα αδειάζει τελείως μετά από αποθήκευση
             with st.form(f"detailed_lot_form_{st.session_state['lot_reset_key']}"):
                 for cocktail_name in selected_cocktails:
                     recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
@@ -1619,7 +1626,7 @@ elif page == "📦 Lot Παραγωγής":
                     for i in range(1, 14):
                         ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
-                        ml_u = recipe_row.get(f"ML{i}", 0.0)
+                        ml_u = float(recipe_row.get(f"ML{i}", 0.0))
                         tot_ml = ml_u * counts[cocktail_name]
                         tg_g = tot_ml
                         match_ing = df_ing[df_ing["Name"] == ing]
@@ -1631,17 +1638,14 @@ elif page == "📦 Lot Παραγωγής":
                         r[1].write(f"{tot_ml:.0f}")
                         r[2].markdown(f"**{tg_g:.1f}g**")
                         
-                        # Παίρνουμε την τιμή από τον κεντρικό πίνακα
                         m_lot = st.session_state.get(f"mlot_{ing}", "")
                         m_exp = st.session_state.get(f"mexp_{ing}", "")
                         
-                        # Χρησιμοποιούμε placeholders για να βλέπει ο χρήστης τι θα αποθηκευτεί
                         l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}", placeholder=m_lot, label_visibility="collapsed")
                         e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}", placeholder=m_exp, label_visibility="collapsed")
                         l2 = r[5].text_input("L2", key=f"l2_{cocktail_name}_{i}", label_visibility="collapsed")
                         e2 = r[6].text_input("E2", key=f"e2_{cocktail_name}_{i}", label_visibility="collapsed")
 
-                        # Η ΜΑΓΕΙΑ ΕΔΩ: Αν το l1 είναι άδειο, πάρε το m_lot αυτόματα!
                         val_l1 = l1.strip() if l1.strip() else m_lot.strip()
                         val_e1 = e1.strip() if e1.strip() else m_exp.strip()
                         val_l2 = l2.strip()
@@ -1666,17 +1670,14 @@ elif page == "📦 Lot Παραγωγής":
                         try:
                             supabase.table("production_log").insert(lot_entries).execute()
                             
-                            # Ενημέρωση B2B 
                             if active_order is not None:
                                 supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
                                 st.session_state['active_b2b_order'] = None 
                             
-                            # Καθαρισμός του Master Πίνακα
                             keys_to_clear = [k for k in st.session_state.keys() if k.startswith("mlot_") or k.startswith("mexp_")]
                             for k in keys_to_clear:
                                 st.session_state[k] = ""
                             
-                            # Αλλαγή του reset key για να καταστραφεί και να καθαρίσει εντελώς η φόρμα
                             st.session_state['lot_reset_key'] += 1
                             
                             st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς! Τα LOT και οι Ημερομηνίες καταχωρήθηκαν σωστά.")
@@ -1705,7 +1706,6 @@ elif page == "📦 Lot Παραγωγής":
         if sel_hist_date:
             df_past = df_all_logs_renamed[df_all_logs_renamed["Ημερομηνία"] == sel_hist_date]
             
-            # --- 🛠️ ΕΠΕΞΕΡΓΑΣΙΑ BATCH ---
             batches = df_past.groupby(['Ώρα', 'Πελάτης', 'Cocktail', 'LOT_Cocktail']).groups
             options = ["-- Επιλέξτε Παραγωγή --"]
             batch_mapping = {}
