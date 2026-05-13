@@ -40,6 +40,7 @@ with st.sidebar:
                 "B2B_Orders": "b2b_orders",
                 "Inventory": "ingredients",
                 "HACCP_Logs": "haccp_log" # Χρήση ενικού όπως είδαμε στο σφάλμα
+                "Recipes": "recipes"
             }
             
             for file_label, table_name in tables.items():
