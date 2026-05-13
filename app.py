@@ -2578,7 +2578,7 @@ elif page == "📦 Παραγγελίες B2B":
             timeout=20
         )
     except Exception as e:
-        st.error("⚠️ Πρόβλημα με τις ρυθμίσεις του WooCommerce στα Secrets.")
+        st.error(f"⚠️ Πρόβλημα WooCommerce: {e}")
 
     # Κουμπί Συγχρονισμού στην κορυφή
     col_sync1, col_sync2 = st.columns([1, 2])
