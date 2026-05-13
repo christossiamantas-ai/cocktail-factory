@@ -1720,21 +1720,19 @@ elif page == "📦 Lot Παραγωγής":
                         for di in ids_to_del: supabase.table("production_log").delete().eq("id", di).execute()
                         st.warning("Διαγράφηκε!"); st.cache_data.clear(); time.sleep(1); st.rerun()
 
-                # --- ΕΝΟΤΗΤΑ ΕΚΤΥΠΩΣΗΣ PDF (ΔΙΟΡΘΩΜΕΝΗ) ---
-                if st.button("🖨️ Εκτύπωση PDF"):
-                    html_pro = f"""
-                    <html>
-                    <body style="font-family: Arial;">
-                        <h2>Δελτίο Παραγωγής: {new_cock}</h2>
-                        <p>Πελάτης: {new_cust} | LOT: {new_lot_c} | Τεμάχια: {new_pcs}</p>
-                        <table border='1' style='width:100%; border-collapse: collapse;'>
-                            <tr style='background-color: #f2f2f2;'><th>Υλικό</th><th>ML</th><th>Lot Number</th><th>Λήξη</th></tr>
-                            {''.join([f"<tr><td>{x['ing']}</td><td>{x['ml']:.0f}</td><td>{x['lot']}</td><td>{x['exp']}</td></tr>" for x in final_updated])}
-                        </table>
-                    </body>
-                    </html>
-                    """
-                    st.download_button("📥 Λήψη PDF", data=html_pro, file_name=f"Batch_{new_lot_c}.html", mime="text/html")
+                # --- ΕΝΟΤΗΤΑ ΕΚΤΥΠΩΣΗΣ PDF ---
+        if st.button("🖨️ Εκτύπωση PDF"):
+            # Η παρακάτω γραμμή ΠΡΕΠΕΙ να ξεκινάει ακριβώς 4 κενά μετά το "if"
+            html_pro = f"""
+            <html>
+            <body style="font-family: Arial;">
+                <h2>Δελτίο Παραγωγής</h2>
+                <p>Ημερομηνία: {datetime.now().strftime('%d/%m/%Y')}</p>
+            </body>
+            </html>
+            """
+            # Και αυτή η γραμμή πρέπει να είναι στην ίδια ευθεία με το html_pro
+            st.download_button("📥 Λήψη PDF", data=html_pro, file_name="production_report.html", mime="text/html")
 else:
     st.info("📭 Το ιστορικό είναι κενό.")
             
