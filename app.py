@@ -1311,7 +1311,7 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΑΝΑΛΥΣΗ ΜΕ ABC & ΕΚΠΤΩΣΗ 26%) ---
+# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ & ABC) ---
 elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
     
@@ -1345,31 +1345,67 @@ elif page == "📈 Dashboard":
         if sel_month != "ΟΛΟΙ ΟΙ ΜΗΝΕΣ":
             df_filtered = df_filtered[df_filtered['Month_Year'] == sel_month]
 
-        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΟΙΚΟΝΟΜΙΚΩΝ (ΤΙΜΗ DEALER = ΛΙΑΝΙΚΗ * 0.74) ---
+        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΟΙΚΟΝΟΜΙΚΩΝ (ΤΙΜΗ DEALER, ΚΟΣΤΟΣ & ΚΕΡΔΟΣ) ---
         df_filtered = df_filtered.merge(df_prices, left_on="cocktail_name", right_on="name", how="left", suffixes=('', '_ref'))
         
-        # Μετατροπή σε νούμερα και υπολογισμός (Λιανική * 0.74)
+        # Α. Έσοδα (Dealer Price = Λιανική * 0.74)
         df_filtered['catalog_price'] = pd.to_numeric(df_filtered['catalog_price'], errors='coerce').fillna(0)
         df_filtered['dealer_price'] = df_filtered['catalog_price'] * 0.74
         df_filtered['Revenue'] = df_filtered['pieces'] * df_filtered['dealer_price']
-        
+
+        # Β. Κόστος Παραγωγής (Ingredients Cost)
+        total_cost = 0
+        recipe_costs_dict = {}
+        try:
+            res_ing = supabase.table("ingredients").select("name, price, volume").execute()
+            df_ing = pd.DataFrame(res_ing.data)
+            df_ing['cost_per_ml'] = pd.to_numeric(df_ing['price']) / pd.to_numeric(df_ing['volume'])
+            ing_map = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
+
+            res_items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute()
+            df_items = pd.DataFrame(res_items.data)
+
+            for rid in df_items['recipe_id'].unique():
+                sub = df_items[df_items['recipe_id'] == rid]
+                c = 0.22 # Σταθερά έξοδα (μπουκάλι, ετικέτα κλπ)
+                for _, item in sub.iterrows():
+                    c += item['ml_per_unit'] * ing_map.get(item['ingredient_name'], 0)
+                recipe_costs_dict[rid] = c
+            
+            # Εφαρμογή κόστους ανά γραμμή πώλησης
+            df_filtered['unit_cost'] = df_filtered['id'].map(recipe_costs_dict).fillna(0)
+            df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['unit_cost']
+            total_cost = df_filtered['Total_Cost'].sum()
+        except:
+            df_filtered['Total_Cost'] = 0
+
+        # Γ. Τελικοί Υπολογισμοί
         total_rev = df_filtered['Revenue'].sum()
+        total_profit = total_rev - total_cost
         total_units = df_filtered['pieces'].sum()
         total_orders = len(df_filtered)
 
         # --- ΣΥΝΟΨΗ (METRICS) ---
         st.divider()
         st.subheader(f"📊 Σύνοψη: {sel_customer if sel_customer != 'ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ' else 'Όλοι οι Πελάτες'}")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("💰 Τζίρος Αντιπροσώπων (-26%)", f"{total_rev:.2f} €".replace('.', ','))
-        m2.metric("🍹 Συνολικά Τεμάχια", f"{int(total_units)} τμχ")
-        m3.metric("📦 Αριθμός Παραγγελιών", total_orders)
+        
+        # 5 Στήλες για πλήρη εικόνα
+        m1, m2, m3, m4, m5 = st.columns(5)
+        
+        m1.metric("💰 Τζίρος (Dealer)", f"{total_rev:.2f} €".replace('.', ','))
+        m2.metric("📉 Κόστος Υλικών", f"{total_cost:.2f} €".replace('.', ','))
+        
+        # Κέρδος με ένδειξη Margin (%)
+        profit_margin = (total_profit / total_rev * 100) if total_rev > 0 else 0
+        m3.metric("📈 Καθαρό Κέρδος", f"{total_profit:.2f} €".replace('.', ','), 
+                  delta=f"{profit_margin:.1f}% Margin")
+        
+        m4.metric("🍹 Τεμάχια", f"{int(total_units)} τμχ")
+        m5.metric("📦 Παραγγελίες", total_orders)
 
-        # --- 8. ABC ΑΝΑΛΥΣΗ ΠΕΛΑΤΟΛΟΓΙΟΥ (RANKING) ---
+        # --- 8. ABC ΑΝΑΛΥΣΗ ΠΕΛΑΤΟΛΟΓΙΟΥ ---
         st.divider()
         st.subheader("🏆 ABC Ανάλυση Πελατολογίου")
-        
-        # Υπολογισμός τζίρου ανά πελάτη για το ABC
         customer_abc = df_filtered.groupby("customer")["Revenue"].sum().sort_values(ascending=False).reset_index()
         
         if not customer_abc.empty and total_rev > 0:
@@ -1388,55 +1424,32 @@ elif page == "📈 Dashboard":
                            color_discrete_map={"A (Κορυφαίοι - 80%)": "#00ffcc", "B (Σταθεροί - 15%)": "#f1c40f", "C (Χαμηλοί - 5%)": "#ff4b4b"},
                            labels={'customer': 'Πελάτης', 'Revenue': 'Τζίρος (€)'}, text_auto='.2s')
             st.plotly_chart(fig_abc, use_container_width=True)
-            
-            with st.expander("📝 Δείτε τη Λίστα Κατάταξης"):
-                st.dataframe(customer_abc.rename(columns={"customer":"Πελάτης","Revenue":"Τζίρος (€)","Category":"Κατηγορία"}), use_container_width=True, hide_index=True)
-        
+
         # --- 9. ΧΑΡΤΗΣ ΑΠΟΔΟΣΗΣ COCKTAIL (HEATMAP) ---
         st.divider()
         st.subheader("🎯 Χάρτης Απόδοσης Cocktail (Volume vs Profit)")
         
-        try:
-            # Κόστος Συστατικών
-            res_ing = supabase.table("ingredients").select("name, price, volume").execute()
-            df_ing = pd.DataFrame(res_ing.data)
-            df_ing['cost_per_ml'] = pd.to_numeric(df_ing['price']) / pd.to_numeric(df_ing['volume'])
-            ing_map = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
+        heatmap_data = []
+        for _, rec in df_prices.iterrows():
+            sold = df_filtered[df_filtered['cocktail_name'] == rec['name']]['pieces'].sum()
+            if sold > 0:
+                c_price = recipe_costs_dict.get(rec['id'], 0)
+                d_price = (rec['catalog_price'] if rec['catalog_price'] else 0) * 0.74
+                prof = d_price - c_price
+                heatmap_data.append({
+                    "Cocktail": rec['name'],
+                    "Πωλήσεις": sold,
+                    "Κέρδος/Τμχ": round(prof, 2),
+                    "Συνολικό Κέρδος": round(sold * prof, 2)
+                })
 
-            res_items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute()
-            df_items = pd.DataFrame(res_items.data)
-
-            recipe_costs = {}
-            for rid in df_items['recipe_id'].unique():
-                sub = df_items[df_items['recipe_id'] == rid]
-                cost = 0.22 # Σταθερά έξοδα
-                for _, item in sub.iterrows():
-                    cost += item['ml_per_unit'] * ing_map.get(item['ingredient_name'], 0)
-                recipe_costs[rid] = cost
-
-            heatmap_data = []
-            for _, rec in df_prices.iterrows():
-                sold = df_filtered[df_filtered['cocktail_name'] == rec['name']]['pieces'].sum()
-                if sold > 0:
-                    c_price = recipe_costs.get(rec['id'], 0)
-                    d_price = (rec['catalog_price'] if rec['catalog_price'] else 0) * 0.74
-                    prof = d_price - c_price
-                    heatmap_data.append({
-                        "Cocktail": rec['name'],
-                        "Πωλήσεις": sold,
-                        "Κέρδος/Τμχ": round(prof, 2),
-                        "Συνολικό Κέρδος": round(sold * prof, 2)
-                    })
-
-            if heatmap_data:
-                df_hm = pd.DataFrame(heatmap_data)
-                fig_hm = px.scatter(df_hm, x="Πωλήσεις", y="Κέρδος/Τμχ", size="Συνολικό Κέρδος", 
-                                   color="Cocktail", hover_name="Cocktail", text="Cocktail",
-                                   size_max=50, template="plotly_dark", title="Profitability Matrix (Dealer Price - Cost)")
-                fig_hm.update_traces(textposition='top center')
-                st.plotly_chart(fig_hm, use_container_width=True)
-        except:
-            st.warning("⚠️ Ορισμένα δεδομένα συστατικών λείπουν. Το Heatmap κέρδους είναι προσωρινά μη διαθέσιμο.")
+        if heatmap_data:
+            df_hm = pd.DataFrame(heatmap_data)
+            fig_hm = px.scatter(df_hm, x="Πωλήσεις", y="Κέρδος/Τμχ", size="Συνολικό Κέρδος", 
+                               color="Cocktail", hover_name="Cocktail", text="Cocktail",
+                               size_max=50, template="plotly_dark")
+            fig_hm.update_traces(textposition='top center')
+            st.plotly_chart(fig_hm, use_container_width=True)
 
         # --- ΓΡΑΦΗΜΑΤΑ ΠΩΛΗΣΕΩΝ ---
         st.divider()
