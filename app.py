@@ -2284,7 +2284,7 @@ elif page == "🧼 Συντήρηση & HACCP":
             st.info("Καμία καταγραφή.")
 
 
-# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΔΙΟΡΘΩΣΗ ΣΤΟΙΧΕΙΩΝ) ---
+# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ & ΕΚΠΤΩΣΗ) ---
 elif page == "👥 Πελατολόγιο":
     st.header("👥 Διαχείριση Πελατολογίου")
     
@@ -2303,20 +2303,27 @@ elif page == "👥 Πελατολόγιο":
                 sel_name = st.selectbox("Επιλέξτε Πελάτη:", options=df_cust["name"].tolist(), key="crm_select_final")
                 customer_data = df_cust[df_cust["name"] == sel_name].iloc[0]
                 
+                # Εμφάνιση στοιχείων (με ΑΦΜ και Έκπτωση)
                 st.info(f"""
-                **Επικοινωνία:**
-                * 📞 {customer_data['phone'] if customer_data['phone'] else '-'}
-                * ✉️ {customer_data['email'] if customer_data['email'] else '-'}
-                * 📍 {customer_data['address'] if customer_data['address'] else '-'}
+                **Στοιχεία Επικοινωνίας:**
+                * 📞 {customer_data.get('phone') if customer_data.get('phone') else '-'}
+                * ✉️ {customer_data.get('email') if customer_data.get('email') else '-'}
+                * 📍 {customer_data.get('address') if customer_data.get('address') else '-'}
+                
+                **Φορολογικά & Εμπορικά:**
+                * 🆔 **ΑΦΜ:** {customer_data.get('afm') if customer_data.get('afm') else '-'}
+                * 📉 **Έκπτωση:** {customer_data.get('discount') if customer_data.get('discount') else '0'}%
                 ---
                 **Σημειώσεις:**
-                {customer_data['notes'] if customer_data['notes'] else 'Καμία σημείωση'}
+                {customer_data.get('notes') if customer_data.get('notes') else 'Καμία σημείωση'}
                 """)
                 
-                # --- ΝΕΟ: ΕΞΥΠΝΗ ΔΙΟΡΘΩΣΗ ΣΤΟΙΧΕΙΩΝ ---
+                # --- ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
                 with st.expander("📝 Επεξεργασία Στοιχείων"):
                     with st.form(f"edit_cust_{customer_data['id']}"):
                         e_name = st.text_input("Όνομα / Επωνυμία", value=customer_data['name'])
+                        e_afm = st.text_input("ΑΦΜ", value=customer_data.get('afm', ''))
+                        e_discount = st.text_input("Ποσοστό Έκπτωσης (%)", value=customer_data.get('discount', ''))
                         e_phone = st.text_input("Τηλέφωνο", value=customer_data['phone'])
                         e_email = st.text_input("Email", value=customer_data['email'])
                         e_addr = st.text_area("Διεύθυνση", value=customer_data['address'])
@@ -2324,18 +2331,22 @@ elif page == "👥 Πελατολόγιο":
                         
                         if st.form_submit_button("💾 Ενημέρωση Στοιχείων"):
                             supabase.table("customers").update({
-                                "name": e_name, "phone": e_phone, 
-                                "email": e_email, "address": e_addr, "notes": e_notes
+                                "name": e_name, 
+                                "afm": e_afm,
+                                "discount": e_discount,
+                                "phone": e_phone, 
+                                "email": e_email, 
+                                "address": e_addr, 
+                                "notes": e_notes
                             }).eq("id", customer_data["id"]).execute()
-                            st.success("Τα στοιχεία ενημερώθηκαν!")
+                            st.success("✅ Τα στοιχεία ενημερώθηκαν!")
                             st.rerun()
 
                 st.divider()
                 if st.button("🗑️ Διαγραφή Πελάτη", type="secondary"):
-                    if st.warning("Είστε σίγουροι;"):
-                        supabase.table("customers").delete().eq("id", customer_data["id"]).execute()
-                        st.success("Διαγράφηκε!")
-                        st.rerun()
+                    supabase.table("customers").delete().eq("id", customer_data["id"]).execute()
+                    st.success("Ο πελάτης διαγράφηκε!")
+                    st.rerun()
 
             with col_crm_b:
                 st.subheader(f"🛒 Ιστορικό Παραγγελιών: {sel_name}")
@@ -2356,7 +2367,7 @@ elif page == "👥 Πελατολόγιο":
                     )
                     st.metric("Συνολικές Αγορές", f"{int(df_p_clean['pieces'].sum())} τμχ")
                 else:
-                    st.info("Δεν υπάρχουν παραγγελίες.")
+                    st.info("Δεν υπάρχουν παραγγελίες για αυτόν τον πελάτη.")
         else:
             st.warning("⚠️ Η λίστα πελατών είναι άδεια.")
 
@@ -2364,14 +2375,25 @@ elif page == "👥 Πελατολόγιο":
         st.subheader("➕ Καταχώρηση Νέου Πελάτη")
         with st.form("new_customer_form_final", clear_on_submit=True):
             n_name = st.text_input("Όνομα / Επωνυμία *")
+            n_afm = st.text_input("ΑΦΜ")
+            n_discount = st.text_input("Ποσοστό Έκπτωσης (%)") # Θα είναι κενό by default
             n_phone = st.text_input("Τηλέφωνο")
             n_email = st.text_input("Email")
             n_addr = st.text_area("Διεύθυνση")
             n_notes = st.text_area("Σημειώσεις")
+            
             if st.form_submit_button("💾 Αποθήκευση"):
                 if n_name:
-                    supabase.table("customers").insert({"name": n_name, "phone": n_phone, "email": n_email, "address": n_addr, "notes": n_notes}).execute()
-                    st.success("Ο πελάτης προστέθηκε!")
+                    supabase.table("customers").insert({
+                        "name": n_name, 
+                        "afm": n_afm,
+                        "discount": n_discount,
+                        "phone": n_phone, 
+                        "email": n_email, 
+                        "address": n_addr, 
+                        "notes": n_notes
+                    }).execute()
+                    st.success("✅ Ο πελάτης προστέθηκε επιτυχώς!")
                     st.rerun()
                 else:
                     st.error("Το όνομα είναι υποχρεωτικό!")
