@@ -1311,7 +1311,7 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-# --- 7. DASHBOARD (CENTRAL CUSTOMER & MONTH FILTERS) ---
+# --- 7. DASHBOARD (BUSINESS ANALYTICS ΜΕ ΥΠΟΛΟΓΙΣΜΟ 26% ΣΤΗ ΛΙΑΝΙΚΗ) ---
 elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
     
@@ -1320,6 +1320,7 @@ elif page == "📈 Dashboard":
     # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ ΑΠΟ SUPABASE
     with st.spinner("Ενημέρωση στατιστικών..."):
         res_log = supabase.table("production_log").select("*").execute()
+        # Τραβάμε την catalog_price (Λιανική)
         res_rec = supabase.table("recipes").select("name, catalog_price").execute()
         
     if res_log.data:
@@ -1327,37 +1328,36 @@ elif page == "📈 Dashboard":
         df_raw = pd.DataFrame(res_log.data)
         df_prices = pd.DataFrame(res_rec.data)
         
-        # Καθαρισμός για σωστή καταμέτρηση (1 batch = 1 πώληση)
+        # Καθαρισμός για σωστή καταμέτρηση
         df_sales = df_raw.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"]).copy()
         df_sales['Date_Obj'] = pd.to_datetime(df_sales['prod_date'], format='%d/%m/%Y')
         df_sales['Month_Year'] = df_sales['Date_Obj'].dt.strftime('%m/%Y')
 
-        # --- ΚΕΝΤΡΙΚΑ ΦΙΛΤΡΑ (ΠΑΝΩ ΑΠΟ ΤΗ ΣΥΝΟΨΗ) ---
+        # --- ΚΕΝΤΡΙΚΑ ΦΙΛΤΡΑ ---
         st.markdown("### 🎯 Φίλτρα Ανάλυσης")
         col_f1, col_f2 = st.columns(2)
         
-        # 1. Επιλογή Πελάτη
         all_customers = ["ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ"] + sorted(df_sales['customer'].unique().tolist())
         sel_customer = col_f1.selectbox("👤 Πελάτης:", options=all_customers)
         
-        # 2. Επιλογή Μήνα
         all_months = ["ΟΛΟΙ ΟΙ ΜΗΝΕΣ"] + sorted(df_sales['Month_Year'].unique().tolist(), reverse=True)
         sel_month = col_f2.selectbox("📅 Μήνας:", options=all_months)
         
         # Εφαρμογή Φίλτρων
         df_filtered = df_sales.copy()
-        
-        # Φιλτράρισμα βάσει Πελάτη
         if sel_customer != "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ":
             df_filtered = df_filtered[df_filtered['customer'] == sel_customer]
-            
-        # Φιλτράρισμα βάσει Μήνα
         if sel_month != "ΟΛΟΙ ΟΙ ΜΗΝΕΣ":
             df_filtered = df_filtered[df_filtered['Month_Year'] == sel_month]
 
-        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΟΙΚΟΝΟΜΙΚΩΝ ---
+        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΟΙΚΟΝΟΜΙΚΩΝ (26% ΤΗΣ ΛΙΑΝΙΚΗΣ) ---
         df_filtered = df_filtered.merge(df_prices, left_on="cocktail_name", right_on="name", how="left")
-        df_filtered['Revenue'] = df_filtered['pieces'] * df_filtered['catalog_price'].fillna(0)
+        
+        # Δημιουργούμε την τιμή αντιπροσώπου στον αέρα (26% της λιανικής)
+        df_filtered['dealer_price'] = df_filtered['catalog_price'].fillna(0) * 0.26
+        
+        # Revenue = pieces * τιμή αντιπροσώπου
+        df_filtered['Revenue'] = df_filtered['pieces'] * df_filtered['dealer_price']
         
         total_rev = df_filtered['Revenue'].sum()
         total_units = df_filtered['pieces'].sum()
@@ -1366,21 +1366,18 @@ elif page == "📈 Dashboard":
         # --- ΣΥΝΟΨΗ (METRICS) ---
         st.divider()
         label_period = sel_month if sel_month != "ΟΛΟΙ ΟΙ ΜΗΝΕΣ" else "Όλο το διάστημα"
-        st.subheader(f"📊 Σύνοψη: {sel_customer} | {label_period}")
+        st.subheader(f"📊 Σύνοψη (Υπολογισμός 26% Λιανικής): {sel_customer} | {label_period}")
         
         m1, m2, m3 = st.columns(3)
-        m1.metric("💰 Συνολικός Τζίρος", f"{total_rev:.2f} €".replace('.', ','))
+        m1.metric("💰 Συνολικός Τζίρος (Dealer)", f"{total_rev:.2f} €".replace('.', ','))
         m2.metric("🍹 Τεμάχια", f"{int(total_units)} τμχ")
         m3.metric("📦 Αριθμός Παραγγελιών", total_orders)
 
-        st.divider()
-
         # --- 8. HEATMAP ΚΕΡΔΟΦΟΡΙΑΣ (BUBBLE CHART) ---
         st.divider()
-        st.subheader("🎯 Χάρτης Απόδοσης Cocktail (Volume vs Profit)")
+        st.subheader("🎯 Χάρτης Απόδοσης Cocktail (Volume vs Dealer Profit)")
         
-        # Υπολογισμός Κόστους για κάθε Recipe για να βρούμε το κέρδος
-        # Φέρνουμε τα απαραίτητα δεδομένα
+        # Υπολογισμός Κόστους Παραγωγής
         res_ing = supabase.table("ingredients").select("name, price, volume").execute()
         df_ing_map = pd.DataFrame(res_ing.data)
         df_ing_map['cost_per_ml'] = df_ing_map['price'] / df_ing_map['volume']
@@ -1389,7 +1386,6 @@ elif page == "📈 Dashboard":
         res_items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute()
         df_items_map = pd.DataFrame(res_items.data)
 
-        # Υπολογισμός κόστους ανά συνταγή
         recipe_costs = {}
         for rid in df_items_map['recipe_id'].unique():
             items = df_items_map[df_items_map['recipe_id'] == rid]
@@ -1398,97 +1394,67 @@ elif page == "📈 Dashboard":
                 cost += item['ml_per_unit'] * ing_price_dict.get(item['ingredient_name'], 0)
             recipe_costs[rid] = cost
 
-        # Σύνδεση με τις πωλήσεις
-        # Παίρνουμε τις τιμές καταλόγου από το df_prices που ήδη έχεις φορτώσει στο Dashboard
+        # Φέρνουμε πληροφορίες συνταγών
         res_rec_info = supabase.table("recipes").select("id, name, catalog_price").execute()
         df_rec_info = pd.DataFrame(res_rec_info.data)
 
-        # Φτιάχνουμε το DataFrame για το Heatmap
         heatmap_data = []
         for _, rec in df_rec_info.iterrows():
-            # Πόσα πουλήθηκαν συνολικά (από το df_filtered που έχεις ήδη)
             total_sold = df_filtered[df_filtered['cocktail_name'] == rec['name']]['pieces'].sum()
             
             if total_sold > 0:
                 cost_price = recipe_costs.get(rec['id'], 0)
-                retail_price = rec['catalog_price'] if rec['catalog_price'] else 0
-                profit_per_unit = retail_price - cost_price
+                # Υπολογισμός Dealer Price για το Heatmap (26% της Λιανικής)
+                dealer_price = (rec['catalog_price'] if rec['catalog_price'] else 0) * 0.26
+                profit_per_unit = dealer_price - cost_price
                 total_net_profit = total_sold * profit_per_unit
                 
                 heatmap_data.append({
                     "Cocktail": rec['name'],
                     "Πωλήσεις (Τμχ)": total_sold,
-                    "Κέρδος ανά Τμχ (€)": round(profit_per_unit, 2),
+                    "Κέρδος Dealer ανά Τμχ (€)": round(profit_per_unit, 2),
                     "Συνολικό Κέρδος (€)": round(total_net_profit, 2)
                 })
 
         if heatmap_data:
             df_hm = pd.DataFrame(heatmap_data)
-            
             fig_hm = px.scatter(
                 df_hm, 
                 x="Πωλήσεις (Τμχ)", 
-                y="Κέρδος ανά Τμχ (€)",
+                y="Κέρδος Dealer ανά Τμχ (€)",
                 size="Συνολικό Κέρδος (€)", 
                 color="Cocktail",
                 hover_name="Cocktail",
                 text="Cocktail",
                 size_max=60,
                 template="plotly_dark",
-                title="Ανάλυση: Πού βγάζουμε τα λεφτά μας;"
+                title="Ανάλυση Κερδοφορίας (Με τιμή 26% επί της Λιανικής)"
             )
-            
-            # Βελτίωση εμφάνισης κειμένου
             fig_hm.update_traces(textposition='top center')
-            fig_hm.update_layout(height=600)
-            
             st.plotly_chart(fig_hm, use_container_width=True)
-            
-            st.info("""
-            **💡 Πώς να διαβάσετε το γράφημα:**
-            * **Πάνω Δεξιά (Stars):** Cocktail που πουλάνε πολύ ΚΑΙ έχουν μεγάλο κέρδος. Αυτά είναι η "μηχανή" σου.
-            * **Πάνω Αριστερά (High Margin):** Cocktail με μεγάλο κέρδος αλλά λίγες πωλήσεις. Χρειάζονται προώθηση!
-            * **Κάτω Δεξιά (Volume Drivers):** Cocktail που πουλάνε πολύ αλλά αφήνουν λίγα λεφτά. Εδώ ίσως πρέπει να ανεβάσεις την τιμή.
-            * **Μέγεθος Κύκλου:** Όσο μεγαλύτερος ο κύκλος, τόσο περισσότερα συνολικά λεφτά έφερε αυτό το προϊόν στο ταμείο.
-            """)
         else:
-            st.info("Δεν υπάρχουν επαρκή δεδομένα για το Heatmap.")
+            st.info("Δεν υπάρχουν δεδομένα για το γράφημα.")
 
         # --- ΓΡΑΦΗΜΑΤΑ ---
         col1, col2 = st.columns(2)
-        
         with col1:
-            # Ποσότητες ανά Cocktail
             fig_units = px.bar(
                 df_filtered.groupby("cocktail_name")["pieces"].sum().reset_index(),
                 x="cocktail_name", y="pieces",
                 title="Ποσότητες ανά Cocktail",
-                labels={'cocktail_name': 'Προϊόν', 'pieces': 'Τεμάχια'},
                 color="pieces", color_continuous_scale="Reds"
             )
             st.plotly_chart(fig_units, use_container_width=True)
             
         with col2:
-            # Δυναμικό γράφημα ανάλογα με το φίλτρο
             if sel_customer == "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ":
                 fig_pie = px.pie(
                     df_filtered.groupby("customer")["Revenue"].sum().reset_index(),
                     values="Revenue", names="customer",
-                    title="Κατανομή Τζίρου ανά Πελάτη",
+                    title="Κατανομή Τζίρου Αντιπροσώπων",
                     hole=0.4
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
-            else:
-                # Αν έχουμε επιλέξει πελάτη, δείχνουμε την πορεία του στο χρόνο
-                fig_trend = px.line(
-                    df_filtered.sort_values("Date_Obj"),
-                    x="prod_date", y="Revenue",
-                    title=f"Πορεία Αγορών: {sel_customer}",
-                    markers=True
-                )
-                st.plotly_chart(fig_trend, use_container_width=True)
-
-        st.divider()
 
         # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
         with st.expander("📄 Προβολή αναλυτικών παραγγελιών"):
@@ -1499,22 +1465,14 @@ elif page == "📈 Dashboard":
                     "customer": "Πελάτης",
                     "cocktail_name": "Cocktail",
                     "pieces": "Τεμάχια",
-                    "Revenue": "Αξία (€)",
+                    "Revenue": "Αξία Dealer (€)",
                     "lot_cocktail": "LOT"
                 }).sort_values("Ημερομηνία", ascending=False),
                 use_container_width=True
             )
 
-        # --- DELETE OPTION (SIDEBAR) ---
-        if st.sidebar.button("🗑️ Εκκαθάριση Ιστορικού", use_container_width=True):
-            if st.sidebar.checkbox("Επιβεβαιώνω τη διαγραφή όλων των δεδομένων"):
-                supabase.table("production_log").delete().neq("id", 0).execute()
-                st.success("Το ιστορικό καθαρίστηκε!")
-                st.rerun()
-
     else:
         st.info("📭 Δεν υπάρχουν ακόμα δεδομένα παραγωγής για ανάλυση.")
-
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ ---
 elif page == "📦 Lot Παραγωγής":
