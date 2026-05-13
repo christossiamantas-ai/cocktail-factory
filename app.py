@@ -55,7 +55,6 @@ with st.sidebar:
                     csv_data = df_temp.to_csv(index=False).encode('utf-8-sig')
                     zf.writestr(f"{file_label}_{now_athens.strftime('%d_%m_%Y')}.csv", csv_data)
                 except Exception as e:
-                    # ΕΔΩ ΕΙΝΑΙ ΤΟ ΚΟΛΠΟ ΓΙΑ ΝΑ ΔΟΥΜΕ ΤΟ ΣΦΑΛΜΑ ΤΗΣ SUPABASE
                     st.warning(f"⚠️ Πρόβλημα με {table_name}: {e}")
         
         st.download_button(
