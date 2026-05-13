@@ -4,6 +4,8 @@ import os
 import math
 from datetime import datetime, timedelta
 import plotly.express as px
+import imaplib
+import email
 import time
 from supabase import create_client, Client
 import zipfile
@@ -17,9 +19,111 @@ url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
 
-# --- ΦΟΡΟΛΟΓΙΚΟΙ ΣΥΝΤΕΛΕΣΤΕΣ (TAX_RATES) ---
-# Βάζουμε εδώ το TAX_RATES για να μπορεί να το διαβάσει το μενού
-TAX_RATES = {"Ελλάδα (GR)": 1.0, "Κύπρος (CY)": 0.0, "Εξαγωγή / Τρίτες Χώρες": 0.0} 
+# --- ΣΥΣΤΗΜΑ LIVE STATUS ---
+def update_live_status(user_name):
+    with open("app_status.txt", "w", encoding="utf-8") as f:
+        f.write(f"{user_name}|{time.time()}")
+
+def get_who_is_online():
+    if os.path.exists("app_status.txt"):
+        with open("app_status.txt", "r", encoding="utf-8") as f:
+            data = f.read().split("|")
+            if len(data) == 2:
+                user, last_time = data[0], float(data[1])
+                if time.time() - last_time < 60:
+                    return user
+    return None
+
+# --- Σύστημα Password ---
+def check_password():
+    def password_entered():
+        if st.session_state["password"] == "panatha1908":
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input("Εισάγετε τον Κωδικό Πρόσβασης", type="password", on_change=password_entered, key="password")
+        st.error("❌ Λάθος κωδικός. Προσπαθήστε ξανά.")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop()
+
+# Προσθήκη CSS
+st.markdown("""
+    <style>
+    .stApp { background-color: #0e1117; }
+    [data-testid="stMetricValue"] { font-size: 28px; color: #00ffcc; }
+    div[data-testid="stMetric"] { background-color: #1e2129; border: 1px solid #333; padding: 15px; border-radius: 10px; box-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #3e4451; color: white; border: none; }
+    .stButton>button:hover { border: 1px solid #00ffcc; color: #00ffcc; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Σταθερές
+TOTAL_FIXED = 0.22  
+TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
+
+def format_greek(value):
+    if isinstance(value, (int, float)):
+        return "{:.3f}".format(value).replace('.', ',')
+    return value
+
+# --- ΣΥΝΑΡΤΗΣΕΙΣ ΦΟΡΤΩΣΗΣ ΔΕΔΟΜΕΝΩΝ (SUPABASE) ---
+@st.cache_data(ttl=600) 
+def load_all_ingredients():
+    res = supabase.table("ingredients").select("*").order("name").execute()
+    if res.data:
+        df = pd.DataFrame(res.data)
+        df = df.rename(columns={
+            "id": "ID", "name": "Name", "price": "Price", "volume": "Volume", 
+            "abv": "Αλκοόλ %", "weight_full": "Weight_Full"
+        })
+        df["Τιμή/ml"] = df["Price"] / df["Volume"]
+        df["Απόθεμα (ml)"] = 0.0
+        return df
+    else:
+        return pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full", "Απόθεμα (ml)"])
+
+@st.cache_data(ttl=600)
+def load_all_recipes():
+    res_rec = supabase.table("recipes").select("*").order("name").execute()
+    res_items = supabase.table("recipe_items").select("*").execute()
+    
+    if res_rec.data:
+        df_rec = pd.DataFrame(res_rec.data)
+        df_items = pd.DataFrame(res_items.data) if res_items.data else pd.DataFrame(columns=["recipe_id", "ingredient_name", "ml_per_unit"])
+        
+        reconstructed = []
+        for _, row in df_rec.iterrows():
+            rec_dict = {
+                "Ονομα": row["name"],
+                "Barcode": row["barcode"],
+                "Τιμή Καταλόγου": row.get("catalog_price", 0.0)
+            }
+            items = df_items[df_items["recipe_id"] == row["id"]]
+            for i, (_, item) in enumerate(items.iterrows(), start=1):
+                rec_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = item["ingredient_name"]
+                rec_dict[f"ML{i}"] = item["ml_per_unit"]
+            reconstructed.append(rec_dict)
+            
+        return pd.DataFrame(reconstructed)
+    else:
+        cols_rec = ["Ονομα", "Barcode", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
+        return pd.DataFrame(columns=cols_rec)
+
+df_ing = load_all_ingredients()
+df_rec = load_all_recipes()
+
+ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
+recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
 # Υπολογισμός ώρας Ελλάδος (UTC + 3)
 now_athens = datetime.utcnow() + timedelta(hours=3)
@@ -32,6 +136,18 @@ with st.sidebar:
     st.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
     st.title("DC CABCLUB 2026 🏆")
     
+    st.divider()
+
+    # --- Live Status User Selection ---
+    current_user = st.selectbox("👤 Είσαι ο:", ["Χρήστης Α", "Χρήστης Β"], key="user_select")
+    update_live_status(current_user)
+    online_user = get_who_is_online()
+
+    if online_user and online_user != current_user:
+        st.success(f"🟢 Ο {online_user} είναι online!")
+    else:
+        st.info("⚪️ Μόνος στην εφαρμογή")
+
     st.divider()
 
     # 2. Κεντρικό Μενού (Το key="main_page" το βοηθάει να μην "ξεχνάει" τη σελίδα στο refresh)
@@ -95,9 +211,9 @@ with st.sidebar:
     st.write(f"📅 Ημερομηνία: {now_athens.strftime('%d/%m/%Y')}")
 
 # ==========================================
-# ΑΠΟ ΕΔΩ ΚΑΙ ΚΑΤΩ ΣΥΝΕΧΙΖΕΙ Ο ΚΩΔΙΚΑΣ ΣΟΥ ΟΠΩΣ ΗΤΑΝ
+# ΑΠΟ ΕΔΩ ΚΑΙ ΚΑΤΩ ΞΕΚΙΝΑΕΙ ΤΟ ΜΕΝΟΥ (Αποθήκη κ.λπ.)
+# (Δηλαδή το αμέσως επόμενο είναι: if page == "📦 Αποθήκη":)
 # ==========================================
-# (Λογικά το αρχείο σου συνεχίζει με: if page == "📦 Αποθήκη": κ.ο.κ.)
 # --- 1. ΑΠΟΘΗΚΗ (ΦΟΡΜΑ ΑΝΤΙ ΓΙΑ ΠΙΝΑΚΑ) ---
 if page == "📦 Αποθήκη":
     
