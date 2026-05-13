@@ -2563,44 +2563,111 @@ elif page == "🔄 Αντικατάσταση":
     else:
         st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
 
-# --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B ---
+# --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B & E-SHOP ---
 elif page == "📦 Παραγγελίες B2B":
     st.header("📦 Διαχείριση Παραγγελιών B2B")
     
+    # --- ΛΕΙΤΟΥΡΓΙΑ WOOCOMMERCE SYNC ---
+    from woocommerce import API
+    try:
+        wcapi = API(
+            url=st.secrets["woo"]["url"],
+            consumer_key=st.secrets["woo"]["ck"],
+            consumer_secret=st.secrets["woo"]["cs"],
+            version="wc/v3"
+        )
+    except Exception as e:
+        st.error("⚠️ Τα κλειδιά WooCommerce δεν έχουν ρυθμιστεί σωστά στα Secrets.")
+
+    # Κουμπί Συγχρονισμού στην κορυφή
+    col_sync1, col_sync2 = st.columns([1, 2])
+    with col_sync1:
+        if st.button("📥 Συγχρονισμός με E-shop", use_container_width=True, type="primary"):
+            with st.spinner("Τραβάω παραγγελίες από το site..."):
+                try:
+                    # Τραβάμε παραγγελίες που είναι "processing" (Σε επεξεργασία στο Woo)
+                    woo_orders = wcapi.get("orders", params={"status": "processing"}).json()
+                    
+                    new_entries = 0
+                    for o in woo_orders:
+                        # Έλεγχος αν η παραγγελία υπάρχει ήδη στη Supabase
+                        check = supabase.table("b2b_orders").select("id").eq("woo_id", str(o['id'])).execute()
+                        
+                        if not check.data:
+                            # Προετοιμασία κειμένου παραγγελίας
+                            items = []
+                            for item in o['line_items']:
+                                items.append(f"{item['quantity']}x {item['name']}")
+                            order_text = "\n".join(items)
+                            
+                            # Αποθήκευση στη Supabase
+                            data = {
+                                "customer_name": f"{o['billing']['first_name']} {o['billing']['last_name']}",
+                                "total_amount": float(o['total']),
+                                "status": "ΝΕΑ (E-shop)",
+                                "order_details": order_text,
+                                "notes": o.get('customer_note', ''),
+                                "woo_id": str(o['id']),
+                                "created_at": o['date_created']
+                            }
+                            supabase.table("b2b_orders").insert(data).execute()
+                            new_entries += 1
+                    
+                    if new_entries > 0:
+                        st.success(f"✅ Εισήχθησαν {new_entries} νέες παραγγελίες!")
+                    else:
+                        st.info("Δεν βρέθηκαν νέες παραγγελίες στο E-shop.")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Σφάλμα σύνδεσης: {e}")
+
+    st.divider()
+    
     tab1, tab2 = st.tabs(["🔔 Τρέχουσες Παραγγελίες", "📜 Ιστορικό & Αναζήτηση"])
 
-    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ (ΜΕ ΔΙΑΓΡΑΦΗ) ---
+    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ ---
     with tab1:
         res_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).execute()
         if res_orders.data:
             df_orders = pd.DataFrame(res_orders.data)
-            status_filter = st.multiselect("Φίλτρο Κατάστασης:", ["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"], default=["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ"])
+            
+            # Φίλτρο για να περιλαμβάνει και το νέο status από το E-shop
+            all_statuses = ["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"]
+            status_filter = st.multiselect("Φίλτρο Κατάστασης:", all_statuses, default=["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ"])
+            
             df_filtered = df_orders[df_orders["status"].isin(status_filter)]
 
             for _, row in df_filtered.iterrows():
-                label_icon = "🔵" if row['status'] == "ΝΕΑ" else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "✅"
-                with st.expander(f"{label_icon} {row['customer_name']} - {row['total_amount']:.2f} €"):
+                # Εικονίδια ανάλογα με την κατάσταση
+                icon = "🔵" if "ΝΕΑ" in row['status'] else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "✅"
+                
+                with st.expander(f"{icon} {row['customer_name']} - {row['total_amount']:.2f} €"):
                     c1, c2 = st.columns([2, 1])
                     with c1:
                         st.code(row['order_details'])
                         if row['notes']: st.info(f"📝 {row['notes']}")
-                        st.caption(f"ID: {row['id']} | Ημερομηνία: {row['created_at']}")
+                        st.caption(f"ID: {row['id']} | WooID: {row.get('woo_id','-')} | Ημερομηνία: {row['created_at']}")
+                    
                     with c2:
-                        new_status = st.selectbox("Κατάσταση:", ["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"], 
-                                                 index=["ΝΕΑ", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"].index(row['status']),
-                                                 key=f"status_curr_{row['id']}")
-                        if st.button("Ενημέρωση", key=f"upd_curr_{row['id']}", use_container_width=True):
+                        # Επιλογή νέας κατάστασης
+                        current_idx = all_statuses.index(row['status']) if row['status'] in all_statuses else 0
+                        new_status = st.selectbox("Αλλαγή Κατάστασης:", all_statuses, index=current_idx, key=f"st_upd_{row['id']}")
+                        
+                        if st.button("Ενημέρωση", key=f"btn_upd_{row['id']}", use_container_width=True):
                             supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
                             st.success("Ενημερώθηκε!")
+                            time.sleep(0.5)
                             st.rerun()
+                        
                         st.divider()
-                        if st.button("🗑️ Διαγραφή", key=f"del_curr_{row['id']}", type="secondary", use_container_width=True):
+                        if st.button("🗑️ Διαγραφή", key=f"del_b2b_{row['id']}", type="secondary", use_container_width=True):
                             supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
                             st.rerun()
         else:
-            st.info("Δεν υπάρχουν παραγγελίες.")
+            st.info("Δεν υπάρχουν παραγγελίες στη βάση.")
 
-    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ (ΜΕ ΔΙΑΓΡΑΦΗ ΣΤΟ EXPANDER) ---
+    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ ---
     with tab2:
         st.subheader("🔍 Αναζήτηση στο Ιστορικό")
         if res_orders.data:
@@ -2610,18 +2677,25 @@ elif page == "📦 Παραγγελίες B2B":
             with search_col1:
                 cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hist["customer_name"].unique()))
             with search_col2:
+                # Εξαγωγή ονομάτων κοκτέιλ από το κείμενο της παραγγελίας
                 all_cocktails = set()
                 for details in df_hist["order_details"]:
-                    for line in details.split('\n'):
+                    lines = str(details).split('\n')
+                    for line in lines:
                         if 'x ' in line:
-                            name = line.split('x ')[1].split(' (')[0].strip()
-                            all_cocktails.add(name)
+                            # Παίρνει το όνομα μετά το "x "
+                            parts = line.split('x ')
+                            if len(parts) > 1:
+                                name = parts[1].split(' (')[0].strip()
+                                all_cocktails.add(name)
                 cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=sorted(list(all_cocktails)))
 
+            # Φιλτράρισμα
             mask = pd.Series([True] * len(df_hist))
-            if cust_search: mask &= df_hist["customer_name"].isin(cust_search)
+            if cust_search: 
+                mask &= df_hist["customer_name"].isin(cust_search)
             if cocktail_search:
-                cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in x for c in cocktail_search))
+                cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
                 mask &= cocktail_mask
 
             df_results = df_hist[mask]
@@ -2629,20 +2703,14 @@ elif page == "📦 Παραγγελίες B2B":
             if not df_results.empty:
                 st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
                 for _, row in df_results.iterrows():
-                    with st.expander(f"📅 {row['created_at'][:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
-                        col_hist1, col_hist2 = st.columns([2, 1])
-                        with col_hist1:
+                    with st.expander(f"📅 {str(row['created_at'])[:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
+                        col_h1, col_h2 = st.columns([2, 1])
+                        with col_h1:
                             st.markdown(f"**Κατάσταση:** {row['status']}")
                             st.text(row['order_details'])
-                            if row['notes']: st.caption(f"Σημειώσεις: {row['notes']}")
-                        
-                        with col_hist2:
-                            # Κουμπί Διαγραφής μέσα στο Ιστορικό
-                            st.write("---")
-                            if st.button("🗑️ Διαγραφή από Ιστορικό", key=f"del_hist_{row['id']}", type="secondary", use_container_width=True):
+                        with col_h2:
+                            if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
                                 supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
-                                st.warning("Η παραγγελία διαγράφηκε.")
-                                time.sleep(1)
                                 st.rerun()
             else:
-                st.warning("Δεν βρέθηκαν παραγγελίες.")
+                st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
