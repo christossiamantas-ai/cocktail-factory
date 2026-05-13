@@ -1443,15 +1443,24 @@ elif page == "📈 Dashboard":
     else:
         st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
        
-# --- 8. LOT ΠΑΡΑΓΩΓΗΣ ---
+# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ) ---
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
+
+    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΓΙΑ ΤΟ DROP-DOWN
+    try:
+        res_cust = supabase.table("customers").select("name").execute()
+        # Δημιουργούμε τη λίστα και προσθέτουμε μια επιλογή για Λιανική
+        customer_options = sorted([c["name"] for c in res_cust.data]) if res_cust.data else []
+        if "Λιανική / Άγνωστος" not in customer_options:
+            customer_options.insert(0, "Λιανική / Άγνωστος")
+    except Exception:
+        customer_options = ["Λιανική / Άγνωστος"]
 
     # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ: ΑΣΦΑΛΗΣ ΜΕΤΑΤΡΟΠΗ ML ---
     def get_recipe_ml(row_series, idx):
         raw_val = None
         exact_key = f"ML{idx}"
-        
         if exact_key in row_series:
             raw_val = row_series[exact_key]
         else:
@@ -1460,17 +1469,14 @@ elif page == "📦 Lot Παραγωγής":
                 if str(col).lower().replace(" ", "").replace("_", "") == target:
                     raw_val = row_series[col]
                     break
-        
         if raw_val is None or pd.isna(raw_val):
             return 0.0
-            
         try:
             val_str = str(raw_val).replace(',', '.').replace(' ', '')
             return float(val_str) if val_str else 0.0
         except Exception:
             return 0.0
 
-    # --- 100% ΑΣΦΑΛΗΣ ΜΝΗΜΗ ΕΦΑΡΜΟΓΗΣ ---
     if 'active_b2b_order' not in st.session_state:
         st.session_state['active_b2b_order'] = None
     if 'lot_reset_key' not in st.session_state:
@@ -1545,13 +1551,18 @@ elif page == "📦 Lot Παραγωγής":
             
             # --- ΒΗΜΑ 1: ΚΑΤΑΝΟΜΗ ΤΕΜΑΧΙΩΝ ΑΝΑ ΠΕΛΑΤΗ ---
             st.markdown("### 🔢 1. Τεμάχια Παραγωγής & Πελάτες")
-            st.info("💡 Πατήστε το '+' κάτω από κάθε πίνακα για να προσθέσετε κι άλλο πελάτη στο ίδιο κοκτέιλ.")
+            st.info("💡 Επιλέξτε τον πελάτη από τη λίστα. Αν είναι νέα παραγγελία λιανικής, αφήστε 'Λιανική / Άγνωστος'.")
             
             all_assignments = {}
-            default_global_cust = active_order.get('customer_name', '') if active_order else ""
+            default_global_cust = active_order.get('customer_name', 'Λιανική / Άγνωστος') if active_order else "Λιανική / Άγνωστος"
 
             for name in selected_cocktails:
                 st.markdown(f"**🍹 {name}**")
+                # Αν ο πελάτης από το B2B δεν υπάρχει στη λίστα (σπάνιο), τον προσθέτουμε προσωρινά για να μην σκάσει το dropdown
+                current_options = customer_options.copy()
+                if default_global_cust not in current_options:
+                    current_options.append(default_global_cust)
+
                 init_data = [{"Πελάτης": default_global_cust, "Τεμάχια": default_quantities.get(name, 1)}]
                 df_init = pd.DataFrame(init_data)
                 
@@ -1562,7 +1573,11 @@ elif page == "📦 Lot Παραγωγής":
                     use_container_width=True,
                     column_config={
                         "Τεμάχια": st.column_config.NumberColumn(min_value=1, step=1, default=1),
-                        "Πελάτης": st.column_config.TextColumn()
+                        "Πελάτης": st.column_config.SelectboxColumn(
+                            "Πελάτης",
+                            options=current_options,
+                            required=True
+                        )
                     }
                 )
                 all_assignments[name] = edited_df
@@ -1571,7 +1586,6 @@ elif page == "📦 Lot Παραγωγής":
             ing_totals = {}
             for cocktail_name in selected_cocktails:
                 df_assign = all_assignments[cocktail_name]
-                # ΑΣΦΑΛΗΣ ΕΛΕΓΧΟΣ ΓΙΑ ΑΠΟΦΥΓΗ KeyError: 'Τεμάχια'
                 total_qty_for_cocktail = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
                 
                 if total_qty_for_cocktail > 0:
@@ -1584,7 +1598,6 @@ elif page == "📦 Lot Παραγωγής":
 
             # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
             st.markdown("### 🔄 2. Συνολικά LOT Πρώτων Υλών Ημέρας")
-            st.info("Δείτε τα συνολικά ml που απαιτούνται. Πληκτρολογήστε το LOT και θα περαστεί αυτόματα στις συνταγές!")
             
             with st.expander("📋 Πίνακας Μοναδικών Υλικών & Συνολικών Ποσοτήτων", expanded=True):
                 mh = st.columns([2, 1, 1.5, 1.5])
@@ -1609,12 +1622,8 @@ elif page == "📦 Lot Παραγωγής":
                     recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
                     df_assign = all_assignments[cocktail_name]
                     
-                    # ΑΣΦΑΛΗΣ ΕΛΕΓΧΟΣ
                     total_qty_this = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
-                    
-                    if total_qty_this == 0:
-                        st.warning(f"⚠️ Δεν έχετε ορίσει τεμάχια για το {cocktail_name}.")
-                        continue
+                    if total_qty_this == 0: continue
 
                     st.markdown(f"#### 🍹 {cocktail_name} (Σύνολο: {total_qty_this} τμχ)")
                     h = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
@@ -1652,11 +1661,9 @@ elif page == "📦 Lot Παραγωγής":
                         final_lot = val_l1 if not val_l2 else f"{val_l1} / {val_l2}"
                         final_exp = val_e1 if not val_e2 else f"{val_e1} / {val_e2}"
 
-                        # ΔΗΜΙΟΥΡΓΙΑ ΕΓΓΡΑΦΩΝ ΓΙΑ ΚΑΘΕ ΠΕΛΑΤΗ ΞΕΧΩΡΙΣΤΑ
                         for _, row_assign in df_assign.iterrows():
                             c_name = str(row_assign.get("Πελάτης", "Λιανική / Άγνωστος")).strip()
                             if not c_name: c_name = "Λιανική / Άγνωστος"
-                            
                             c_qty = int(row_assign.get("Τεμάχια", 0))
                             
                             if c_qty > 0:
@@ -1674,14 +1681,12 @@ elif page == "📦 Lot Παραγωγής":
                     if lot_entries:
                         try:
                             supabase.table("production_log").insert(lot_entries).execute()
-                            
                             if active_order is not None:
                                 supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
                                 st.session_state['active_b2b_order'] = None 
                             
                             st.session_state['lot_reset_key'] += 1
-                            
-                            st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς! Τα LOT και οι Ημερομηνίες καταχωρήθηκαν σωστά.")
+                            st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς!")
                             st.cache_data.clear()
                             time.sleep(2)
                             st.rerun()
