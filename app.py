@@ -1693,48 +1693,83 @@ elif page == "📦 Lot Παραγωγής":
                         except Exception as e:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
                             
-    # --- 9. ΙΣΤΟΡΙΚΟ ΠΑΡΑΓΩΓΗΣ & ΕΚΤΥΠΩΣΕΙΣ (ΜΕ ΔΥΝΑΤΟΤΗΤΑ ΜΑΖΙΚΗΣ ΔΙΑΓΡΑΦΗΣ) ---
+    # --- 9. ΙΣΤΟΡΙΚΟ ΠΑΡΑΓΩΓΗΣ (INTERACTIVE SELECTION & DELETE) ---
 elif page == "📜 Ιστορικό Παραγωγής":
     st.header("📜 Ιστορικό Παραγωγής & Εκτυπώσεις")
 
     # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
     res = supabase.table("production_log").select("*").execute()
+    
     if res.data:
         df_history = pd.DataFrame(res.data)
+        # Μετατροπή ημερομηνίας για σωστή ταξινόμηση
+        df_history['Date_Sort'] = pd.to_datetime(df_history['prod_date'], format='%d/%m/%Y', errors='coerce')
+        df_history = df_history.sort_values(by=['Date_Sort', 'prod_time'], ascending=False)
+
+        st.subheader("🔍 Αναζήτηση & Διαχείριση")
+        st.write("👉 Επιλέξτε τις γραμμές που θέλετε να διαγράψετε ή να δείτε, πατώντας το κουτάκι αριστερά.")
+
+        # --- ΔΗΜΙΟΥΡΓΙΑ ΔΙΑΔΡΑΣΤΙΚΟΥ ΠΙΝΑΚΑ ΜΕ ΕΠΙΛΟΓΗ ---
+        # Χρησιμοποιούμε το column_config για να ομορφύνουμε τα ονόματα
+        event = st.dataframe(
+            df_history[['id', 'prod_date', 'customer', 'cocktail_name', 'pieces', 'lot_cocktail']],
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",  # Αυτό επιτρέπει στο Streamlit να "καταλαβαίνει" τι επιλέξαμε αμέσως
+            selection_mode="multi_row", # Επιτρέπει πολλά checkboxes
+            column_config={
+                "id": None, # Κρύβουμε το ID από τον χρήστη
+                "prod_date": "Ημερομηνία",
+                "customer": "Πελάτης",
+                "cocktail_name": "Προϊόν",
+                "pieces": "Τμχ",
+                "lot_cocktail": "LOT"
+            }
+        )
+
+        # 2. ΛΕΙΤΟΥΡΓΙΕΣ ΒΑΣΕΙ ΕΠΙΛΟΓΗΣ
+        selected_rows = event.selection.rows # Παίρνουμε τους αριθμούς των γραμμών που τσεκαρίστηκαν
         
-        # --- ΕΝΟΤΗΤΑ ΔΙΑΓΡΑΦΗΣ (BULK DELETE) ---
-        with st.expander("🗑️ Διαχείριση & Διαγραφή Εγγραφών", expanded=False):
-            st.warning("Προσοχή: Η διαγραφή δεδομένων είναι οριστική.")
+        if selected_rows:
+            st.info(f"Έχετε επιλέξει **{len(selected_rows)}** εγγραφές.")
             
-            col_del1, col_del2 = st.columns(2)
+            col_act1, col_act2 = st.columns(2)
             
-            with col_del1:
-                # Επιλογή συγκεκριμένων LOT για διαγραφή
-                all_lots = sorted(df_history['lot_cocktail'].unique(), reverse=True)
-                lots_to_delete = st.multiselect("Επιλέξτε LOT για διαγραφή:", options=all_lots)
-                
-                if st.button("❌ Διαγραφή Επιλεγμένων LOT", type="secondary", use_container_width=True):
-                    if lots_to_delete:
-                        supabase.table("production_log").delete().in_("lot_cocktail", lots_to_delete).execute()
-                        st.success(f"Διαγράφηκαν {len(lots_to_delete)} παρτίδες!")
+            with col_act1:
+                # ΔΙΑΓΡΑΦΗ ΕΠΙΛΕΓΜΕΝΩΝ
+                if st.button("🗑️ Διαγραφή Επιλεγμένων", type="primary", use_container_width=True):
+                    # Βρίσκουμε τα IDs των επιλεγμένων γραμμών
+                    ids_to_delete = df_history.iloc[selected_rows]['id'].tolist()
+                    try:
+                        supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
+                        st.success("Οι εγγραφές διαγράφηκαν!")
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
-                    else:
-                        st.info("Επιλέξτε τουλάχιστον ένα LOT.")
+                    except Exception as e:
+                        st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
 
-            with col_del2:
-                # Ολική διαγραφή
-                st.write("Καθαρισμός όλου του ιστορικού:")
-                confirm_all = st.checkbox("Επιβεβαιώνω τη διαγραφή ΟΛΩΝ των δεδομένων")
-                if st.button("💣 Διαγραφή ΟΛΟΥ του Ιστορικού", type="primary", use_container_width=True, disabled=not confirm_all):
-                    supabase.table("production_log").delete().neq("id", 0).execute()
-                    st.success("Το ιστορικό καθαρίστηκε πλήρως!")
-                    st.cache_data.clear()
-                    time.sleep(1)
-                    st.rerun()
-
+            with col_act2:
+                # ΕΚΤΥΠΩΣΗ ΕΠΙΛΕΓΜΕΝΩΝ (ΠΡΟΑΙΡΕΤΙΚΟ)
+                if st.button("🖨️ Εκτύπωση Επιλεγμένων", use_container_width=True):
+                    st.write("Η εκτύπωση για τις συγκεκριμένες γραμμές ξεκινά...")
+                    # Εδώ μπορείς να καλέσεις τη συνάρτηση του PDF μόνο για τα επιλεγμένα IDs
+        
         st.divider()
+
+        # 3. ΟΛΙΚΗ ΔΙΑΓΡΑΦΗ (ΣΕ EXPANDER ΓΙΑ ΑΣΦΑΛΕΙΑ)
+        with st.expander("⚠️ Προχωρημένες Ρυθμίσεις (Clean Up)"):
+            st.write("Καθαρισμός όλης της βάσης δεδομένων:")
+            confirm_all = st.checkbox("Επιβεβαιώνω τη διαγραφή ΟΛΟΥ του ιστορικού παραγωγής")
+            if st.button("💣 Διαγραφή ΟΛΩΝ", type="primary", disabled=not confirm_all):
+                supabase.table("production_log").delete().neq("id", 0).execute()
+                st.success("Η βάση καθαρίστηκε!")
+                st.cache_data.clear()
+                time.sleep(1)
+                st.rerun()
+                
+    else:
+        st.info("📭 Το ιστορικό είναι κενό.")
 
         # 2. ΦΙΛΤΡΑ ΠΡΟΒΟΛΗΣ & ΕΚΤΥΠΩΣΗΣ
         st.subheader("🔍 Αναζήτηση Παρτίδας")
