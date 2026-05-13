@@ -33,29 +33,31 @@ with st.sidebar:
     st.subheader("🗄️ Πλήρες Backup")
     try:
         buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "x", zipfile.ZIP_DEFLATED) as zf:
-            # ΠΡΟΣΟΧΗ: Άλλαξα το haccp_logs σε haccp_log
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Πίνακες προς λήψη (Βεβαιώσου ότι τα ονόματα στη Supabase είναι ακριβώς αυτά)
             tables = {
                 "Production_LOT": "production_log",
                 "B2B_Orders": "b2b_orders",
                 "Inventory": "ingredients",
-                "HACCP_Logs": "haccp_log" 
+                "HACCP_Logs": "haccp_log" # Χρήση ενικού όπως είδαμε στο σφάλμα
             }
             
-            for file_name, table_name in tables.items():
+            for file_label, table_name in tables.items():
                 res = supabase.table(table_name).select("*").execute()
-                if res.data:
-                    df_temp = pd.DataFrame(res.data)
-                    csv_data = df_temp.to_csv(index=False).encode('utf-8-sig')
-                    zf.writestr(f"{file_name}_{datetime.now().strftime('%d_%m_%Y')}.csv", csv_data)
+                # Ακόμα και αν είναι άδειος ο πίνακας, φτιάχνουμε ένα CSV με τις επικεφαλίδες
+                df_temp = pd.DataFrame(res.data) if res.data else pd.DataFrame()
+                csv_data = df_temp.to_csv(index=False).encode('utf-8-sig')
+                zf.writestr(f"{file_label}_{datetime.now().strftime('%d_%m_%Y')}.csv", csv_data)
         
         st.download_button(
             label="📥 Λήψη Όλων των Δεδομένων (.zip)",
             data=buf.getvalue(),
             file_name=f"FULL_BACKUP_CABCLUB_{datetime.now().strftime('%d_%m_%Y')}.zip",
             mime="application/zip",
-            use_container_width=True
+            use_container_width=True,
+            help="Κατεβάζει Παραγωγή, Παραγγελίες, Αποθήκη και HACCP σε ένα αρχείο"
         )
+        st.success("Backup έτοιμο!")
     except Exception as e:
         st.error(f"Σφάλμα Backup: {e}")
 
