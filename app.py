@@ -44,7 +44,7 @@ with st.sidebar:
                 "Production_LOT": "production_log",
                 "B2B_Orders": "b2b_orders",
                 "Inventory": "ingredients",
-                "HACCP_Logs": "haccp_log", # Αν σου βγάζει warning, δες το όνομα στη Supabase
+                "HACCP_Log": "haccp_log", # Αν σου βγάζει warning, δες το όνομα στη Supabase
                 "Recipes": "recipes"
             }
             
