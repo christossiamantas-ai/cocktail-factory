@@ -71,7 +71,6 @@ with st.sidebar:
     st.divider()
     st.write(f"🕒 Ώρα Ελλάδος: {now_athens.strftime('%H:%M:%S')}")
     st.write(f"📅 Ημερομηνία: {now_athens.strftime('%d/%m/%Y')}")
-
 # --- ΣΥΣΤΗΜΑ LIVE STATUS ---
 def update_live_status(user_name):
     # Γράφει το όνομα και την τρέχουσα ώρα σε ένα αρχείο status.txt
