@@ -2571,13 +2571,14 @@ elif page == "📦 Παραγγελίες B2B":
     from woocommerce import API
     try:
         wcapi = API(
-            url=st.secrets["woo"]["https://mailto:info@cabclubcocktails.gr"],
+            url=st.secrets["woo"]["url"],
             consumer_key=st.secrets["woo"]["ck"],
             consumer_secret=st.secrets["woo"]["cs"],
-            version="wc/v3"
+            version="wc/v3",
+            timeout=20
         )
     except Exception as e:
-        st.error("⚠️ Τα κλειδιά WooCommerce δεν έχουν ρυθμιστεί σωστά στα Secrets.")
+        st.error("⚠️ Πρόβλημα με τις ρυθμίσεις του WooCommerce στα Secrets.")
 
     # Κουμπί Συγχρονισμού στην κορυφή
     col_sync1, col_sync2 = st.columns([1, 2])
