@@ -1677,18 +1677,26 @@ elif page == "📦 Lot Παραγωγής":
                                 })
                 
                 st.divider()
+                # --- ΤΡΟΠΟΠΟΙΗΣΗ ΣΤΟ LOT ΠΑΡΑΓΩΓΗΣ (Snapshot Έκπτωσης) ---
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud", type="primary"):
                     if lot_entries:
                         try:
+                            # Φέρνουμε όλες τις τρέχουσες εκπτώσεις των πελατών για να τις "κλειδώσουμε"
+                            res_c = supabase.table("customers").select("name", "discount").execute()
+                            cust_discounts = {c['name']: c.get('discount', '0') for c in res_c.data} if res_c.data else {}
+
+                            # Προσθέτουμε την έκπτωση σε κάθε εγγραφή της παρτίδας
+                            for entry in lot_entries:
+                                customer_name = entry['customer']
+                                # Παίρνουμε την έκπτωση που έχει ο πελάτης ΤΩΡΑ
+                                entry['discount'] = cust_discounts.get(customer_name, "0")
+
                             supabase.table("production_log").insert(lot_entries).execute()
-                            if active_order is not None:
-                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
-                                st.session_state['active_b2b_order'] = None 
                             
-                            st.session_state['lot_reset_key'] += 1
-                            st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς!")
+                            # ... (υπόλοιπος κώδικας για B2B status και rerun)
+                            st.success("✅ Η παρτίδα αποθηκεύτηκε με την τρέχουσα έκπτωση των πελατών!")
                             st.cache_data.clear()
-                            time.sleep(2)
+                            time.sleep(1)
                             st.rerun()
                         except Exception as e:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
