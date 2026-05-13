@@ -1443,19 +1443,22 @@ elif page == "📈 Dashboard":
     else:
         st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
        
-# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ) ---
+# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ & ΕΚΠΤΩΣΗ) ---
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
-    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΓΙΑ ΤΟ DROP-DOWN
+    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΚΑΙ ΕΚΠΤΩΣΕΩΝ
     try:
-        res_cust = supabase.table("customers").select("name").execute()
-        # Δημιουργούμε τη λίστα και προσθέτουμε μια επιλογή για Λιανική
-        customer_options = sorted([c["name"] for c in res_cust.data]) if res_cust.data else []
+        res_cust = supabase.table("customers").select("name", "discount").execute()
+        # Δημιουργούμε λεξικό για να βρίσκουμε την έκπτωση κάθε πελάτη: { 'Όνομα': 'Έκπτωση' }
+        cust_discounts = {c["name"]: str(c.get("discount", "0")) for c in res_cust.data} if res_cust.data else {}
+        customer_options = sorted(list(cust_discounts.keys()))
         if "Λιανική / Άγνωστος" not in customer_options:
             customer_options.insert(0, "Λιανική / Άγνωστος")
+            cust_discounts["Λιανική / Άγνωστος"] = "0"
     except Exception:
         customer_options = ["Λιανική / Άγνωστος"]
+        cust_discounts = {"Λιανική / Άγνωστος": "0"}
 
     # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ: ΑΣΦΑΛΗΣ ΜΕΤΑΤΡΟΠΗ ML ---
     def get_recipe_ml(row_series, idx):
@@ -1498,7 +1501,7 @@ elif page == "📦 Lot Παραγωγής":
             with col_b:
                 if st.button("📥 Φόρτωση", key=f"load_{order['id']}"):
                     st.session_state['active_b2b_order'] = order.to_dict() 
-                    st.success(f"Φορτώθηκε η παραγγελία του {order['customer_name']}!")
+                    st.success(f"Φορτώθηκε η παραγγελία!")
                     time.sleep(1)
                     st.rerun()
     else:
@@ -1511,315 +1514,158 @@ elif page == "📦 Lot Παραγωγής":
 
     st.divider()
 
-    # 1. ΚΕΝΤΡΙΚΟΣ ΟΡΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ & LOT
+    # ΟΡΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ
     col_date1, col_date2 = st.columns([2, 1])
     with col_date1:
         selected_date = st.date_input("📅 Ημερομηνία LOT", value=datetime.now(), format="DD/MM/YYYY")
     with col_date2:
-        prod_day = st.text_input("Ημερομηνία Παραγωγής", value=datetime.now().strftime('%d'), max_chars=2)
+        prod_day = st.text_input("Ημέρα", value=datetime.now().strftime('%d'), max_chars=2)
 
     formatted_date = selected_date.strftime('%d/%m/%Y')
     date_lot_label = f"{formatted_date}-{prod_day}" 
     current_time = datetime.now().strftime('%H:%M')
 
-    st.divider()
-
-    # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ ---
-    default_cocktails_list = []
-    default_quantities = {}
-    
-    if active_order is not None and not df_rec.empty:
-        details = active_order.get('order_details', '')
-        lines = details.split('\n')
-        for line in lines:
-            try:
-                parts = line.split('x ')
-                qty = int(parts[0].replace('•', '').strip())
-                c_name = parts[1].split(' (')[0].strip()
-                if c_name in df_rec["Ονομα"].unique():
-                    default_cocktails_list.append(c_name)
-                    default_quantities[c_name] = qty
-            except Exception:
-                pass
-
-    # 2. ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ
+    # ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ
     if not df_rec.empty:
-        selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique(), default=default_cocktails_list)
+        selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique())
 
         if selected_cocktails:
-            st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
-            
-            # --- ΒΗΜΑ 1: ΚΑΤΑΝΟΜΗ ΤΕΜΑΧΙΩΝ ΑΝΑ ΠΕΛΑΤΗ ---
-            st.markdown("### 🔢 1. Τεμάχια Παραγωγής & Πελάτες")
-            st.info("💡 Επιλέξτε τον πελάτη από τη λίστα. Αν είναι νέα παραγγελία λιανικής, αφήστε 'Λιανική / Άγνωστος'.")
-            
             all_assignments = {}
-            default_global_cust = active_order.get('customer_name', 'Λιανική / Άγνωστος') if active_order else "Λιανική / Άγνωστος"
-
             for name in selected_cocktails:
                 st.markdown(f"**🍹 {name}**")
-                # Αν ο πελάτης από το B2B δεν υπάρχει στη λίστα (σπάνιο), τον προσθέτουμε προσωρινά για να μην σκάσει το dropdown
-                current_options = customer_options.copy()
-                if default_global_cust not in current_options:
-                    current_options.append(default_global_cust)
-
-                init_data = [{"Πελάτης": default_global_cust, "Τεμάχια": default_quantities.get(name, 1)}]
-                df_init = pd.DataFrame(init_data)
-                
+                df_init = pd.DataFrame([{"Πελάτης": "Λιανική / Άγνωστος", "Τεμάχια": 1}])
                 edited_df = st.data_editor(
-                    df_init,
-                    num_rows="dynamic",
-                    key=f"editor_{name}_{reset_key}",
-                    use_container_width=True,
+                    df_init, num_rows="dynamic", key=f"editor_{name}_{reset_key}", use_container_width=True,
                     column_config={
                         "Τεμάχια": st.column_config.NumberColumn(min_value=1, step=1, default=1),
-                        "Πελάτης": st.column_config.SelectboxColumn(
-                            "Πελάτης",
-                            options=current_options,
-                            required=True
-                        )
+                        "Πελάτης": st.column_config.SelectboxColumn("Πελάτης", options=customer_options, required=True)
                     }
                 )
                 all_assignments[name] = edited_df
 
-            # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML ---
+            # ΥΠΟΛΟΓΙΣΜΟΣ ΥΛΙΚΩΝ
             ing_totals = {}
-            for cocktail_name in selected_cocktails:
-                df_assign = all_assignments[cocktail_name]
-                total_qty_for_cocktail = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
-                
-                if total_qty_for_cocktail > 0:
-                    recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
+            for cock_name in selected_cocktails:
+                df_assign = all_assignments[cock_name]
+                total_qty = df_assign["Τεμάχια"].sum()
+                if total_qty > 0:
+                    recipe_row = df_rec[df_rec["Ονομα"] == cock_name].iloc[0]
                     for i in range(1, 14):
                         ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
-                            ml_u = get_recipe_ml(recipe_row, i)
-                            ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * total_qty_for_cocktail)
+                            ing_totals[ing] = ing_totals.get(ing, 0.0) + (get_recipe_ml(recipe_row, i) * total_qty)
 
-            # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT ---
-            st.markdown("### 🔄 2. Συνολικά LOT Πρώτων Υλών Ημέρας")
-            
-            with st.expander("📋 Πίνακας Μοναδικών Υλικών & Συνολικών Ποσοτήτων", expanded=True):
-                mh = st.columns([2, 1, 1.5, 1.5])
-                mh[0].caption("ΠΡΩΤΗ ΥΛΗ")
-                mh[1].caption("ΣΥΝΟΛΟ (ml)")
-                mh[2].caption("LOT ΗΜΕΡΑΣ")
-                mh[3].caption("ΛΗΞΗ ΗΜΕΡΑΣ")
-                
-                for ing in sorted(ing_totals.keys()):
-                    mr = st.columns([2, 1, 1.5, 1.5])
-                    mr[0].write(f"**{ing}**")
-                    mr[1].write(f"**{ing_totals[ing]:.0f} ml**")
-                    mr[2].text_input("LOT", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
-                    mr[3].text_input("EXP", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
+            st.markdown("### 🔄 2. Συνολικά LOT Πρώτων Υλών")
+            for ing in sorted(ing_totals.keys()):
+                mr = st.columns([2, 1, 1.5, 1.5])
+                mr[0].write(f"**{ing}**")
+                mr[1].write(f"**{ing_totals[ing]:.0f} ml**")
+                mr[2].text_input("LOT", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
+                mr[3].text_input("EXP", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
 
-            # --- ΒΗΜΑ 3: ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ ---
-            st.markdown("### 🏷️ 3. Αναλυτικό Δελτίο & Οριστικοποίηση")
+            # ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ
             lot_entries = []
-            
             with st.form(f"detailed_lot_form_{reset_key}"):
-                for cocktail_name in selected_cocktails:
-                    recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
-                    df_assign = all_assignments[cocktail_name]
-                    
-                    total_qty_this = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
-                    if total_qty_this == 0: continue
-
-                    st.markdown(f"#### 🍹 {cocktail_name} (Σύνολο: {total_qty_this} τμχ)")
-                    h = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
-                    for col, label in zip(h, ["Υλικό", "ml", "Βάρος(g)", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
-                    
+                for cock_name in selected_cocktails:
+                    recipe_row = df_rec[df_rec["Ονομα"] == cock_name].iloc[0]
+                    df_assign = all_assignments[cock_name]
                     for i in range(1, 14):
                         ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
-                        
                         ml_u = get_recipe_ml(recipe_row, i)
-                        tot_ml = ml_u * total_qty_this
-                        tg_g = tot_ml
-                        match_ing = df_ing[df_ing["Name"] == ing]
-                        if not match_ing.empty:
-                            tg_g = (tot_ml / match_ing.iloc[0]["Volume"]) * match_ing.iloc[0]["Weight_Full"]
-
-                        r = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
-                        r[0].write(f"**{ing}**")
-                        r[1].write(f"{tot_ml:.0f}")
-                        r[2].markdown(f"**{tg_g:.1f}g**")
-                        
                         m_lot = st.session_state.get(f"mlot_{ing}_{reset_key}", "")
                         m_exp = st.session_state.get(f"mexp_{ing}_{reset_key}", "")
                         
-                        l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}_{reset_key}", placeholder=m_lot, label_visibility="collapsed")
-                        e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}_{reset_key}", placeholder=m_exp, label_visibility="collapsed")
-                        l2 = r[5].text_input("L2", key=f"l2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
-                        e2 = r[6].text_input("E2", key=f"e2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
-
-                        val_l1 = l1.strip() if l1.strip() else m_lot.strip()
-                        val_e1 = e1.strip() if e1.strip() else m_exp.strip()
-                        val_l2 = l2.strip()
-                        val_e2 = e2.strip()
-
-                        final_lot = val_l1 if not val_l2 else f"{val_l1} / {val_l2}"
-                        final_exp = val_e1 if not val_e2 else f"{val_e1} / {val_e2}"
-
-                        for _, row_assign in df_assign.iterrows():
-                            c_name = str(row_assign.get("Πελάτης", "Λιανική / Άγνωστος")).strip()
-                            if not c_name: c_name = "Λιανική / Άγνωστος"
-                            c_qty = int(row_assign.get("Τεμάχια", 0))
-                            
+                        for _, row in df_assign.iterrows():
+                            c_name = row["Πελάτης"]
+                            c_qty = int(row["Τεμάχια"])
                             if c_qty > 0:
                                 lot_entries.append({
                                     "prod_date": formatted_date, "prod_time": current_time, "customer": c_name,
-                                    "cocktail_name": cocktail_name, "lot_cocktail": date_lot_label, "pieces": c_qty,
+                                    "cocktail_name": cock_name, "lot_cocktail": date_lot_label, "pieces": c_qty,
                                     "ingredient_name": ing, "total_ml": float(ml_u * c_qty), 
-                                    "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"] * match_ing.iloc[0]["Weight_Full"]), 1) if not match_ing.empty else float(ml_u * c_qty),
-                                    "lot_number": final_lot, 
-                                    "expiry_date": final_exp
+                                    "lot_number": m_lot, "expiry_date": m_exp,
+                                    "discount": cust_discounts.get(c_name, "0") # ΚΛΕΙΔΩΜΑ ΕΚΠΤΩΣΗΣ
                                 })
                 
-                st.divider()
-                if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud", type="primary"):
+                if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση", type="primary"):
                     if lot_entries:
-                        try:
-                            supabase.table("production_log").insert(lot_entries).execute()
-                            if active_order is not None:
-                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
-                                st.session_state['active_b2b_order'] = None 
-                            
-                            st.session_state['lot_reset_key'] += 1
-                            st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς!")
-                            st.cache_data.clear()
-                            time.sleep(2)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
-                            
-    # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
-    st.divider()
-    st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
+                        supabase.table("production_log").insert(lot_entries).execute()
+                        st.session_state['lot_reset_key'] += 1
+                        st.success("✅ Αποθηκεύτηκε!")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+
+# --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
+st.divider()
+st.subheader("📂 Ιστορικό Παραγωγής & Διαχείριση")
+
+res_log = supabase.table("production_log").select("*").order("prod_date", desc=True).execute()
+if res_log.data:
+    df_all_logs = pd.DataFrame(res_log.data)
+    df_all_logs_renamed = df_all_logs.rename(columns={
+        "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
+        "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια", "ingredient_name": "Υλικό",
+        "total_ml": "Σύνολο_ML", "target_g": "Στόχος_Γραμμάρια", "lot_number": "Lot Number", "expiry_date": "Ημ_Λήξης", "discount": "Έκπτωση"
+    })
+
+    all_dates = sorted(df_all_logs_renamed["Ημερομηνία"].unique(), reverse=True)
+    sel_hist_date = st.selectbox("🔍 Επιλέξτε Ημερομηνία:", all_dates)
     
-    res_log = supabase.table("production_log").select("*").order("prod_date", desc=True).execute()
-    if res_log.data:
-        df_all_logs = pd.DataFrame(res_log.data)
-        df_all_logs_renamed = df_all_logs.rename(columns={
-            "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
-            "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια", "ingredient_name": "Υλικό",
-            "total_ml": "Σύνολο_ML", "target_g": "Στόχος_Γραμμάρια", "lot_number": "Lot Number", "expiry_date": "Ημ_Λήξης"
-        })
+    if sel_hist_date:
+        df_past = df_all_logs_renamed[df_all_logs_renamed["Ημερομηνία"] == sel_hist_date]
+        batches = df_past.groupby(['Ώρα', 'Πελάτης', 'Cocktail', 'LOT_Cocktail']).groups
+        options = ["-- Επιλέξτε Παραγωγή --"]
+        batch_mapping = {f"🍹 {cock} | 👤 {cust} | 🕒 {time_v} | LOT: {lot_c}": list(indices) 
+                        for (time_v, cust, cock, lot_c), indices in batches.items()}
+        options += list(batch_mapping.keys())
 
-        all_dates = sorted(df_all_logs_renamed["Ημερομηνία"].unique(), reverse=True)
-        sel_hist_date = st.selectbox("🔍 Επιλέξτε Ημερομηνία για Διαχείριση / Εκτύπωση:", all_dates)
+        selected_batch = st.selectbox("🛠️ Επεξεργασία Συγκεκριμένης Παραγωγής:", options)
         
-        if sel_hist_date:
-            df_past = df_all_logs_renamed[df_all_logs_renamed["Ημερομηνία"] == sel_hist_date]
+        if selected_batch != "-- Επιλέξτε Παραγωγή --":
+            batch_id = str(hash(selected_batch))
+            row_indices = batch_mapping[selected_batch]
+            base_data = df_past.loc[row_indices[0]]
             
-            batches = df_past.groupby(['Ώρα', 'Πελάτης', 'Cocktail', 'LOT_Cocktail']).groups
-            options = ["-- Επιλέξτε Παραγωγή --"]
-            batch_mapping = {}
-            for (time_v, cust, cock, lot_c), indices in batches.items():
-                label = f"🍹 {cock} | 👤 {cust} | 🕒 {time_v} | LOT: {lot_c}"
-                options.append(label)
-                batch_mapping[label] = list(indices)
+            c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 0.8, 1, 0.8])
+            new_cust = c1.text_input("Πελάτης", value=base_data["Πελάτης"], key=f"ed_cust_{batch_id}")
+            new_cock = c2.selectbox("Cocktail", options=df_rec["Ονομα"].unique(), index=list(df_rec["Ονομα"].unique()).index(base_data["Cocktail"]), key=f"ed_cock_{batch_id}")
+            new_pcs = c3.number_input("Τμχ", value=int(base_data["Τεμάχια"]), min_value=1, key=f"ed_pcs_{batch_id}")
+            new_lot_c = c4.text_input("LOT", value=base_data["LOT_Cocktail"], key=f"ed_lot_{batch_id}")
+            # ΝΕΟ ΠΕΔΙΟ ΓΙΑ ΔΙΟΡΘΩΣΗ ΕΚΠΤΩΣΗΣ
+            new_disc = c5.text_input("Έκπτωση %", value=base_data.get("Έκπτωση", "0"), key=f"ed_disc_{batch_id}")
 
-            selected_batch = st.selectbox("🛠️ Επεξεργασία Συγκεκριμένης Παραγωγής (Προσθήκη LOT 2):", options)
-            
-            if selected_batch != "-- Επιλέξτε Παραγωγή --":
-                batch_id = str(hash(selected_batch))
-                row_indices = batch_mapping[selected_batch]
-                base_data = df_past.loc[row_indices[0]]
-                old_pieces = int(base_data["Τεμάχια"])
+            with st.form(f"edit_batch_form_{batch_id}"):
+                final_updated = []
+                for i, idx in enumerate(row_indices):
+                    r_d = df_past.loc[idx]
+                    mult = new_pcs / int(base_data["Τεμάχια"])
+                    r = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
+                    r[0].write(f"**{r_d['Υλικό']}**"); r[1].write(f"{r_d['Σύνολο_ML'] * mult:.0f}")
+                    l1 = r[2].text_input("L1", value=str(r_d["Lot Number"]).split(" / ")[0], key=f"l1_{batch_id}_{i}")
+                    e1 = r[3].text_input("E1", value=str(r_d["Ημ_Λήξης"]).split(" / ")[0], key=f"e1_{batch_id}_{i}")
+                    final_updated.append({"ing": r_d["Υλικό"], "ml": r_d["Σύνολο_ML"] * mult, "lot": l1, "exp": e1})
                 
-                c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1.5])
-                new_cust = c1.text_input("Πελάτης", value=base_data["Πελάτης"], key=f"ed_cust_{batch_id}")
-                
-                cocktail_list = list(df_rec["Ονομα"].unique())
-                try: current_idx = cocktail_list.index(base_data["Cocktail"])
-                except: current_idx = 0
-                
-                new_cock = c2.selectbox("Cocktail", options=cocktail_list, index=current_idx, key=f"ed_cock_{batch_id}")
-                new_pcs = c3.number_input("Τεμάχια", value=old_pieces, min_value=1, key=f"ed_pcs_{batch_id}")
-                new_lot_c = c4.text_input("LOT", value=base_data["LOT_Cocktail"], key=f"ed_lot_{batch_id}")
-
-                cocktail_changed = (new_cock != base_data["Cocktail"])
-                display_ingredients = []
-                if cocktail_changed:
-                    new_r = df_rec[df_rec["Ονομα"] == new_cock].iloc[0]
-                    for i in range(1, 14):
-                        ing_n = str(new_r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                        if ing_n not in ["ΚΕΝΟ", "nan", ""]:
-                            ml_calc = get_recipe_ml(new_r, i) * new_pcs
-                            display_ingredients.append({"Υλικό": ing_n, "ML": ml_calc, "Lot": "", "Exp": ""})
-                else:
-                    for idx in row_indices:
-                        r_d = df_past.loc[idx]
-                        mult = new_pcs / old_pieces
-                        display_ingredients.append({"Υλικό": r_d["Υλικό"], "ML": r_d["Σύνολο_ML"] * mult, "Lot": r_d["Lot Number"], "Exp": r_d["Ημ_Λήξης"]})
-
-                with st.form(f"edit_batch_form_{batch_id}"):
-                    h_edit = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
-                    h_labels = ["Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
-                    for col, label in zip(h_edit, h_labels):
-                        col.caption(label)
-
-                    final_updated = []
-                    for i, itm in enumerate(display_ingredients):
-                        raw_lot = str(itm["Lot"])
-                        raw_exp = str(itm["Exp"])
-                        
-                        lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
-                        exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
-                        while len(lot_parts) < 2: lot_parts.append("")
-                        while len(exp_parts) < 2: exp_parts.append("")
-
-                        r = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
-                        r[0].write(f"**{itm['Υλικό']}**")
-                        r[1].write(f"{itm['ML']:.0f}")
-                        
-                        lt1 = r[2].text_input("L1", value=lot_parts[0], key=f"ed_l1_{batch_id}_{i}", label_visibility="collapsed")
-                        ex1 = r[3].text_input("E1", value=exp_parts[0], key=f"ed_e1_{batch_id}_{i}", label_visibility="collapsed")
-                        lt2 = r[4].text_input("L2", value=lot_parts[1], key=f"ed_l2_{batch_id}_{i}", label_visibility="collapsed")
-                        ex2 = r[5].text_input("E2", value=exp_parts[1], key=f"ed_e2_{batch_id}_{i}", label_visibility="collapsed")
-                        
-                        final_lot = lt1 if not lt2 else f"{lt1} / {lt2}"
-                        final_exp = ex1 if not ex2 else f"{ex1} / {ex2}"
-                        
-                        final_updated.append({
-                            "ing": itm["Υλικό"], "ml": itm["ML"], "lot": final_lot, "exp": final_exp
+                if st.form_submit_button("💾 Αποθήκευση Αλλαγών", type="primary"):
+                    ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
+                    for di in ids_to_del: supabase.table("production_log").delete().eq("id", di).execute()
+                    
+                    new_batch = []
+                    for fd in final_updated:
+                        new_batch.append({
+                            "prod_date": base_data["Ημερομηνία"], "prod_time": base_data["Ώρα"], "customer": new_cust, 
+                            "cocktail_name": new_cock, "lot_cocktail": new_lot_c, "pieces": int(new_pcs), 
+                            "ingredient_name": fd["ing"], "total_ml": fd["ml"], "lot_number": fd["lot"], "expiry_date": fd["exp"],
+                            "discount": new_disc # ΑΠΟΘΗΚΕΥΣΗ ΔΙΟΡΘΩΜΕΝΗΣ ΕΚΠΤΩΣΗΣ
                         })
-                    
-                    st.divider()
-                    b_save, b_del = st.columns(2)
-                    
-                    if b_save.form_submit_button("💾 Αποθήκευση Αλλαγών (Προσθήκη LOT 2)", type="primary"):
-                        ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
-                        for di in ids_to_del: supabase.table("production_log").delete().eq("id", di).execute()
-                        
-                        new_batch = []
-                        for fd in final_updated:
-                            g_calc = fd["ml"]
-                            match_i = df_ing[df_ing["Name"] == fd["ing"]]
-                            if not match_i.empty: 
-                                g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
-                            
-                            new_batch.append({
-                                "prod_date": base_data["Ημερομηνία"], "prod_time": base_data["Ώρα"], "customer": new_cust if new_cust.strip() else "Άγνωστος", 
-                                "cocktail_name": new_cock, "lot_cocktail": new_lot_c, "pieces": int(new_pcs), 
-                                "ingredient_name": fd["ing"], "total_ml": fd["ml"], "target_g": round(g_calc, 1), 
-                                "lot_number": fd["lot"], "expiry_date": fd["exp"]
-                            })
-                        supabase.table("production_log").insert(new_batch).execute()
-                        st.success("✅ Ενημερώθηκε!")
-                        st.cache_data.clear()
-                        time.sleep(1)
-                        st.rerun()
+                    supabase.table("production_log").insert(new_batch).execute()
+                    st.success("✅ Ενημερώθηκε!"); st.cache_data.clear(); time.sleep(1); st.rerun()
 
-                    if b_del.form_submit_button("🗑️ Διαγραφή Παραγωγής"):
-                        ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
-                        for di in ids_to_del: supabase.table("production_log").delete().eq("id", di).execute()
-                        st.warning("Διαγράφηκε!")
-                        st.cache_data.clear()
-                        time.sleep(1)
-                        st.rerun()
-            st.divider()
+                if st.form_submit_button("🗑️ Διαγραφή Παραγωγής"):
+                    ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
+                    for di in ids_to_del: supabase.table("production_log").delete().eq("id", di).execute()
+                    st.warning("Διαγράφηκε!"); st.cache_data.clear(); time.sleep(1); st.rerun()
             
             # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
             # 1. ΕΠΑΓΓΕΛΜΑΤΙΚΟ ΔΕΛΤΙΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ
