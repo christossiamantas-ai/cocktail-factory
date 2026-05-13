@@ -2571,7 +2571,7 @@ elif page == "📦 Παραγγελίες B2B":
     from woocommerce import API
     try:
         wcapi = API(
-            url=st.secrets["woo"]["mailto:info@cabclubcocktails.gr"],
+            url=st.secrets["woo"]["info@cabclubcocktails.gr"],
             consumer_key=st.secrets["woo"]["ck"],
             consumer_secret=st.secrets["woo"]["cs"],
             version="wc/v3"
