@@ -1311,7 +1311,7 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-# --- 7. DASHBOARD (ΔΙΟΡΘΩΜΕΝΟ ΚΟΣΤΟΣ & ΚΕΡΔΟΣ) ---
+# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΔΙΟΡΘΩΜΕΝΟ) ---
 elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
     
@@ -1354,7 +1354,6 @@ elif page == "📈 Dashboard":
 
         df_items = pd.DataFrame(res_items.data)
         
-        # Υπολογισμός κόστους ανά recipe_id
         recipe_costs_by_id = {}
         for rid in df_items['recipe_id'].unique():
             sub = df_items[df_items['recipe_id'] == rid]
@@ -1363,21 +1362,16 @@ elif page == "📈 Dashboard":
                 cost += item['ml_per_unit'] * ing_cost_dict.get(item['ingredient_name'], 0)
             recipe_costs_by_id[rid] = cost
 
-        # Δημιουργία mapping: Cocktail Name -> Unit Cost
-        # Συνδέουμε το ID της συνταγής με το Όνομά της
-        name_to_cost = {}
-        for _, r in df_recipes.iterrows():
-            name_to_cost[r['name']] = recipe_costs_by_id.get(r['id'], 0)
+        # Mapping: Cocktail Name -> Unit Cost
+        name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], 0) for _, r in df_recipes.iterrows()}
 
         # --- ΥΠΟΛΟΓΙΣΜΟΣ ΟΙΚΟΝΟΜΙΚΩΝ ΣΤΟ FILTERED DF ---
-        # Φέρνουμε την τιμή λιανικής
         df_filtered = df_filtered.merge(df_recipes[['name', 'catalog_price']], left_on="cocktail_name", right_on="name", how="left")
         
         df_filtered['catalog_price'] = pd.to_numeric(df_filtered['catalog_price'], errors='coerce').fillna(0)
         df_filtered['dealer_price'] = df_filtered['catalog_price'] * 0.74
         df_filtered['Revenue'] = df_filtered['pieces'] * df_filtered['dealer_price']
         
-        # Εφαρμογή κόστους βάσει ονόματος cocktail
         df_filtered['unit_cost'] = df_filtered['cocktail_name'].map(name_to_cost).fillna(0)
         df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['unit_cost']
         df_filtered['Profit'] = df_filtered['Revenue'] - df_filtered['Total_Cost']
@@ -1399,7 +1393,7 @@ elif page == "📈 Dashboard":
         
         margin = (total_profit / total_rev * 100) if total_rev > 0 else 0
         m3.metric("📈 Καθαρό Κέρδος", f"{total_profit:.2f} €".replace('.', ','), 
-                  delta=f"{margin:.1f}% Margin", delta_color="normal")
+                  delta=f"{margin:.1f}% Margin")
         
         m4.metric("🍹 Τεμάχια", f"{int(total_units)} τμχ")
         m5.metric("📦 Παραγγελίες", total_orders)
@@ -1418,11 +1412,10 @@ elif page == "📈 Dashboard":
                            color_discrete_map={"A": "#00ffcc", "B": "#f1c40f", "C": "#ff4b4b"})
             st.plotly_chart(fig_abc, use_container_width=True)
 
-        # --- 9. ΧΑΡΤΗΣ ΑΠΟΔΟΣΗΣ (HEATMAP) ---
+        # --- 9. ΧΑΡΤΗΣ ΑΠΟΔΟΣΗΣ ---
         st.divider()
         st.subheader("🎯 Χάρτης Απόδοσης Cocktail")
         
-        # Προετοιμασία δεδομένων για το γράφημα
         heatmap_list = []
         for name in df_filtered['cocktail_name'].unique():
             temp = df_filtered[df_filtered['cocktail_name'] == name]
@@ -1432,10 +1425,7 @@ elif page == "📈 Dashboard":
             prof = rev - cost
             if sold > 0:
                 heatmap_list.append({
-                    "Cocktail": name,
-                    "Πωλήσεις": sold,
-                    "Κέρδος/Τμχ": round(prof/sold, 2),
-                    "Συνολικό Κέρδος": round(prof, 2)
+                    "Cocktail": name, "Πωλήσεις": sold, "Κέρδος/Τμχ": round(prof/sold, 2), "Συνολικό Κέρδος": round(prof, 2)
                 })
         
         if heatmap_list:
@@ -1448,9 +1438,10 @@ elif page == "📈 Dashboard":
 
         # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
         with st.expander("📄 Αναλυτικό Αρχείο"):
-            st.dataframe(df_filtered[["prod_date", "customer", "cocktail_name", "pieces", "Revenue", "Total_Cost", "Profit", "lot_cocktail"]].sort_values("prod_date", ascending=False), use_container_width=True)
+            st.dataframe(df_filtered[["prod_date", "customer", "cocktail_name", "pieces", "Revenue", "Total_Cost", "Profit", "lot_cocktail"]].sort_values("prod_date", ascending=False), use_container_width=True, hide_index=True)
 
     else:
+        st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ ---
 elif page == "📦 Lot Παραγωγής":
