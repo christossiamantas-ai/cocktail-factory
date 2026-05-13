@@ -2,12 +2,14 @@ import streamlit as st
 import pandas as pd
 import os
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.express as px
 import imaplib
 import email
 import time
 from supabase import create_client, Client
+import zipfile
+import io
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
@@ -17,15 +19,10 @@ url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
 
-# --- SIDEBAR & FULL BACKUP LOGIC (FINAL VERSION) ---
-import zipfile
-import io
-import pytz 
+# Υπολογισμός ώρας Ελλάδος (UTC + 3)
+now_athens = datetime.utcnow() + timedelta(hours=3)
 
-# Ρύθμιση ώρας Ελλάδος
-athens_tz = pytz.timezone('Europe/Athens')
-now_athens = datetime.now(athens_tz)
-
+# --- SIDEBAR & FULL BACKUP LOGIC ---
 with st.sidebar:
     st.header("⚙️ Διαχείριση")
     
@@ -39,7 +36,7 @@ with st.sidebar:
     try:
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            # ΛΙΣΤΑ ΠΙΝΑΚΩΝ - ΕΛΕΓΞΕ ΤΑ ΟΝΟΜΑΤΑ ΣΤΗ SUPABASE
+            # ΛΙΣΤΑ ΠΙΝΑΚΩΝ ΣΤΗ SUPABASE
             tables = {
                 "Production_LOT": "production_log",
                 "B2B_Orders": "b2b_orders",
