@@ -17,12 +17,12 @@ url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
 
-# --- SIDEBAR & FULL BACKUP LOGIC (ΔΙΟΡΘΩΜΕΝΗ ΩΡΑ & ΠΙΝΑΚΕΣ) ---
+# --- SIDEBAR & FULL BACKUP LOGIC (FINAL VERSION) ---
 import zipfile
 import io
-import pytz # Βιβλιοθήκη για την ώρα Ελλάδος
+import pytz 
 
-# Ορισμός ώρας Ελλάδος
+# Ρύθμιση ώρας Ελλάδος
 athens_tz = pytz.timezone('Europe/Athens')
 now_athens = datetime.now(athens_tz)
 
@@ -39,41 +39,36 @@ with st.sidebar:
     try:
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Πίνακες προς λήψη
+            # ΛΙΣΤΑ ΠΙΝΑΚΩΝ - ΕΛΕΓΞΕ ΤΑ ΟΝΟΜΑΤΑ ΣΤΗ SUPABASE
             tables = {
                 "Production_LOT": "production_log",
                 "B2B_Orders": "b2b_orders",
                 "Inventory": "ingredients",
-                "HACCP_Logs": "haccp_log",
+                "HACCP_Logs": "haccp_log", # Αν σου βγάζει warning, δες το όνομα στη Supabase
                 "Recipes": "recipes"
             }
             
             for file_label, table_name in tables.items():
                 try:
                     res = supabase.table(table_name).select("*").execute()
-                    # Μετατροπή σε DataFrame
                     df_temp = pd.DataFrame(res.data) if res.data else pd.DataFrame()
-                    # Μετατροπή σε CSV με υποστήριξη Ελληνικών
                     csv_data = df_temp.to_csv(index=False).encode('utf-8-sig')
-                    # Προσθήκη στο ZIP
                     zf.writestr(f"{file_label}_{now_athens.strftime('%d_%m_%Y')}.csv", csv_data)
-                except Exception as e:
-                    st.warning(f"Πρόβλημα με τον πίνακα {table_name}")
-
+                except Exception:
+                    st.warning(f"⚠️ Πρόβλημα με τον πίνακα: {table_name}")
+        
         st.download_button(
             label="📥 Λήψη Όλων των Δεδομένων (.zip)",
             data=buf.getvalue(),
             file_name=f"FULL_BACKUP_CABCLUB_{now_athens.strftime('%d_%m_%Y')}.zip",
             mime="application/zip",
-            use_container_width=True,
-            help="Κατεβάζει Παραγωγή, Παραγγελίες, Αποθήκη, HACCP και Συνταγές σε ένα αρχείο"
+            use_container_width=True
         )
-        st.success("Backup έτοιμο!")
+        st.success("Το Backup είναι έτοιμο!")
     except Exception as e:
         st.error(f"Σφάλμα Backup: {e}")
 
     st.divider()
-    # Εμφάνιση σωστής ώρας Ελλάδος στο Sidebar
     st.write(f"🕒 Ώρα Ελλάδος: {now_athens.strftime('%H:%M:%S')}")
     st.write(f"📅 Ημερομηνία: {now_athens.strftime('%d/%m/%Y')}")
 
