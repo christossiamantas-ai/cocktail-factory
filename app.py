@@ -1784,7 +1784,8 @@ elif page == "📦 Lot Παραγωγής":
                                         "customer_name": c_name,
                                         "total_amount": final_total,
                                         "order_details": details_str,
-                                        "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"
+                                        "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
+                                        "created_at": selected_date.isoformat() # <--- ΕΔΩ ΕΙΝΑΙ Η ΔΙΟΡΘΩΣΗ
                                     }).execute()
                             
                             # Ολοκλήρωση διαδικασίας
