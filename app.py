@@ -2507,7 +2507,7 @@ elif page == "👥 Πελατολόγιο":
 
                 st.divider()
 
-                # --- 2. ΔΙΑΧΕΙΡΙΣΗ DASHBOARD (Με ακριβή υπολογισμό % έκπτωσης) ---
+                # --- 2. ΔΙΑΧΕΙΡΙΣΗ DASHBOARD (Με ακριβή υπολογισμό % έκπτωσης & Έξυπνο Καθαρισμό) ---
                 st.subheader("💰 Εμπορική Διαχείριση & Εκπτώσεις (%)")
                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
                 
@@ -2517,11 +2517,11 @@ elif page == "👥 Πελατολόγιο":
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
-                        details = order['order_details']
+                        details = str(order['order_details'])
                         
                         # 1. Βρίσκουμε την Αρχική Αξία (πριν από κάθε έκπτωση)
                         base_amt = current_amt
-                        match = re.search(r"Αρχική Αξία: ([\d\.]+)€", details)
+                        match = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
                         if match:
                             base_amt = float(match.group(1))
                             
@@ -2539,7 +2539,7 @@ elif page == "👥 Πελατολόγιο":
                             with st.form(key=f"edit_order_pct_{order_id}"):
                                 c1, c2 = st.columns(2)
                                 
-                                # Εδώ βάζεις το ΝΕΟ ποσοστό έκπτωσης!
+                                # Εδώ βάζεις το ΝΕΟ ποσοστό έκπτωσης! Αν βάλεις 0, γυρνάει στην Αρχική Αξία.
                                 new_pct = c1.number_input("Τελικό Ποσοστό Έκπτωσης (%)", 
                                                           min_value=0.0, max_value=100.0, 
                                                           value=float(round(current_discount_pct, 1)), 
@@ -2553,14 +2553,17 @@ elif page == "👥 Πελατολόγιο":
                                     # Ο υπολογισμός γίνεται ΠΑΝΤΑ πάνω στην καθαρή Αρχική Αξία (Λύθηκε το compounding!)
                                     new_price = base_amt * (1 - (new_pct / 100))
                                     
-                                    new_details = details
-                                    if new_pct != current_discount_pct:
+                                    # ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ (Σβήνει τις παλιές εκπτώσεις που μπήκαν σε αγκύλες)
+                                    clean_details = details.split("\n[")[0].split("\n\n[")[0].strip()
+                                    
+                                    # Ξαναγράφει καθαρά το ιστορικό της παραγγελίας
+                                    new_details = clean_details + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
+                                    
+                                    if new_pct > 0:
                                         new_details += f"\n[Νέα Έκπτωση: {new_pct}% -> Νέα Τιμή: {new_price:.2f}€]"
                                     
-                                    if add_offer and "ΠΡΟΣΦΟΡΑ 240+24" not in details:
+                                    if add_offer:
                                         new_details += "\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ]"
-                                    elif not add_offer and "ΠΡΟΣΦΟΡΑ 240+24" in details:
-                                        new_details = new_details.replace("\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ]", "")
                                     
                                     supabase.table("b2b_orders").update({
                                         "total_amount": new_price,
