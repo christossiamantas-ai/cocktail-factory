@@ -12,6 +12,50 @@ import zipfile
 import io
 from fpdf import FPDF
 
+# --- ΠΡΟΣΘΗΚΗ ΣΥΝΑΡΤΗΣΗΣ PDF (ΠΡΙΝ ΤΟ CRM) ---
+def generate_pdf(customer_name, order_date, total_amount, details):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Φόρτωση γραμματοσειράς για Ελληνικά
+    try:
+        # Αναζήτηση της γραμματοσειράς στον τρέχοντα φάκελο
+        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
+        pdf.set_font('DejaVu', size=12)
+        font_to_use = 'DejaVu'
+    except:
+        # Fallback σε Helvetica αν λείπει το αρχείο (δεν θα δείχνει σωστά τα Ελληνικά)
+        pdf.set_font("Helvetica", size=12)
+        font_to_use = 'Helvetica'
+
+    # Header
+    pdf.set_font(font_to_use, 'B', 16)
+    pdf.cell(200, 10, txt="DC CABCLUB 2026", ln=True, align='C')
+    pdf.set_font(font_to_use, size=10)
+    pdf.cell(200, 10, txt="ΠΡΟΦΟΡΜΑ ΠΑΡΑΣΤΑΤΙΚΟ / ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ", ln=True, align='C')
+    pdf.ln(10)
+
+    # Στοιχεία Πελάτη
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 10, txt=f"Πελάτης: {customer_name}", ln=True, fill=True)
+    pdf.cell(0, 10, txt=f"Ημερομηνία: {order_date}", ln=True)
+    pdf.ln(5)
+
+    # Πίνακας
+    pdf.set_font(font_to_use, 'B', 11)
+    pdf.cell(140, 10, "Περιγραφή Παραγγελίας", 1)
+    pdf.cell(50, 10, "Ποσό (€)", 1, ln=True)
+
+    pdf.set_font(font_to_use, size=10)
+    # Καθαρισμός κειμένου από σημειώσεις αγκυλών (τεχνικά στοιχεία)
+    clean_text = details.split("\n[")[0].strip()
+    pdf.multi_cell(140, 10, clean_text, 1)
+    
+    # Τοποθέτηση τελικού ποσού
+    pdf.ln(5)
+    pdf.set_font(font_to_use, 'B', 14)
+    pdf.cell(0, 10, txt=f"ΣΥΝΟΛΟ ΠΛΗΡΩΜΗΣ: {total_amount:.2f} €", ln=True, align='R')
+
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
@@ -2472,49 +2516,7 @@ elif page == "🧼 Συντήρηση & HACCP":
         else:
             st.info("Καμία καταγραφή.")
 
-# --- ΠΡΟΣΘΗΚΗ ΣΥΝΑΡΤΗΣΗΣ PDF (ΠΡΙΝ ΤΟ CRM) ---
-def generate_pdf(customer_name, order_date, total_amount, details):
-    pdf = FPDF()
-    pdf.add_page()
-    
-    # Φόρτωση γραμματοσειράς για Ελληνικά
-    try:
-        # Αναζήτηση της γραμματοσειράς στον τρέχοντα φάκελο
-        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
-        pdf.set_font('DejaVu', size=12)
-        font_to_use = 'DejaVu'
-    except:
-        # Fallback σε Helvetica αν λείπει το αρχείο (δεν θα δείχνει σωστά τα Ελληνικά)
-        pdf.set_font("Helvetica", size=12)
-        font_to_use = 'Helvetica'
 
-    # Header
-    pdf.set_font(font_to_use, 'B', 16)
-    pdf.cell(200, 10, txt="DC CABCLUB 2026", ln=True, align='C')
-    pdf.set_font(font_to_use, size=10)
-    pdf.cell(200, 10, txt="ΠΡΟΦΟΡΜΑ ΠΑΡΑΣΤΑΤΙΚΟ / ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ", ln=True, align='C')
-    pdf.ln(10)
-
-    # Στοιχεία Πελάτη
-    pdf.set_fill_color(240, 240, 240)
-    pdf.cell(0, 10, txt=f"Πελάτης: {customer_name}", ln=True, fill=True)
-    pdf.cell(0, 10, txt=f"Ημερομηνία: {order_date}", ln=True)
-    pdf.ln(5)
-
-    # Πίνακας
-    pdf.set_font(font_to_use, 'B', 11)
-    pdf.cell(140, 10, "Περιγραφή Παραγγελίας", 1)
-    pdf.cell(50, 10, "Ποσό (€)", 1, ln=True)
-
-    pdf.set_font(font_to_use, size=10)
-    # Καθαρισμός κειμένου από σημειώσεις αγκυλών (τεχνικά στοιχεία)
-    clean_text = details.split("\n[")[0].strip()
-    pdf.multi_cell(140, 10, clean_text, 1)
-    
-    # Τοποθέτηση τελικού ποσού
-    pdf.ln(5)
-    pdf.set_font(font_to_use, 'B', 14)
-    pdf.cell(0, 10, txt=f"ΣΥΝΟΛΟ ΠΛΗΡΩΜΗΣ: {total_amount:.2f} €", ln=True, align='R')
     
     # Επιστρέφει το περιεχόμενο του PDF
     return pdf.output()
