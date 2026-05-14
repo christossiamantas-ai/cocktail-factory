@@ -2551,28 +2551,35 @@ elif page == "👥 Πελατολόγιο":
                 {customer_data.get('notes') if customer_data.get('notes') else 'Καμία σημείωση'}
                 """)
 
-                # --- 2. ΤΟ ΝΕΟ ΚΟΥΜΠΙ ΓΙΑ ΤΖΙΡΟ & ΠΑΡΑΓΓΕΛΙΕΣ (ΠΡΟΣΘΗΚΗ ΕΔΩ) ---
-                # Τραβάμε όλες τις παραγγελίες του συγκεκριμένου πελάτη από τη βάση
-                res_all_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).execute()
+                # --- 2. ΤΟ ΝΕΟ ΚΟΥΜΠΙ ΓΙΑ ΥΒΡΙΔΙΚΟ PDF (Οικονομικά + Παραγωγή) ---
+                # Τραβάμε Οικονομικά Δεδομένα (Ευρώ)
+                res_fin = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).execute()
+                # Τραβάμε Δεδομένα Παραγωγής (Τεμάχια - Εδώ είναι οι παλιές σου εγγραφές!)
+                res_prod_old = supabase.table("production_log").select("*").eq("customer", sel_name).execute()
                 
-                if res_all_orders.data:
+                # Αν υπάρχει έστω και ένα αρχείο σε οποιονδήποτε πίνακα
+                if res_fin.data or res_prod_old.data:
                     st.divider()
                     try:
-                        # Καλούμε τη συνάρτηση που φτιάχνει το PDF (Πρέπει να την έχεις βάλει στην αρχή του αρχείου)
-                        report_pdf = generate_customer_report(sel_name, res_all_orders.data)
+                        # Καλούμε τη νέα Υβριδική Συνάρτηση (Βεβαιώσου ότι την έβαλες στην αρχή του app.py)
+                        hybrid_report_pdf = generate_hybrid_report(sel_name, res_fin.data, res_prod_old.data)
                         
                         st.download_button(
-                            label="🖨️ Εκτύπωση Καρτέλας & Τζίρου",
-                            data=bytes(report_pdf),
-                            file_name=f"Report_{sel_name}.pdf",
+                            label="📄 Εκτύπωση Πλήρους Ιστορικού & Τζίρου",
+                            data=bytes(hybrid_report_pdf),
+                            file_name=f"Full_Report_{sel_name}.pdf",
                             mime="application/pdf",
                             use_container_width=True,
-                            key=f"report_btn_{customer_data['id']}" # Μοναδικό κλειδί
+                            key=f"hybrid_report_btn_{customer_data['id']}"
                         )
                     except Exception as e:
                         st.error(f"Σφάλμα PDF: {e}")
                 else:
-                    st.warning("Δεν υπάρχουν παραγγελίες για συγκεντρωτική εκτύπωση.")
+                    st.warning("Δεν βρέθηκαν παλιές ή νέες παραγγελίες για αυτόν τον πελάτη.")
+
+                # --- ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
+                with st.expander("📝 Επεξεργασία Στοιχείων"):
+                    # ... ο υπόλοιπος κώδικας της φόρμας σου (text_inputs κλπ) ...
                 
                 # --- ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
                 with st.expander("📝 Επεξεργασία Στοιχείων"):
