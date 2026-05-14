@@ -10,10 +10,68 @@ import time
 from supabase import create_client, Client
 import zipfile
 import io
+from fpdf import FPDF # <--- ΠΡΟΣΘΗΚΗ
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 
+# --- ΣΥΝΑΡΤΗΣΗ ΠΑΡΑΓΩΓΗΣ PDF (ΠΡΟΣΘΗΚΗ) ---
+def generate_pdf(customer_name, order_date, total_amount, details):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Προσθήκη γραμματοσειράς που υποστηρίζει Ελληνικά (Unicode)
+    # Πρέπει να έχεις το αρχείο DejaVuSans.ttf στον ίδιο φάκελο
+    try:
+        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
+        pdf.set_font('DejaVu', size=12)
+        has_unicode = True
+    except:
+        pdf.set_font("Helvetica", size=12)
+        has_unicode = False
+
+    # --- HEADER ---
+    pdf.set_font("Helvetica" if not has_unicode else "DejaVu", 'B', 16)
+    pdf.cell(200, 10, txt="DC CABCLUB 2026", ln=True, align='C')
+    pdf.set_font("Helvetica" if not has_unicode else "DejaVu", size=10)
+    pdf.cell(200, 10, txt="ΠΡΟΦΟΡΜΑ ΠΑΡΑΣΤΑΤΙΚΟ / ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ", ln=True, align='C')
+    pdf.ln(10)
+
+    # --- ΣΤΟΙΧΕΙΑ ΠΕΛΑΤΗ ---
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 10, txt=f"Πελάτης: {customer_name}", ln=True, fill=True)
+    pdf.cell(0, 10, txt=f"Ημερομηνία: {order_date}", ln=True)
+    pdf.ln(5)
+
+    # --- ΠΙΝΑΚΑΣ ΠΡΟΪΟΝΤΩΝ ---
+    pdf.set_font("Helvetica" if not has_unicode else "DejaVu", 'B', 11)
+    pdf.cell(140, 10, "Περιγραφή Παραγγελίας", 1)
+    pdf.cell(50, 10, "Ποσό (€)", 1, ln=True)
+
+    pdf.set_font("Helvetica" if not has_unicode else "DejaVu", size=10)
+    
+    # Καθαρισμός κειμένου από τεχνικές σημειώσεις (αγκύλες)
+    clean_details = details.split("\n[")[0].strip()
+    
+    # Χρήση multi_cell για να χωράνε οι πολλές γραμμές
+    pdf.multi_cell(140, 10, clean_details, 1)
+    
+    # Επιστροφή στο πλάι για το ποσό
+    curr_y = pdf.get_y()
+    pdf.set_y(curr_y - 10) # Διορθωτικό αν ήταν μια γραμμή
+    pdf.set_x(150)
+    pdf.cell(50, 10, f"{total_amount:.2f}", 1, ln=True)
+
+    pdf.ln(10)
+    pdf.set_font("Helvetica" if not has_unicode else "DejaVu", 'B', 14)
+    pdf.cell(0, 10, txt=f"ΣΥΝΟΛΟ ΠΛΗΡΩΜΗΣ: {total_amount:.2f} €", ln=True, align='R')
+    
+    # Υπογραφή / Ευχαριστήριο
+    pdf.ln(20)
+    pdf.set_font("Helvetica" if not has_unicode else "DejaVu", 'I', 10)
+    pdf.cell(0, 10, txt="Ευχαριστούμε για την προτίμηση!", ln=True, align='C')
+
+    return pdf.output()
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
