@@ -1419,7 +1419,7 @@ elif page == "📈 Dashboard":
                 hybrid_revenue_data.append({"customer": row['customer'], "Revenue": row['Theoretical_Revenue']})
 
         # Καταμέτρηση Μοναδικών Παραγγελιών
-        total_orders_count = df_filtered.groupby(['prod_date', 'prod_time', 'customer']).ngroups
+        total_orders_count = df_filtered.groupby(['prod_date', 'customer']).ngroups
 
         total_cost = df_filtered['Total_Cost'].sum()
         total_profit = total_rev - total_cost
