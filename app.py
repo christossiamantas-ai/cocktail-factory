@@ -1917,38 +1917,40 @@ elif page == "📦 Lot Παραγωγής":
                         st.rerun()
 
                     if b_del.form_submit_button("🗑️ Διαγραφή Παραγωγής"):
-                        # Παίρνουμε τα στοιχεία πριν τη διαγραφή για να βρούμε την οικονομική εγγραφή
                         del_cust = base_data["Πελάτης"]
                         del_cocktail = base_data["Cocktail"]
                         del_pieces = old_pieces
-                        del_date = base_data["Ημερομηνία"] # π.χ. '14/05/2026'
+                        del_date_str = base_data["Ημερομηνία"] # Η ημερομηνία από το ιστορικό
 
                         # 1. ΔΙΑΓΡΑΦΗ ΑΠΟ ΤΗΝ ΠΑΡΑΓΩΓΗ (production_log)
                         ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
                         for di in ids_to_del: 
                             supabase.table("production_log").delete().eq("id", di).execute()
                         
-                        # 2. ΔΙΑΓΡΑΦΗ ΑΠΟ ΤΟ DASHBOARD / ΠΕΛΑΤΟΛΟΓΙΟ (b2b_orders)
+                        # 2. ΔΙΑΓΡΑΦΗ ΑΠΟ ΤΟ ΠΕΛΑΤΟΛΟΓΙΟ (b2b_orders)
                         try:
-                            # Μετατροπή ημερομηνίας σε YYYY-MM-DD για να ταιριάζει με τη βάση
-                            db_date = pd.to_datetime(del_date, format="%d/%m/%Y").strftime("%Y-%m-%d")
+                            # Μετατρέπουμε την ημερομηνία σε μορφή που καταλαβαίνει η βάση (YYYY-MM-DD)
+                            target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
                             
-                            # Ψάχνουμε τις παραγγελίες του συγκεκριμένου πελάτη
-                            res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).execute()
+                            # Φέρνουμε όλες τις παραγγελίες του πελάτη για εκείνη τη συγκεκριμένη ημέρα
+                            res_orders = supabase.table("b2b_orders")\
+                                .select("*")\
+                                .eq("customer_name", del_cust)\
+                                .gte("created_at", f"{target_date}T00:00:00")\
+                                .lte("created_at", f"{target_date}T23:59:59")\
+                                .execute()
                             
                             if res_orders.data:
                                 for order in res_orders.data:
-                                    # Αν η παραγγελία έγινε την ίδια μέρα...
-                                    if str(order['created_at']).startswith(db_date):
-                                        # ...και περιέχει τα συγκεκριμένα τεμάχια & κοκτέιλ (π.χ. "10 τμχ Mojito")
-                                        if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
-                                            # Τη βρήκαμε! Τη διαγράφουμε.
-                                            supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
-                                            break # Σταματάμε μετά την πρώτη διαγραφή
+                                    # Ελέγχουμε αν η παραγγελία περιέχει το κοκτέιλ και τα τεμάχια που σβήσαμε
+                                    if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
+                                        supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
+                                        st.info(f"Σβήστηκε και η οικονομική εγγραφή της παραγγελίας.")
+                                        break 
                         except Exception as e:
-                            pass # Σε περίπτωση που η οικονομική εγγραφή έχει ήδη σβηστεί
+                            st.error(f"Σφάλμα κατά τη διαγραφή οικονομικών: {e}")
                             
-                        st.warning("🗑️ Η Παραγωγή ΚΑΙ η αντίστοιχη Οικονομική Χρέωση διαγράφηκαν επιτυχώς!")
+                        st.warning("✅ Η παραγωγή και η οικονομική εγγραφή διαγράφηκαν.")
                         st.cache_data.clear()
                         time.sleep(1.5)
                         st.rerun()
