@@ -25,58 +25,60 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
     except:
         f_name = 'Helvetica'
 
+    # Τίτλος
     pdf.set_font(f_name, size=16)
-    pdf.cell(0, 15, "DC CABCLUB 2026 - ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ ΠΕΛΑΤΗ", ln=1, align='C')
+    pdf.cell(0, 10, "DC CABCLUB 2026 - ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ ΠΕΛΑΤΗ", ln=1, align='C')
     pdf.ln(5)
     
-    # 1. Οικονομικό Ιστορικό (Από B2B Orders)
+    # --- ΕΝΟΤΗΤΑ 1: ΟΙΚΟΝΟΜΙΚΑ (ΕΥΡΩ) ---
     pdf.set_font(f_name, size=12)
     pdf.set_fill_color(230, 230, 230)
-    pdf.cell(0, 10, "Οικονομικές Συναλλαγές (Ευρώ)", ln=1, fill=True)
+    pdf.cell(0, 10, "Οικονομικά Στοιχεία (Από B2B Orders)", ln=1, fill=True)
     pdf.set_font(f_name, size=10)
     
     total_euro = 0
     if financial_data:
         pdf.cell(40, 10, "Ημερομηνία", 1)
-        pdf.cell(100, 10, "Λεπτομέρειες", 1)
-        pdf.cell(50, 10, "Ποσό (€)", 1, 1, 'C')
+        pdf.cell(105, 10, "Περιγραφή / Λεπτομέρειες", 1)
+        pdf.cell(45, 10, "Ποσό (€)", 1, 1, 'C')
         for order in financial_data:
             amt = float(order.get('total_amount', 0))
             date = str(order.get('created_at', ''))[:10]
-            desc = str(order.get('order_details', '')).split('\n')[0][:50]
+            desc = str(order.get('order_details', '')).split('\n')[0][:55]
             pdf.cell(40, 10, date, 1)
-            pdf.cell(100, 10, desc, 1)
-            pdf.cell(50, 10, f"{amt:.2f}", 1, 1, 'R')
+            pdf.cell(105, 10, desc, 1)
+            pdf.cell(45, 10, f"{amt:.2f}", 1, 1, 'R')
             total_euro += amt
     else:
-        pdf.cell(0, 10, "Δεν βρέθηκαν οικονομικές εγγραφές.", ln=1)
+        pdf.cell(0, 10, "Δεν βρέθηκαν οικονομικές εγγραφές (Τζίρος: 0.00)", ln=1)
 
     pdf.ln(5)
 
-    # 2. Ιστορικό Παραγωγής (Από Production Log - ΤΑ ΠΑΛΙΑ ΣΟΥ)
+    # --- ΕΝΟΤΗΤΑ 2: ΠΑΡΑΔΟΣΕΙΣ (ΤΕΜΑΧΙΑ - ΤΑ ΠΑΛΙΑ ΣΟΥ) ---
     pdf.set_font(f_name, size=12)
-    pdf.cell(0, 10, "Ιστορικό Παραδόσεων (Τεμάχια)", ln=1, fill=True)
+    pdf.cell(0, 10, "Ιστορικό Παραδόσεων (Από Production Log)", ln=1, fill=True)
     pdf.set_font(f_name, size=10)
     
     total_pieces = 0
     if production_data:
         pdf.cell(40, 10, "Ημερομηνία", 1)
-        pdf.cell(100, 10, "Cocktail", 1)
-        pdf.cell(50, 10, "Τεμάχια", 1, 1, 'C')
-        # Αφαίρεση διπλότυπων για καθαρή εκτύπωση
-        df_temp = pd.DataFrame(production_data).drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail"])
-        for _, row in df_temp.iterrows():
-            pdf.cell(40, 10, str(row['prod_date']), 1)
-            pdf.cell(100, 10, str(row['cocktail_name']), 1)
-            pdf.cell(50, 10, str(row['pieces']), 1, 1, 'C')
-            total_pieces += int(row['pieces'])
+        pdf.cell(105, 10, "Cocktail / Προϊόν", 1)
+        pdf.cell(45, 10, "Τεμάχια", 1, 1, 'C')
+        
+        # Εμφανίζουμε ΟΛΕΣ τις γραμμές χωρίς εξαιρέσεις
+        for row in production_data:
+            pdf.cell(40, 10, str(row.get('prod_date', '-')), 1)
+            pdf.cell(105, 10, str(row.get('cocktail_name', '-')), 1)
+            pcs = int(row.get('pieces', 0))
+            pdf.cell(45, 10, f"{pcs} τμχ", 1, 1, 'C')
+            total_pieces += pcs
     else:
         pdf.cell(0, 10, "Δεν βρέθηκε ιστορικό παραγωγής.", ln=1)
 
-    # ΣΥΝΟΛΑ
+    # ΤΕΛΙΚΑ ΣΥΝΟΛΑ
     pdf.ln(10)
     pdf.set_font(f_name, size=14)
-    pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_euro:.2f} EUR", ln=1, align='R')
+    pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_euro:.2f} €", ln=1, align='R')
     pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΑ ΤΕΜΑΧΙΑ: {total_pieces} τμχ", ln=1, align='R')
     
     return pdf.output()
