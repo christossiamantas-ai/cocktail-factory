@@ -2508,51 +2508,7 @@ elif page == "👥 Πελατολόγιο":
                 st.divider()
 
                 # --- 2. ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ (Από b2b_orders - Οικονομικά/Dashboard) ---
-                st.subheader(f"💰 Διαχείριση Εκπτώσεων & Προσφορών")
-                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
-                
-                if res_orders.data:
-                    st.write("Επιλέξτε παραγγελία για εφαρμογή έκπτωσης:")
-                    for order in res_orders.data:
-                        order_id = order['id']
-                        date_only = str(order['created_at'])[:10]
-                        total_amt = float(order['total_amount'])
-                        order_details = order['order_details']
-
-                        with st.expander(f"🛒 {date_only} | Σύνολο: {total_amt:.2f}€"):
-                            st.caption(f"Λεπτομέρειες: {order_details}")
-                            
-                            with st.form(key=f"manage_order_{order_id}"):
-                                c1, c2 = st.columns(2)
-                                
-                                # Εδώ μπορείς να βάλεις το ποσοστό της έκπτωσης (%)
-                                disc_pct = c1.number_input("Έκπτωση (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.5)
-                                
-                                # Checkbox για την προσφορά 240+24
-                                offer_240 = c2.checkbox("🎁 Προσφορά 240 + 24 Δώρο")
-                                
-                                if st.form_submit_button("💾 Εφαρμογή στην Παραγγελία"):
-                                    new_total = total_amt
-                                    new_details = order_details
-                                    
-                                    # Υπολογισμός νέου συνόλου αν μπει έκπτωση
-                                    if disc_pct > 0:
-                                        discount_amount = total_amt * (disc_pct / 100)
-                                        new_total = total_amt - discount_amount
-                                        new_details += f"\n[Έκπτωση {disc_pct}%: -{discount_amount:.2f}€]"
-                                    
-                                    if offer_240:
-                                        new_details += "\n[ΕΦΑΡΜΟΓΗ ΠΡΟΣΦΟΡΑΣ: 240 + 24 ΔΩΡΟ]"
-                                    
-                                    # Ενημέρωση στη Supabase (Επηρεάζει άμεσα το Dashboard)
-                                    supabase.table("b2b_orders").update({
-                                        "total_amount": new_total,
-                                        "order_details": new_details
-                                    }).eq("id", order_id).execute()
-                                    
-                                    st.success(f"Η παραγγελία ενημερώθηκε! Νέο σύνολο: {new_total:.2f}€")
-                                    time.sleep(1.5)
-                                    st.rerun()
+                ΔΙΑΧΕΙΡΙΣΗ DASHBOARD
                 else:
                     st.info("Δεν υπάρχουν οικονομικές παραγγελίες στο Dashboard για αυτόν τον πελάτη.")
 
