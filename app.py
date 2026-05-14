@@ -15,52 +15,57 @@ from fpdf import FPDF # <--- Η βιβλιοθήκη για το PDF
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 
-# --- ΣΥΝΑΡΤΗΣΗ ΓΙΑ ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΕΚΤΥΠΩΣΗ ΠΕΛΑΤΗ ---
+# --- ΣΥΝΑΡΤΗΣΗ ΓΙΑ ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΕΚΤΥΠΩΣΗ ΠΕΛΑΤΗ (ΣΤΑΘΕΡΗ ΕΚΔΟΣΗ) ---
 def generate_customer_report(customer_name, orders_data):
     pdf = FPDF()
     pdf.add_page()
+    
+    # 1. Φόρτωση γραμματοσειράς - Χρησιμοποιούμε μόνο την απλή DejaVu
     try:
         pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
-        pdf.set_font('DejaVu', size=12)
         f_name = 'DejaVu'
     except:
-        pdf.set_font("Helvetica", size=12)
         f_name = 'Helvetica'
 
-    # Τίτλος
-    pdf.set_font(f_name, 'B', 16)
-    pdf.cell(0, 10, txt="DC CABCLUB 2026 - ΑΝΑΦΟΡΑ ΠΕΛΑΤΗ", ln=True, align='C')
+    # 2. Τίτλος (Μεγαλύτερο size αντί για Bold)
+    pdf.set_font(f_name, size=18)
+    pdf.cell(0, 15, txt="DC CABCLUB 2026 - ΑΝΑΦΟΡΑ ΠΕΛΑΤΗ", ln=True, align='C')
     pdf.ln(5)
     
-    # Στοιχεία
+    # 3. Στοιχεία Πελάτη
     pdf.set_font(f_name, size=12)
-    pdf.cell(0, 10, txt=f"Πελάτης: {customer_name}", ln=True)
-    pdf.cell(0, 10, txt=f"Ημερομηνία: {datetime.now().strftime('%d/%m/%Y')}", ln=True)
+    pdf.set_fill_color(245, 245, 245)
+    pdf.cell(0, 10, txt=f"Πελάτης: {customer_name}", ln=True, fill=True)
+    pdf.cell(0, 10, txt=f"Ημερομηνία Αναφοράς: {datetime.now().strftime('%d/%m/%Y')}", ln=True)
     pdf.ln(10)
 
-    # Πίνακας Παραγγελιών
-    pdf.set_font(f_name, 'B', 10)
-    pdf.cell(35, 10, "Ημερομηνία", 1)
-    pdf.cell(110, 10, "Λεπτομέρειες", 1)
-    pdf.cell(45, 10, "Ποσό (€)", 1, ln=True)
+    # 4. Επικεφαλίδες Πίνακα
+    pdf.set_font(f_name, size=11)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(35, 10, "Ημερομηνία", 1, 0, 'C', True)
+    pdf.cell(110, 10, "Λεπτομέρειες Παραγγελίας", 1, 0, 'C', True)
+    pdf.cell(45, 10, "Ποσό (€)", 1, 1, 'C', True)
 
-    pdf.set_font(f_name, size=9)
+    # 5. Δεδομένα Παραγγελιών
+    pdf.set_font(f_name, size=10)
     total_sum = 0
+    
     for order in orders_data:
         date_str = str(order['created_at'])[:10]
         amount = float(order['total_amount'])
-        # Παίρνουμε την πρώτη γραμμή από τις λεπτομέρειες για να χωράει στον πίνακα
-        short_details = str(order['order_details']).split('\n')[0][:60]
+        # Καθαρισμός κειμένου για να χωράει στην τρύπα του πίνακα
+        short_details = str(order['order_details']).split('\n')[0][:55]
         
         pdf.cell(35, 10, date_str, 1)
-        pdf.cell(110, 10, short_details, 1)
-        pdf.cell(45, 10, f"{amount:.2f}", 1, ln=True)
+        pdf.cell(110, 10, f" {short_details}", 1)
+        pdf.cell(45, 10, f"{amount:.2f} ", 1, 1, 'R')
         total_sum += amount
 
-    # Τελικός Τζίρος
+    # 6. Τελικός Τζίρος (Μεγάλα γράμματα στο τέλος)
     pdf.ln(10)
-    pdf.set_font(f_name, 'B', 14)
-    pdf.cell(0, 10, txt=f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_sum:.2f} EUR", ln=True, align='R')
+    pdf.set_font(f_name, size=15)
+    pdf.cell(145, 12, txt="ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ:", 0, 0, 'R')
+    pdf.cell(45, 12, txt=f"{total_sum:.2f} €", 1, 1, 'C')
     
     return pdf.output()
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
