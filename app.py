@@ -10,6 +10,53 @@ import time
 from supabase import create_client, Client
 import zipfile
 import io
+from fpdf import FPDF
+import io
+
+def generate_pdf(customer_name, order_date, total_amount, details):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # ΣΗΜΑΝΤΙΚΟ: Για τα Ελληνικά, η FPDF χρειάζεται μια γραμματοσειρά Unicode.
+    # Αν τρέχεις την εφαρμογή στο Cloud, χρησιμοποίησε τη standard Helvetica. 
+    # Αν είσαι τοπικά, κατέβασε το DejaVuSans.ttf και χρησιμοποίησε:
+    # pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
+    # pdf.set_font('DejaVu', size=14)
+    
+    pdf.set_font("Helvetica", size=16) # Προσωρινή για Latin - βλ. σημείωση παρακάτω
+    
+    # --- HEADER ---
+    pdf.cell(200, 10, txt="DC CABCLUB 2026", ln=True, align='C')
+    pdf.set_font("Helvetica", size=12)
+    pdf.cell(200, 10, txt="PROFORMA / DELIVERY NOTE", ln=True, align='C')
+    pdf.ln(10)
+    
+    # --- ΣΤΟΙΧΕΙΑ ΠΕΛΑΤΗ ---
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 10, txt=f"Customer: {customer_name}", ln=True, fill=True)
+    pdf.cell(0, 10, txt=f"Date: {order_date}", ln=True)
+    pdf.ln(5)
+    
+    # --- ΠΙΝΑΚΑΣ ΠΡΟΪΟΝΤΩΝ ---
+    pdf.set_font("Helvetica", 'B', 11)
+    pdf.cell(130, 10, "Description", 1)
+    pdf.cell(60, 10, "Total (EUR)", 1, ln=True)
+    
+    pdf.set_font("Helvetica", size=10)
+    # Καθαρισμός λεπτομερειών από τεχνικές σημειώσεις
+    clean_items = details.split("\n[")[0].strip()
+    pdf.multi_cell(130, 10, clean_items, 1)
+    
+    # Τοποθέτηση του ποσού δίπλα στο περιεχόμενο
+    pdf.set_y(pdf.get_y() - 10)
+    pdf.set_x(140)
+    pdf.cell(60, 10, f"{total_amount:.2f} EUR", 1, ln=True)
+    
+    pdf.ln(10)
+    pdf.set_font("Helvetica", 'B', 14)
+    pdf.cell(0, 10, txt=f"TOTAL AMOUNT: {total_amount:.2f} EUR", ln=True, align='R')
+    
+    return pdf.output()
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
