@@ -2349,52 +2349,80 @@ elif page == "👥 Πελατολόγιο":
                     st.rerun()
 
             with col_crm_b:
-                st.subheader(f"🛒 Διαχείριση Παραγγελιών: {sel_name}")
+                # --- 1. ΠΑΛΙΟ ΙΣΤΟΡΙΚΟ (Από production_log - Τεμάχια) ---
+                st.subheader(f"📊 Ιστορικό Παραγωγής: {sel_name}")
+                res_prod = supabase.table("production_log").select("prod_date, cocktail_name, pieces, lot_cocktail, prod_time").eq("customer", sel_name).order("prod_date", desc=True).execute()
                 
-                # Φέρνουμε τις παραγγελίες από τον πίνακα b2b_orders για να μπορούμε να αλλάζουμε τιμές/εκπτώσεις
+                if res_prod.data:
+                    df_p = pd.DataFrame(res_prod.data)
+                    df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail", "cocktail_name"])
+                    
+                    st.dataframe(
+                        df_p_clean.rename(columns={
+                            "prod_date": "Ημερομηνία",
+                            "cocktail_name": "Cocktail",
+                            "pieces": "Τεμάχια"
+                        })[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.metric("Συνολικές Αγορές (Τεμάχια)", f"{int(df_p_clean['pieces'].sum())} τμχ")
+                else:
+                    st.info("Δεν βρέθηκε ιστορικό παραγωγής για αυτόν τον πελάτη.")
+
+                st.divider()
+
+                # --- 2. ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ (Από b2b_orders - Οικονομικά/Dashboard) ---
+                st.subheader(f"💰 Διαχείριση Εκπτώσεων & Προσφορών")
                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
                 
                 if res_orders.data:
+                    st.write("Επιλέξτε παραγγελία για εφαρμογή έκπτωσης:")
                     for order in res_orders.data:
                         order_id = order['id']
                         date_only = str(order['created_at'])[:10]
                         total_amt = float(order['total_amount'])
                         order_details = order['order_details']
-                        
-                        with st.expander(f"📅 {date_only} | Ποσό: {total_amt:.2f}€ | ID: {order_id}"):
-                            st.text(f"Λεπτομέρειες: {order_details}")
-                            st.divider()
+
+                        with st.expander(f"🛒 {date_only} | Σύνολο: {total_amt:.2f}€"):
+                            st.caption(f"Λεπτομέρειες: {order_details}")
                             
-                            # Φόρμα τροποποίησης παραγγελίας
                             with st.form(key=f"manage_order_{order_id}"):
                                 c1, c2 = st.columns(2)
                                 
-                                # Προσθήκη έκπτωσης (θα μειώσει το total_amount)
-                                disc_val = c1.number_input("Εφαρμογή Έκπτωσης (€)", min_value=0.0, max_value=total_amt, step=1.0)
+                                # Εδώ μπορείς να βάλεις το ποσοστό της έκπτωσης (%)
+                                disc_pct = c1.number_input("Έκπτωση (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.5)
                                 
                                 # Checkbox για την προσφορά 240+24
                                 offer_240 = c2.checkbox("🎁 Προσφορά 240 + 24 Δώρο")
                                 
-                                if st.form_submit_button("💾 Οριστικοποίηση Αλλαγών"):
-                                    new_total = total_amt - disc_val
+                                if st.form_submit_button("💾 Εφαρμογή στην Παραγγελία"):
+                                    new_total = total_amt
                                     new_details = order_details
                                     
-                                    if disc_val > 0:
-                                        new_details += f"\n[Εφαρμόστηκε έκπτωση: -{disc_val}€]"
+                                    # Υπολογισμός νέου συνόλου αν μπει έκπτωση
+                                    if disc_pct > 0:
+                                        discount_amount = total_amt * (disc_pct / 100)
+                                        new_total = total_amt - discount_amount
+                                        new_details += f"\n[Έκπτωση {disc_pct}%: -{discount_amount:.2f}€]"
                                     
                                     if offer_240:
-                                        new_details += "\n[ΠΡΟΣΦΟΡΑ: 240+24 ΔΩΡΟ ΕΦΑΡΜΟΣΤΗΚΕ]"
+                                        new_details += "\n[ΕΦΑΡΜΟΓΗ ΠΡΟΣΦΟΡΑΣ: 240 + 24 ΔΩΡΟ]"
                                     
-                                    # Update στη Supabase
+                                    # Ενημέρωση στη Supabase (Επηρεάζει άμεσα το Dashboard)
                                     supabase.table("b2b_orders").update({
                                         "total_amount": new_total,
                                         "order_details": new_details
                                     }).eq("id", order_id).execute()
                                     
-                                    st.success(f"Ενημερώθηκε! Νέο σύνολο: {new_total:.2f}€")
+                                    st.success(f"Η παραγγελία ενημερώθηκε! Νέο σύνολο: {new_total:.2f}€")
+                                    time.sleep(1.5)
                                     st.rerun()
                 else:
-                    st.info("Δεν βρέθηκαν οικονομικές παραγγελίες για αυτόν τον πελάτη.")
+                    st.info("Δεν υπάρχουν οικονομικές παραγγελίες στο Dashboard για αυτόν τον πελάτη.")
+
+        else:
+            st.warning("⚠️ Η λίστα πελατών είναι άδεια.")
 
     with tab_crm2:
         st.subheader("➕ Καταχώρηση Νέου Πελάτη")
@@ -2422,7 +2450,6 @@ elif page == "👥 Πελατολόγιο":
                     st.rerun()
                 else:
                     st.error("Το όνομα είναι υποχρεωτικό!")
-
 
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
 elif page == "🔄 Αντικατάσταση":
