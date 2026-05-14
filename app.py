@@ -1737,9 +1737,9 @@ elif page == "📦 Lot Παραγωγής":
                                         try:
                                             
                                     # Διαβάζει σωστά την τιμή από τον πίνακα συνταγών
-                                        res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
-                                        if res_p.data and res_p.data[0].get("catalog_price"):
-                                            price = float(res_p.data[0].get("catalog_price"))
+                                            res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
+                                            if res_p.data and res_p.data[0].get("catalog_price"):
+                                                price = float(res_p.data[0].get("catalog_price"))
                                     except Exception:
                                          pass
                                             
