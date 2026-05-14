@@ -10,10 +10,59 @@ import time
 from supabase import create_client, Client
 import zipfile
 import io
+from fpdf import FPDF # <--- Η βιβλιοθήκη για το PDF
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 
+# --- ΣΥΝΑΡΤΗΣΗ ΓΙΑ ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΕΚΤΥΠΩΣΗ ΠΕΛΑΤΗ ---
+def generate_customer_report(customer_name, orders_data):
+    pdf = FPDF()
+    pdf.add_page()
+    try:
+        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
+        pdf.set_font('DejaVu', size=12)
+        f_name = 'DejaVu'
+    except:
+        pdf.set_font("Helvetica", size=12)
+        f_name = 'Helvetica'
+
+    # Τίτλος
+    pdf.set_font(f_name, 'B', 16)
+    pdf.cell(0, 10, txt="DC CABCLUB 2026 - ΑΝΑΦΟΡΑ ΠΕΛΑΤΗ", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Στοιχεία
+    pdf.set_font(f_name, size=12)
+    pdf.cell(0, 10, txt=f"Πελάτης: {customer_name}", ln=True)
+    pdf.cell(0, 10, txt=f"Ημερομηνία: {datetime.now().strftime('%d/%m/%Y')}", ln=True)
+    pdf.ln(10)
+
+    # Πίνακας Παραγγελιών
+    pdf.set_font(f_name, 'B', 10)
+    pdf.cell(35, 10, "Ημερομηνία", 1)
+    pdf.cell(110, 10, "Λεπτομέρειες", 1)
+    pdf.cell(45, 10, "Ποσό (€)", 1, ln=True)
+
+    pdf.set_font(f_name, size=9)
+    total_sum = 0
+    for order in orders_data:
+        date_str = str(order['created_at'])[:10]
+        amount = float(order['total_amount'])
+        # Παίρνουμε την πρώτη γραμμή από τις λεπτομέρειες για να χωράει στον πίνακα
+        short_details = str(order['order_details']).split('\n')[0][:60]
+        
+        pdf.cell(35, 10, date_str, 1)
+        pdf.cell(110, 10, short_details, 1)
+        pdf.cell(45, 10, f"{amount:.2f}", 1, ln=True)
+        total_sum += amount
+
+    # Τελικός Τζίρος
+    pdf.ln(10)
+    pdf.set_font(f_name, 'B', 14)
+    pdf.cell(0, 10, txt=f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_sum:.2f} EUR", ln=True, align='R')
+    
+    return pdf.output()
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
