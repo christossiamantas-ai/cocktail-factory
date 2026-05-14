@@ -1735,10 +1735,10 @@ elif page == "📦 Lot Παραγωγής":
                                     for cocktail, pcs in products.items():
                                         price = 0.0
                                         try:
-                                            # ΣΗΜΕΙΩΣΗ: Ελέγχει τον πίνακα "products" για τη στήλη "price"
-                                            res_p = supabase.table("products").select("price").eq("name", cocktail).execute()
-                                            if res_p.data and res_p.data[0].get("price"):
-                                                price = float(res_p.data[0].get("price"))
+                                            # Διαβάζει σωστά την τιμή από τον πίνακα συνταγών
+                                        res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
+                                        if res_p.data and res_p.data[0].get("catalog_price"):
+                                        price = float(res_p.data[0].get("catalog_price"))
                                         except Exception:
                                             pass
                                             
