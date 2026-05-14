@@ -7,3 +7,4 @@ supabase
 streamlit-lottie
 requests
 WooCommerce
+fpdf2
