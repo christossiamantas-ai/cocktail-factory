@@ -15,8 +15,8 @@ from fpdf import FPDF # <--- Η βιβλιοθήκη για το PDF
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 
-# --- ΣΥΝΑΡΤΗΣΗ ΓΙΑ ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΕΚΤΥΠΩΣΗ ΠΕΛΑΤΗ (ΤΕΛΙΚΗ ΔΙΟΡΘΩΣΗ) ---
-def generate_customer_report(customer_name, orders_data):
+# --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF (ΟΙΚΟΝΟΜΙΚΑ + ΠΑΡΑΓΩΓΗ) ---
+def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
     pdf.add_page()
     try:
@@ -26,40 +26,58 @@ def generate_customer_report(customer_name, orders_data):
         f_name = 'Helvetica'
 
     pdf.set_font(f_name, size=16)
-    pdf.cell(0, 15, "DC CABCLUB 2026 - ΑΝΑΦΟΡΑ ΠΕΛΑΤΗ", ln=1, align='C')
+    pdf.cell(0, 15, "DC CABCLUB 2026 - ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ ΠΕΛΑΤΗ", ln=1, align='C')
     pdf.ln(5)
     
+    # 1. Οικονομικό Ιστορικό (Από B2B Orders)
     pdf.set_font(f_name, size=12)
-    pdf.cell(0, 10, f"Πελάτης: {customer_name}", ln=1)
-    pdf.cell(0, 10, f"Ημερομηνία Αναφοράς: {datetime.now().strftime('%d/%m/%Y')}", ln=1)
-    pdf.ln(10)
-
-    # Επικεφαλίδες
-    pdf.set_font(f_name, size=11)
-    pdf.cell(35, 10, "Ημερομηνία", 1)
-    pdf.cell(110, 10, "Λεπτομέρειες", 1)
-    pdf.cell(45, 10, "Ποσό (€)", 1, 1, 'C')
-
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 10, "Οικονομικές Συναλλαγές (Ευρώ)", ln=1, fill=True)
     pdf.set_font(f_name, size=10)
-    total_sum = 0
-    for order in orders_data:
-        date_str = str(order.get('created_at', ''))[:10]
-        amount = float(order.get('total_amount', 0))
-        
-        # ΕΔΩ Η ΔΙΟΡΘΩΣΗ: Αν η παραγγελία είναι παλιά, παίρνει όλο το κείμενο
-        raw_details = str(order.get('order_details', 'Παλαιά Καταχώρηση'))
-        # Καθαρίζουμε τυχόν τεχνικές ετικέτες αν υπάρχουν, αλλιώς δείχνουμε το κείμενο
-        clean_details = raw_details.split("\n[")[0].split("\n\n")[0][:60]
-        
-        pdf.cell(35, 10, date_str, 1)
-        pdf.cell(110, 10, f" {clean_details}", 1)
-        pdf.cell(45, 10, f"{amount:.2f}", 1, 1, 'R')
-        total_sum += amount
+    
+    total_euro = 0
+    if financial_data:
+        pdf.cell(40, 10, "Ημερομηνία", 1)
+        pdf.cell(100, 10, "Λεπτομέρειες", 1)
+        pdf.cell(50, 10, "Ποσό (€)", 1, 1, 'C')
+        for order in financial_data:
+            amt = float(order.get('total_amount', 0))
+            date = str(order.get('created_at', ''))[:10]
+            desc = str(order.get('order_details', '')).split('\n')[0][:50]
+            pdf.cell(40, 10, date, 1)
+            pdf.cell(100, 10, desc, 1)
+            pdf.cell(50, 10, f"{amt:.2f}", 1, 1, 'R')
+            total_euro += amt
+    else:
+        pdf.cell(0, 10, "Δεν βρέθηκαν οικονομικές εγγραφές.", ln=1)
 
+    pdf.ln(5)
+
+    # 2. Ιστορικό Παραγωγής (Από Production Log - ΤΑ ΠΑΛΙΑ ΣΟΥ)
+    pdf.set_font(f_name, size=12)
+    pdf.cell(0, 10, "Ιστορικό Παραδόσεων (Τεμάχια)", ln=1, fill=True)
+    pdf.set_font(f_name, size=10)
+    
+    total_pieces = 0
+    if production_data:
+        pdf.cell(40, 10, "Ημερομηνία", 1)
+        pdf.cell(100, 10, "Cocktail", 1)
+        pdf.cell(50, 10, "Τεμάχια", 1, 1, 'C')
+        # Αφαίρεση διπλότυπων για καθαρή εκτύπωση
+        df_temp = pd.DataFrame(production_data).drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail"])
+        for _, row in df_temp.iterrows():
+            pdf.cell(40, 10, str(row['prod_date']), 1)
+            pdf.cell(100, 10, str(row['cocktail_name']), 1)
+            pdf.cell(50, 10, str(row['pieces']), 1, 1, 'C')
+            total_pieces += int(row['pieces'])
+    else:
+        pdf.cell(0, 10, "Δεν βρέθηκε ιστορικό παραγωγής.", ln=1)
+
+    # ΣΥΝΟΛΑ
     pdf.ln(10)
     pdf.set_font(f_name, size=14)
-    pdf.cell(145, 12, "ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ:", 0, 0, 'R')
-    pdf.cell(45, 12, f"{total_sum:.2f} €", 1, 1, 'C')
+    pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_euro:.2f} EUR", ln=1, align='R')
+    pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΑ ΤΕΜΑΧΙΑ: {total_pieces} τμχ", ln=1, align='R')
     
     return pdf.output()
 
