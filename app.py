@@ -2560,21 +2560,23 @@ elif page == "👥 Πελατολόγιο":
                                 col_b1, col_b2 = st.columns(2)
                                 
                                 if col_b1.form_submit_button("💾 Εφαρμογή Έκπτωσης", type="primary"):
-                                    # Υπολογισμός τιμής βάσει του ποσοστού έκπτωσης επί της Αρχικής Αξίας
-                                    new_price = base_amt * (1 - (new_pct / 100))
+                                    # 1. Υπολογισμός Τιμής Μονάδας (Καταλόγου και Χονδρικής)
+                                    unit_price_catalog = base_amt / total_pieces if total_pieces > 0 else 0
+                                    unit_price_dealer = unit_price_catalog * (1 - (new_pct / 100))
                                     
-                                    # ΑΥΤΟΜΑΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΔΩΡΟΥ 24 ΤΜΧ:
-                                    # Αν επιλεγεί η προσφορά, αφαιρούμε την αξία 24 τεμαχίων από την τελική τιμή
-                                    if add_offer and total_pieces > 0:
-                                        # Βρίσκουμε την αρχική αξία του ενός τεμαχίου
-                                        single_unit_price = base_amt / total_pieces
-                                        # Αξία των 24 δωρεάν τεμαχίων
-                                        gift_value = single_unit_price * 24
-                                        # Αφαίρεση του δώρου
-                                        new_price = new_price - gift_value
-                                        if new_price < 0: new_price = 0.0
+                                    # 2. Υπολογισμός Τελικού Ποσού βάσει Προσφοράς
+                                    if add_offer and total_pieces >= 24:
+                                        # Υπολογισμός: (Συνολικά Τεμάχια - 24 δώρα) x Τιμή Χονδρικής
+                                        # Π.χ. (264 - 24) * 2.95€ = 708.00€
+                                        payable_pieces = total_pieces - 24
+                                        new_price = payable_pieces * unit_price_dealer
+                                    else:
+                                        # Κανονική χρέωση όλης της ποσότητας με την έκπτωση
+                                        new_price = total_pieces * unit_price_dealer
                                     
-                                    # ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ (Σβήνει τις παλιές σημειώσεις που μπήκαν σε αγκύλες)
+                                    if new_price < 0: new_price = 0.0
+
+                                    # 3. ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ
                                     clean_details = details.split("\n[")[0].split("\n\n[")[0].strip()
                                     
                                     # Ξαναγράφει καθαρά το ιστορικό της παραγγελίας
@@ -2584,7 +2586,7 @@ elif page == "👥 Πελατολόγιο":
                                         new_details += f"\n[Έκπτωση: {new_pct}% εφαρμόστηκε]"
                                         
                                     if add_offer:
-                                        new_details += "\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ]"
+                                        new_details += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ | Χρέωση {total_pieces-24} τμχ]"
                                     
                                     # Ενημέρωση στη Supabase
                                     supabase.table("b2b_orders").update({
