@@ -2536,7 +2536,7 @@ elif page == "👥 Πελατολόγιο":
                 sel_name = st.selectbox("Επιλέξτε Πελάτη:", options=df_cust["name"].tolist(), key="crm_select_final")
                 customer_data = df_cust[df_cust["name"] == sel_name].iloc[0]
                 
-                # 1. Εμφάνιση στοιχείων (Όπως το είχες)
+                # 1. Εμφάνιση στοιχείων
                 st.info(f"""
                 **Στοιχεία Επικοινωνίας:**
                 * 📞 {customer_data.get('phone') if customer_data.get('phone') else '-'}
@@ -2551,19 +2551,14 @@ elif page == "👥 Πελατολόγιο":
                 {customer_data.get('notes') if customer_data.get('notes') else 'Καμία σημείωση'}
                 """)
 
-                # --- 2. ΤΟ ΝΕΟ ΚΟΥΜΠΙ ΓΙΑ ΥΒΡΙΔΙΚΟ PDF (Οικονομικά + Παραγωγή) ---
-                # Τραβάμε Οικονομικά Δεδομένα (Ευρώ)
+                # --- 2. ΚΟΥΜΠΙ ΥΒΡΙΔΙΚΟΥ PDF ---
                 res_fin = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).execute()
-                # Τραβάμε Δεδομένα Παραγωγής (Τεμάχια - Εδώ είναι οι παλιές σου εγγραφές!)
                 res_prod_old = supabase.table("production_log").select("*").eq("customer", sel_name).execute()
                 
-                # Αν υπάρχει έστω και ένα αρχείο σε οποιονδήποτε πίνακα
                 if res_fin.data or res_prod_old.data:
                     st.divider()
                     try:
-                        # Καλούμε τη νέα Υβριδική Συνάρτηση (Βεβαιώσου ότι την έβαλες στην αρχή του app.py)
                         hybrid_report_pdf = generate_hybrid_report(sel_name, res_fin.data, res_prod_old.data)
-                        
                         st.download_button(
                             label="📄 Εκτύπωση Πλήρους Ιστορικού & Τζίρου",
                             data=bytes(hybrid_report_pdf),
@@ -2575,15 +2570,11 @@ elif page == "👥 Πελατολόγιο":
                     except Exception as e:
                         st.error(f"Σφάλμα PDF: {e}")
                 else:
-                    st.warning("Δεν βρέθηκαν παλιές ή νέες παραγγελίες για αυτόν τον πελάτη.")
+                    st.warning("Δεν βρέθηκαν παραγγελίες.")
 
-                # --- ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
+                # --- 3. ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ (ΠΡΟΣΕΞΕ ΤΗ ΣΤΟΙΧΙΣΗ ΕΔΩ) ---
                 with st.expander("📝 Επεξεργασία Στοιχείων"):
-                    # ... ο υπόλοιπος κώδικας της φόρμας σου (text_inputs κλπ) ...
-                
-                # --- ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
-                with st.expander("📝 Επεξεργασία Στοιχείων"):
-                    with st.form(f"edit_cust_{customer_data['id']}"):
+                    with st.form(f"edit_cust_form_{customer_data['id']}"):
                         e_name = st.text_input("Όνομα / Επωνυμία", value=customer_data['name'])
                         e_afm = st.text_input("ΑΦΜ", value=customer_data.get('afm', ''))
                         e_discount = st.text_input("Ποσοστό Έκπτωσης (%)", value=customer_data.get('discount', ''))
@@ -2594,21 +2585,15 @@ elif page == "👥 Πελατολόγιο":
                         
                         if st.form_submit_button("💾 Ενημέρωση Στοιχείων"):
                             supabase.table("customers").update({
-                                "name": e_name, 
-                                "afm": e_afm,
-                                "discount": e_discount,
-                                "phone": e_phone, 
-                                "email": e_email, 
-                                "address": e_addr, 
-                                "notes": e_notes
+                                "name": e_name, "afm": e_afm, "discount": e_discount,
+                                "phone": e_phone, "email": e_email, "address": e_addr, "notes": e_notes
                             }).eq("id", customer_data["id"]).execute()
-                            st.success("✅ Τα στοιχεία ενημερώθηκαν!")
+                            st.success("✅ Ενημερώθηκε!")
                             st.rerun()
 
                 st.divider()
                 if st.button("🗑️ Διαγραφή Πελάτη", type="secondary"):
                     supabase.table("customers").delete().eq("id", customer_data["id"]).execute()
-                    st.success("Ο πελάτης διαγράφηκε!")
                     st.rerun()
 
             with col_crm_b:
