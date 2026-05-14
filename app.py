@@ -2312,7 +2312,7 @@ elif page == "👥 Πελατολόγιο":
                 
                 **Φορολογικά & Εμπορικά:**
                 * 🆔 **ΑΦΜ:** {customer_data.get('afm') if customer_data.get('afm') else '-'}
-                * 📉 **Έκπτωση:** {customer_data.get('discount') if customer_data.get('discount') else '0'}%
+                * 📉 **Προκαθορισμένη Έκπτωση:** {customer_data.get('discount') if customer_data.get('discount') else '0'}%
                 ---
                 **Σημειώσεις:**
                 {customer_data.get('notes') if customer_data.get('notes') else 'Καμία σημείωση'}
@@ -2349,34 +2349,59 @@ elif page == "👥 Πελατολόγιο":
                     st.rerun()
 
             with col_crm_b:
-                st.subheader(f"🛒 Ιστορικό Παραγγελιών: {sel_name}")
-                res_prod = supabase.table("production_log").select("prod_date, cocktail_name, pieces, lot_cocktail, prod_time").eq("customer", sel_name).order("prod_date", desc=True).execute()
+                st.subheader(f"🛒 Διαχείριση Παραγγελιών: {sel_name}")
                 
-                if res_prod.data:
-                    df_p = pd.DataFrame(res_prod.data)
-                    df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail", "cocktail_name"])
-                    
-                    st.dataframe(
-                        df_p_clean.rename(columns={
-                            "prod_date": "Ημερομηνία",
-                            "cocktail_name": "Cocktail",
-                            "pieces": "Τεμάχια"
-                        })[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                    st.metric("Συνολικές Αγορές", f"{int(df_p_clean['pieces'].sum())} τμχ")
+                # Φέρνουμε τις παραγγελίες από τον πίνακα b2b_orders για να μπορούμε να αλλάζουμε τιμές/εκπτώσεις
+                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
+                
+                if res_orders.data:
+                    for order in res_orders.data:
+                        order_id = order['id']
+                        date_only = str(order['created_at'])[:10]
+                        total_amt = float(order['total_amount'])
+                        order_details = order['order_details']
+                        
+                        with st.expander(f"📅 {date_only} | Ποσό: {total_amt:.2f}€ | ID: {order_id}"):
+                            st.text(f"Λεπτομέρειες: {order_details}")
+                            st.divider()
+                            
+                            # Φόρμα τροποποίησης παραγγελίας
+                            with st.form(key=f"manage_order_{order_id}"):
+                                c1, c2 = st.columns(2)
+                                
+                                # Προσθήκη έκπτωσης (θα μειώσει το total_amount)
+                                disc_val = c1.number_input("Εφαρμογή Έκπτωσης (€)", min_value=0.0, max_value=total_amt, step=1.0)
+                                
+                                # Checkbox για την προσφορά 240+24
+                                offer_240 = c2.checkbox("🎁 Προσφορά 240 + 24 Δώρο")
+                                
+                                if st.form_submit_button("💾 Οριστικοποίηση Αλλαγών"):
+                                    new_total = total_amt - disc_val
+                                    new_details = order_details
+                                    
+                                    if disc_val > 0:
+                                        new_details += f"\n[Εφαρμόστηκε έκπτωση: -{disc_val}€]"
+                                    
+                                    if offer_240:
+                                        new_details += "\n[ΠΡΟΣΦΟΡΑ: 240+24 ΔΩΡΟ ΕΦΑΡΜΟΣΤΗΚΕ]"
+                                    
+                                    # Update στη Supabase
+                                    supabase.table("b2b_orders").update({
+                                        "total_amount": new_total,
+                                        "order_details": new_details
+                                    }).eq("id", order_id).execute()
+                                    
+                                    st.success(f"Ενημερώθηκε! Νέο σύνολο: {new_total:.2f}€")
+                                    st.rerun()
                 else:
-                    st.info("Δεν υπάρχουν παραγγελίες για αυτόν τον πελάτη.")
-        else:
-            st.warning("⚠️ Η λίστα πελατών είναι άδεια.")
+                    st.info("Δεν βρέθηκαν οικονομικές παραγγελίες για αυτόν τον πελάτη.")
 
     with tab_crm2:
         st.subheader("➕ Καταχώρηση Νέου Πελάτη")
         with st.form("new_customer_form_final", clear_on_submit=True):
             n_name = st.text_input("Όνομα / Επωνυμία *")
             n_afm = st.text_input("ΑΦΜ")
-            n_discount = st.text_input("Ποσοστό Έκπτωσης (%)") # Θα είναι κενό by default
+            n_discount = st.text_input("Ποσοστό Έκπτωσης (%)")
             n_phone = st.text_input("Τηλέφωνο")
             n_email = st.text_input("Email")
             n_addr = st.text_area("Διεύθυνση")
