@@ -1740,8 +1740,8 @@ elif page == "📦 Lot Παραγωγής":
                                             res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
                                             if res_p.data and res_p.data[0].get("catalog_price"):
                                                 price = float(res_p.data[0].get("catalog_price"))
-                                    except Exception:
-                                         pass
+                                        except Exception:
+                                             pass
                                             
                                         line_total = price * pcs
                                         total_amount += line_total
