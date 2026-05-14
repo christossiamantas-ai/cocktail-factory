@@ -1680,13 +1680,77 @@ elif page == "📦 Lot Παραγωγής":
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud", type="primary"):
                     if lot_entries:
                         try:
+                            # 1. Αποθήκευση Πρώτων Υλών & Τεμαχίων (Για την Παραγωγή / Ιχνηλασιμότητα)
                             supabase.table("production_log").insert(lot_entries).execute()
+                            
+                            # 2. ΑΥΤΟΜΑΤΗ ΕΝΗΜΕΡΩΣΗ ΟΙΚΟΝΟΜΙΚΩΝ ΣΤΟ DASHBOARD
                             if active_order is not None:
+                                # Αν η παραγγελία είχε φορτωθεί από B2B app, απλά την ολοκληρώνουμε
                                 supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
                                 st.session_state['active_b2b_order'] = None 
+                            else:
+                                # Αν είναι καταχώρηση παραγωγής από το μηδέν, φτιάχνουμε νέα εγγραφή Dashboard
+                                cust_prod = {}
+                                
+                                # Βρίσκουμε ακριβώς πόσα τεμάχια από ποιο κοκτέιλ πήρε ο κάθε πελάτης
+                                for entry in lot_entries:
+                                    c = entry["customer"]
+                                    if c not in cust_prod:
+                                        cust_prod[c] = {}
+                                    cocktail = entry["cocktail_name"]
+                                    # Κρατάμε τα τεμάχια (overwrite επειδή η λούπα έχει πολλές πρώτες ύλες για το ίδιο κοκτέιλ)
+                                    cust_prod[c][cocktail] = entry["pieces"]
+                                
+                                # Για κάθε πελάτη, φτιάχνουμε το οικονομικό δελτίο
+                                for c_name, products in cust_prod.items():
+                                    if c_name == "Λιανική / Άγνωστος" and not products:
+                                        continue 
+                                        
+                                    # Παίρνουμε την έκπτωση του πελάτη από το CRM
+                                    discount = 0.0
+                                    try:
+                                        res_c = supabase.table("customers").select("discount").eq("name", c_name).execute()
+                                        if res_c.data and res_c.data[0].get("discount"):
+                                            discount = float(res_c.data[0].get("discount"))
+                                    except Exception:
+                                        pass
+                                        
+                                    total_amount = 0.0
+                                    details_lines = []
+                                    
+                                    # Υπολογίζουμε αξία ανά κοκτέιλ
+                                    for cocktail, pcs in products.items():
+                                        price = 0.0
+                                        try:
+                                            # ΣΗΜΕΙΩΣΗ: Ελέγχει τον πίνακα "products" για τη στήλη "price"
+                                            res_p = supabase.table("products").select("price").eq("name", cocktail).execute()
+                                            if res_p.data and res_p.data[0].get("price"):
+                                                price = float(res_p.data[0].get("price"))
+                                        except Exception:
+                                            pass
+                                            
+                                        line_total = price * pcs
+                                        total_amount += line_total
+                                        details_lines.append(f"• {pcs} τμχ {cocktail}")
+                                    
+                                    # Εφαρμογή της προκαθορισμένης έκπτωσης
+                                    final_total = total_amount * (1 - (discount / 100))
+                                    details_str = "\n".join(details_lines)
+                                    
+                                    if discount > 0:
+                                        details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
+                                        
+                                    # Καταχώρηση στη Supabase για το Dashboard!
+                                    supabase.table("b2b_orders").insert({
+                                        "customer_name": c_name,
+                                        "total_amount": final_total,
+                                        "order_details": details_str,
+                                        "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"
+                                    }).execute()
                             
+                            # Ολοκλήρωση διαδικασίας
                             st.session_state['lot_reset_key'] += 1
-                            st.success("✅ Η παρτίδα αποθηκεύτηκε επιτυχώς!")
+                            st.success("✅ Η παρτίδα αποθηκεύτηκε και το Dashboard ενημερώθηκε αυτόματα!")
                             st.cache_data.clear()
                             time.sleep(2)
                             st.rerun()
