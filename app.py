@@ -1474,6 +1474,33 @@ elif page == "📈 Dashboard":
             fig_abc = px.bar(customer_abc, x="customer", y="Revenue", color="Category", title="Ranking Πελατών", text_auto='.2s', color_discrete_map={"A": "#00ffcc", "B": "#f1c40f", "C": "#ff4b4b"})
             st.plotly_chart(fig_abc, use_container_width=True)
 
+        # --- 10. ΑΝΑΛΥΣΗ COCKTAIL MIX ΑΝΑ ΠΕΛΑΤΗ ---
+        st.divider()
+        st.subheader("🍸 Ανάλυση Cocktail Mix ανά Πελάτη")
+        
+        if not df_filtered.empty:
+            # Ομαδοποίηση ανά πελάτη και κοκτέιλ για να βρούμε τα τεμάχια
+            mix_data = df_filtered.groupby(['customer', 'cocktail_name'])['pieces'].sum().reset_index()
+            
+            # Δημιουργία Stacked Bar Chart
+            fig_mix = px.bar(mix_data, 
+                             x="customer", 
+                             y="pieces", 
+                             color="cocktail_name",
+                             title="Ποσοστιαία Αναλογία Προϊόντων ανά Πελάτη",
+                             labels={"pieces": "Συνολικά Τεμάχια", "customer": "Πελάτης", "cocktail_name": "Κοκτέιλ"},
+                             template="plotly_dark",
+                             barmode="relative") # ή "group" αν θες ξεχωριστές μπάρες
+            
+            fig_mix.update_layout(xaxis={'categoryorder':'total descending'})
+            st.plotly_chart(fig_mix, use_container_width=True)
+            
+            # Μικρό Insight: Ποιο είναι το Best Seller του κάθε πελάτη;
+            with st.expander("💡 Δες το Best Seller κάθε Πελάτη"):
+                idx = mix_data.groupby(['customer'])['pieces'].idxmax()
+                best_sellers = mix_data.loc[idx].sort_values(by="pieces", ascending=False)
+                st.table(best_sellers.rename(columns={"cocktail_name": "Top Cocktail", "pieces": "Τεμάχια"}))
+
         # --- ΧΑΡΤΗΣ ΑΠΟΔΟΣΗΣ ---
         st.divider()
         st.subheader("🎯 Χάρτης Απόδοσης Cocktail")
