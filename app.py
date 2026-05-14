@@ -2510,12 +2510,12 @@ elif page == "👥 Πελατολόγιο":
 
                 st.divider()
 
-                # --- 2. ΔΙΑΧΕΙΡΙΣΗ DASHBOARD (Με ακριβή υπολογισμό % έκπτωσης & Έξυπνο Καθαρισμό) ---
+                # --- 2. ΔΙΑΧΕΙΡΙΣΗ DASHBOARD (Με ακριβή υπολογισμό % έκπτωσης, Δώρα & Reset) ---
                 st.subheader("💰 Εμπορική Διαχείριση & Εκπτώσεις (%)")
                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
                 
                 if res_orders.data:
-                    import re # Απαραίτητο για να διαβάζουμε την αρχική τιμή από το κείμενο
+                    import re # Απαραίτητο για να διαβάζουμε την αρχική τιμή και τα τεμάχια από το κείμενο
                     
                     for order in res_orders.data:
                         order_id = order['id']
@@ -2524,11 +2524,17 @@ elif page == "👥 Πελατολόγιο":
                         
                         # 1. Βρίσκουμε την Αρχική Αξία (πριν από κάθε έκπτωση)
                         base_amt = current_amt
-                        match = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
-                        if match:
-                            base_amt = float(match.group(1))
+                        match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
+                        if match_base:
+                            base_amt = float(match_base.group(1))
                             
-                        # 2. Υπολογίζουμε τι ποσοστό έκπτωσης έχει αυτή τη στιγμή
+                        # 2. Βρίσκουμε τα Συνολικά Τεμάχια της Παραγγελίας από το κείμενο (π.χ. "264 τμχ")
+                        total_pieces = 264 # Default τιμή ασφαλείας
+                        match_pieces = re.search(r"(\d+)\s*τμχ", details)
+                        if match_pieces:
+                            total_pieces = int(match_pieces.group(1))
+                            
+                        # 3. Υπολογίζουμε τι ποσοστό έκπτωσης εμφανίζεται αυτή τη στιγμή στη βάση
                         current_discount_pct = 0.0
                         if base_amt > 0 and base_amt > current_amt:
                             current_discount_pct = ((base_amt - current_amt) / base_amt) * 100
@@ -2536,44 +2542,57 @@ elif page == "👥 Πελατολόγιο":
                         with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | {current_amt:.2f}€  (Έκπτωση: {current_discount_pct:.1f}%)"):
                             
                             # Εμφάνιση ξεκάθαρων στοιχείων
-                            st.info(f"**Αρχική Αξία (Χωρίς Εκπτώσεις):** {base_amt:.2f} €\n\n**Τρέχουσα Χρέωση:** {current_amt:.2f} €")
+                            st.info(f"**Αρχική Αξία (Χωρίς Εκπτώσεις):** {base_amt:.2f} €\n\n**Συνολικά Τεμάχια:** {total_pieces} τμχ\n\n**Τρέχουσα Χρέωση:** {current_amt:.2f} €")
                             st.caption(f"Λεπτομέρειες:\n{details}")
                             
                             with st.form(key=f"edit_order_pct_{order_id}"):
                                 c1, c2 = st.columns(2)
                                 
-                                # Εδώ βάζεις το ΝΕΟ ποσοστό έκπτωσης! Αν βάλεις 0, γυρνάει στην Αρχική Αξία.
-                                new_pct = c1.number_input("Τελικό Ποσοστό Έκπτωσης (%)", 
+                                # Εδώ βάζεις το ποσοστό έκπτωσης (π.χ. 10% κλπ)
+                                new_pct = c1.number_input("Ποσοστό Εμπορικής Έκπτωσης (%)", 
                                                           min_value=0.0, max_value=100.0, 
                                                           value=float(round(current_discount_pct, 1)), 
                                                           step=1.0)
                                 
+                                # Το Checkbox ελέγχει αν υπάρχει ήδη η σημείωση της προσφοράς
                                 add_offer = c2.checkbox("Προσφορά 240 + 24 Δώρο", value="ΠΡΟΣΦΟΡΑ 240+24" in details)
                                 
                                 col_b1, col_b2 = st.columns(2)
                                 
                                 if col_b1.form_submit_button("💾 Εφαρμογή Έκπτωσης", type="primary"):
-                                    # Ο υπολογισμός γίνεται ΠΑΝΤΑ πάνω στην καθαρή Αρχική Αξία (Λύθηκε το compounding!)
+                                    # Υπολογισμός τιμής βάσει του ποσοστού έκπτωσης επί της Αρχικής Αξίας
                                     new_price = base_amt * (1 - (new_pct / 100))
                                     
-                                    # ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ (Σβήνει τις παλιές εκπτώσεις που μπήκαν σε αγκύλες)
+                                    # ΑΥΤΟΜΑΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΔΩΡΟΥ 24 ΤΜΧ:
+                                    # Αν επιλεγεί η προσφορά, αφαιρούμε την αξία 24 τεμαχίων από την τελική τιμή
+                                    if add_offer and total_pieces > 0:
+                                        # Βρίσκουμε την αρχική αξία του ενός τεμαχίου
+                                        single_unit_price = base_amt / total_pieces
+                                        # Αξία των 24 δωρεάν τεμαχίων
+                                        gift_value = single_unit_price * 24
+                                        # Αφαίρεση του δώρου
+                                        new_price = new_price - gift_value
+                                        if new_price < 0: new_price = 0.0
+                                    
+                                    # ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ (Σβήνει τις παλιές σημειώσεις που μπήκαν σε αγκύλες)
                                     clean_details = details.split("\n[")[0].split("\n\n[")[0].strip()
                                     
                                     # Ξαναγράφει καθαρά το ιστορικό της παραγγελίας
                                     new_details = clean_details + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
                                     
                                     if new_pct > 0:
-                                        new_details += f"\n[Νέα Έκπτωση: {new_pct}% -> Νέα Τιμή: {new_price:.2f}€]"
-                                    
+                                        new_details += f"\n[Έκπτωση: {new_pct}% εφαρμόστηκε]"
+                                        
                                     if add_offer:
                                         new_details += "\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ]"
                                     
+                                    # Ενημέρωση στη Supabase
                                     supabase.table("b2b_orders").update({
                                         "total_amount": new_price,
                                         "order_details": new_details
                                     }).eq("id", order_id).execute()
                                     
-                                    st.success(f"Επιτυχία! Το νέο σύνολο είναι {new_price:.2f}€")
+                                    st.success(f"Επιτυχία! Το νέο σύνολο διαμορφώθηκε στα {new_price:.2f}€")
                                     time.sleep(1)
                                     st.rerun()
                                     
