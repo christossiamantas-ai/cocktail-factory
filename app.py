@@ -1347,7 +1347,7 @@ elif page == "📈 Dashboard":
         if not df_orders_raw.empty:
             df_orders_raw['Date_Obj'] = pd.to_datetime(df_orders_raw['created_at'], errors='coerce')
             df_orders_raw['Month_Year'] = df_orders_raw['Date_Obj'].dt.strftime('%m/%Y')
-            df_orders_raw['Date_Str'] = df_orders_raw['Date_Obj'].dt.strftime('%d/%m/%Y') # Σημαντικό για το ταίριασμα
+            df_orders_raw['Date_Str'] = df_orders_raw['Date_Obj'].dt.strftime('%d/%m/%Y')
             df_orders_raw['total_amount'] = pd.to_numeric(df_orders_raw['total_amount'], errors='coerce').fillna(0)
         else:
             df_orders_raw = pd.DataFrame(columns=['customer_name', 'Month_Year', 'Date_Str', 'total_amount'])
@@ -1367,17 +1367,16 @@ elif page == "📈 Dashboard":
             df_filtered = df_filtered[df_filtered['customer'] == sel_customer]
             if not df_orders.empty:
                 df_orders = df_orders[df_orders['customer_name'] == sel_customer]
-                
         if sel_month != "ΟΛΟΙ ΟΙ ΜΗΝΕΣ":
             df_filtered = df_filtered[df_filtered['Month_Year'] == sel_month]
             if not df_orders.empty:
                 df_orders = df_orders[df_orders['Month_Year'] == sel_month]
 
-        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ ΑΝΑ ΣΥΝΤΑΓΗ ---
+        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ ---
         df_ing = pd.DataFrame(res_ing.data)
         df_ing['cost_per_ml'] = pd.to_numeric(df_ing['price'], errors='coerce') / pd.to_numeric(df_ing['volume'], errors='coerce')
         ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
-
+        
         df_items = pd.DataFrame(res_items.data)
         recipe_costs_by_id = {}
         for rid in df_items['recipe_id'].unique():
@@ -1386,10 +1385,10 @@ elif page == "📈 Dashboard":
             for _, item in sub.iterrows():
                 cost += item['ml_per_unit'] * ing_cost_dict.get(item['ingredient_name'], 0)
             recipe_costs_by_id[rid] = cost
-
+            
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], 0) for _, r in df_recipes.iterrows()}
 
-        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΘΕΩΡΗΤΙΚΟΥ ΤΖΙΡΟΥ (Βάση για τα παλιά δεδομένα) ---
+        # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ (ΓΙΑ ΤΟΝ ΠΙΝΑΚΑ ΚΑΙ ΤΟ ΠΑΡΕΛΘΟΝ) ---
         df_filtered = df_filtered.merge(df_recipes[['name', 'catalog_price']], left_on="cocktail_name", right_on="name", how="left")
         df_filtered['catalog_price'] = pd.to_numeric(df_filtered['catalog_price'], errors='coerce').fillna(0)
         df_filtered['pieces'] = pd.to_numeric(df_filtered['pieces'], errors='coerce').fillna(0)
@@ -1397,74 +1396,57 @@ elif page == "📈 Dashboard":
         
         df_filtered['dealer_price'] = df_filtered['catalog_price'] * (1 - (df_filtered['customer_discount'] / 100))
         df_filtered['Theoretical_Revenue'] = df_filtered['pieces'] * df_filtered['dealer_price']
+        df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['cocktail_name'].map(name_to_cost).fillna(0)
         
-        df_filtered['unit_cost'] = df_filtered['cocktail_name'].map(name_to_cost).fillna(0)
-        df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['unit_cost']
+        # Υπολογισμός κέρδους ανά γραμμή για τον τελικό πίνακα
+        df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
 
-        # ====================================================================
-        # --- ΥΒΡΙΔΙΚΟΣ ΥΠΟΛΟΓΙΣΜΟΣ (ΛΥΣΗ ΓΙΑ ΤΟ "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ") ---
-        # ====================================================================
+        # --- ΥΒΡΙΔΙΚΟΣ ΤΖΙΡΟΣ (ΓΙΑ ΤΑ ΣΥΝΟΛΑ ΚΑΙ ΤΑ ΓΡΑΦΗΜΑΤΑ) ---
         total_rev = 0.0
-        hybrid_revenue_data = [] # Για την ABC Ανάλυση
+        hybrid_revenue_data = []
         processed_orders = set()
         
-        # 1. Προσθέτουμε πρώτα όλες τις ΠΡΑΓΜΑΤΙΚΕΣ εισπράξεις (από το b2b_orders)
         if not df_orders.empty:
             for _, order in df_orders.iterrows():
-                dt = order['Date_Str']
-                cust = order['customer_name']
-                amt = float(order['total_amount'])
+                total_rev += float(order['total_amount'])
+                hybrid_revenue_data.append({"customer": order['customer_name'], "Revenue": float(order['total_amount'])})
+                processed_orders.add((order['Date_Str'], order['customer_name']))
                 
-                total_rev += amt
-                hybrid_revenue_data.append({"customer": cust, "Revenue": amt})
-                processed_orders.add((dt, cust)) # Κρατάμε ημερομηνία & πελάτη ως "ολοκληρωμένο"
-                
-        # 2. Για κάθε παραγωγή του παρελθόντος, ελέγχουμε αν υπάρχει στα πραγματικά ποσά. 
-        # Αν ΟΧΙ (δηλαδή είναι παλιά παραγγελία), προσθέτουμε τον Θεωρητικό της Τζίρο.
         prod_grouped = df_filtered.groupby(['prod_date', 'customer'])['Theoretical_Revenue'].sum().reset_index()
         for _, row in prod_grouped.iterrows():
-            p_date = row['prod_date']
-            p_cust = row['customer']
-            p_theo = row['Theoretical_Revenue']
-            
-            if (p_date, p_cust) not in processed_orders:
-                total_rev += p_theo
-                hybrid_revenue_data.append({"customer": p_cust, "Revenue": p_theo})
+            if (row['prod_date'], row['customer']) not in processed_orders:
+                total_rev += row['Theoretical_Revenue']
+                hybrid_revenue_data.append({"customer": row['customer'], "Revenue": row['Theoretical_Revenue']})
+
+        # Καταμέτρηση Μοναδικών Παραγγελιών
+        total_orders_count = df_filtered.groupby(['prod_date', 'prod_time', 'customer']).ngroups
 
         total_cost = df_filtered['Total_Cost'].sum()
         total_profit = total_rev - total_cost
         total_units = df_filtered['pieces'].sum()
-        total_orders = len(df_orders) if not df_orders.empty else len(df_filtered)
 
-        # --- ΣΥΝΟΨΗ (METRICS) ---
+        # --- METRICS ---
         st.divider()
         st.subheader(f"📊 Σύνοψη: {sel_customer if sel_customer != 'ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ' else 'Όλοι οι Πελάτες'}")
         
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("💰 Τζίρος", f"{total_rev:.2f} €".replace('.', ','))
         m2.metric("📉 Κόστος Υλικών", f"{total_cost:.2f} €".replace('.', ','))
-        
         margin = (total_profit / total_rev * 100) if total_rev > 0 else 0
-        m3.metric("📈 Καθαρό Κέρδος", f"{total_profit:.2f} €".replace('.', ','), 
-                  delta=f"{margin:.1f}% Margin")
-        
+        m3.metric("📈 Καθαρό Κέρδος", f"{total_profit:.2f} €".replace('.', ','), delta=f"{margin:.1f}% Margin")
         m4.metric("🍹 Τεμάχια", f"{int(total_units)} τμχ")
-        m5.metric("📦 Παραγγελίες (Οικ.)", total_orders)
+        m5.metric("📦 Παραγγελίες", total_orders_count)
 
-        # --- 8. ABC ΑΝΑΛΥΣΗ (Βάσει Υβριδικού Τζίρου) ---
+        # --- 8. ABC ΑΝΑΛΥΣΗ ---
         st.divider()
         st.subheader("🏆 ABC Ανάλυση Πελατολογίου")
-        
         df_hybrid = pd.DataFrame(hybrid_revenue_data)
         if not df_hybrid.empty and total_rev > 0:
             customer_abc = df_hybrid.groupby("customer")["Revenue"].sum().sort_values(ascending=False).reset_index()
             customer_abc['Percentage'] = (customer_abc['Revenue'] / total_rev) * 100
             customer_abc['CumSum'] = customer_abc['Percentage'].cumsum()
             customer_abc['Category'] = customer_abc['CumSum'].apply(lambda x: "A" if x <= 80 else ("B" if x <= 95 else "C"))
-            
-            fig_abc = px.bar(customer_abc, x="customer", y="Revenue", color="Category",
-                           title="Ranking Πελατών (Βάσει Πραγματικού & Ιστορικού Τζίρου)", text_auto='.2s',
-                           color_discrete_map={"A": "#00ffcc", "B": "#f1c40f", "C": "#ff4b4b"})
+            fig_abc = px.bar(customer_abc, x="customer", y="Revenue", color="Category", title="Ranking Πελατών", text_auto='.2s', color_discrete_map={"A": "#00ffcc", "B": "#f1c40f", "C": "#ff4b4b"})
             st.plotly_chart(fig_abc, use_container_width=True)
 
         # --- 9. ΧΑΡΤΗΣ ΑΠΟΔΟΣΗΣ ---
@@ -1475,7 +1457,7 @@ elif page == "📈 Dashboard":
         for name in df_filtered['cocktail_name'].unique():
             temp = df_filtered[df_filtered['cocktail_name'] == name]
             sold = temp['pieces'].sum()
-            rev = temp['Theoretical_Revenue'].sum() # Μένει θεωρητικό για ανάλυση ανά κοκτέιλ
+            rev = temp['Theoretical_Revenue'].sum()
             cost = temp['Total_Cost'].sum()
             prof = rev - cost
             if sold > 0:
@@ -1491,9 +1473,13 @@ elif page == "📈 Dashboard":
             fig_hm.update_traces(textposition='top center')
             st.plotly_chart(fig_hm, use_container_width=True)
 
-        # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
-        with st.expander("📄 Αναλυτικό Αρχείο (Βάσει Τεμαχίων Παραγωγής)"):
-            st.dataframe(df_filtered[["prod_date", "customer", "cocktail_name", "pieces", "Theoretical_Revenue", "Total_Cost"]].sort_values("prod_date", ascending=False), use_container_width=True, hide_index=True)
+        # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ (Επαναφορά ακριβώς όπως ήταν) ---
+        with st.expander("📄 Αναλυτικό Αρχείο"):
+            # Μετονομάζω τη στήλη εικονικά μόνο για την εμφάνιση ώστε να λέει "Revenue" όπως πριν
+            display_df = df_filtered.copy()
+            display_df.rename(columns={"Theoretical_Revenue": "Revenue"}, inplace=True)
+            
+            st.dataframe(display_df[["prod_date", "customer", "cocktail_name", "pieces", "Revenue", "Total_Cost", "Profit", "lot_cocktail"]].sort_values("prod_date", ascending=False), use_container_width=True, hide_index=True)
 
     else:
         st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
