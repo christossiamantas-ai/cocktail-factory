@@ -2479,10 +2479,12 @@ def generate_pdf(customer_name, order_date, total_amount, details):
     
     # Φόρτωση γραμματοσειράς για Ελληνικά
     try:
+        # Αναζήτηση της γραμματοσειράς στον τρέχοντα φάκελο
         pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
         pdf.set_font('DejaVu', size=12)
         font_to_use = 'DejaVu'
     except:
+        # Fallback σε Helvetica αν λείπει το αρχείο (δεν θα δείχνει σωστά τα Ελληνικά)
         pdf.set_font("Helvetica", size=12)
         font_to_use = 'Helvetica'
 
@@ -2505,7 +2507,7 @@ def generate_pdf(customer_name, order_date, total_amount, details):
     pdf.cell(50, 10, "Ποσό (€)", 1, ln=True)
 
     pdf.set_font(font_to_use, size=10)
-    # Καθαρισμός κειμένου από σημειώσεις αγκυλών
+    # Καθαρισμός κειμένου από σημειώσεις αγκυλών (τεχνικά στοιχεία)
     clean_text = details.split("\n[")[0].strip()
     pdf.multi_cell(140, 10, clean_text, 1)
     
@@ -2514,6 +2516,7 @@ def generate_pdf(customer_name, order_date, total_amount, details):
     pdf.set_font(font_to_use, 'B', 14)
     pdf.cell(0, 10, txt=f"ΣΥΝΟΛΟ ΠΛΗΡΩΜΗΣ: {total_amount:.2f} €", ln=True, align='R')
     
+    # Επιστρέφει το περιεχόμενο του PDF
     return pdf.output()
 
 # --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ, ΕΚΠΤΩΣΗ & PDF) ---
@@ -2574,6 +2577,7 @@ elif page == "👥 Πελατολόγιο":
                     st.rerun()
 
             with col_crm_b:
+                # --- 1. ΙΣΤΟΡΙΚΟ ΠΑΡΑΓΩΓΗΣ ---
                 st.subheader(f"📊 Ιστορικό Παραγωγής: {sel_name}")
                 res_prod = supabase.table("production_log").select("prod_date, cocktail_name, pieces, lot_cocktail, prod_time").eq("customer", sel_name).order("prod_date", desc=True).execute()
                 
@@ -2586,17 +2590,21 @@ elif page == "👥 Πελατολόγιο":
                     st.info("Δεν βρέθηκε ιστορικό παραγωγής.")
 
                 st.divider()
+                
+                # --- 2. ΕΜΠΟΡΙΚΗ ΔΙΑΧΕΙΡΙΣΗ ---
                 st.subheader("💰 Εμπορική Διαχείριση & Εκπτώσεις (%)")
                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
                 
                 if res_orders.data:
                     import re
+                    import time
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
                         details = str(order['order_details'])
                         order_date = str(order['created_at'])[:10]
                         
+                        # Ανάκτηση Αρχικής Αξίας και Τεμαχίων
                         base_amt = current_amt
                         match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
                         if match_base: base_amt = float(match_base.group(1))
@@ -2618,10 +2626,16 @@ elif page == "👥 Πελατολόγιο":
                                 col_b1, col_b2 = st.columns(2)
                                 
                                 if col_b1.form_submit_button("💾 Εφαρμογή Έκπτωσης", type="primary"):
+                                    # Υπολογισμός νέας τιμής
                                     unit_p = base_amt / total_pieces if total_pieces > 0 else 0
                                     unit_p_dealer = unit_p * (1 - (new_pct / 100))
-                                    new_price = (total_pieces - 24) * unit_p_dealer if add_offer else total_pieces * unit_p_dealer
                                     
+                                    if add_offer and total_pieces >= 24:
+                                        new_price = (total_pieces - 24) * unit_p_dealer
+                                    else:
+                                        new_price = total_pieces * unit_p_dealer
+                                    
+                                    # Καθαρισμός και ενημέρωση κειμένου
                                     clean_det = details.split("\n[")[0].split("\n\n[")[0].strip()
                                     new_det = clean_det + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
                                     if new_pct > 0: new_det += f"\n[Έκπτωση: {new_pct}% εφαρμόστηκε]"
@@ -2632,17 +2646,20 @@ elif page == "👥 Πελατολόγιο":
                                     time.sleep(1)
                                     st.rerun()
                                     
-                                if col_b2.form_submit_button("🗑️ Διαγραφή"):
+                                if col_b2.form_submit_button("🗑️ Διαγραφή Παραγγελίας"):
                                     supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                    st.warning("Η παραγγελία διαγράφηκε.")
+                                    time.sleep(1)
                                     st.rerun()
 
-                            # --- ΚΟΥΜΠΙ PDF (ΕΞΩ ΑΠΟ ΤΟ FORM ΑΛΛΑ ΜΕΣΑ ΣΤΟ EXPANDER) ---
+                            # --- ΚΟΥΜΠΙ PDF (ΕΞΩ ΑΠΟ ΤΟ FORM ΓΙΑ ΝΑ ΛΕΙΤΟΥΡΓΕΙ ΤΟ DOWNLOAD) ---
                             st.divider()
                             try:
-                                pdf_data = generate_pdf(sel_name, order_date, current_amt, details)
+                                # Παραγωγή των δεδομένων PDF
+                                pdf_bytes = generate_pdf(sel_name, order_date, current_amt, details)
                                 st.download_button(
                                     label=f"📄 Λήψη PDF (Παραγγελία {order_date})",
-                                    data=bytes(pdf_data),
+                                    data=bytes(pdf_bytes),
                                     file_name=f"Order_{sel_name}_{order_date}.pdf",
                                     mime="application/pdf",
                                     use_container_width=True,
@@ -2677,6 +2694,8 @@ elif page == "👥 Πελατολόγιο":
                     st.rerun()
                 else:
                     st.error("Το όνομα είναι υποχρεωτικό!")
+
+
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
