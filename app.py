@@ -10,10 +10,34 @@ import time
 from supabase import create_client, Client
 import zipfile
 import io
+from fpdf import FPDF
+
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 
+def generate_pdf(customer_name, order_date, total_amount, details):
+    pdf = FPDF()
+    pdf.add_page()
+    try:
+        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
+        font_name = 'DejaVu'
+    except:
+        font_name = 'Helvetica'
+    
+    pdf.set_font(font_name, size=14)
+    pdf.cell(200, 10, txt="DC CABCLUB 2026", ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font(font_name, size=11)
+    pdf.cell(0, 10, txt=f"Πελάτης: {customer_name}", ln=True)
+    pdf.cell(0, 10, txt=f"Ημερομηνία: {order_date}", ln=True)
+    pdf.ln(5)
+    clean_details = details.split("\n[")[0].strip()
+    pdf.multi_cell(0, 10, clean_details, 1)
+    pdf.ln(5)
+    pdf.set_font(font_name, size=14)
+    pdf.cell(0, 10, txt=f"ΣΥΝΟΛΟ: {total_amount:.2f} EUR", ln=True, align='R')
+    return pdf.output()
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
