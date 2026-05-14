@@ -2552,7 +2552,7 @@ elif page == "👥 Πελατολόγιο":
                 ---
                 **Σημειώσεις:**
                 {customer_data.get('notes') if customer_data.get('notes') else 'Καμία σημείωση'}
-                """))
+                """) )
                 
                 with st.expander("📝 Επεξεργασία Στοιχείων"):
                     with st.form(f"edit_cust_{customer_data['id']}"):
