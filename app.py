@@ -19,50 +19,45 @@ st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸"
 def generate_customer_report(customer_name, orders_data):
     pdf = FPDF()
     pdf.add_page()
-    
-    # Φόρτωση γραμματοσειράς
     try:
         pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
         f_name = 'DejaVu'
     except:
         f_name = 'Helvetica'
 
-    # Τίτλος
-    pdf.set_font(f_name, size=18)
+    pdf.set_font(f_name, size=16)
     pdf.cell(0, 15, "DC CABCLUB 2026 - ΑΝΑΦΟΡΑ ΠΕΛΑΤΗ", ln=1, align='C')
     pdf.ln(5)
     
-    # Στοιχεία Πελάτη
     pdf.set_font(f_name, size=12)
-    pdf.set_fill_color(245, 245, 245)
-    pdf.cell(0, 10, f"Πελάτης: {customer_name}", ln=1, fill=True)
+    pdf.cell(0, 10, f"Πελάτης: {customer_name}", ln=1)
     pdf.cell(0, 10, f"Ημερομηνία Αναφοράς: {datetime.now().strftime('%d/%m/%Y')}", ln=1)
     pdf.ln(10)
 
-    # Επικεφαλίδες Πίνακα
+    # Επικεφαλίδες
     pdf.set_font(f_name, size=11)
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(35, 10, "Ημερομηνία", 1, 0, 'C', True)
-    pdf.cell(110, 10, "Λεπτομέρειες Παραγγελίας", 1, 0, 'C', True)
-    pdf.cell(45, 10, "Ποσό (€)", 1, 1, 'C', True)
+    pdf.cell(35, 10, "Ημερομηνία", 1)
+    pdf.cell(110, 10, "Λεπτομέρειες", 1)
+    pdf.cell(45, 10, "Ποσό (€)", 1, 1, 'C')
 
-    # Δεδομένα
     pdf.set_font(f_name, size=10)
     total_sum = 0
     for order in orders_data:
-        date_str = str(order['created_at'])[:10]
-        amount = float(order['total_amount'])
-        short_details = str(order['order_details']).split('\n')[0][:55]
+        date_str = str(order.get('created_at', ''))[:10]
+        amount = float(order.get('total_amount', 0))
+        
+        # ΕΔΩ Η ΔΙΟΡΘΩΣΗ: Αν η παραγγελία είναι παλιά, παίρνει όλο το κείμενο
+        raw_details = str(order.get('order_details', 'Παλαιά Καταχώρηση'))
+        # Καθαρίζουμε τυχόν τεχνικές ετικέτες αν υπάρχουν, αλλιώς δείχνουμε το κείμενο
+        clean_details = raw_details.split("\n[")[0].split("\n\n")[0][:60]
         
         pdf.cell(35, 10, date_str, 1)
-        pdf.cell(110, 10, f" {short_details}", 1)
+        pdf.cell(110, 10, f" {clean_details}", 1)
         pdf.cell(45, 10, f"{amount:.2f}", 1, 1, 'R')
         total_sum += amount
 
-    # ΣΥΝΟΛΟ (ΕΔΩ ΗΤΑΝ ΤΟ ΣΦΑΛΜΑ - ΤΩΡΑ ΕΙΝΑΙ ΟΚ)
     pdf.ln(10)
-    pdf.set_font(f_name, size=15)
-    # Χρησιμοποιούμε σκέτα νούμερα χωρίς txt= για να μην μπερδεύεται
+    pdf.set_font(f_name, size=14)
     pdf.cell(145, 12, "ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ:", 0, 0, 'R')
     pdf.cell(45, 12, f"{total_sum:.2f} €", 1, 1, 'C')
     
