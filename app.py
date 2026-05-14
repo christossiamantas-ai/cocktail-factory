@@ -2472,8 +2472,51 @@ elif page == "🧼 Συντήρηση & HACCP":
         else:
             st.info("Καμία καταγραφή.")
 
+# --- ΠΡΟΣΘΗΚΗ ΣΥΝΑΡΤΗΣΗΣ PDF (ΠΡΙΝ ΤΟ CRM) ---
+def generate_pdf(customer_name, order_date, total_amount, details):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Φόρτωση γραμματοσειράς για Ελληνικά
+    try:
+        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
+        pdf.set_font('DejaVu', size=12)
+        font_to_use = 'DejaVu'
+    except:
+        pdf.set_font("Helvetica", size=12)
+        font_to_use = 'Helvetica'
 
-# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ & ΕΚΠΤΩΣΗ) ---
+    # Header
+    pdf.set_font(font_to_use, 'B', 16)
+    pdf.cell(200, 10, txt="DC CABCLUB 2026", ln=True, align='C')
+    pdf.set_font(font_to_use, size=10)
+    pdf.cell(200, 10, txt="ΠΡΟΦΟΡΜΑ ΠΑΡΑΣΤΑΤΙΚΟ / ΔΕΛΤΙΟ ΑΠΟΣΤΟΛΗΣ", ln=True, align='C')
+    pdf.ln(10)
+
+    # Στοιχεία Πελάτη
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 10, txt=f"Πελάτης: {customer_name}", ln=True, fill=True)
+    pdf.cell(0, 10, txt=f"Ημερομηνία: {order_date}", ln=True)
+    pdf.ln(5)
+
+    # Πίνακας
+    pdf.set_font(font_to_use, 'B', 11)
+    pdf.cell(140, 10, "Περιγραφή Παραγγελίας", 1)
+    pdf.cell(50, 10, "Ποσό (€)", 1, ln=True)
+
+    pdf.set_font(font_to_use, size=10)
+    # Καθαρισμός κειμένου από σημειώσεις αγκυλών
+    clean_text = details.split("\n[")[0].strip()
+    pdf.multi_cell(140, 10, clean_text, 1)
+    
+    # Τοποθέτηση τελικού ποσού
+    pdf.ln(5)
+    pdf.set_font(font_to_use, 'B', 14)
+    pdf.cell(0, 10, txt=f"ΣΥΝΟΛΟ ΠΛΗΡΩΜΗΣ: {total_amount:.2f} €", ln=True, align='R')
+    
+    return pdf.output()
+
+# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ, ΕΚΠΤΩΣΗ & PDF) ---
 elif page == "👥 Πελατολόγιο":
     st.header("👥 Διαχείριση Πελατολογίου")
     
@@ -2492,7 +2535,6 @@ elif page == "👥 Πελατολόγιο":
                 sel_name = st.selectbox("Επιλέξτε Πελάτη:", options=df_cust["name"].tolist(), key="crm_select_final")
                 customer_data = df_cust[df_cust["name"] == sel_name].iloc[0]
                 
-                # Εμφάνιση στοιχείων (με ΑΦΜ και Έκπτωση)
                 st.info(f"""
                 **Στοιχεία Επικοινωνίας:**
                 * 📞 {customer_data.get('phone') if customer_data.get('phone') else '-'}
@@ -2507,7 +2549,6 @@ elif page == "👥 Πελατολόγιο":
                 {customer_data.get('notes') if customer_data.get('notes') else 'Καμία σημείωση'}
                 """)
                 
-                # --- ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
                 with st.expander("📝 Επεξεργασία Στοιχείων"):
                     with st.form(f"edit_cust_{customer_data['id']}"):
                         e_name = st.text_input("Όνομα / Επωνυμία", value=customer_data['name'])
@@ -2520,13 +2561,8 @@ elif page == "👥 Πελατολόγιο":
                         
                         if st.form_submit_button("💾 Ενημέρωση Στοιχείων"):
                             supabase.table("customers").update({
-                                "name": e_name, 
-                                "afm": e_afm,
-                                "discount": e_discount,
-                                "phone": e_phone, 
-                                "email": e_email, 
-                                "address": e_addr, 
-                                "notes": e_notes
+                                "name": e_name, "afm": e_afm, "discount": e_discount,
+                                "phone": e_phone, "email": e_email, "address": e_addr, "notes": e_notes
                             }).eq("id", customer_data["id"]).execute()
                             st.success("✅ Τα στοιχεία ενημερώθηκαν!")
                             st.rerun()
@@ -2538,125 +2574,85 @@ elif page == "👥 Πελατολόγιο":
                     st.rerun()
 
             with col_crm_b:
-                # --- 1. ΠΑΛΙΟ ΙΣΤΟΡΙΚΟ (Από production_log - Τεμάχια) ---
                 st.subheader(f"📊 Ιστορικό Παραγωγής: {sel_name}")
                 res_prod = supabase.table("production_log").select("prod_date, cocktail_name, pieces, lot_cocktail, prod_time").eq("customer", sel_name).order("prod_date", desc=True).execute()
                 
                 if res_prod.data:
                     df_p = pd.DataFrame(res_prod.data)
                     df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail", "cocktail_name"])
-                    
-                    st.dataframe(
-                        df_p_clean.rename(columns={
-                            "prod_date": "Ημερομηνία",
-                            "cocktail_name": "Cocktail",
-                            "pieces": "Τεμάχια"
-                        })[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                    st.metric("Συνολικές Αγορές (Τεμάχια)", f"{int(df_p_clean['pieces'].sum())} τμχ")
+                    st.dataframe(df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Cocktail", "Τεμάχια"]], use_container_width=True, hide_index=True)
+                    st.metric("Συνολικές Αγορές", f"{int(df_p_clean['pieces'].sum())} τμχ")
                 else:
-                    st.info("Δεν βρέθηκε ιστορικό παραγωγής για αυτόν τον πελάτη.")
+                    st.info("Δεν βρέθηκε ιστορικό παραγωγής.")
 
                 st.divider()
-
-                # --- 2. ΔΙΑΧΕΙΡΙΣΗ DASHBOARD (Με ακριβή υπολογισμό % έκπτωσης, Δώρα & Reset) ---
                 st.subheader("💰 Εμπορική Διαχείριση & Εκπτώσεις (%)")
                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
                 
                 if res_orders.data:
-                    import re # Απαραίτητο για να διαβάζουμε την αρχική τιμή και τα τεμάχια από το κείμενο
-                    
+                    import re
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
                         details = str(order['order_details'])
+                        order_date = str(order['created_at'])[:10]
                         
-                        # 1. Βρίσκουμε την Αρχική Αξία (πριν από κάθε έκπτωση)
                         base_amt = current_amt
                         match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
-                        if match_base:
-                            base_amt = float(match_base.group(1))
-                            
-                        # 2. Βρίσκουμε τα Συνολικά Τεμάχια της Παραγγελίας από το κείμενο (π.χ. "264 τμχ")
-                        total_pieces = 264 # Default τιμή ασφαλείας
+                        if match_base: base_amt = float(match_base.group(1))
+                        
+                        total_pieces = 264
                         match_pieces = re.search(r"(\d+)\s*τμχ", details)
-                        if match_pieces:
-                            total_pieces = int(match_pieces.group(1))
-                            
-                        # 3. Υπολογίζουμε τι ποσοστό έκπτωσης εμφανίζεται αυτή τη στιγμή στη βάση
-                        current_discount_pct = 0.0
-                        if base_amt > 0 and base_amt > current_amt:
-                            current_discount_pct = ((base_amt - current_amt) / base_amt) * 100
+                        if match_pieces: total_pieces = int(match_pieces.group(1))
+                        
+                        current_discount_pct = ((base_amt - current_amt) / base_amt * 100) if base_amt > 0 else 0.0
 
-                        with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | {current_amt:.2f}€  (Έκπτωση: {current_discount_pct:.1f}%)"):
-                            
-                            # Εμφάνιση ξεκάθαρων στοιχείων
-                            st.info(f"**Αρχική Αξία (Χωρίς Εκπτώσεις):** {base_amt:.2f} €\n\n**Συνολικά Τεμάχια:** {total_pieces} τμχ\n\n**Τρέχουσα Χρέωση:** {current_amt:.2f} €")
+                        with st.expander(f"🛒 Παραγγελία {order_date} | {current_amt:.2f}€"):
+                            st.info(f"**Αρχική:** {base_amt:.2f}€ | **Τεμάχια:** {total_pieces} | **Χρέωση:** {current_amt:.2f}€")
                             st.caption(f"Λεπτομέρειες:\n{details}")
                             
                             with st.form(key=f"edit_order_pct_{order_id}"):
                                 c1, c2 = st.columns(2)
-                                
-                                # Εδώ βάζεις το ποσοστό έκπτωσης (π.χ. 10% κλπ)
-                                new_pct = c1.number_input("Ποσοστό Εμπορικής Έκπτωσης (%)", 
-                                                          min_value=0.0, max_value=100.0, 
-                                                          value=float(round(current_discount_pct, 1)), 
-                                                          step=1.0)
-                                
-                                # Το Checkbox ελέγχει αν υπάρχει ήδη η σημείωση της προσφοράς
+                                new_pct = c1.number_input("Έκπτωση (%)", min_value=0.0, max_value=100.0, value=float(round(current_discount_pct, 1)), step=1.0)
                                 add_offer = c2.checkbox("Προσφορά 240 + 24 Δώρο", value="ΠΡΟΣΦΟΡΑ 240+24" in details)
-                                
                                 col_b1, col_b2 = st.columns(2)
                                 
                                 if col_b1.form_submit_button("💾 Εφαρμογή Έκπτωσης", type="primary"):
-                                    # 1. Υπολογισμός Τιμής Μονάδας (Καταλόγου και Χονδρικής)
-                                    unit_price_catalog = base_amt / total_pieces if total_pieces > 0 else 0
-                                    unit_price_dealer = unit_price_catalog * (1 - (new_pct / 100))
+                                    unit_p = base_amt / total_pieces if total_pieces > 0 else 0
+                                    unit_p_dealer = unit_p * (1 - (new_pct / 100))
+                                    new_price = (total_pieces - 24) * unit_p_dealer if add_offer else total_pieces * unit_p_dealer
                                     
-                                    # 2. Υπολογισμός Τελικού Ποσού βάσει Προσφοράς
-                                    if add_offer and total_pieces >= 24:
-                                        # Υπολογισμός: (Συνολικά Τεμάχια - 24 δώρα) x Τιμή Χονδρικής
-                                        # Π.χ. (264 - 24) * 2.95€ = 708.00€
-                                        payable_pieces = total_pieces - 24
-                                        new_price = payable_pieces * unit_price_dealer
-                                    else:
-                                        # Κανονική χρέωση όλης της ποσότητας με την έκπτωση
-                                        new_price = total_pieces * unit_price_dealer
+                                    clean_det = details.split("\n[")[0].split("\n\n[")[0].strip()
+                                    new_det = clean_det + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
+                                    if new_pct > 0: new_det += f"\n[Έκπτωση: {new_pct}% εφαρμόστηκε]"
+                                    if add_offer: new_det += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ | Χρέωση {total_pieces-24} τμχ]"
                                     
-                                    if new_price < 0: new_price = 0.0
-
-                                    # 3. ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ
-                                    clean_details = details.split("\n[")[0].split("\n\n[")[0].strip()
-                                    
-                                    # Ξαναγράφει καθαρά το ιστορικό της παραγγελίας
-                                    new_details = clean_details + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
-                                    
-                                    if new_pct > 0:
-                                        new_details += f"\n[Έκπτωση: {new_pct}% εφαρμόστηκε]"
-                                        
-                                    if add_offer:
-                                        new_details += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ | Χρέωση {total_pieces-24} τμχ]"
-                                    
-                                    # Ενημέρωση στη Supabase
-                                    supabase.table("b2b_orders").update({
-                                        "total_amount": new_price,
-                                        "order_details": new_details
-                                    }).eq("id", order_id).execute()
-                                    
-                                    st.success(f"Επιτυχία! Το νέο σύνολο διαμορφώθηκε στα {new_price:.2f}€")
+                                    supabase.table("b2b_orders").update({"total_amount": new_price, "order_details": new_det}).eq("id", order_id).execute()
+                                    st.success(f"Επιτυχία! Νέο σύνολο: {new_price:.2f}€")
                                     time.sleep(1)
                                     st.rerun()
                                     
-                                if col_b2.form_submit_button("🗑️ Διαγραφή Παραγγελίας"):
+                                if col_b2.form_submit_button("🗑️ Διαγραφή"):
                                     supabase.table("b2b_orders").delete().eq("id", order_id).execute()
-                                    st.warning("Η παραγγελία διαγράφηκε από τα οικονομικά.")
-                                    time.sleep(1)
                                     st.rerun()
-                else:
-                    st.info("Δεν έχουν δημιουργηθεί ακόμα οικονομικές εγγραφές.")
 
+                            # --- ΚΟΥΜΠΙ PDF (ΕΞΩ ΑΠΟ ΤΟ FORM ΑΛΛΑ ΜΕΣΑ ΣΤΟ EXPANDER) ---
+                            st.divider()
+                            try:
+                                pdf_data = generate_pdf(sel_name, order_date, current_amt, details)
+                                st.download_button(
+                                    label=f"📄 Λήψη PDF (Παραγγελία {order_date})",
+                                    data=bytes(pdf_data),
+                                    file_name=f"Order_{sel_name}_{order_date}.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True,
+                                    key=f"pdf_btn_{order_id}"
+                                )
+                            except Exception as e:
+                                st.error(f"Σφάλμα PDF: {e}")
+
+                else:
+                    st.info("Δεν υπάρχουν οικονομικές εγγραφές.")
         else:
             st.warning("⚠️ Η λίστα πελατών είναι άδεια.")
 
@@ -2674,19 +2670,13 @@ elif page == "👥 Πελατολόγιο":
             if st.form_submit_button("💾 Αποθήκευση"):
                 if n_name:
                     supabase.table("customers").insert({
-                        "name": n_name, 
-                        "afm": n_afm,
-                        "discount": n_discount,
-                        "phone": n_phone, 
-                        "email": n_email, 
-                        "address": n_addr, 
-                        "notes": n_notes
+                        "name": n_name, "afm": n_afm, "discount": n_discount,
+                        "phone": n_phone, "email": n_email, "address": n_addr, "notes": n_notes
                     }).execute()
                     st.success("✅ Ο πελάτης προστέθηκε επιτυχώς!")
                     st.rerun()
                 else:
                     st.error("Το όνομα είναι υποχρεωτικό!")
-
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
