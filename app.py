@@ -2562,19 +2562,21 @@ elif page == "👥 Πελατολόγιο":
                     try:
                         hybrid_report_pdf = generate_hybrid_report(sel_name, res_fin.data, res_prod_old.data)
                         st.download_button(
-                            label="📄 Εκτύπωση Πλήρους Ιστορικού & Τζίρου",
+                            label="📄 Εκτύπωση Πλήρους Ιστορικού (PDF)",
                             data=bytes(hybrid_report_pdf),
                             file_name=f"Full_Report_{sel_name}.pdf",
                             mime="application/pdf",
                             use_container_width=True,
                             key=f"hybrid_report_btn_{customer_data['id']}"
                         )
+                        if not res_fin.data:
+                            st.caption("ℹ️ Ο τζίρος είναι 0.00 γιατί οι παλιές εγγραφές δεν έχουν τιμή.")
                     except Exception as e:
                         st.error(f"Σφάλμα PDF: {e}")
                 else:
                     st.warning("Δεν βρέθηκαν παραγγελίες.")
 
-                # --- 3. ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ (ΠΡΟΣΕΞΕ ΤΗ ΣΤΟΙΧΙΣΗ ΕΔΩ) ---
+                # --- 3. ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
                 with st.expander("📝 Επεξεργασία Στοιχείων"):
                     with st.form(f"edit_cust_form_{customer_data['id']}"):
                         e_name = st.text_input("Όνομα / Επωνυμία", value=customer_data['name'])
@@ -2596,6 +2598,7 @@ elif page == "👥 Πελατολόγιο":
                 st.divider()
                 if st.button("🗑️ Διαγραφή Πελάτη", type="secondary"):
                     supabase.table("customers").delete().eq("id", customer_data["id"]).execute()
+                    st.success("Ο πελάτης διαγράφηκε!")
                     st.rerun()
 
             with col_crm_b:
