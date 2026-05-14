@@ -1311,7 +1311,7 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΑΠΟΛΥΤΗ ΑΚΡΙΒΕΙΑ) ---
+# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΑΝΑΒΑΘΜΙΣΜΕΝΟ ΜΕ MoM GROWTH) ---
 elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
     
@@ -1388,7 +1388,7 @@ elif page == "📈 Dashboard":
             
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], 0) for _, r in df_recipes.iterrows()}
 
-        # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ (ΓΙΑ ΤΟΝ ΠΙΝΑΚΑ ΚΑΙ ΤΟ ΠΑΡΕΛΘΟΝ) ---
+        # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ ---
         df_filtered = df_filtered.merge(df_recipes[['name', 'catalog_price']], left_on="cocktail_name", right_on="name", how="left")
         df_filtered['catalog_price'] = pd.to_numeric(df_filtered['catalog_price'], errors='coerce').fillna(0)
         df_filtered['pieces'] = pd.to_numeric(df_filtered['pieces'], errors='coerce').fillna(0)
@@ -1397,62 +1397,86 @@ elif page == "📈 Dashboard":
         df_filtered['dealer_price'] = df_filtered['catalog_price'] * (1 - (df_filtered['customer_discount'] / 100))
         df_filtered['Theoretical_Revenue'] = df_filtered['pieces'] * df_filtered['dealer_price']
         df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['cocktail_name'].map(name_to_cost).fillna(0)
-        
-        # Υπολογισμός κέρδους ανά γραμμή για τον τελικό πίνακα
         df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
 
-        # --- ΥΒΡΙΔΙΚΟΣ ΤΖΙΡΟΣ (ΓΙΑ ΤΑ ΣΥΝΟΛΑ ΚΑΙ ΤΑ ΓΡΑΦΗΜΑΤΑ) ---
+        # --- ΥΒΡΙΔΙΚΟΣ ΤΖΙΡΟΣ ΚΑΙ MoM ΔΕΔΟΜΕΝΑ ---
         total_rev = 0.0
         hybrid_revenue_data = []
         processed_orders = set()
         
+        # 1. Προσθήκη από b2b_orders
         if not df_orders.empty:
             for _, order in df_orders.iterrows():
-                total_rev += float(order['total_amount'])
-                hybrid_revenue_data.append({"customer": order['customer_name'], "Revenue": float(order['total_amount'])})
+                amt = float(order['total_amount'])
+                total_rev += amt
+                hybrid_revenue_data.append({
+                    "customer": order['customer_name'], 
+                    "Revenue": amt, 
+                    "Month": order['Month_Year']
+                })
                 processed_orders.add((order['Date_Str'], order['customer_name']))
                 
-        prod_grouped = df_filtered.groupby(['prod_date', 'customer'])['Theoretical_Revenue'].sum().reset_index()
+        # 2. Προσθήκη από παραγωγή (αν δεν υπάρχει ήδη στο b2b_orders)
+        prod_grouped = df_filtered.groupby(['prod_date', 'customer', 'Month_Year'])['Theoretical_Revenue'].sum().reset_index()
         for _, row in prod_grouped.iterrows():
             if (row['prod_date'], row['customer']) not in processed_orders:
                 total_rev += row['Theoretical_Revenue']
-                hybrid_revenue_data.append({"customer": row['customer'], "Revenue": row['Theoretical_Revenue']})
+                hybrid_revenue_data.append({
+                    "customer": row['customer'], 
+                    "Revenue": row['Theoretical_Revenue'],
+                    "Month": row['Month_Year']
+                })
 
-        # Καταμέτρηση Μοναδικών Παραγγελιών
+        # Καταμέτρηση Μοναδικών Παραγγελιών (1 ανά πελάτη/ημέρα)
         total_orders_count = df_filtered.groupby(['prod_date', 'customer']).ngroups
-
         total_cost = df_filtered['Total_Cost'].sum()
         total_profit = total_rev - total_cost
         total_units = df_filtered['pieces'].sum()
 
         # --- METRICS ---
         st.divider()
-        st.subheader(f"📊 Σύνοψη: {sel_customer if sel_customer != 'ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ' else 'Όλοι οι Πελάτες'}")
+        st.subheader(f"📊 Σύνοψη & Απόδοση: {sel_customer if sel_customer != 'ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ' else 'Όλοι οι Πελάτες'}")
+        
+        margin = (total_profit / total_rev * 100) if total_rev > 0 else 0
+        aov = total_rev / total_orders_count if total_orders_count > 0 else 0
         
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("💰 Τζίρος", f"{total_rev:.2f} €".replace('.', ','))
-        m2.metric("📉 Κόστος Υλικών", f"{total_cost:.2f} €".replace('.', ','))
-        margin = (total_profit / total_rev * 100) if total_rev > 0 else 0
-        m3.metric("📈 Καθαρό Κέρδος", f"{total_profit:.2f} €".replace('.', ','), delta=f"{margin:.1f}% Margin")
+        m2.metric("📈 Καθαρό Κέρδος", f"{total_profit:.2f} €".replace('.', ','), delta=f"{margin:.1f}% Margin")
+        m3.metric("📉 Κόστος Υλικών", f"{total_cost:.2f} €".replace('.', ','))
         m4.metric("🍹 Τεμάχια", f"{int(total_units)} τμχ")
-        m5.metric("📦 Παραγγελίες", total_orders_count)
+        m5.metric("📦 Μέση Παραγγελία", f"{aov:.2f} €".replace('.', ','))
 
-        # --- 8. ABC ΑΝΑΛΥΣΗ ---
+        # --- ΝΕΟ: ΓΡΑΦΗΜΑ ΜΗΝΙΑΙΑΣ ΕΞΕΛΙΞΗΣ (MoM GROWTH) ---
+        st.write("### 📅 Μηνιαία Εξέλιξη Τζίρου")
+        df_mom = pd.DataFrame(hybrid_revenue_data)
+        if not df_mom.empty:
+            mom_trend = df_mom.groupby('Month')['Revenue'].sum().reset_index()
+            # Σωστή ταξινόμηση ημερομηνιών
+            mom_trend['sort_date'] = pd.to_datetime(mom_trend['Month'], format='%m/%Y')
+            mom_trend = mom_trend.sort_values('sort_date')
+            
+            fig_mom = px.line(mom_trend, x='Month', y='Revenue', 
+                             markers=True, text=[f"{v:.0f}€" for v in mom_trend['Revenue']],
+                             title="Πορεία Εσόδων (Month-over-Month)",
+                             template="plotly_dark", color_discrete_sequence=["#00ffcc"])
+            fig_mom.update_traces(textposition="top center")
+            st.plotly_chart(fig_mom, use_container_width=True)
+
+        # --- ABC ΑΝΑΛΥΣΗ ---
         st.divider()
         st.subheader("🏆 ABC Ανάλυση Πελατολογίου")
-        df_hybrid = pd.DataFrame(hybrid_revenue_data)
-        if not df_hybrid.empty and total_rev > 0:
-            customer_abc = df_hybrid.groupby("customer")["Revenue"].sum().sort_values(ascending=False).reset_index()
+        if not df_mom.empty and total_rev > 0:
+            customer_abc = df_mom.groupby("customer")["Revenue"].sum().sort_values(ascending=False).reset_index()
             customer_abc['Percentage'] = (customer_abc['Revenue'] / total_rev) * 100
             customer_abc['CumSum'] = customer_abc['Percentage'].cumsum()
             customer_abc['Category'] = customer_abc['CumSum'].apply(lambda x: "A" if x <= 80 else ("B" if x <= 95 else "C"))
             fig_abc = px.bar(customer_abc, x="customer", y="Revenue", color="Category", title="Ranking Πελατών", text_auto='.2s', color_discrete_map={"A": "#00ffcc", "B": "#f1c40f", "C": "#ff4b4b"})
             st.plotly_chart(fig_abc, use_container_width=True)
 
-        # --- 9. ΧΑΡΤΗΣ ΑΠΟΔΟΣΗΣ ---
+        # --- ΧΑΡΤΗΣ ΑΠΟΔΟΣΗΣ ---
         st.divider()
         st.subheader("🎯 Χάρτης Απόδοσης Cocktail")
-        
         heatmap_list = []
         for name in df_filtered['cocktail_name'].unique():
             temp = df_filtered[df_filtered['cocktail_name'] == name]
@@ -1461,24 +1485,18 @@ elif page == "📈 Dashboard":
             cost = temp['Total_Cost'].sum()
             prof = rev - cost
             if sold > 0:
-                heatmap_list.append({
-                    "Cocktail": name, "Πωλήσεις": sold, "Κέρδος/Τμχ": round(prof/sold, 2), "Συνολικό Κέρδος": round(prof, 2)
-                })
+                heatmap_list.append({"Cocktail": name, "Πωλήσεις": sold, "Κέρδος/Τμχ": round(prof/sold, 2), "Συνολικό Κέρδος": round(prof, 2)})
         
         if heatmap_list:
             df_hm = pd.DataFrame(heatmap_list)
-            fig_hm = px.scatter(df_hm, x="Πωλήσεις", y="Κέρδος/Τμχ", size="Συνολικό Κέρδος",
-                               color="Cocktail", hover_name="Cocktail", text="Cocktail",
-                               size_max=50, template="plotly_dark")
+            fig_hm = px.scatter(df_hm, x="Πωλήσεις", y="Κέρδος/Τμχ", size="Συνολικό Κέρδος", color="Cocktail", hover_name="Cocktail", text="Cocktail", size_max=50, template="plotly_dark")
             fig_hm.update_traces(textposition='top center')
             st.plotly_chart(fig_hm, use_container_width=True)
 
-        # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ (Επαναφορά ακριβώς όπως ήταν) ---
-        with st.expander("📄 Αναλυτικό Αρχείο"):
-            # Μετονομάζω τη στήλη εικονικά μόνο για την εμφάνιση ώστε να λέει "Revenue" όπως πριν
+        # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
+        with st.expander("📄 Αναλυτικό Αρχείο (LOT & Profit)"):
             display_df = df_filtered.copy()
             display_df.rename(columns={"Theoretical_Revenue": "Revenue"}, inplace=True)
-            
             st.dataframe(display_df[["prod_date", "customer", "cocktail_name", "pieces", "Revenue", "Total_Cost", "Profit", "lot_cocktail"]].sort_values("prod_date", ascending=False), use_container_width=True, hide_index=True)
 
     else:
