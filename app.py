@@ -1311,28 +1311,34 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΝΕΟ ΜΕ ΔΥΝΑΜΙΚΕΣ ΕΚΠΤΩΣΕΙΣ) ---
+# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΜΕ ΕΞΥΠΝΕΣ ΕΚΠΤΩΣΕΙΣ) ---
 elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
     import plotly.express as px
 
     # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ ΑΠΟ ΟΛΑ ΤΑ "ΒΙΒΛΙΑ"
     with st.spinner("Ενημέρωση στατιστικών..."):
-        # Βιβλίο Παραγωγής (για τεμάχια και LOT)
         res_log = supabase.table("production_log").select("*").execute()
-        # Βιβλίο Οικονομικών (για τον καθαρό τζίρο μετά από εκπτώσεις)
         res_orders = supabase.table("b2b_orders").select("*").execute()
-        
-        # Υπολογισμός Κόστους (Παραμένει ίδιος για να βρίσκουμε το κέρδος)
         res_rec = supabase.table("recipes").select("id, name, catalog_price").execute()
         res_ing = supabase.table("ingredients").select("name, price, volume").execute()
         res_items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute()
+        # Φέρνουμε και τους πελάτες για να ξέρουμε τις εκπτώσεις τους
+        res_cust = supabase.table("customers").select("name, discount").execute()
         
     if res_log.data and res_rec.data:
         df_raw = pd.DataFrame(res_log.data)
         df_recipes = pd.DataFrame(res_rec.data)
         
-        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ ΑΝΑ ΣΥΝΤΑΓΗ ---
+        # --- Αντιστοιχία Εκπτώσεων Πελατών ---
+        df_customers = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
+        if not df_customers.empty:
+            df_customers['discount'] = pd.to_numeric(df_customers['discount'], errors='coerce').fillna(0)
+            cust_discount_map = dict(zip(df_customers['name'], df_customers['discount']))
+        else:
+            cust_discount_map = {}
+
+        # --- Υπολογισμός Κόστους Συνταγών ---
         df_ing = pd.DataFrame(res_ing.data)
         df_ing['cost_per_ml'] = pd.to_numeric(df_ing['price'], errors='coerce') / pd.to_numeric(df_ing['volume'], errors='coerce')
         ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
@@ -1341,15 +1347,16 @@ elif page == "📈 Dashboard":
         recipe_costs_by_id = {}
         for rid in df_items['recipe_id'].unique():
             sub = df_items[df_items['recipe_id'] == rid]
-            cost = 0.22  # Σταθερά έξοδα (μπουκάλι, ετικέτα κλπ)
+            cost = 0.22  # Σταθερά έξοδα
             for _, item in sub.iterrows():
                 cost += item['ml_per_unit'] * ing_cost_dict.get(item['ingredient_name'], 0)
             recipe_costs_by_id[rid] = cost
 
-        # Mapping: Cocktail Name -> Unit Cost
+        # Λεξικά για κόστη και τιμές καταλόγου
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], 0) for _, r in df_recipes.iterrows()}
+        price_map = {r['name']: pd.to_numeric(r['catalog_price'], errors='coerce').fillna(0) for _, r in df_recipes.iterrows()}
 
-        # Καθαρισμός δεδομένων παραγωγής/τεμαχίων
+        # Καθαρισμός δεδομένων παραγωγής
         df_sales = df_raw.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"]).copy()
         df_sales['Date_Obj'] = pd.to_datetime(df_sales['prod_date'], format='%d/%m/%Y', errors='coerce')
         df_sales['Month_Year'] = df_sales['Date_Obj'].dt.strftime('%m/%Y')
@@ -1368,30 +1375,44 @@ elif page == "📈 Dashboard":
         if sel_month != "ΟΛΟΙ ΟΙ ΜΗΝΕΣ":
             df_filtered = df_filtered[df_filtered['Month_Year'] == sel_month]
 
-        # --- ΟΙΚΟΝΟΜΙΚΑ ΜΕΓΕΘΗ & ΚΟΣΤΟΛΟΓΙΟ (Για τα τεμάχια που φιλτράραμε) ---
+        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ & ΤΕΜΑΧΙΩΝ ---
         df_filtered['unit_cost'] = df_filtered['cocktail_name'].map(name_to_cost).fillna(0)
         df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['unit_cost']
         
         total_cost = df_filtered['Total_Cost'].sum()
         total_units = df_filtered['pieces'].sum()
 
-        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΠΡΑΓΜΑΤΙΚΟΥ ΤΖΙΡΟΥ (Από τον πίνακα b2b_orders) ---
+        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΔΥΝΑΜΙΚΟΥ ΤΖΙΡΟΥ (Βάσει Τεμαχίων + Έκπτωσης CRM) ---
+        # Υπολογίζει τον τζίρο εφαρμόζοντας την έκπτωση του πελάτη, σε περίπτωση που δεν βρει b2b_orders
+        df_filtered['catalog_price'] = df_filtered['cocktail_name'].map(price_map).fillna(0)
+        df_filtered['cust_discount'] = df_filtered['customer'].map(cust_discount_map).fillna(0)
+        df_filtered['Dynamic_Revenue'] = df_filtered['pieces'] * df_filtered['catalog_price'] * (1 - df_filtered['cust_discount'] / 100)
+        dynamic_total_rev = df_filtered['Dynamic_Revenue'].sum()
+
+        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΑΚΡΙΒΟΥΣ ΤΖΙΡΟΥ (Από το b2b_orders) ---
         total_rev = 0.0
         total_orders = 0
         if res_orders.data:
             df_orders = pd.DataFrame(res_orders.data)
-            # Φιλτράρισμα παραγγελιών βάσει της επιλογής πελάτη/μήνα
-            if sel_customer != "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ":
-                df_orders = df_orders[df_orders['customer_name'] == sel_customer]
-            
-            if sel_month != "ΟΛΟΙ ΟΙ ΜΗΝΕΣ":
-                # Μετατροπή ημερομηνίας παραγγελίας (π.χ. '2026-05-14T07:37:00' -> '05/2026')
-                df_orders['Order_Month'] = pd.to_datetime(df_orders['created_at']).dt.strftime('%m/%Y')
-                df_orders = df_orders[df_orders['Order_Month'] == sel_month]
-            
-            total_rev = float(df_orders['total_amount'].sum())
-            total_orders = len(df_orders)
+            if 'total_amount' in df_orders.columns:
+                # Ασφαλής μετατροπή σε αριθμό (Αποφεύγει τα μηδενικά σφάλματα)
+                df_orders['total_amount'] = pd.to_numeric(df_orders['total_amount'], errors='coerce').fillna(0)
+                
+                if sel_customer != "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ" and 'customer_name' in df_orders.columns:
+                    df_orders = df_orders[df_orders['customer_name'] == sel_customer]
+                
+                if sel_month != "ΟΛΟΙ ΟΙ ΜΗΝΕΣ" and 'created_at' in df_orders.columns and not df_orders.empty:
+                    df_orders['Order_Month'] = pd.to_datetime(df_orders['created_at'], errors='coerce').dt.strftime('%m/%Y')
+                    df_orders = df_orders[df_orders['Order_Month'] == sel_month]
+                
+                total_rev = float(df_orders['total_amount'].sum())
+                total_orders = len(df_orders)
 
+        # 💡 Η ΔΙΚΛΕΙΔΑ ΑΣΦΑΛΕΙΑΣ: 
+        # Αν το total_rev είναι 0 (π.χ. από παλιό μήνα ή επειδή το b2b_orders ήταν άδειο), δείχνει το Δυναμικό!
+        if total_rev <= 0 and dynamic_total_rev > 0:
+            total_rev = dynamic_total_rev
+            
         total_profit = total_rev - total_cost
 
         # --- ΣΥΝΟΨΗ (METRICS) ---
@@ -1399,7 +1420,6 @@ elif page == "📈 Dashboard":
         st.subheader(f"📊 Σύνοψη: {sel_customer if sel_customer != 'ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ' else 'Όλοι οι Πελάτες'}")
         
         m1, m2, m3, m4, m5 = st.columns(5)
-        # Ο τζίρος πλέον δείχνει το τελικό ποσό μετά από εκπτώσεις (π.χ. CRM, Δώρα)
         m1.metric("💰 Τελικός Τζίρος (Καθαρός)", f"{total_rev:.2f} €".replace('.', ','))
         m2.metric("📉 Κόστος Υλικών", f"{total_cost:.2f} €".replace('.', ','))
         
@@ -1408,23 +1428,23 @@ elif page == "📈 Dashboard":
                   delta=f"{margin:.1f}% Margin")
         
         m4.metric("🍹 Τεμάχια Παραγωγής", f"{int(total_units)} τμχ")
-        m5.metric("📦 Οικονομικές Παραγγελίες", total_orders)
+        m5.metric("📦 Οικονομικές Παραγγελίες", total_orders if total_orders > 0 else len(df_filtered))
 
-        # --- 8. ABC ΑΝΑΛΥΣΗ (Βάσει των οικονομικών παραγγελιών) ---
+        # --- 8. ABC ΑΝΑΛΥΣΗ ---
         st.divider()
         st.subheader("🏆 ABC Ανάλυση Πελατολογίου (Βάσει Τζίρου)")
-        if res_orders.data and not df_orders.empty and total_rev > 0:
-            customer_abc = df_orders.groupby("customer_name")["total_amount"].sum().sort_values(ascending=False).reset_index()
-            customer_abc['Percentage'] = (customer_abc['total_amount'] / total_rev) * 100
+        
+        # Χρησιμοποιούμε τη δυναμική στήλη τζίρου για τα γραφήματα, ώστε να μη χάσεις κανένα παλιό δεδομένο!
+        if not df_filtered.empty and dynamic_total_rev > 0:
+            customer_abc = df_filtered.groupby("customer")["Dynamic_Revenue"].sum().sort_values(ascending=False).reset_index()
+            customer_abc['Percentage'] = (customer_abc['Dynamic_Revenue'] / dynamic_total_rev) * 100
             customer_abc['CumSum'] = customer_abc['Percentage'].cumsum()
             customer_abc['Category'] = customer_abc['CumSum'].apply(lambda x: "A" if x <= 80 else ("B" if x <= 95 else "C"))
             
-            fig_abc = px.bar(customer_abc, x="customer_name", y="total_amount", color="Category",
+            fig_abc = px.bar(customer_abc, x="customer", y="Dynamic_Revenue", color="Category",
                            title="Ranking Πελατών (Καθαρός Τζίρος)", text_auto='.2s',
                            color_discrete_map={"A": "#00ffcc", "B": "#f1c40f", "C": "#ff4b4b"})
             st.plotly_chart(fig_abc, use_container_width=True)
-        else:
-            st.info("Δεν υπάρχουν επαρκή οικονομικά δεδομένα για γραφήματα.")
 
         # --- 9. ΧΑΡΤΗΣ ΑΠΟΔΟΣΗΣ COCKTAIL (Βάσει Τεμαχίων) ---
         st.divider()
@@ -1442,7 +1462,6 @@ elif page == "📈 Dashboard":
         
         if heatmap_list:
             df_hm = pd.DataFrame(heatmap_list)
-            # Εδώ χρησιμοποιούμε τις πωλήσεις τεμαχίων για μέγεθος και το κόστος για χρώμα
             fig_hm = px.scatter(df_hm, x="Πωλήσεις (τμχ)", y="Κόστος Υλικών", size="Πωλήσεις (τμχ)",
                                color="Cocktail", hover_name="Cocktail", text="Cocktail",
                                size_max=50, template="plotly_dark")
