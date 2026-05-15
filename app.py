@@ -2974,7 +2974,7 @@ elif page == "📦 Παραγγελίες B2B":
     st.divider()
 
     # ==========================================
-    # ΑΣΦΑΛΗΣ ΥΠΟΛΟΓΙΣΜΟΣ ΝΕΩΝ ΚΑΙ ΠΑΛΙΩΝ ΔΕΔΟΜΕΝΩΝ
+    # ΑΣΦΑΛΗΣ ΥΠΟΛΟΓΙΣΜΟΣ ΝΕΩΝ ΚΑΙ ΠΑΛΙΩΝ ΔΕΔΟΜΕΝΩΝ (ΚΑΘΑΡΙΣΜΕΝΑ)
     # ==========================================
     res_b2b = supabase.table("b2b_orders").select("*").execute()
     df_b2b = pd.DataFrame(res_b2b.data) if res_b2b.data else pd.DataFrame()
@@ -2983,18 +2983,23 @@ elif page == "📦 Παραγγελίες B2B":
     res_rec = supabase.table("recipes").select("name, catalog_price").execute()
     res_cust = supabase.table("customers").select("name, discount").execute()
 
-    # Λεξικά για τις τιμές (για να μην βγαίνουν λάθος)
-    price_map = {r['name']: float(r['catalog_price'] or 0) for r in res_rec.data} if res_rec.data else {}
-    disc_map = {c['name']: float(c['discount'] or 0) for c in res_cust.data} if res_cust.data else {}
+    # Καθαρισμός Λεξικών (Αφαίρεση κενών spaces με strip() για να βρίσκει πάντα σωστά τις τιμές)
+    price_map = {str(r['name']).strip(): float(r['catalog_price'] or 0) for r in res_rec.data} if res_rec.data else {}
+    disc_map = {str(c['name']).strip(): float(c['discount'] or 0) for c in res_cust.data} if res_cust.data else {}
 
     old_orders_list = []
     if res_prod.data:
-        # Ομαδοποίηση παλιών ανά Πελάτη και Ημερομηνία
+        df_old_raw = pd.DataFrame(res_prod.data)
+        
+        # 1. ΚΑΘΑΡΙΣΜΟΣ ΔΙΠΛΟΤΥΠΩΝ (Όπως ακριβώς στο Dashboard!)
+        df_old_clean = df_old_raw.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"]).copy()
+
+        # 2. ΟΜΑΔΟΠΟΙΗΣΗ ΜΕ ΚΑΘΑΡΑ ΟΝΟΜΑΤΑ
         grouped_old = {}
-        for row in res_prod.data:
-            cust = row['customer']
-            date = row['prod_date']
-            cocktail = row['cocktail_name']
+        for _, row in df_old_clean.iterrows():
+            cust = str(row['customer']).strip() # Αφαιρεί τα κενά από τον πελάτη
+            date = str(row['prod_date']).strip()
+            cocktail = str(row['cocktail_name']).strip() # Αφαιρεί τα κενά από το κοκτέιλ
             pcs = int(row.get('pieces', 0))
             
             key = (cust, date)
@@ -3003,7 +3008,7 @@ elif page == "📦 Παραγγελίες B2B":
             
             grouped_old[key][cocktail] = grouped_old[key].get(cocktail, 0) + pcs
             
-        # Μετατροπή στην ίδια μορφή με τα B2B (Σωστά γραμμένο order_details & Σωστή τιμή)
+        # 3. ΜΕΤΑΤΡΟΠΗ ΣΕ ΜΟΡΦΗ ΠΑΡΑΓΓΕΛΙΑΣ
         for (cust, date), items in grouped_old.items():
             total_eur = 0.0
             details_lines = []
@@ -3031,14 +3036,14 @@ elif page == "📦 Παραγγελίες B2B":
 
     if not df_hybrid.empty:
         # Ταξινόμηση
-        df_hybrid['sort_date'] = pd.to_datetime(df_hybrid['created_at'], errors='coerce')
+        df_hybrid['sort_date'] = pd.to_datetime(df_hybrid['created_at'], format='%d/%m/%Y', errors='coerce').fillna(pd.to_datetime(df_hybrid['created_at'], errors='coerce'))
         df_hybrid = df_hybrid.sort_values("sort_date", ascending=False)
     
     # ==========================================
 
     tab1, tab2 = st.tabs(["🔔 Τρέχουσες Παραγγελίες", "📜 Ιστορικό & Αναζήτηση"])
 
-    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ (ΤΟ ΔΙΚΟ ΣΟΥ DESIGN) ---
+    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ ---
     with tab1:
         if not df_hybrid.empty:
             all_statuses = ["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ", "ΟΛΟΚΛΗΡΩΘΗΚΕ (Ιστορικό)"]
@@ -3076,13 +3081,15 @@ elif page == "📦 Παραγγελίες B2B":
         else:
             st.info("Δεν υπάρχουν παραγγελίες στη βάση.")
 
-    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ (ΤΟ ΔΙΚΟ ΣΟΥ DESIGN) ---
+    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ ---
     with tab2:
         st.subheader("🔍 Αναζήτηση στο Ιστορικό")
         if not df_hybrid.empty:
             search_col1, search_col2 = st.columns(2)
             with search_col1:
-                cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hybrid["customer_name"].dropna().unique()))
+                # Χρησιμοποιούμε καθαρά ονόματα για το dropdown
+                cleaned_customers = sorted(df_hybrid["customer_name"].dropna().apply(lambda x: str(x).strip()).unique())
+                cust_search = st.multiselect("Φίλτρο Πελάτη:", options=cleaned_customers)
             with search_col2:
                 all_cocktails = set()
                 for details in df_hybrid["order_details"]:
@@ -3098,7 +3105,7 @@ elif page == "📦 Παραγγελίες B2B":
             # Φιλτράρισμα
             mask = pd.Series([True] * len(df_hybrid))
             if cust_search: 
-                mask &= df_hybrid["customer_name"].isin(cust_search)
+                mask &= df_hybrid["customer_name"].apply(lambda x: str(x).strip()).isin(cust_search)
             if cocktail_search:
                 cocktail_mask = df_hybrid["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
                 mask &= cocktail_mask
@@ -3108,7 +3115,7 @@ elif page == "📦 Παραγγελίες B2B":
             if not df_results.empty:
                 st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
                 for _, row in df_results.iterrows():
-                    with st.expander(f"📅 {str(row['created_at'])[:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
+                    with st.expander(f"📅 {str(row['created_at'])[:10]} | {str(row['customer_name']).strip()} | {row['total_amount']:.2f} €"):
                         col_h1, col_h2 = st.columns([2, 1])
                         with col_h1:
                             st.markdown(f"**Κατάσταση:** {row['status']}")
