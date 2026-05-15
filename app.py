@@ -1982,16 +1982,30 @@ elif page == "📦 Lot Παραγωγής":
         sel_hist_date = st.selectbox("🔍 Επιλέξτε Ημερομηνία για Διαχείριση / Εκτύπωση:", all_dates)
         
         if sel_hist_date:
-            df_past = df_all_logs_renamed[df_all_logs_renamed["Ημερομηνία"] == sel_hist_date]
+            # 1. Πρώτο φιλτράρισμα μόνο με την ημερομηνία
+            df_filtered_date = df_all_logs_renamed[df_all_logs_renamed["Ημερομηνία"] == sel_hist_date]
             
+            # 2. ΝΕΟ: Φίλτρο Πελάτη (παίρνει μόνο τους πελάτες εκείνης της ημέρας)
+            unique_customers = sorted(df_filtered_date["Πελάτης"].unique())
+            sel_customer = st.selectbox("👤 Φιλτράρισμα ανά Πελάτη:", ["-- Όλοι οι Πελάτες --"] + list(unique_customers))
+            
+            # 3. Τελικό φιλτράρισμα του DataFrame (df_past) με βάση τον πελάτη
+            if sel_customer != "-- Όλοι οι Πελάτες --":
+                df_past = df_filtered_date[df_filtered_date["Πελάτης"] == sel_customer]
+            else:
+                df_past = df_filtered_date
+
+            # 4. Δημιουργία των επιλογών για το dropdown της παραγωγής
             batches = df_past.groupby(['Ώρα', 'Πελάτης', 'Cocktail', 'LOT_Cocktail']).groups
             options = ["-- Επιλέξτε Παραγωγή --"]
             batch_mapping = {}
+            
             for (time_v, cust, cock, lot_c), indices in batches.items():
                 label = f"🍹 {cock} | 👤 {cust} | 🕒 {time_v} | LOT: {lot_c}"
                 options.append(label)
                 batch_mapping[label] = list(indices)
 
+            # 5. Το τελικό dropdown που πλέον είναι φιλτραρισμένο
             selected_batch = st.selectbox("🛠️ Επεξεργασία Συγκεκριμένης Παραγωγής (Προσθήκη LOT 2):", options)
             
             if selected_batch != "-- Επιλέξτε Παραγωγή --":
