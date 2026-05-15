@@ -1508,6 +1508,71 @@ elif page == "📈 Dashboard":
             display_df.rename(columns={"Theoretical_Revenue": "Revenue"}, inplace=True)
             st.dataframe(display_df[["prod_date", "customer", "cocktail_name", "pieces", "Revenue", "Total_Cost", "Profit", "lot_cocktail"]].sort_values("prod_date", ascending=False), use_container_width=True, hide_index=True)
 
+
+        # =====================================================================
+        # --- ΝΕΟ: ΑΝΑΛΥΤΙΚΟ REPORT ΠΕΛΑΤΗ ΕΝΣΩΜΑΤΩΜΕΝΟ ΣΤΟ DASHBOARD ---
+        # =====================================================================
+        st.divider()
+        st.header("👤 Αναλυτικό Report ανά Πελάτη")
+        
+        all_customers_rep = df_sales['customer'].dropna().unique().tolist() if not df_sales.empty else []
+        
+        if all_customers_rep:
+            sel_cust_rep = st.selectbox("Επιλέξτε Πελάτη για Ανάλυση:", options=all_customers_rep, key="dash_cust_rep")
+            
+            # Φιλτράρισμα δεδομένων παραγωγής
+            cust_prod = df_sales[df_sales['customer'] == sel_cust_rep].copy()
+            
+            # Φιλτράρισμα οικονομικών δεδομένων
+            if not df_orders_raw.empty:
+                df_orders_cust = df_orders_raw[df_orders_raw['customer_name'] == sel_cust_rep]
+            else:
+                df_orders_cust = pd.DataFrame()
+
+            # --- ΣΤΑΤΙΣΤΙΚΑ (METRICS) ---
+            c1, c2, c3, c4 = st.columns(4)
+            
+            total_pcs_cust = pd.to_numeric(cust_prod['pieces'], errors='coerce').sum()
+            total_rev_cust = pd.to_numeric(df_orders_cust['total_amount'], errors='coerce').sum() if not df_orders_cust.empty else 0
+            avg_val_cust = total_rev_cust / total_pcs_cust if total_pcs_cust > 0 else 0
+            unique_cocktails = cust_prod['cocktail_name'].nunique()
+
+            c1.metric("Συνολικά Τεμάχια", f"{int(total_pcs_cust)} τμχ")
+            c2.metric("Συνολικός Τζίρος", f"{total_rev_cust:.2f} €")
+            c3.metric("Μέση Τιμή / Τμχ", f"{avg_val_cust:.2f} €")
+            c4.metric("Ποικιλία Cocktail", f"{unique_cocktails}")
+
+            # --- ΓΡΑΦΗΜΑΤΑ ΠΕΛΑΤΗ ---
+            col_chart1, col_chart2 = st.columns(2)
+
+            with col_chart1:
+                st.subheader("📈 Πορεία Αγορών (Τεμάχια)")
+                if not cust_prod.empty:
+                    df_trend = cust_prod.groupby('prod_date')['pieces'].sum().reset_index()
+                    df_trend['sort_date'] = pd.to_datetime(df_trend['prod_date'], format='%d/%m/%Y', errors='coerce')
+                    df_trend = df_trend.sort_values('sort_date')
+                    fig_trend = px.line(df_trend, x='prod_date', y='pieces', 
+                                        title=f"Τάση Παραγγελιών: {sel_cust_rep}",
+                                        markers=True, line_shape="spline",
+                                        color_discrete_sequence=["#FF4B4B"])
+                    st.plotly_chart(fig_trend, use_container_width=True)
+
+            with col_chart2:
+                st.subheader("🍸 Προτιμήσεις Cocktail")
+                if not cust_prod.empty:
+                    df_fav = cust_prod.groupby('cocktail_name')['pieces'].sum().reset_index()
+                    fig_fav = px.pie(df_fav, values='pieces', names='cocktail_name', 
+                                     hole=0.4, title="Mix Αγορών")
+                    st.plotly_chart(fig_fav, use_container_width=True)
+
+            # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ΠΕΛΑΤΗ ---
+            with st.expander(f"📋 Δείτε όλες τις κινήσεις του {sel_cust_rep}"):
+                st.dataframe(cust_prod[['prod_date', 'cocktail_name', 'pieces', 'lot_cocktail']].sort_values(by='prod_date', ascending=False), 
+                             use_container_width=True, hide_index=True)
+        else:
+            st.info("Δεν υπάρχουν ακόμα δεδομένα πελατών για ανάλυση.")
+        # =====================================================================
+
     else:
         st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
        
