@@ -113,14 +113,44 @@ def check_password():
 if not check_password():
     st.stop()
 
-# Προσθήκη CSS
+# Προσθήκη CSS (Διορθωμένο για μικρότερα metrics)
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; }
-    [data-testid="stMetricValue"] { font-size: 28px; color: #00ffcc; }
-    div[data-testid="stMetric"] { background-color: #1e2129; border: 1px solid #333; padding: 15px; border-radius: 10px; box-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #3e4451; color: white; border: none; }
-    .stButton>button:hover { border: 1px solid #00ffcc; color: #00ffcc; }
+    
+    /* Μικρότερο μέγεθος για την τιμή (Τζίρος/Κόστος) */
+    [data-testid="stMetricValue"] { 
+        font-size: 22px !important; 
+        color: #00ffcc; 
+    }
+    
+    /* Μικρότερο μέγεθος για τον τίτλο (Label) */
+    [data-testid="stMetricLabel"] {
+        font-size: 14px !important;
+    }
+
+    /* Ρυθμίσεις για το πλαίσιο του Metric */
+    div[data-testid="stMetric"] { 
+        background-color: #1e2129; 
+        border: 1px solid #333; 
+        padding: 10px 15px; /* Μειωμένο padding πάνω-κάτω */
+        border-radius: 10px; 
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.5); 
+    }
+
+    /* Buttons */
+    .stButton>button { 
+        width: 100%; 
+        border-radius: 5px; 
+        height: 3em; 
+        background-color: #3e4451; 
+        color: white; 
+        border: none; 
+    }
+    .stButton>button:hover { 
+        border: 1px solid #00ffcc; 
+        color: #00ffcc; 
+    }
     </style>
     """, unsafe_allow_html=True)
 
