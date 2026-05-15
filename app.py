@@ -12,6 +12,7 @@ import zipfile
 import io
 from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
 
+# --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΟΙΚΟΝΟΜΙΚΑ + ΠΑΡΑΓΩΓΗ (ΣΥΓΚΕΝΤΡΩΤΙΚΑ) ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
     pdf.add_page()
@@ -26,7 +27,7 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf.cell(0, 15, "DC CABCLUB 2026 - ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ ΠΕΛΑΤΗ", ln=1, align='C')
     pdf.ln(5)
     
-    # 1. ΠΙΝΑΚΑΣ ΟΙΚΟΝΟΜΙΚΩΝ (ΕΥΡΩ)
+    # --- 1. ΠΙΝΑΚΑΣ ΟΙΚΟΝΟΜΙΚΩΝ (ΕΥΡΩ) ---
     pdf.set_font(f_name, size=12)
     pdf.set_fill_color(230, 230, 230)
     pdf.cell(0, 10, "Οικονομικά Στοιχεία (€) - b2b_orders", ln=1, fill=True)
@@ -50,35 +51,39 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
 
     pdf.ln(5)
 
-    # 2. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΤΕΜΑΧΙΑ - ΤΑ ΠΑΛΙΑ ΣΟΥ)
+    # --- 2. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΤΕΜΑΧΙΑ) ---
     pdf.set_font(f_name, size=12)
-    pdf.cell(0, 10, "Ιστορικό Παραγωγής (Τεμάχια) - production_log", ln=1, fill=True)
+    pdf.cell(0, 10, "Συνολικές Αγορές ανά Προϊόν (Τεμάχια)", ln=1, fill=True)
     pdf.set_font(f_name, size=10)
     
     total_pieces = 0
     if production_data:
-        pdf.cell(40, 10, "Ημερομηνία", 1)
-        pdf.cell(105, 10, "Προϊόν", 1)
-        pdf.cell(45, 10, "Τεμάχια", 1, 1, 'C')
+        # Ομαδοποίηση των τεμαχίων ανά Cocktail
+        cocktail_totals = {}
         for row in production_data:
-            date = str(row.get('prod_date', '-'))
-            name = str(row.get('cocktail_name', '-'))
+            name = str(row.get('cocktail_name', 'Άγνωστο'))
             pcs = int(row.get('pieces', 0))
-            pdf.cell(40, 10, date, 1)
-            pdf.cell(105, 10, name, 1)
-            pdf.cell(45, 10, f"{pcs} τμχ", 1, 1, 'C')
+            cocktail_totals[name] = cocktail_totals.get(name, 0) + pcs
             total_pieces += pcs
+
+        # Επικεφαλίδες νέου πίνακα (Χωρίς ημερομηνία)
+        pdf.cell(145, 10, "Προϊόν (Cocktail)", 1)
+        pdf.cell(45, 10, "Συνολικά Τεμάχια", 1, 1, 'C')
+        
+        # Ταξινόμηση από το μεγαλύτερο νούμερο στο μικρότερο και εκτύπωση
+        for cocktail, pcs in sorted(cocktail_totals.items(), key=lambda x: x[1], reverse=True):
+            pdf.cell(145, 10, cocktail, 1)
+            pdf.cell(45, 10, f"{pcs} τμχ", 1, 1, 'C')
     else:
         pdf.cell(0, 10, "Δεν βρέθηκε ιστορικό παραγωγής.", ln=1)
 
-    # ΣΥΝΟΛΑ
+    # --- ΣΥΝΟΛΑ ---
     pdf.ln(10)
     pdf.set_font(f_name, size=14)
     pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_euro:.2f} EUR", ln=1, align='R')
     pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΑ ΤΕΜΑΧΙΑ: {total_pieces} τμχ", ln=1, align='R')
     
     return pdf.output()
-
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 
