@@ -12,6 +12,8 @@ import zipfile
 import io
 from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
 
+st.set_page_config(page_title="DC Cabclub", layout="wide")
+
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
