@@ -659,34 +659,45 @@ elif page == "📊 Διαχείριση":
                             )
                             new_ingredients_list.append({"name": ing_val, "ml": ml_val})
 
-                    if st.form_submit_button("💾 Αποθήκευση Αλλαγών"):
-                        try:
-                            supabase.table("recipes").update({
-                                "name": edit_name.strip(),
-                                "barcode": edit_barcode.strip(),
-                                "catalog_price": edit_price
-                            }).eq("id", rec_id).execute()
-                            
-                            supabase.table("recipe_items").delete().eq("recipe_id", rec_id).execute()
-                            
-                            items_to_insert = []
-                            for item in new_ingredients_list:
-                                if item["name"] and item["name"] != "ΚΕΝΟ" and item["ml"] > 0:
-                                    items_to_insert.append({
-                                        "recipe_id": rec_id,
-                                        "ingredient_name": item["name"],
-                                        "ml_per_unit": float(item["ml"])
-                                    })
-                            
-                            if items_to_insert:
-                                supabase.table("recipe_items").insert(items_to_insert).execute()
-                            
-                            st.success(f"✅ Η συνταγή '{edit_name}' ενημερώθηκε!")
-                            st.cache_data.clear()
-                            time.sleep(1)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Σφάλμα: {e}")
+                    if st.form_submit_button("💾 Αποθήκευση Αλλαγών Συνταγής"):
+    try:
+        # 1. Βρίσκουμε την τρέχουσα έκδοση (αν δεν υπάρχει η στήλη ακόμα, θεωρούμε ότι είναι η 1)
+        current_version = curr_recipe.get("version", 1)
+        
+        # 2. ΑΡΧΕΙΟΘΕΤΗΣΗ ΠΑΛΙΑΣ: Κάνουμε την παλιά συνταγή ανενεργή αντί να την διαγράψουμε
+        supabase.table("recipes").update({
+            "is_active": False
+        }).eq("id", curr_recipe["id"]).execute()
+        
+        # 3. ΔΗΜΙΟΥΡΓΙΑ ΝΕΑΣ ΕΚΔΟΣΗΣ: Φτιάχνουμε νέα εγγραφή με το ίδιο όνομα, αλλά version + 1
+        res = supabase.table("recipes").insert({
+            "name": edit_name,
+            "barcode": edit_barcode,
+            "catalog_price": edit_price,
+            "is_active": True,
+            "version": current_version + 1
+        }).execute()
+        
+        new_recipe_id = res.data[0]["id"]
+        
+        # 4. ΑΠΟΘΗΚΕΥΣΗ ΝΕΩΝ ΥΛΙΚΩΝ: Δένουμε τα νέα υλικά με το ΝΕΟ recipe_id
+        items_to_insert = []
+        for item in updated_ingredients_data:
+            items_to_insert.append({
+                "recipe_id": new_recipe_id,
+                "ingredient_name": item["name"],
+                "ml_per_unit": float(item["ml"])
+            })
+            
+        supabase.table("recipe_items").insert(items_to_insert).execute()
+        
+        st.success(f"✅ Η συνταγή αναβαθμίστηκε στην Έκδοση v{current_version + 1}!")
+        st.cache_data.clear()
+        time.sleep(2)
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Σφάλμα κατά την αναβάθμιση έκδοσης: {e}")
 
             with tab_del:
                 st.warning(f"⚠️ Είστε σίγουροι ότι θέλετε να διαγράψετε το **{recipe_to_edit}**;")
