@@ -696,8 +696,8 @@ elif page == "📊 Διαχείριση":
                         time.sleep(2)
                         st.rerun()
 
-    except Exception as e:
-        st.error(f"Σφάλμα κατά την αναβάθμιση έκδοσης: {e}")
+                    except Exception as e:
+                        st.error(f"Σφάλμα κατά την αναβάθμιση έκδοσης: {e}")
 
             with tab_del:
                 st.warning(f"⚠️ Είστε σίγουροι ότι θέλετε να διαγράψετε το **{recipe_to_edit}**;")
