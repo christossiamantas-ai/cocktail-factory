@@ -12,7 +12,7 @@ import zipfile
 import io
 from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
 
-# --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΟΙΚΟΝΟΜΙΚΑ + ΠΑΡΑΓΩΓΗ (ΣΥΓΚΕΝΤΡΩΤΙΚΑ) ---
+# --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
     pdf.add_page()
@@ -22,37 +22,20 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
     except:
         f_name = 'Helvetica'
 
-    # Τίτλος
+    # Τίτλος Report
     pdf.set_font(f_name, size=16)
-    pdf.cell(0, 15, "DC CABCLUB 2026 - ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ ΠΕΛΑΤΗ", ln=1, align='C')
+    pdf.cell(0, 15, f"REPORT ΠΕΛΑΤΗ: {customer_name}", ln=1, align='C')
     pdf.ln(5)
     
-    # --- 1. ΠΙΝΑΚΑΣ ΟΙΚΟΝΟΜΙΚΩΝ (ΕΥΡΩ) ---
-    pdf.set_font(f_name, size=12)
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(0, 10, "Οικονομικά Στοιχεία (€) - b2b_orders", ln=1, fill=True)
-    pdf.set_font(f_name, size=10)
-    
+    # --- ΥΠΟΛΟΓΙΣΜΟΣ ΣΥΝΟΛΙΚΟΥ ΤΖΙΡΟΥ (Χωρίς εμφάνιση πίνακα) ---
     total_euro = 0
     if financial_data:
-        pdf.cell(40, 10, "Ημερομηνία", 1)
-        pdf.cell(105, 10, "Περιγραφή", 1)
-        pdf.cell(45, 10, "Ποσό (€)", 1, 1, 'C')
         for order in financial_data:
-            amt = float(order.get('total_amount', 0))
-            date = str(order.get('created_at', ''))[:10]
-            desc = str(order.get('order_details', '')).split('\n')[0][:55]
-            pdf.cell(40, 10, date, 1)
-            pdf.cell(105, 10, desc, 1)
-            pdf.cell(45, 10, f"{amt:.2f}", 1, 1, 'R')
-            total_euro += amt
-    else:
-        pdf.cell(0, 10, "Δεν βρέθηκαν οικονομικές εγγραφές (Τζίρος: 0.00)", ln=1)
+            total_euro += float(order.get('total_amount', 0))
 
-    pdf.ln(5)
-
-    # --- 2. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΤΕΜΑΧΙΑ) ---
+    # --- 1. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΣΥΓΚΕΝΤΡΩΤΙΚΕΣ ΑΓΟΡΕΣ) ---
     pdf.set_font(f_name, size=12)
+    pdf.set_fill_color(230, 230, 230)
     pdf.cell(0, 10, "Συνολικές Αγορές ανά Προϊόν (Τεμάχια)", ln=1, fill=True)
     pdf.set_font(f_name, size=10)
     
@@ -66,26 +49,25 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
             cocktail_totals[name] = cocktail_totals.get(name, 0) + pcs
             total_pieces += pcs
 
-        # Επικεφαλίδες νέου πίνακα (Χωρίς ημερομηνία)
+        # Επικεφαλίδες Πίνακα
         pdf.cell(145, 10, "Προϊόν (Cocktail)", 1)
         pdf.cell(45, 10, "Συνολικά Τεμάχια", 1, 1, 'C')
         
-        # Ταξινόμηση από το μεγαλύτερο νούμερο στο μικρότερο και εκτύπωση
+        # Εκτύπωση των συγκεντρωτικών (από το δημοφιλέστερο στο λιγότερο)
         for cocktail, pcs in sorted(cocktail_totals.items(), key=lambda x: x[1], reverse=True):
             pdf.cell(145, 10, cocktail, 1)
             pdf.cell(45, 10, f"{pcs} τμχ", 1, 1, 'C')
     else:
         pdf.cell(0, 10, "Δεν βρέθηκε ιστορικό παραγωγής.", ln=1)
 
-    # --- ΣΥΝΟΛΑ ---
+    # --- ΤΕΛΙΚΑ ΣΥΝΟΛΑ (Τζίρος & Τεμάχια) ---
     pdf.ln(10)
     pdf.set_font(f_name, size=14)
+    # Εμφάνιση του συνολικού τζίρου (που περιλαμβάνει και τον θεωρητικό από το Dashboard)
     pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_euro:.2f} EUR", ln=1, align='R')
     pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΑ ΤΕΜΑΧΙΑ: {total_pieces} τμχ", ln=1, align='R')
     
     return pdf.output()
-# --- Ρυθμίσεις Σελίδας ---
-st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
 
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
