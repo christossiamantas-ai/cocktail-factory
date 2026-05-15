@@ -2087,19 +2087,41 @@ elif page == "📦 Lot Παραγωγής":
 
                 cocktail_changed = (new_cock != base_data["Cocktail"])
                 display_ingredients = []
+                
                 if cocktail_changed:
+                    # Αν αλλάξει το cocktail, τραβάμε τη συνταγή από το df_rec (φρέσκα δεδομένα)
                     new_r = df_rec[df_rec["Ονομα"] == new_cock].iloc[0]
                     for i in range(1, 14):
                         ing_n = str(new_r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing_n not in ["ΚΕΝΟ", "nan", ""]:
-                            ml_calc = get_recipe_ml(new_r, i) * new_pcs
-                            display_ingredients.append({"Υλικό": ing_n, "ML": ml_calc, "Lot": "", "Exp": ""})
+                            # Υπολογισμός ML βάσει των νέων τεμαχίων
+                            ml_calc = float(get_recipe_ml(new_r, i)) * float(new_pcs)
+                            display_ingredients.append({
+                                "Υλικό": ing_n, 
+                                "ML": ml_calc, 
+                                "Lot": "", 
+                                "Exp": ""
+                            })
                 else:
+                    # Αν παραμείνει το ίδιο cocktail, υπολογίζουμε τον πολλαπλασιαστή
+                    # Μετατρέπουμε σε float για να αποφύγουμε σφάλματα διαίρεσης ακεραίων
+                    n_pcs = float(new_pcs)
+                    o_pcs = float(old_pieces)
+                    mult = n_pcs / o_pcs if o_pcs != 0 else 1.0
+                    
                     for idx in row_indices:
                         r_d = df_past.loc[idx]
-                        mult = new_pcs / old_pieces
-                        display_ingredients.append({"Υλικό": r_d["Υλικό"], "ML": r_d["Σύνολο_ML"] * mult, "Lot": r_d["Lot Number"], "Exp": r_d["Ημ_Λήξης"]})
+                        # Πολλαπλασιάζουμε τα υπάρχοντα ML με τον συντελεστή αλλαγής
+                        ml_calc = float(r_d["Σύνολο_ML"]) * mult
+                        
+                        display_ingredients.append({
+                            "Υλικό": r_d["Υλικό"], 
+                            "ML": ml_calc, 
+                            "Lot": r_d["Lot Number"], 
+                            "Exp": r_d["Ημ_Λήξης"]
+                        })
 
+                # --- Εμφάνιση Φόρμας ---
                 with st.form(f"edit_batch_form_{batch_id}"):
                     h_edit = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
                     h_labels = ["Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
@@ -2108,8 +2130,32 @@ elif page == "📦 Lot Παραγωγής":
 
                     final_updated = []
                     for i, itm in enumerate(display_ingredients):
-                        raw_lot = str(itm["Lot"])
-                        raw_exp = str(itm["Exp"])
+                        # Χρησιμοποιούμε format για να μη φαίνονται άσχημα τα δεκαδικά (π.χ. .0)
+                        ml_val = round(itm["ML"], 1)
+                        
+                        col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
+                        
+                        col1.markdown(f"**{itm['Υλικό']}**")
+                        # Το ML εμφανίζεται ως νούμερο αλλά κλειδωμένο (disabled) για να μη γίνει λάθος ζύγισης
+                        new_ml = col2.number_input("ml", value=float(ml_val), key=f"ml_{i}_{batch_id}", label_visibility="collapsed", disabled=True)
+                        
+                        # Τα πεδία για τα LOTs (Lot 1 & Lot 2)
+                        l1 = col3.text_input("Lot 1", value=str(itm["Lot"]), key=f"l1_{i}_{batch_id}", label_visibility="collapsed")
+                        e1 = col4.text_input("Exp 1", value=str(itm["Exp"]), key=f"e1_{i}_{batch_id}", label_visibility="collapsed")
+                        
+                        # Αν έχεις και δεύτερο LOT (για την περίπτωση ανάμειξης παρτίδων)
+                        l2 = col5.text_input("Lot 2", value="", key=f"l2_{i}_{batch_id}", label_visibility="collapsed")
+                        e2 = col6.text_input("Exp 2", value="", key=f"e2_{i}_{batch_id}", label_visibility="collapsed")
+                        
+                        # Προσθήκη στα δεδομένα προς αποθήκευση
+                        final_updated.append({
+                            "ing": itm["Υλικό"], 
+                            "ml": new_ml, 
+                            "lot": l1, 
+                            "exp": e1,
+                            "lot2": l2,
+                            "exp2": e2
+                        })
                         
                         lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
                         exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
