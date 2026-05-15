@@ -2916,12 +2916,11 @@ elif page == "🔄 Αντικατάσταση":
                 st.info("Το υλικό δεν βρέθηκε σε καμία συνταγή.")
     else:
         st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
-
-# --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B & E-SHOP ---
+# --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B & E-SHOP (ΥΒΡΙΔΙΚΗ ΕΚΔΟΣΗ) ---
 elif page == "📦 Παραγγελίες B2B":
     st.header("📦 Διαχείριση Παραγγελιών B2B")
     
-    # --- ΛΕΙΤΟΥΡΓΙΑ WOOCOMMERCE SYNC ---
+    # --- ΛΕΙΤΟΥΡΓΙΑ WOOCOMMERCE SYNC (Χωρίς αλλαγές) ---
     from woocommerce import API
     try:
         wcapi = API(
@@ -2934,28 +2933,19 @@ elif page == "📦 Παραγγελίες B2B":
     except Exception as e:
         st.error(f"⚠️ Πρόβλημα WooCommerce: {e}")
 
-    # Κουμπί Συγχρονισμού στην κορυφή
+    # Κουμπί Συγχρονισμού
     col_sync1, col_sync2 = st.columns([1, 2])
     with col_sync1:
         if st.button("📥 Συγχρονισμός με E-shop", use_container_width=True, type="primary"):
             with st.spinner("Τραβάω παραγγελίες από το site..."):
                 try:
-                    # Τραβάμε παραγγελίες που είναι "processing" (Σε επεξεργασία στο Woo)
                     woo_orders = wcapi.get("orders", params={"status": "processing"}).json()
-                    
                     new_entries = 0
                     for o in woo_orders:
-                        # Έλεγχος αν η παραγγελία υπάρχει ήδη στη Supabase
                         check = supabase.table("b2b_orders").select("id").eq("woo_id", str(o['id'])).execute()
-                        
                         if not check.data:
-                            # Προετοιμασία κειμένου παραγγελίας
-                            items = []
-                            for item in o['line_items']:
-                                items.append(f"{item['quantity']}x {item['name']}")
+                            items = [f"{item['quantity']}x {item['name']}" for item in o['line_items']]
                             order_text = "\n".join(items)
-                            
-                            # Αποθήκευση στη Supabase
                             data = {
                                 "customer_name": f"{o['billing']['first_name']} {o['billing']['last_name']}",
                                 "total_amount": float(o['total']),
@@ -2978,94 +2968,101 @@ elif page == "📦 Παραγγελίες B2B":
                     st.error(f"Σφάλμα σύνδεσης: {e}")
 
     st.divider()
-    
+
+    # --- ΣΥΓΚΕΝΤΡΩΣΗ ΔΕΔΟΜΕΝΩΝ (ΝΕΑ + ΠΑΛΙΑ) ---
+    # 1. Τραβάμε τα νέα (B2B Orders)
+    res_b2b = supabase.table("b2b_orders").select("*").execute()
+    df_b2b = pd.DataFrame(res_b2b.data) if res_b2b.data else pd.DataFrame()
+
+    # 2. Τραβάμε τα παλιά (Production Log) και τα μετατρέπουμε σε μορφή παραγγελίας
+    res_prod = supabase.table("production_log").select("*").execute()
+    df_hybrid = df_b2b.copy()
+
+    if res_prod.data:
+        df_old = pd.DataFrame(res_prod.data)
+        # Ομαδοποίηση παλιών εγγραφών ανά ημέρα και πελάτη για να φαίνονται ως "μία παραγγελία"
+        df_old_grouped = df_old.groupby(['customer', 'prod_date']).apply(lambda x: pd.Series({
+            'customer_name': x.name[0],
+            'created_at': x.name[1],
+            'total_amount': 0.0, # Τα παλιά δεν είχαν τιμή
+            'status': 'ΟΛΟΚΛΗΡΩΘΗΚΕ (Ιστορικό)',
+            'order_details': "\n".join([f"{int(p)}x {c}" for p, c in zip(x['pieces'], x['cocktail_name'])]),
+            'notes': 'Παλαιά εγγραφή από ιστορικό παραγωγής',
+            'id': f"old_{x.index[0]}"
+        })).reset_index(drop=True)
+        
+        # Ένωση των δύο πινάκων
+        df_hybrid = pd.concat([df_b2b, df_old_grouped], ignore_index=True)
+        df_hybrid = df_hybrid.sort_values("created_at", ascending=False)
+
+    # --- TABS ---
     tab1, tab2 = st.tabs(["🔔 Τρέχουσες Παραγγελίες", "📜 Ιστορικό & Αναζήτηση"])
 
-    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ ---
     with tab1:
-        res_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).execute()
-        if res_orders.data:
-            df_orders = pd.DataFrame(res_orders.data)
-            
-            # Φίλτρο για να περιλαμβάνει και το νέο status από το E-shop
-            all_statuses = ["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"]
+        if not df_hybrid.empty:
+            all_statuses = ["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ", "ΟΛΟΚΛΗΡΩΘΗΚΕ (Ιστορικό)"]
             status_filter = st.multiselect("Φίλτρο Κατάστασης:", all_statuses, default=["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ"])
             
-            df_filtered = df_orders[df_orders["status"].isin(status_filter)]
+            df_filtered = df_hybrid[df_hybrid["status"].isin(status_filter)]
 
             for _, row in df_filtered.iterrows():
-                # Εικονίδια ανάλογα με την κατάσταση
-                icon = "🔵" if "ΝΕΑ" in row['status'] else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "✅"
+                icon = "🔵" if "ΝΕΑ" in row['status'] else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "📜" if "Ιστορικό" in row['status'] else "✅"
                 
                 with st.expander(f"{icon} {row['customer_name']} - {row['total_amount']:.2f} €"):
                     c1, c2 = st.columns([2, 1])
                     with c1:
                         st.code(row['order_details'])
                         if row['notes']: st.info(f"📝 {row['notes']}")
-                        st.caption(f"ID: {row['id']} | WooID: {row.get('woo_id','-')} | Ημερομηνία: {row['created_at']}")
+                        st.caption(f"Πηγή: {row['status']} | Ημερομηνία: {row['created_at']}")
                     
                     with c2:
-                        # Επιλογή νέας κατάστασης
-                        current_idx = all_statuses.index(row['status']) if row['status'] in all_statuses else 0
-                        new_status = st.selectbox("Αλλαγή Κατάστασης:", all_statuses, index=current_idx, key=f"st_upd_{row['id']}")
-                        
-                        if st.button("Ενημέρωση", key=f"btn_upd_{row['id']}", use_container_width=True):
-                            supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
-                            st.success("Ενημερώθηκε!")
-                            time.sleep(0.5)
-                            st.rerun()
-                        
+                        # Αν είναι παλιά εγγραφή, δεν επιτρέπουμε αλλαγή status (είναι μόνο για προβολή)
+                        if "Ιστορικό" not in row['status']:
+                            current_idx = all_statuses.index(row['status']) if row['status'] in all_statuses else 0
+                            new_status = st.selectbox("Αλλαγή Κατάστασης:", all_statuses[:4], index=current_idx, key=f"st_upd_{row['id']}")
+                            if st.button("Ενημέρωση", key=f"btn_upd_{row['id']}", use_container_width=True):
+                                supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
+                                st.rerun()
+                        else:
+                            st.write("🔒 Κλειδωμένη εγγραφή ιστορικού")
+
                         st.divider()
                         if st.button("🗑️ Διαγραφή", key=f"del_b2b_{row['id']}", type="secondary", use_container_width=True):
-                            supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
-                            st.rerun()
-        else:
-            st.info("Δεν υπάρχουν παραγγελίες στη βάση.")
-
-    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ ---
-    with tab2:
-        st.subheader("🔍 Αναζήτηση στο Ιστορικό")
-        if res_orders.data:
-            df_hist = pd.DataFrame(res_orders.data)
-            
-            search_col1, search_col2 = st.columns(2)
-            with search_col1:
-                cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hist["customer_name"].unique()))
-            with search_col2:
-                # Εξαγωγή ονομάτων κοκτέιλ από το κείμενο της παραγγελίας
-                all_cocktails = set()
-                for details in df_hist["order_details"]:
-                    lines = str(details).split('\n')
-                    for line in lines:
-                        if 'x ' in line:
-                            # Παίρνει το όνομα μετά το "x "
-                            parts = line.split('x ')
-                            if len(parts) > 1:
-                                name = parts[1].split(' (')[0].strip()
-                                all_cocktails.add(name)
-                cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=sorted(list(all_cocktails)))
-
-            # Φιλτράρισμα
-            mask = pd.Series([True] * len(df_hist))
-            if cust_search: 
-                mask &= df_hist["customer_name"].isin(cust_search)
-            if cocktail_search:
-                cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
-                mask &= cocktail_mask
-
-            df_results = df_hist[mask]
-
-            if not df_results.empty:
-                st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
-                for _, row in df_results.iterrows():
-                    with st.expander(f"📅 {str(row['created_at'])[:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
-                        col_h1, col_h2 = st.columns([2, 1])
-                        with col_h1:
-                            st.markdown(f"**Κατάσταση:** {row['status']}")
-                            st.text(row['order_details'])
-                        with col_h2:
-                            if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
+                            if "old_" in str(row['id']):
+                                st.error("Οι εγγραφές ιστορικού διαγράφονται μόνο από την καρτέλα Παραγωγής.")
+                            else:
                                 supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
                                 st.rerun()
-            else:
-                st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
+        else:
+            st.info("Δεν υπάρχουν παραγγελίες.")
+
+    with tab2:
+        st.subheader("🔍 Αναζήτηση στο Πλήρες Ιστορικό")
+        if not df_hybrid.empty:
+            search_col1, search_col2 = st.columns(2)
+            with search_col1:
+                cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hybrid["customer_name"].unique()))
+            with search_col2:
+                # Αναζήτηση Cocktail
+                all_cocktails = set()
+                for details in df_hybrid["order_details"]:
+                    for line in str(details).split('\n'):
+                        if 'x ' in line:
+                            parts = line.split('x ')
+                            if len(parts) > 1: all_cocktails.add(parts[1].split(' (')[0].strip())
+                cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=sorted(list(all_cocktails)))
+
+            mask = pd.Series([True] * len(df_hybrid))
+            if cust_search: mask &= df_hybrid["customer_name"].isin(cust_search)
+            if cocktail_search:
+                mask &= df_hybrid["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
+
+            df_results = df_hybrid[mask]
+            st.write(f"Βρέθηκαν **{len(df_results)}** εγγραφές (Νέες & Παλιές).")
+            
+            for _, row in df_results.iterrows():
+                with st.expander(f"📅 {str(row['created_at'])[:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
+                    st.markdown(f"**Κατάσταση:** {row['status']}")
+                    st.text(row['order_details'])
+                    if "old_" in str(row['id']):
+                        st.caption("Αυτή η εγγραφή προέρχεται από το παλαιό ιστορικό παραγωγής.")
