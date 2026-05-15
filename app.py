@@ -2138,6 +2138,10 @@ elif page == "📦 Lot Παραγωγής":
                         st.rerun()
             st.divider()
             
+            # Δημιουργία δυναμικών τίτλων και ονομάτων αρχείων βάσει του φίλτρου πελάτη
+            cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
+            file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
+
             # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
             # 1. ΕΠΑΓΓΕΛΜΑΤΙΚΟ ΔΕΛΤΙΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ
             html_pro = f"""
@@ -2151,7 +2155,7 @@ elif page == "📦 Lot Παραγωγής":
                 th {{ background-color: #444; color: white; padding: 8px; text-align: left; }}
                 td {{ border: 1px solid #ddd; padding: 6px; }}
             </style></head>
-            <body><div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2><p>Ημερομηνία: <b>{sel_hist_date}</b></p></div>
+            <body><div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
             """
             for p in df_past["Πελάτης"].unique():
                 p_df = df_past[df_past["Πελάτης"] == p]
@@ -2169,8 +2173,9 @@ elif page == "📦 Lot Παραγωγής":
             # --- 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME) ---
             df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
             
-            # Υπολογισμός Γενικού Συνόλου Ημέρας
+            # Υπολογισμός Γενικού Συνόλου Ημέρας / Πελάτη
             grand_total_pcs = df_daily["Τεμάχια"].sum()
+            total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
             html_daily = f"""
             <html><head><meta charset='UTF-8'><style>
@@ -2194,7 +2199,7 @@ elif page == "📦 Lot Παραγωγής":
             <body>
                 <div class='header'>
                     <h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1>
-                    <p>Ημερομηνία: <b>{sel_hist_date}</b></p>
+                    <p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p>
                 </div>
             """
             
@@ -2227,11 +2232,12 @@ elif page == "📦 Lot Παραγωγής":
             # Προσθήκη του Γενικού Συνόλου στο τέλος της σελίδας
             html_daily += f"""
                 <div class='grand-total'>
-                    ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΗΜΕΡΑΣ ({sel_hist_date}):<br>
+                    {total_label_text}<br>
                     <b>{grand_total_pcs} Τεμάχια</b>
                 </div>
             </body></html>
             """
+            
             # --- 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME) ---
             # Συγκεντρώνουμε τα δεδομένα ανά υλικό, αθροίζοντας ποσότητες και ενώνοντας τα μοναδικά LOT/Λήξεις
             # Χρησιμοποιούμε πιο αυστηρό φιλτράρισμα για να αγνοούμε κενά ή "None"
@@ -2254,7 +2260,7 @@ elif page == "📦 Lot Παραγωγής":
             <body>
                 <div class='header'>
                     <h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1>
-                    <p>Ημερομηνία: <b>{sel_hist_date}</b></p>
+                    <p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p>
                 </div>
                 <table>
                     <thead>
@@ -2290,10 +2296,9 @@ elif page == "📦 Lot Παραγωγής":
 
             # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD ---
             col_p1, col_p2, col_p3 = st.columns(3)
-            col_p1.download_button("🖨️ Δελτίο Ιχνηλασιμότητας", data=html_pro, file_name=f"Trace_{sel_hist_date}.html", mime="text/html", use_container_width=True)
-            col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}.html", mime="text/html", use_container_width=True)
-            col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}.html", mime="text/html", use_container_width=True)
-
+            col_p1.download_button("🖨️ Δελτίο Ιχνηλασιμότητας", data=html_pro, file_name=f"Trace_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
+            col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
+            col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
     
         # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
