@@ -716,28 +716,40 @@ elif page == "📊 Διαχείριση":
                     st.rerun()
 
         st.write("---")
-        with st.expander("📋 Προεπισκόπηση Όλων των Συνταγών (Πίνακας)"):
+        with st.expander("📋 Προεπισκόπηση Όλων των Ενεργών Συνταγών (Πίνακας)"):
             # --- ΜΑΓΕΙΑ: Φτιάχνουμε το df_rec δυναμικά από τη Supabase! ---
-            all_items = supabase.table("recipe_items").select("*").execute().data
+            all_items_res = supabase.table("recipe_items").select("*").execute()
+            all_items = all_items_res.data if all_items_res.data else []
+            
             df_rec_list = []
             for _, r in df_recipes_base.iterrows():
+                # Παίρνουμε την τρέχουσα έκδοση (αν δεν υπάρχει, βάζουμε το 1)
+                ver = int(r.get("version", 1)) if pd.notna(r.get("version")) else 1
+                
                 row_dict = {
                     "Ονομα": r["name"],
+                    "Έκδοση": f"v{ver}",  # ΝΕΑ ΠΡΟΣΘΗΚΗ: Δείχνει το version της συνταγής
                     "Barcode": str(r.get("barcode", "")).replace(".0", "").replace("nan", ""),
-                    "Τιμή Καταλόγου": r.get("catalog_price", 0.0)
+                    "Τιμή Καταλόγου": float(r.get("catalog_price", 0.0)) if pd.notna(r.get("catalog_price")) else 0.0
                 }
+                
                 r_items = [item for item in all_items if item["recipe_id"] == r["id"]]
+                
                 for i in range(1, 14):
                     if i - 1 < len(r_items):
                         row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = r_items[i-1]["ingredient_name"]
-                        row_dict[f"ML{i}"] = r_items[i-1]["ml_per_unit"]
+                        row_dict[f"ML{i}"] = float(r_items[i-1]["ml_per_unit"])
                     else:
                         row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = "ΚΕΝΟ"
                         row_dict[f"ML{i}"] = 0.0
+                
                 df_rec_list.append(row_dict)
             
-            df_rec = pd.DataFrame(df_rec_list)
-            st.dataframe(df_rec, use_container_width=True)
+            if df_rec_list:
+                df_rec = pd.DataFrame(df_rec_list)
+                st.dataframe(df_rec, use_container_width=True)
+            else:
+                st.info("Δεν υπάρχουν ενεργές συνταγές για προβολή.")
 
 # --- 4. ΑΝΑΛΥΣΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΣΥΜΒΑΤΟΤΗΤΑ ΜΕ SUPABASE) ---
 elif page == "🔍 Ανάλυση":
