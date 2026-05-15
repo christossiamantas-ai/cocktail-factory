@@ -1578,7 +1578,7 @@ elif page == "📈 Dashboard":
 
 
         # =====================================================================
-        # --- ΝΕΟ & ΔΙΟΡΘΩΜΕΝΟ: ΑΝΑΛΥΤΙΚΟ REPORT ΠΕΛΑΤΗ ΜΕ ΕΚΤΥΠΩΣΗ ---
+        # --- ΝΕΟ: ΑΝΑΛΥΤΙΚΟ REPORT ΠΕΛΑΤΗ ΕΝΣΩΜΑΤΩΜΕΝΟ ΣΤΟ DASHBOARD ---
         # =====================================================================
         st.divider()
         st.header("👤 Αναλυτικό Report ανά Πελάτη")
@@ -1588,35 +1588,36 @@ elif page == "📈 Dashboard":
         if all_customers_rep:
             sel_cust_rep = st.selectbox("Επιλέξτε Πελάτη για Ανάλυση:", options=all_customers_rep, key="dash_cust_rep")
             
-            # 1. Φιλτράρισμα Δεδομένων
+            # Φιλτράρισμα δεδομένων παραγωγής
             cust_prod = df_sales[df_sales['customer'] == sel_cust_rep].copy()
-            cust_orders = df_orders_raw[df_orders_raw['customer_name'] == sel_cust_rep].copy() if not df_orders_raw.empty else pd.DataFrame()
-
-            # 2. ΥΠΟΛΟΓΙΣΜΟΣ ΤΖΙΡΟΥ (Υβριδικός: Πραγματικά Ευρώ + Θεωρητικά για τα παλιά)
-            actual_revenue = cust_orders['total_amount'].sum() if not cust_orders.empty else 0
             
-            # Υπολογισμός Θεωρητικού Τζίρου (βάσει καταλόγου) για τις παραγωγές που ΔΕΝ έχουν εγγραφή στο b2b_orders
-            # Χρησιμοποιούμε το df_filtered που έχει ήδη υπολογισμένο το Theoretical_Revenue
-            theoretical_cust = df_filtered[df_filtered['customer'] == sel_cust_rep]['Theoretical_Revenue'].sum()
+            # --- ΛΥΣΗ: Τραβάμε τον τζίρο από τον σωστό υπολογισμό του Dashboard (df_mom) ---
+            if not df_mom.empty:
+                display_revenue = df_mom[df_mom['customer'] == sel_cust_rep]['Revenue'].sum()
+            else:
+                display_revenue = 0
             
-            # Αν δεν υπάρχουν καθόλου b2b_orders, δείχνουμε το θεωρητικό (για να μην βλέπεις 0)
-            display_revenue = actual_revenue if actual_revenue > 0 else theoretical_cust
-            
-            total_pcs_cust = cust_prod['pieces'].sum()
+            total_pcs_cust = pd.to_numeric(cust_prod['pieces'], errors='coerce').sum()
             avg_val_cust = display_revenue / total_pcs_cust if total_pcs_cust > 0 else 0
             unique_cocktails = cust_prod['cocktail_name'].nunique()
 
-            # 3. ΕΜΦΑΝΙΣΗ METRICS
+            # --- ΣΤΑΤΙΣΤΙΚΑ (METRICS) ---
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Συνολικά Τεμάχια", f"{int(total_pcs_cust)} τμχ")
             c2.metric("Συνολικός Τζίρος", f"{display_revenue:.2f} €".replace('.', ','))
             c3.metric("Μέση Τιμή / Τμχ", f"{avg_val_cust:.2f} €".replace('.', ','))
             c4.metric("Ποικιλία Cocktail", f"{unique_cocktails}")
 
-            # --- ΚΟΥΜΠΙ ΕΚΤΥΠΩΣΗΣ PDF (Dashboard Version) ---
+            # --- ΕΚΤΥΠΩΣΗ PDF (Με ενσωμάτωση του σωστού τζίρου) ---
+            cust_orders = df_orders_raw[df_orders_raw['customer_name'] == sel_cust_rep] if not df_orders_raw.empty else pd.DataFrame()
+            
+            # Το κόλπο για το PDF: Αν δεν έχει b2b_orders, φτιάχνουμε μια εικονική εγγραφή για να τυπωθεί ο τζίρος
+            pdf_fin_data = cust_orders.to_dict('records')
+            if not pdf_fin_data and display_revenue > 0:
+                pdf_fin_data = [{'created_at': 'Αυτόματος Υπολογισμός', 'order_details': 'Θεωρητικός Τζίρος βάσει ιστορικού παραγωγής', 'total_amount': display_revenue}]
+
             try:
-                # Χρησιμοποιούμε τη συνάρτηση που φτιάξαμε πριν
-                cust_pdf = generate_hybrid_report(sel_cust_rep, cust_orders.to_dict('records'), cust_prod.to_dict('records'))
+                cust_pdf = generate_hybrid_report(sel_cust_rep, pdf_fin_data, cust_prod.to_dict('records'))
                 st.download_button(
                     label=f"🖨️ Εκτύπωση Report: {sel_cust_rep}",
                     data=bytes(cust_pdf),
@@ -1625,33 +1626,39 @@ elif page == "📈 Dashboard":
                     use_container_width=True
                 )
             except Exception as e:
-                st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
+                st.error(f"Σφάλμα προετοιμασίας PDF: Βεβαιωθείτε ότι η συνάρτηση generate_hybrid_report είναι στην αρχή του αρχείου. ({e})")
 
-            # 4. ΓΡΑΦΗΜΑΤΑ ΠΕΛΑΤΗ
+            # --- ΓΡΑΦΗΜΑΤΑ ΠΕΛΑΤΗ ---
             col_chart1, col_chart2 = st.columns(2)
 
             with col_chart1:
                 st.subheader("📈 Πορεία Αγορών (Τεμάχια)")
-                df_trend = cust_prod.groupby('prod_date')['pieces'].sum().reset_index()
-                df_trend['sort_date'] = pd.to_datetime(df_trend['prod_date'], format='%d/%m/%Y', errors='coerce')
-                df_trend = df_trend.sort_values('sort_date')
-                fig_trend = px.line(df_trend, x='prod_date', y='pieces', 
-                                    markers=True, line_shape="spline",
-                                    color_discrete_sequence=["#FF4B4B"])
-                st.plotly_chart(fig_trend, use_container_width=True)
+                if not cust_prod.empty:
+                    df_trend = cust_prod.groupby('prod_date')['pieces'].sum().reset_index()
+                    df_trend['sort_date'] = pd.to_datetime(df_trend['prod_date'], format='%d/%m/%Y', errors='coerce')
+                    df_trend = df_trend.sort_values('sort_date')
+                    fig_trend = px.line(df_trend, x='prod_date', y='pieces', 
+                                        markers=True, line_shape="spline",
+                                        color_discrete_sequence=["#FF4B4B"])
+                    st.plotly_chart(fig_trend, use_container_width=True)
 
             with col_chart2:
                 st.subheader("🍸 Προτιμήσεις Cocktail")
-                df_fav = cust_prod.groupby('cocktail_name')['pieces'].sum().reset_index()
-                fig_fav = px.pie(df_fav, values='pieces', names='cocktail_name', hole=0.4)
-                st.plotly_chart(fig_fav, use_container_width=True)
+                if not cust_prod.empty:
+                    df_fav = cust_prod.groupby('cocktail_name')['pieces'].sum().reset_index()
+                    fig_fav = px.pie(df_fav, values='pieces', names='cocktail_name', hole=0.4)
+                    st.plotly_chart(fig_fav, use_container_width=True)
 
-            # 5. ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ
-            with st.expander(f"📋 Ιστορικό Κινήσεων {sel_cust_rep}"):
+            # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ΠΕΛΑΤΗ ---
+            with st.expander(f"📋 Δείτε όλες τις κινήσεις του {sel_cust_rep}"):
                 st.dataframe(cust_prod[['prod_date', 'cocktail_name', 'pieces', 'lot_cocktail']].sort_values(by='prod_date', ascending=False), 
                              use_container_width=True, hide_index=True)
         else:
-            st.info("Δεν υπάρχουν δεδομένα πελατών.")
+            st.info("Δεν υπάρχουν ακόμα δεδομένα πελατών για ανάλυση.")
+        # =====================================================================
+
+    else:
+        st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ) ---
 elif page == "📦 Lot Παραγωγής":
