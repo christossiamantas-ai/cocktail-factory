@@ -151,7 +151,7 @@ def load_all_ingredients():
 
 @st.cache_data(ttl=600)
 def load_all_recipes():
-    res_rec = supabase.table("recipes").select("*").order("name").execute()
+    res_rec = supabase.table("recipes").select("*").eq("is_active", True).order("name").execute()
     res_items = supabase.table("recipe_items").select("*").execute()
     
     if res_rec.data:
