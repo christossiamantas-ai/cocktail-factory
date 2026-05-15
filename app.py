@@ -660,7 +660,7 @@ elif page == "📊 Διαχείριση":
                             new_ingredients_list.append({"name": ing_val, "ml": ml_val})
 
                     if st.form_submit_button("💾 Αποθήκευση Αλλαγών Συνταγής"):
-    try:
+                    try:
         # 1. Βρίσκουμε την τρέχουσα έκδοση (αν δεν υπάρχει η στήλη ακόμα, θεωρούμε ότι είναι η 1)
         current_version = curr_recipe.get("version", 1)
         
