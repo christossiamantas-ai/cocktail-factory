@@ -10,6 +10,74 @@ import time
 from supabase import create_client, Client
 import zipfile
 import io
+from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
+
+def generate_hybrid_report(customer_name, financial_data, production_data):
+    pdf = FPDF()
+    pdf.add_page()
+    try:
+        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
+        f_name = 'DejaVu'
+    except:
+        f_name = 'Helvetica'
+
+    # Τίτλος
+    pdf.set_font(f_name, size=16)
+    pdf.cell(0, 15, "DC CABCLUB 2026 - ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ ΠΕΛΑΤΗ", ln=1, align='C')
+    pdf.ln(5)
+    
+    # 1. ΠΙΝΑΚΑΣ ΟΙΚΟΝΟΜΙΚΩΝ (ΕΥΡΩ)
+    pdf.set_font(f_name, size=12)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 10, "Οικονομικά Στοιχεία (€) - b2b_orders", ln=1, fill=True)
+    pdf.set_font(f_name, size=10)
+    
+    total_euro = 0
+    if financial_data:
+        pdf.cell(40, 10, "Ημερομηνία", 1)
+        pdf.cell(105, 10, "Περιγραφή", 1)
+        pdf.cell(45, 10, "Ποσό (€)", 1, 1, 'C')
+        for order in financial_data:
+            amt = float(order.get('total_amount', 0))
+            date = str(order.get('created_at', ''))[:10]
+            desc = str(order.get('order_details', '')).split('\n')[0][:55]
+            pdf.cell(40, 10, date, 1)
+            pdf.cell(105, 10, desc, 1)
+            pdf.cell(45, 10, f"{amt:.2f}", 1, 1, 'R')
+            total_euro += amt
+    else:
+        pdf.cell(0, 10, "Δεν βρέθηκαν οικονομικές εγγραφές (Τζίρος: 0.00)", ln=1)
+
+    pdf.ln(5)
+
+    # 2. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΤΕΜΑΧΙΑ - ΤΑ ΠΑΛΙΑ ΣΟΥ)
+    pdf.set_font(f_name, size=12)
+    pdf.cell(0, 10, "Ιστορικό Παραγωγής (Τεμάχια) - production_log", ln=1, fill=True)
+    pdf.set_font(f_name, size=10)
+    
+    total_pieces = 0
+    if production_data:
+        pdf.cell(40, 10, "Ημερομηνία", 1)
+        pdf.cell(105, 10, "Προϊόν", 1)
+        pdf.cell(45, 10, "Τεμάχια", 1, 1, 'C')
+        for row in production_data:
+            date = str(row.get('prod_date', '-'))
+            name = str(row.get('cocktail_name', '-'))
+            pcs = int(row.get('pieces', 0))
+            pdf.cell(40, 10, date, 1)
+            pdf.cell(105, 10, name, 1)
+            pdf.cell(45, 10, f"{pcs} τμχ", 1, 1, 'C')
+            total_pieces += pcs
+    else:
+        pdf.cell(0, 10, "Δεν βρέθηκε ιστορικό παραγωγής.", ln=1)
+
+    # ΣΥΝΟΛΑ
+    pdf.ln(10)
+    pdf.set_font(f_name, size=14)
+    pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_euro:.2f} EUR", ln=1, align='R')
+    pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΑ ΤΕΜΑΧΙΑ: {total_pieces} τμχ", ln=1, align='R')
+    
+    return pdf.output()
 
 # --- Ρυθμίσεις Σελίδας ---
 st.set_page_config(page_title="DC CABCLUB 2026", layout="wide", page_icon="🍸")
