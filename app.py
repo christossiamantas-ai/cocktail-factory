@@ -2917,10 +2917,11 @@ elif page == "🔄 Αντικατάσταση":
     else:
         st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
         
-# --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B (ΔΙΟΡΘΩΜΕΝΗ ΥΒΡΙΔΙΚΗ ΕΚΔΟΣΗ) ---
+# --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B & E-SHOP ---
 elif page == "📦 Παραγγελίες B2B":
     st.header("📦 Διαχείριση Παραγγελιών B2B")
     
+    # --- ΛΕΙΤΟΥΡΓΙΑ WOOCOMMERCE SYNC ---
     from woocommerce import API
     try:
         wcapi = API(
@@ -2933,69 +2934,111 @@ elif page == "📦 Παραγγελίες B2B":
     except Exception as e:
         st.error(f"⚠️ Πρόβλημα WooCommerce: {e}")
 
-    # 1. ΦΟΡΤΩΣΗ ΒΟΗΘΗΤΙΚΩΝ ΔΕΔΟΜΕΝΩΝ ΓΙΑ ΥΠΟΛΟΓΙΣΜΟ ΤΖΙΡΟΥ
-    res_rec_map = supabase.table("recipes").select("name, catalog_price").execute()
-    res_cust_map = supabase.table("customers").select("name, discount").execute()
-    
-    df_rec_map = pd.DataFrame(res_rec_map.data) if res_rec_map.data else pd.DataFrame()
-    df_cust_map = pd.DataFrame(res_cust_map.data) if res_cust_map.data else pd.DataFrame()
-    
-    price_dict = dict(zip(df_rec_map['name'], df_rec_map['catalog_price'])) if not df_rec_map.empty else {}
-    discount_dict = dict(zip(df_cust_map['name'], df_cust_map['discount'])) if not df_cust_map.empty else {}
-
-    # Κουμπί Συγχρονισμού
-    if st.button("📥 Συγχρονισμός με E-shop", type="primary"):
-        # ... (Ο κώδικας του WooCommerce παραμένει ο ίδιος όπως τον είχες) ...
-        pass
+    # Κουμπί Συγχρονισμού στην κορυφή
+    col_sync1, col_sync2 = st.columns([1, 2])
+    with col_sync1:
+        if st.button("📥 Συγχρονισμός με E-shop", use_container_width=True, type="primary"):
+            with st.spinner("Τραβάω παραγγελίες από το site..."):
+                try:
+                    woo_orders = wcapi.get("orders", params={"status": "processing"}).json()
+                    new_entries = 0
+                    for o in woo_orders:
+                        check = supabase.table("b2b_orders").select("id").eq("woo_id", str(o['id'])).execute()
+                        if not check.data:
+                            items = []
+                            for item in o['line_items']:
+                                items.append(f"{item['quantity']}x {item['name']}")
+                            order_text = "\n".join(items)
+                            
+                            data = {
+                                "customer_name": f"{o['billing']['first_name']} {o['billing']['last_name']}",
+                                "total_amount": float(o['total']),
+                                "status": "ΝΕΑ (E-shop)",
+                                "order_details": order_text,
+                                "notes": o.get('customer_note', ''),
+                                "woo_id": str(o['id']),
+                                "created_at": o['date_created']
+                            }
+                            supabase.table("b2b_orders").insert(data).execute()
+                            new_entries += 1
+                    
+                    if new_entries > 0:
+                        st.success(f"✅ Εισήχθησαν {new_entries} νέες παραγγελίες!")
+                    else:
+                        st.info("Δεν βρέθηκαν νέες παραγγελίες στο E-shop.")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Σφάλμα σύνδεσης: {e}")
 
     st.divider()
 
-    # --- ΣΥΓΚΕΝΤΡΩΣΗ ΔΕΔΟΜΕΝΩΝ (ΝΕΑ + ΠΑΛΙΑ) ---
+    # ==========================================
+    # ΑΣΦΑΛΗΣ ΥΠΟΛΟΓΙΣΜΟΣ ΝΕΩΝ ΚΑΙ ΠΑΛΙΩΝ ΔΕΔΟΜΕΝΩΝ
+    # ==========================================
     res_b2b = supabase.table("b2b_orders").select("*").execute()
     df_b2b = pd.DataFrame(res_b2b.data) if res_b2b.data else pd.DataFrame()
 
     res_prod = supabase.table("production_log").select("*").execute()
-    
+    res_rec = supabase.table("recipes").select("name, catalog_price").execute()
+    res_cust = supabase.table("customers").select("name, discount").execute()
+
+    # Λεξικά για τις τιμές (για να μην βγαίνουν λάθος)
+    price_map = {r['name']: float(r['catalog_price'] or 0) for r in res_rec.data} if res_rec.data else {}
+    disc_map = {c['name']: float(c['discount'] or 0) for c in res_cust.data} if res_cust.data else {}
+
+    old_orders_list = []
     if res_prod.data:
-        df_old = pd.DataFrame(res_prod.data)
-        
-        # Α. Υπολογισμός Τζίρου για τα παλιά
-        def calc_old_revenue(row):
-            price = pd.to_numeric(price_dict.get(row['cocktail_name'], 0), errors='coerce')
-            discount = pd.to_numeric(discount_dict.get(row['customer'], 0), errors='coerce') / 100
-            return row['pieces'] * (price * (1 - discount))
+        # Ομαδοποίηση παλιών ανά Πελάτη και Ημερομηνία
+        grouped_old = {}
+        for row in res_prod.data:
+            cust = row['customer']
+            date = row['prod_date']
+            cocktail = row['cocktail_name']
+            pcs = int(row.get('pieces', 0))
+            
+            key = (cust, date)
+            if key not in grouped_old:
+                grouped_old[key] = {}
+            
+            grouped_old[key][cocktail] = grouped_old[key].get(cocktail, 0) + pcs
+            
+        # Μετατροπή στην ίδια μορφή με τα B2B (Σωστά γραμμένο order_details & Σωστή τιμή)
+        for (cust, date), items in grouped_old.items():
+            total_eur = 0.0
+            details_lines = []
+            cust_disc = disc_map.get(cust, 0.0) / 100.0
+            
+            for cocktail, pcs in items.items():
+                details_lines.append(f"{pcs}x {cocktail}")
+                base_price = price_map.get(cocktail, 0.0)
+                final_price = base_price * (1.0 - cust_disc)
+                total_eur += (pcs * final_price)
+                
+            old_orders_list.append({
+                "id": f"old_{cust}_{date}",
+                "customer_name": cust,
+                "total_amount": total_eur,
+                "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ (Ιστορικό)",
+                "order_details": "\n".join(details_lines),
+                "notes": "Ιστορικό Παραγωγής",
+                "woo_id": "-",
+                "created_at": date
+            })
 
-        df_old['theoretical_rev'] = df_old.apply(calc_old_revenue, axis=1)
-
-        # Β. ΔΙΟΡΘΩΣΗ: Ομαδοποίηση πρώτα ανά Cocktail για να μην υπάρχουν διπλά στο expander
-        # Ομαδοποιούμε ανά Πελάτη, Ημερομηνία ΚΑΙ Cocktail
-        df_old_summed = df_old.groupby(['customer', 'prod_date', 'cocktail_name']).agg({
-            'pieces': 'sum',
-            'theoretical_rev': 'sum'
-        }).reset_index()
-
-        # Γ. Τελική ομαδοποίηση ανά Παραγγελία (Πελάτης & Ημερομηνία)
-        df_old_grouped = df_old_summed.groupby(['customer', 'prod_date']).apply(lambda x: pd.Series({
-            'customer_name': x.name[0],
-            'created_at': x.name[1],
-            'total_amount': x['theoretical_rev'].sum(),
-            'status': 'ΟΛΟΚΛΗΡΩΘΗΚΕ (Ιστορικό)',
-            'order_details': "\n".join([f"{int(p)}x {c}" for p, c in zip(x['pieces'], x['cocktail_name'])]),
-            'notes': 'Παλαιά εγγραφή (Αυτόματος υπολογισμός τζίρου)',
-            'id': f"old_{x.index[0]}"
-        })).reset_index(drop=True)
-        
-        df_hybrid = pd.concat([df_b2b, df_old_grouped], ignore_index=True)
-    else:
-        df_hybrid = df_b2b
+    df_old = pd.DataFrame(old_orders_list)
+    df_hybrid = pd.concat([df_b2b, df_old], ignore_index=True) if not df_old.empty else df_b2b
 
     if not df_hybrid.empty:
+        # Ταξινόμηση
         df_hybrid['sort_date'] = pd.to_datetime(df_hybrid['created_at'], errors='coerce')
         df_hybrid = df_hybrid.sort_values("sort_date", ascending=False)
+    
+    # ==========================================
 
-    # --- TABS ---
     tab1, tab2 = st.tabs(["🔔 Τρέχουσες Παραγγελίες", "📜 Ιστορικό & Αναζήτηση"])
 
+    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ (ΤΟ ΔΙΚΟ ΣΟΥ DESIGN) ---
     with tab1:
         if not df_hybrid.empty:
             all_statuses = ["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ", "ΟΛΟΚΛΗΡΩΘΗΚΕ (Ιστορικό)"]
@@ -3004,33 +3047,78 @@ elif page == "📦 Παραγγελίες B2B":
             df_filtered = df_hybrid[df_hybrid["status"].isin(status_filter)]
 
             for _, row in df_filtered.iterrows():
-                icon = "🔵" if "ΝΕΑ" in row['status'] else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "📜" if "Ιστορικό" in row['status'] else "✅"
+                icon = "🔵" if "ΝΕΑ" in row['status'] else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "✅"
                 
                 with st.expander(f"{icon} {row['customer_name']} - {row['total_amount']:.2f} €"):
                     c1, c2 = st.columns([2, 1])
                     with c1:
                         st.code(row['order_details'])
                         if row['notes']: st.info(f"📝 {row['notes']}")
-                        st.caption(f"Πηγή: {row['status']} | Ημερομηνία: {row['created_at']}")
+                        st.caption(f"ID: {row['id']} | WooID: {row.get('woo_id','-')} | Ημερομηνία: {row['created_at']}")
                     
                     with c2:
                         if "Ιστορικό" not in row['status']:
                             current_idx = all_statuses.index(row['status']) if row['status'] in all_statuses else 0
                             new_status = st.selectbox("Αλλαγή Κατάστασης:", all_statuses[:4], index=current_idx, key=f"st_upd_{row['id']}")
+                            
                             if st.button("Ενημέρωση", key=f"btn_upd_{row['id']}", use_container_width=True):
                                 supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
+                                st.success("Ενημερώθηκε!")
+                                time.sleep(0.5)
+                                st.rerun()
+                            
+                            st.divider()
+                            if st.button("🗑️ Διαγραφή", key=f"del_b2b_{row['id']}", type="secondary", use_container_width=True):
+                                supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
                                 st.rerun()
                         else:
-                            st.write("🔒 Κλειδωμένο Ιστορικό")
-                            if st.button("🗑️ Διαγραφή (Από Log)", key=f"del_old_{row['id']}", type="secondary"):
-                                st.warning("Για να διαγράψετε εγγραφή ιστορικού, πηγαίνετε στην καρτέλα 'Παραγωγή'.")
+                            st.write("🔒 Προέρχεται από το log παραγωγής")
         else:
-            st.info("Δεν υπάρχουν παραγγελίες.")
+            st.info("Δεν υπάρχουν παραγγελίες στη βάση.")
 
+    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ (ΤΟ ΔΙΚΟ ΣΟΥ DESIGN) ---
     with tab2:
-        # (Ο κώδικας της αναζήτησης παραμένει ίδιος, χρησιμοποιώντας το df_hybrid)
-        st.subheader("🔍 Αναζήτηση στο Πλήρες Ιστορικό")
+        st.subheader("🔍 Αναζήτηση στο Ιστορικό")
         if not df_hybrid.empty:
-            search_name = st.text_input("Αναζήτηση Πελάτη:")
-            df_res = df_hybrid[df_hybrid['customer_name'].str.contains(search_name, case=False)] if search_name else df_hybrid
-            st.dataframe(df_res[['created_at', 'customer_name', 'total_amount', 'status']], use_container_width=True, hide_index=True)
+            search_col1, search_col2 = st.columns(2)
+            with search_col1:
+                cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hybrid["customer_name"].dropna().unique()))
+            with search_col2:
+                all_cocktails = set()
+                for details in df_hybrid["order_details"]:
+                    lines = str(details).split('\n')
+                    for line in lines:
+                        if 'x ' in line:
+                            parts = line.split('x ')
+                            if len(parts) > 1:
+                                name = parts[1].split(' (')[0].strip()
+                                all_cocktails.add(name)
+                cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=sorted(list(all_cocktails)))
+
+            # Φιλτράρισμα
+            mask = pd.Series([True] * len(df_hybrid))
+            if cust_search: 
+                mask &= df_hybrid["customer_name"].isin(cust_search)
+            if cocktail_search:
+                cocktail_mask = df_hybrid["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
+                mask &= cocktail_mask
+
+            df_results = df_hybrid[mask]
+
+            if not df_results.empty:
+                st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
+                for _, row in df_results.iterrows():
+                    with st.expander(f"📅 {str(row['created_at'])[:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
+                        col_h1, col_h2 = st.columns([2, 1])
+                        with col_h1:
+                            st.markdown(f"**Κατάσταση:** {row['status']}")
+                            st.text(row['order_details'])
+                        with col_h2:
+                            if "Ιστορικό" not in row['status']:
+                                if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
+                                    supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
+                                    st.rerun()
+                            else:
+                                st.caption("Διαγράφεται μόνο από την Παραγωγή")
+            else:
+                st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
