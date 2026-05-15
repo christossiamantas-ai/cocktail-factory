@@ -1619,7 +1619,7 @@ elif page == "📈 Dashboard":
             # Το κόλπο για το PDF: Αν δεν έχει b2b_orders, φτιάχνουμε μια εικονική εγγραφή για να τυπωθεί ο τζίρος
             pdf_fin_data = cust_orders.to_dict('records')
             if not pdf_fin_data and display_revenue > 0:
-                pdf_fin_data = [{'created_at': 'Αυτόματος Υπολογισμός', 'order_details': 'Θεωρητικός Τζίρος βάσει ιστορικού παραγωγής', 'total_amount': display_revenue}]
+                pdf_fin_data = [{'created_at': 'Αυτόματος Υπολογισμός', 'order_details': 'Τζίρος βάσει ιστορικού παραγωγής', 'total_amount': display_revenue}]
 
             try:
                 cust_pdf = generate_hybrid_report(sel_cust_rep, pdf_fin_data, cust_prod.to_dict('records'))
