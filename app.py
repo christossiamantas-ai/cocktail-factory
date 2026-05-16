@@ -1504,6 +1504,29 @@ elif page == "📈 Dashboard":
             recipe_costs_by_id[rid] = cost
             
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], 0) for _, r in df_recipes.iterrows()}
+        # =====================================================================
+        # ⚠️ ΠΡΟΣΩΡΙΝΟ ΚΟΥΜΠΙ: ΜΟΛΙΣ ΤΟ ΠΑΤΗΣΕΙΣ ΜΙΑ ΦΟΡΑ, ΣΒΗΣΕ ΑΥΤΟ ΤΟ ΜΠΛΟΚ!
+        # =====================================================================
+        st.error("🚨 Εργαλείο Αναδρομικού Κλειδώματος Ιστορικού")
+        if st.button("🔄 Κλείδωμα Όλων των Παλιών Καταχωρήσεων (Μία Χρήση)"):
+            with st.spinner("Γίνεται αναδρομικός υπολογισμός και ενημέρωση στη Supabase..."):
+                counter = 0
+                for idx, row in df_raw.iterrows():
+                    # Ελέγχουμε αν η εγγραφή δεν έχει unit_cost (είναι κενή ή 0)
+                    u_cost = row.get('unit_cost', 0)
+                    if pd.isna(u_cost) or u_cost == 0:
+                        c_name = row['cocktail_name']
+                        cost_to_apply = name_to_cost.get(c_name, 0)
+                        
+                        if cost_to_apply > 0:
+                            # Ενημερώνουμε τη συγκεκριμένη γραμμή στη βάση με βάση το ID της
+                            supabase.table("production_log").update({
+                                "unit_cost": round(cost_to_apply, 4)
+                            }).eq("id", row["id"]).execute()
+                            counter += 1
+                st.success(f"✅ Επιτυχία! Κλειδώθηκαν {counter} παλιές εγγραφές με το τρέχον κόστος τους. Τώρα μπορείς να σβήσεις αυτό το κουμπί από τον κώδικα σου!")
+        st.divider()
+        # =====================================================================
 
         # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ & ΚΟΣΤΟΣ (ΜΕ ΙΣΤΟΡΙΚΟΤΗΤΑ) ---
         df_filtered = df_filtered.merge(df_recipes[['name', 'catalog_price']], left_on="cocktail_name", right_on="name", how="left")
