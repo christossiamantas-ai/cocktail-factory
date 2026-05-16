@@ -14,6 +14,17 @@ from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
 
 st.set_page_config(page_title="DC Cabclub", layout="wide")
 
+def format_gr(value):
+    """Βάζει τελεία στις χιλιάδες (π.χ. 1.250) και αφαιρεί τα δεκαδικά (για ml)"""
+    if pd.isna(value) or value == "":
+        return "0"
+    try:
+        eng_format = f"{float(value):,.0f}"
+        gr_format = eng_format.replace(",", "X").replace(".", ",").replace("X", ".")
+        return gr_format
+    except:
+        return str(value)
+
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
