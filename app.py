@@ -1632,6 +1632,51 @@ elif page == "📈 Dashboard":
             fig_hm.update_traces(textposition='top center')
             st.plotly_chart(fig_hm, use_container_width=True)
 
+        # =====================================================================
+        # 🎁 ΝΕΟ: ΔΥΝΑΜΙΚΗ ΑΝΑΛΥΣΗ ΠΡΟΣΦΟΡΩΝ 240+24 ΣΤΟ DASHBOARD
+        # =====================================================================
+        if not df_orders.empty and 'order_details' in df_orders.columns:
+            import re
+            
+            # Φιλτράρουμε τις προσφορές με βάση τα ήδη επιλεγμένα φίλτρα του Dashboard
+            df_dash_promos = df_orders[df_orders['order_details'].str.contains("ΠΡΟΣΦΟΡΑ 240", na=False)].copy()
+            
+            if not df_dash_promos.empty:
+                st.divider()
+                st.subheader("🎁 Ανάλυση Προωθητικών Ενεργειών (240+24)")
+                st.write("Οι παρακάτω προσφορές δώρου δόθηκαν με βάση τα φίλτρα (Πελάτης / Μήνας) που έχετε επιλέξει στην κορυφή:")
+                
+                # Έξυπνη εξαγωγή του κοκτέιλ
+                def get_promo_cocktail_dash(detail_str):
+                    match = re.search(r"ΠΡΟΣΦΟΡΑ 240\+24 ΔΩΡΟ στο ([^\]\n]+)", str(detail_str))
+                    if match:
+                        return match.group(1).strip()
+                    return "Γενική / Παλιό Μοντέλο"
+                
+                df_dash_promos['Ημερομηνία'] = pd.to_datetime(df_dash_promos['created_at']).dt.strftime('%d/%m/%Y')
+                df_dash_promos['Κοκτέιλ Προσφοράς'] = df_dash_promos['order_details'].apply(get_promo_cocktail_dash)
+                
+                # Εμφάνιση σε ωραία διάταξη (Metric αριστερά, Πίνακας δεξιά)
+                col_dash_p1, col_dash_p2 = st.columns([1, 3])
+                
+                with col_dash_p1:
+                    st.metric(
+                        label="🎁 Προσφορές στο Φίλτρο", 
+                        value=f"{len(df_dash_promos)} φορές",
+                        help="Πόσες φορές δόθηκε η προσφορά 240+24 για τον επιλεγμένο πελάτη/μήνα."
+                    )
+                
+                with col_dash_p2:
+                    st.dataframe(
+                        df_dash_promos.rename(columns={
+                            "customer_name": "ΠΕΛΑΤΗΣ",
+                            "total_amount": "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"
+                        })[["Ημερομηνία", "ΠΕΛΑΤΗΣ", "Κοκτέιλ Προσφοράς", "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"]],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+        # =====================================================================
+
         # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
         with st.expander("📄 Αναλυτικό Αρχείο (LOT & Profit)"):
             display_df = df_filtered.copy()
