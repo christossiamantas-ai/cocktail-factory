@@ -1544,7 +1544,7 @@ elif page == "📈 Dashboard":
         total_profit = total_rev - total_cost
         total_units = df_filtered['pieces'].sum()
 
-        # --- METRICS (ΤΩΡΑ ΜΕ 6 ΣΤΗΛΕΣ) ---
+        # --- METRICS (ΤΩΡΑ ΜΕ ΧΙΛΙΑΔΕΣ ΑΠΟ ΤΗ ΣΥΝΑΡΤΗΣΗ format_gr) ---
         st.divider()
         st.subheader(f"📊 Σύνοψη & Απόδοση: {sel_customer if sel_customer != 'ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ' else 'Όλοι οι Πελάτες'}")
         
@@ -1552,12 +1552,12 @@ elif page == "📈 Dashboard":
         aov = total_rev / total_orders_count if total_orders_count > 0 else 0
         
         m1, m2, m3, m4, m5, m6 = st.columns(6)
-        m1.metric("💰 Τζίρος", f"{total_rev:.2f} €".replace('.', ','))
-        m2.metric("📈 Καθαρό Κέρδος", f"{total_profit:.2f} €".replace('.', ','), delta=f"{margin:.1f}% Margin")
-        m3.metric("📉 Κόστος Υλικών", f"{total_cost:.2f} €".replace('.', ','))
-        m4.metric("🍹 Τεμάχια", f"{int(total_units)} τμχ")
-        m5.metric("📦 Παραγγελίες", total_orders_count)
-        m6.metric("⚖️ Μέση Αξία", f"{aov:.2f} €".replace('.', ','))
+        m1.metric("💰 Τζίρος", f"{format_gr(total_rev)} €")
+        m2.metric("📈 Καθαρό Κέρδος", f"{format_gr(total_profit)} €", delta=f"{margin:.1f}% Margin")
+        m3.metric("📉 Κόστος Υλικών", f"{format_gr(total_cost)} €")
+        m4.metric("🍹 Τεμάχια", f"{format_gr(int(total_units), decimals=0)} τμχ")
+        m5.metric("📦 Παραγγελίες", format_gr(total_orders_count, decimals=0))
+        m6.metric("⚖️ Μέση Αξία", f"{format_gr(aov)} €")
 
         # --- ΓΡΑΦΗΜΑ MoM GROWTH ---
         st.write("### 📅 Μηνιαία Εξέλιξη Τζίρου")
@@ -1567,7 +1567,7 @@ elif page == "📈 Dashboard":
             mom_trend['sort_date'] = pd.to_datetime(mom_trend['Month'], format='%m/%Y')
             mom_trend = mom_trend.sort_values('sort_date')
             fig_mom = px.line(mom_trend, x='Month', y='Revenue', 
-                             markers=True, text=[f"{v:.0f}€" for v in mom_trend['Revenue']],
+                             markers=True, text=[f"{format_gr(v, decimals=0)}€" for v in mom_trend['Revenue']],
                              title="Πορεία Εσόδων (Month-over-Month)",
                              template="plotly_dark", color_discrete_sequence=["#00ffcc"])
             fig_mom.update_traces(textposition="top center")
@@ -1636,7 +1636,6 @@ elif page == "📈 Dashboard":
             # Φιλτράρισμα δεδομένων παραγωγής
             cust_prod = df_sales[df_sales['customer'] == sel_cust_rep].copy()
             
-            # --- ΛΥΣΗ: Τραβάμε τον τζίρο από τον σωστό υπολογισμό του Dashboard (df_mom) ---
             if not df_mom.empty:
                 display_revenue = df_mom[df_mom['customer'] == sel_cust_rep]['Revenue'].sum()
             else:
@@ -1646,17 +1645,16 @@ elif page == "📈 Dashboard":
             avg_val_cust = display_revenue / total_pcs_cust if total_pcs_cust > 0 else 0
             unique_cocktails = cust_prod['cocktail_name'].nunique()
 
-            # --- ΣΤΑΤΙΣΤΙΚΑ (METRICS) ---
+            # --- ΣΤΑΤΙΣΤΙΚΑ (METRICS ΜΕ format_gr) ---
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Συνολικά Τεμάχια", f"{int(total_pcs_cust)} τμχ")
-            c2.metric("Συνολικός Τζίρος", f"{display_revenue:.2f} €".replace('.', ','))
-            c3.metric("Μέση Τιμή / Τμχ", f"{avg_val_cust:.2f} €".replace('.', ','))
+            c1.metric("Συνολικά Τεμάχια", f"{format_gr(int(total_pcs_cust), decimals=0)} τμχ")
+            c2.metric("Συνολικός Τζίρος", f"{format_gr(display_revenue)} €")
+            c3.metric("Μέση Τιμή / Τμχ", f"{format_gr(avg_val_cust)} €")
             c4.metric("Ποικιλία Cocktail", f"{unique_cocktails}")
 
             # --- ΕΚΤΥΠΩΣΗ PDF (Με ενσωμάτωση του σωστού τζίρου) ---
             cust_orders = df_orders_raw[df_orders_raw['customer_name'] == sel_cust_rep] if not df_orders_raw.empty else pd.DataFrame()
             
-            # Το κόλπο για το PDF: Αν δεν έχει b2b_orders, φτιάχνουμε μια εικονική εγγραφή για να τυπωθεί ο τζίρος
             pdf_fin_data = cust_orders.to_dict('records')
             if not pdf_fin_data and display_revenue > 0:
                 pdf_fin_data = [{'created_at': 'Αυτόματος Υπολογισμός', 'order_details': 'Τζίρος βάσει ιστορικού παραγωγής', 'total_amount': display_revenue}]
