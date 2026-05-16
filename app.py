@@ -1938,6 +1938,21 @@ elif page == "📦 Lot Παραγωγής":
                     total_qty_this = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
                     if total_qty_this == 0: continue
 
+                    # --- NEW: ΥΠΟΛΟΓΙΣΜΟΣ ΚΛΕΙΔΩΜΕΝΟΥ ΚΟΣΤΟΥΣ ΕΚΕΙΝΗ ΤΗ ΣΤΙΓΜΗ ---
+                    current_unit_cost = 0.22  # Σταθερά έξοδα (μπουκάλι, ετικέτα κλπ)
+                    for idx_ing in range(1, 14):
+                        tmp_ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{idx_ing}", "ΚΕΝΟ"))
+                        if tmp_ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
+                            tmp_ml = get_recipe_ml(recipe_row, idx_ing)
+                            tmp_match = df_ing[df_ing["Name"] == tmp_ing]
+                            if not tmp_match.empty:
+                                # Διαβάζει δυναμικά Volume και Price είτε είναι με κεφαλαίο είτε με μικρό γράμμα
+                                v = float(tmp_match.iloc[0].get("Volume", tmp_match.iloc[0].get("volume", 1)))
+                                p = float(tmp_match.iloc[0].get("Price", tmp_match.iloc[0].get("price", 0))) 
+                                if v > 0:
+                                    current_unit_cost += tmp_ml * (p / v)
+                    # -------------------------------------------------------------
+
                     st.markdown(f"#### 🍹 {cocktail_name} (Σύνολο: {total_qty_this} τμχ)")
                     h = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
                     for col, label in zip(h, ["Υλικό", "ml", "Βάρος(g)", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
@@ -1986,7 +2001,8 @@ elif page == "📦 Lot Παραγωγής":
                                     "ingredient_name": ing, "total_ml": float(ml_u * c_qty), 
                                     "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"] * match_ing.iloc[0]["Weight_Full"]), 1) if not match_ing.empty else float(ml_u * c_qty),
                                     "lot_number": final_lot, 
-                                    "expiry_date": final_exp
+                                    "expiry_date": final_exp,
+                                    "unit_cost": round(current_unit_cost, 4)  # <--- Η ΝΕΑ ΣΤΗΛΗ ΠΟΥ ΚΛΕΙΔΩΝΕΙ ΤΟ ΚΟΣΤΟΣ
                                 })
                 
                 st.divider()
