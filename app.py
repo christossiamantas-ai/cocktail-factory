@@ -2640,7 +2640,10 @@ elif page == "📦 Lot Παραγωγής":
         """
         for p in df_past["Πελάτης"].unique():
             p_df = df_past[df_past["Πελάτης"] == p]
-            html_pro += f"<div class='customer-section'><strong>ΠΕΛΑΤΗΣ:</strong> {p}</div>"
+            # 🌟 ΤΡΑΒΑΜΕ ΤΗΝ ΠΡΑΓΜΑΤΙΚΗ ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ ΤΟΥ ΣΥΓΚΕΚΡΙΜΕΝΟΥ ΠΕΛΑΤΗ ΑΠΟ ΤΗ ΒΑΣΗ
+            actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
+            
+            html_pro += f"<div class='customer-section'><strong>ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div>"
             for cock in p_df["Cocktail"].unique():
                 c_df = p_df[p_df["Cocktail"] == cock]
                 c_lot = c_df["LOT_Cocktail"].iloc[0] # ΤΟ ΣΩΣΤΟ LOT ΑΝΑ COCKTAIL
