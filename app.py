@@ -3397,7 +3397,9 @@ elif page == "📦 Παραγγελίες B2B":
                             st.text(row['order_details'])
                         with col_h2:
                             if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
-                                supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
+                                delete_order_and_production_safely(row['id'], row['customer_name'], row['created_at'], row['order_details'])
+                                st.success("🔄 Διαγράφηκε πλήρως από οικονομικά και αποθήκη!")
+                                time.sleep(1)
                                 st.rerun()
             else:
                 st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
