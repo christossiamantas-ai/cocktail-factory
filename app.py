@@ -1925,6 +1925,37 @@ elif page == "📦 Lot Παραγωγής":
                 )
                 all_assignments[name] = edited_df
 
+            # =========================================================================
+            # 🌟 ΝΕΟ: ΚΕΝΤΡΙΚΟΣ ΠΙΝΑΚΑΣ ΗΜΕΡΟΜΗΝΙΩΝ ΑΝΑ ΠΕΛΑΤΗ (ΜΙΑ ΑΛΛΑΓΗ ΓΙΑ ΟΛΑ ΤΑ ΚΟΚΤΕΪΛ)
+            # =========================================================================
+            unique_customers_in_batch = set()
+            for cocktail_name, edited_df in all_assignments.items():
+                if "Πελάτης" in edited_df.columns:
+                    for c in edited_df["Πελάτης"].dropna().unique():
+                        if str(c).strip():
+                            unique_customers_in_batch.add(str(c).strip())
+
+            cust_date_map = {}
+            if unique_customers_in_batch:
+                st.markdown("### 📅 1β. Ρύθμιση Ημερομηνίας ανά Πελάτη")
+                st.info("💡 Αν κάποιος πελάτης έχει διαφορετική ημερομηνία παραγωγής από τη γενική, αλλάξτε την εδώ ΜΙΑ φορά. Θα εφαρμοστεί αυτόματα σε όλα του τα κοκτέιλ!")
+                
+                cust_date_data = [{"Πελάτης": c, "Ημερομηνία": formatted_date} for c in sorted(list(unique_customers_in_batch))]
+                df_cust_dates = pd.DataFrame(cust_date_data)
+                
+                edited_cust_dates_df = st.data_editor(
+                    df_cust_dates,
+                    hide_index=True,
+                    use_container_width=True,
+                    key=f"cust_dates_editor_{reset_key}",
+                    column_config={
+                        "Πελάτης": st.column_config.TextColumn("ΠΕΛΑΤΗΣ", disabled=True),
+                        "Ημερομηνία": st.column_config.TextColumn("ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ", help="Μορφή: DD/MM/YYYY")
+                    }
+                )
+                cust_date_map = dict(zip(edited_cust_dates_df["Πελάτης"], edited_cust_dates_df["Ημερομηνία"]))
+            # =========================================================================
+
             # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML ---
             ing_totals = {}
             for cocktail_name in selected_cocktails:
