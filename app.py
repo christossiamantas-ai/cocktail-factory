@@ -14,12 +14,16 @@ from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
 
 st.set_page_config(page_title="DC Cabclub", layout="wide")
 
-def format_gr(value):
-    """Βάζει τελεία στις χιλιάδες (π.χ. 1.250) και αφαιρεί τα δεκαδικά (για ml)"""
+def format_gr(value, decimals=2):
+    """Μετατρέπει τους αριθμούς σε ελληνική μορφή με τελεία στις χιλιάδες"""
     if pd.isna(value) or value == "":
-        return "0"
+        return "0,00" if decimals > 0 else "0"
     try:
-        eng_format = f"{float(value):,.0f}"
+        if decimals == 0:
+            eng_format = f"{float(value):,.0f}"
+        else:
+            eng_format = f"{float(value):,.2f}"
+        
         gr_format = eng_format.replace(",", "X").replace(".", ",").replace("X", ".")
         return gr_format
     except:
