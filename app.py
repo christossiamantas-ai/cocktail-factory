@@ -2116,15 +2116,25 @@ elif page == "📦 Lot Παραγωγής":
                             if not c_name: c_name = "Λιανική / Άγνωστος"
                             c_qty = int(row_assign.get("Τεμάχια", 0))
                             
+                            # 🌟 Διαβάζουμε τις custom ρυθμίσεις LOT του κοκτέιλ για τον συγκεκριμένο πελάτη
+                            c_config = cust_lot_config_map.get(c_name, {
+                                "prod_date": formatted_date, 
+                                "lot_cocktail": date_lot_label
+                            })
+                            
                             if c_qty > 0:
                                 lot_entries.append({
-                                    "prod_date": formatted_date, "prod_time": current_time, "customer": c_name,
-                                    "cocktail_name": cocktail_name, "lot_cocktail": date_lot_label, "pieces": c_qty,
+                                    "prod_date": c_config["prod_date"], 
+                                    "prod_time": current_time, 
+                                    "customer": c_name,
+                                    "cocktail_name": cocktail_name, 
+                                    "lot_cocktail": c_config["lot_cocktail"], 
+                                    "pieces": c_qty,
                                     "ingredient_name": ing, "total_ml": float(ml_u * c_qty), 
                                     "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"] * match_ing.iloc[0]["Weight_Full"]), 1) if not match_ing.empty else float(ml_u * c_qty),
                                     "lot_number": final_lot, 
                                     "expiry_date": final_exp,
-                                    "unit_cost": round(current_unit_cost, 4)  # <--- Η ΝΕΑ ΣΤΗΛΗ ΠΟΥ ΚΛΕΙΔΩΝΕΙ ΤΟ ΚΟΣΤΟΣ
+                                    "unit_cost": round(current_unit_cost, 4)
                                 })
                 
                 st.divider()
