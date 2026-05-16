@@ -2638,7 +2638,7 @@ elif page == "🧼 Συντήρηση & HACCP":
     
     # --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ & ΕΚΠΤΩΣΗ) ---
     elif page == "👥 Πελατολόγιο":
-    st.header("👥 Διαχείριση Πελατολογίου")
+        st.header("👥 Διαχείριση Πελατολογίου")
     
     # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ
     res_cust = supabase.table("customers").select("*").order("name").execute()
