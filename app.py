@@ -1505,7 +1505,7 @@ elif page == "📈 Dashboard":
             
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], 0) for _, r in df_recipes.iterrows()}
 
-        # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ ---
+        # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ & ΚΟΣΤΟΣ (ΜΕ ΙΣΤΟΡΙΚΟΤΗΤΑ) ---
         df_filtered = df_filtered.merge(df_recipes[['name', 'catalog_price']], left_on="cocktail_name", right_on="name", how="left")
         df_filtered['catalog_price'] = pd.to_numeric(df_filtered['catalog_price'], errors='coerce').fillna(0)
         df_filtered['pieces'] = pd.to_numeric(df_filtered['pieces'], errors='coerce').fillna(0)
@@ -1513,7 +1513,20 @@ elif page == "📈 Dashboard":
         
         df_filtered['dealer_price'] = df_filtered['catalog_price'] * (1 - (df_filtered['customer_discount'] / 100))
         df_filtered['Theoretical_Revenue'] = df_filtered['pieces'] * df_filtered['dealer_price']
-        df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['cocktail_name'].map(name_to_cost).fillna(0)
+        
+        # Έλεγχος αν υπάρχει η νέα στήλη unit_cost στη βάση
+        if 'unit_cost' in df_filtered.columns:
+            df_filtered['unit_cost'] = pd.to_numeric(df_filtered['unit_cost'], errors='coerce').fillna(0)
+        else:
+            df_filtered['unit_cost'] = 0.0
+
+        # Η ΜΑΓΕΙΑ: Αν υπάρχει κλειδωμένο κόστος (>0) πάρε αυτό. Αλλιώς, υπολόγισέ το on-the-fly (για τις παλιές εγγραφές)
+        df_filtered['Final_Unit_Cost'] = df_filtered.apply(
+            lambda row: row['unit_cost'] if row['unit_cost'] > 0 else name_to_cost.get(row['cocktail_name'], 0), 
+            axis=1
+        )
+        
+        df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['Final_Unit_Cost']
         df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
 
         # --- ΥΒΡΙΔΙΚΟΣ ΤΖΙΡΟΣ ΚΑΙ MoM ΔΕΔΟΜΕΝΑ ---
