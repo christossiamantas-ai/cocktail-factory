@@ -3053,8 +3053,8 @@ elif page == "👥 Πελατολόγιο":
                                     st.rerun()
                                     
                                 if col_b2.form_submit_button("🗑️ Διαγραφή Παραγγελίας"):
-                                    supabase.table("b2b_orders").delete().eq("id", order_id).execute()
-                                    st.warning("Η παραγγελία διαγράφηκε.")
+                                    delete_order_and_production_safely(order_id, sel_name, order['created_at'], order['order_details'])
+                                    st.warning("🔄 Η παραγγελία και τα υλικά παραγωγής διαγράφηκαν επιτυχώς!")
                                     time.sleep(1)
                                     st.rerun()
                 else:
