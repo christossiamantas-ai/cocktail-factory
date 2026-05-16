@@ -2294,81 +2294,79 @@ elif page == "📦 Lot Παραγωγής":
         # ΚΑΡΤΕΛΑ 1: ΤΡΟΠΟΠΟΙΗΣΗ ΣΥΓΚΕΚΡΙΜΕΝΗΣ ΠΑΡΑΓΩΓΗΣ (ΑΛΛΑΓΗ ΤΕΜΑΧΙΩΝ/ΠΟΣΟΤΗΤΩΝ)
         # =========================================================================
         with tab_edit_batch:
-            st.markdown("### 🛠️ Μαζική Επεξεργασία Παρτίδας ανά Πελάτη (Αλλαγή Ημερομηνίας/LOT)")
+            st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT Πελατών")
             
-            # 🌟 ΟΜΑΔΟΠΟΙΗΣΗ ΑΝΑ ΩΡΑ ΚΑΙ ΠΕΛΑΤΗ (ΓΙΑ ΝΑ ΠΙΑΝΟΥΜΕ ΟΛΑ ΤΑ ΚΟΚΤΕΪΛ ΜΑΖΙ)
-            batches = df_past.groupby(['Ώρα', 'Πελάτης']).groups
-            options = ["-- Επιλέξτε Παρτίδα Πελάτη για Επεξεργασία --"]
-            batch_mapping = {}
+            # 🌟 ΦΙΛΤΡΑΡΙΣΜΑ ΑΝΑ ΚΟΚΤΕΪΛ (ΑΠΟ ΤΑ ΥΠΑΡΧΟΝΤΑ ΤΗΣ ΗΜΕΡΑΣ)
+            unique_cocktails_of_day = df_past["Cocktail"].unique() if not df_past.empty else []
             
-            for (time_v, cust), indices in batches.items():
-                sub_df = df_past.loc[indices]
-                unique_cocktails = sub_df["Cocktail"].unique()
-                cocktails_str = ", ".join(unique_cocktails)
-                dt_v = sub_df["Ημερομηνία"].iloc[0]
-                label = f"👤 {cust} | 📅 {dt_v} 🕒 {time_v} | 🍹 {cocktails_str}"
-                options.append(label)
-                batch_mapping[label] = list(indices)
-
-            selected_batch = st.selectbox("Επιλέξτε τον πελάτη που θέλετε να αλλάξετε:", options, key="batch_select_customer_key")
+            options = ["-- Επιλέξτε Κοκτέιλ για Επεξεργασία --"] + list(unique_cocktails_of_day)
+            sel_cocktail_edit = st.selectbox("Διαλέξτε το Κοκτέιλ που παράγεται:", options, key="batch_edit_by_cocktail_key")
             
-            if selected_batch != "-- Επιλέξτε Παρτίδα Πελάτη για Επεξεργασία --":
-                batch_id = str(hash(selected_batch))
-                row_indices = batch_mapping[selected_batch]
-                sub_df = df_past.loc[row_indices]
-                base_data = sub_df.iloc[0]
+            if sel_cocktail_edit != "-- Επιλέξτε Κοκτέιλ για Επεξεργασία --":
+                batch_id = str(hash(sel_cocktail_edit))
                 
-                # Αυτόματο σπάσιμο του υπάρχοντος LOT του κοκτέιλ
-                old_lot_cocktail = str(base_data["LOT_Cocktail"])
-                if "-" in old_lot_cocktail:
-                    parts_lot = old_lot_cocktail.split("-")
-                    default_lot_date = parts_lot[0].strip()
-                    default_prod_day = parts_lot[1].strip()
-                else:
-                    default_lot_date = str(base_data["Ημερομηνία"])
-                    default_prod_day = default_lot_date.split("/")[0] if "/" in default_lot_date else "01"
+                # Παίρνουμε όλες τις εγγραφές της ημέρας μόνο για αυτό το κοκτέιλ
+                cocktail_df = df_past[df_past["Cocktail"] == sel_cocktail_edit]
+                unique_customers = cocktail_df["Πελάτης"].unique()
+                
+                # 📅 ΠΙΝΑΚΑΣ ΡΥΘΜΙΣΗΣ LOT & ΠΟΣΟΤΗΤΩΝ ΑΝΑ ΠΕΛΑΤΗ
+                st.markdown(f"#### 👥 Πελάτες που παρήγγειλαν {sel_cocktail_edit}")
+                st.info("💡 Αλλάξτε την Ημερομηνία LOT ή την Ημέρα Παραγωγής ξεχωριστά για κάθε πελάτη. Τα υλικά από κάτω θα ενημερωθούν αυτόματα!")
+                
+                customer_settings = {}
+                
+                for cust in unique_customers:
+                    cust_df = cocktail_df[cocktail_df["Πελάτης"] == cust]
+                    base_cust = cust_df.iloc[0]
+                    old_pcs = int(base_cust["Τεμάχια"])
+                    
+                    # Αυτόματο σπάσιμο του υπάρχοντος LOT του κοκτέιλ
+                    old_lot_cocktail = str(base_cust["LOT_Cocktail"])
+                    if "-" in old_lot_cocktail:
+                        parts_lot = old_lot_cocktail.split("-")
+                        default_lot_date = parts_lot[0].strip()
+                        default_prod_day = parts_lot[1].strip()
+                    else:
+                        default_lot_date = str(base_cust["Ημερομηνία"])
+                        default_prod_day = default_lot_date.split("/")[0] if "/" in default_lot_date else "01"
+                    
+                    st.markdown(f"**👤 Πελάτης: {cust}**")
+                    c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1.2])
+                    new_cust_name = c1.text_input("Όνομα Πελάτη", value=cust, key=f"ed_cname_{batch_id}_{cust}")
+                    new_lot_date = c2.text_input("📅 Ημερομηνία LOT", value=default_lot_date, key=f"ed_ldate_{batch_id}_{cust}")
+                    new_prod_day = c3.text_input("🔢 Ημ. Παραγωγής", value=default_prod_day, max_chars=2, key=f"ed_pday_{batch_id}_{cust}")
+                    new_pcs = c4.number_input("📦 Τεμάχια", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{cust}")
+                    
+                    customer_settings[cust] = {
+                        "new_cust_name": new_cust_name.strip(),
+                        "new_lot_date": new_lot_date.strip(),
+                        "new_prod_day": new_prod_day.strip(),
+                        "new_lot_c": f"{new_lot_date.strip()}-{new_prod_day.strip()}",
+                        "new_pcs": new_pcs,
+                        "old_pcs": old_pcs,
+                        "base_date_str": base_cust["Ημερομηνία"]
+                    }
+                    st.caption("---")
 
-                # 📅 ΚΕΝΤΡΙΚΕΣ ΡΥΘΜΙΣΕΙΣ ΠΑΡΤΙΔΑΣ (ΜΙΑ ΦΟΡΑ ΓΙΑ ΟΛΑ ΤΑ ΚΟΚΤΕΪΛ)
-                st.markdown("#### 📅 Κεντρικές Ρυθμίσεις Ημερομηνίας & LOT")
-                c1, c2, c3 = st.columns([2, 1.5, 1])
-                new_cust = c1.text_input("Όνομα Πελάτη", value=base_data["Πελάτης"], key=f"ed_cust_{batch_id}")
-                new_lot_date = c2.text_input("📅 Νέα Ημερομηνία LOT (DD/MM/YYYY)", value=default_lot_date, key=f"ed_lot_date_{batch_id}")
-                new_prod_day = c3.text_input("🔢 Νέα Ημέρα Παραγωγής", value=default_prod_day, max_chars=2, key=f"ed_prod_day_{batch_id}")
-                
-                new_lot_c = f"{new_lot_date.strip()}-{new_prod_day.strip()}"
-                
-                # 🍹 ΔΥΝΑΜΙΚΗ ΑΛΛΑΓΗ ΠΟΣΟΤΗΤΩΝ ΑΝΑ ΚΟΚΤΕΪΛ ΤΟΥ ΠΕΛΑΤΗ
-                st.markdown("#### 🍹 Αλλαγή Ποσοτήτων ανά Κοκτέιλ")
-                unique_cocktails = sub_df["Cocktail"].unique()
-                cocktail_pieces_inputs = {}
-                
-                cc_cols = st.columns(len(unique_cocktails) if len(unique_cocktails) <= 4 else 4)
-                for idx_c, cock in enumerate(unique_cocktails):
-                    cock_rows = sub_df[sub_df["Cocktail"] == cock]
-                    old_pcs = int(cock_rows["Τεμάχια"].iloc[0])
-                    col_to_use = cc_cols[idx_c % len(cc_cols)]
-                    new_pcs = col_to_use.number_input(f"Τμχ: {cock}", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{cock}")
-                    cocktail_pieces_inputs[cock] = {"old_pcs": old_pcs, "new_pcs": new_pcs}
-
-                # 🧪 ΦΟΡΜΑ ΜΕ ΤΑ ΥΛΙΚΑ ΟΛΩΝ ΤΩΝ ΚΟΚΤΕΪΛ (ΠΡΟ-ΣΥΜΠΛΗΡΩΜΕΝΑ ΤΑ LOT ΠΡΩΤΩΝ ΥΛΩΝ)
-                st.markdown("#### 🧪 Έλεγχος Υλικών & LOT Πρώτων Υλών")
-                with st.form(f"edit_batch_form_cust_{batch_id}"):
-                    h_edit = st.columns([1.5, 1.5, 0.8, 1.2, 1.2, 1.2, 1.2])
-                    h_labels = ["Κοκτέιλ", "Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
+                # 🧪 ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΥΛΙΚΩΝ (ΠΡΟ-ΣΥΜΠΛΗΡΩΜΕΝΑ ΤΑ ΥΠΑΡΧΟΝΤΑ LOT ΠΡΩΤΩΝ ΥΛΩΝ)
+                st.markdown("#### 🧪 Έλεγχος Υλικών & LOT Πρώτων Υλών ανά Πελάτη")
+                with st.form(f"edit_form_cocktail_batch_{batch_id}"):
+                    h_edit = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
+                    h_labels = ["Πελάτης", "Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
                     for col, label in zip(h_edit, h_labels): col.caption(label)
-
+                    
                     final_updated_rows = []
                     
-                    for i, idx in enumerate(row_indices):
+                    for i, idx in enumerate(cocktail_df.index):
                         r_d = df_past.loc[idx]
                         orig_row_in_all_logs = df_all_logs.loc[idx]
-                        cocktail_of_row = r_d["Cocktail"]
+                        cust_name = r_d["Πελάτης"]
                         ing_name = r_d["Υλικό"]
                         old_ml = float(r_d["Σύνολο_ML"])
                         
-                        # Υπολογισμός νέων ml αν άλλαξαν τα τεμάχια αυτού του κοκτέιλ
-                        c_info = cocktail_pieces_inputs[cocktail_of_row]
-                        mult = float(c_info["new_pcs"]) / float(c_info["old_pcs"]) if c_info["old_pcs"] != 0 else 1.0
+                        # Υπολογισμός νέων ml με βάση τα νέα τεμάχια του συγκεκριμένου πελάτη
+                        c_set = customer_settings[cust_name]
+                        mult = float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if c_set["old_pcs"] != 0 else 1.0
                         new_ml = old_ml * mult
                         
                         raw_lot = str(r_d["Lot Number"])
@@ -2378,9 +2376,9 @@ elif page == "📦 Lot Παραγωγής":
                         exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
                         while len(lot_parts) < 2: lot_parts.append("")
                         while len(exp_parts) < 2: exp_parts.append("")
-
-                        r = st.columns([1.5, 1.5, 0.8, 1.2, 1.2, 1.2, 1.2])
-                        r[0].write(f"{cocktail_of_row}")
+                        
+                        r = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
+                        r[0].write(f"{cust_name}")
                         r[1].write(f"**{ing_name}**")
                         r[2].write(f"{new_ml:.0f}")
                         
@@ -2396,117 +2394,109 @@ elif page == "📦 Lot Παραγωγής":
                         if pd.isna(u_cost): u_cost = 0.22
                         
                         final_updated_rows.append({
-                            "cocktail": cocktail_of_row, "ing": ing_name, "ml": new_ml,
-                            "lot": final_lot, "exp": final_exp,
-                            "pcs": cocktail_pieces_inputs[cocktail_of_row]["new_pcs"],
-                            "unit_cost": u_cost, "orig_id": orig_row_in_all_logs["id"]
+                            "orig_cust": cust_name, "ing": ing_name, "ml": new_ml,
+                            "lot": final_lot, "exp": final_exp, "u_cost": u_cost,
+                            "orig_id": orig_row_in_all_logs["id"], "orig_time": r_d["Ώρα"]
                         })
                     
                     st.divider()
                     b_save, b_del = st.columns(2)
                     
-                    if b_save.form_submit_button("💾 Αποθήκευση Αλλαγών Πελάτη & LOT", type="primary"):
-                        # 1. Διαγραφή παλιών εγγραφών
+                    if b_save.form_submit_button("💾 Αποθήκευση Αλλαγών Κοκτέιλ", type="primary"):
+                        # 1. Διαγραφή παλιών εγγραφών στην αποθήκη
                         ids_to_del = [f["orig_id"] for f in final_updated_rows]
                         for di in ids_to_del: 
                             supabase.table("production_log").delete().eq("id", di).execute()
                         
-                        # 2. Εισαγωγή νέων εγγραφών με τη νέα ενιαία ημερομηνία
+                        # 2. Εισαγωγή νέων εγγραφών με τα σωστά custom LOT ανά πελάτη
                         new_batch = []
                         for fd in final_updated_rows:
+                            c_set = customer_settings[fd["orig_cust"]]
                             g_calc = fd["ml"]
                             match_i = df_ing[df_ing["Name"] == fd["ing"]]
                             if not match_i.empty: 
                                 g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
                             
                             new_batch.append({
-                                "prod_date": new_lot_date.strip(), 
-                                "prod_time": base_data["Ώρα"], 
-                                "customer": new_cust if new_cust.strip() else "Άγνωστος", 
-                                "cocktail_name": fd["cocktail"], 
-                                "lot_cocktail": new_lot_c, 
-                                "pieces": int(fd["pcs"]), 
+                                "prod_date": c_set["new_lot_date"], 
+                                "prod_time": fd["orig_time"], 
+                                "customer": c_set["new_cust_name"], 
+                                "cocktail_name": sel_cocktail_edit, 
+                                "lot_cocktail": c_set["new_lot_c"], 
+                                "pieces": int(c_set["new_pcs"]), 
                                 "ingredient_name": fd["ing"], "total_ml": fd["ml"], "target_g": round(g_calc, 1), 
                                 "lot_number": fd["lot"], "expiry_date": fd["exp"],
-                                "unit_cost": round(float(fd["unit_cost"]), 4)
+                                "unit_cost": round(float(fd["u_cost"]), 4)
                             })
                         supabase.table("production_log").insert(new_batch).execute()
-
-                        # 3. Αυτόματος Συγχρονισμός και Μεταφορά Ημερομηνίας/Τζίρου στο B2B_ORDERS
-                        try:
-                            old_target_date = datetime.strptime(base_data["Ημερομηνία"], "%d/%m/%Y").strftime("%Y-%m-%d")
-                            new_target_date = datetime.strptime(new_lot_date.strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
-                            
-                            res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", base_data["Πελάτης"]).gte("created_at", f"{old_target_date}T00:00:00").lte("created_at", f"{old_target_date}T23:59:59").execute()
-                            
-                            if res_orders.data:
-                                for order in res_orders.data:
-                                    order_details = str(order.get('order_details', ''))
-                                    
-                                    cust_discount = 0.0
-                                    res_c = supabase.table("customers").select("discount").eq("name", new_cust).execute()
-                                    if res_c.data and res_c.data[0].get("discount"):
-                                        cust_discount = float(res_c.data[0].get("discount"))
+                        
+                        # 3. Αυτόματος Συγχρονισμός και Μεταφορά στο Ταμείο B2B ανά πελάτη
+                        for orig_c, c_set in customer_settings.items():
+                            try:
+                                old_target_date = datetime.strptime(c_set["base_date_str"], "%d/%m/%Y").strftime("%Y-%m-%d")
+                                new_target_date = datetime.strptime(c_set["new_lot_date"], "%d/%m/%Y").strftime("%Y-%m-%d")
+                                
+                                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", orig_c).gte("created_at", f"{old_target_date}T00:00:00").lte("created_at", f"{old_target_date}T23:59:59").execute()
+                                
+                                if res_orders.data:
+                                    for order in res_orders.data:
+                                        order_details = str(order.get('order_details', ''))
+                                        old_str = f"{c_set['old_pcs']} τμχ {sel_cocktail_edit}"
                                         
-                                    lines = order_details.split('\n')
-                                    new_lines = []
-                                    total_amount_before_discount = 0.0
-                                    
-                                    for line in lines:
-                                        if line.strip().startswith("•") or "τμχ" in line:
-                                            replaced = False
-                                            for cock in unique_cocktails:
-                                                if cock in line:
-                                                    new_pcs_val = cocktail_pieces_inputs[cock]["new_pcs"]
-                                                    line_text = f"• {new_pcs_val} τμχ {cock}"
-                                                    current_pcs = new_pcs_val
-                                                    current_cocktail = cock
-                                                    replaced = True
-                                                    break
+                                        if old_str in order_details:
+                                            new_catalog_price = 0.0
+                                            res_p = supabase.table("recipes").select("catalog_price").eq("name", sel_cocktail_edit).execute()
+                                            if res_p.data and res_p.data[0].get("catalog_price"):
+                                                new_catalog_price = float(res_p.data[0].get("catalog_price"))
+                                                
+                                            cust_discount = 0.0
+                                            res_c = supabase.table("customers").select("discount").eq("name", c_set["new_cust_name"]).execute()
+                                            if res_c.data and res_c.data[0].get("discount"):
+                                                cust_discount = float(res_c.data[0].get("discount"))
                                             
-                                            if not replaced:
-                                                line_text = line
-                                                try:
-                                                    parts = line.replace('•', '').split(' τμχ ')
-                                                    current_pcs = int(parts[0].strip())
-                                                    current_cocktail = parts[1].split(' (')[0].strip()
-                                                except:
-                                                    current_pcs = 0
-                                                    current_cocktail = ""
+                                            lines = order_details.split('\n')
+                                            new_lines = []
+                                            total_amount_before_discount = 0.0
+                                            
+                                            for line in lines:
+                                                if line.strip().startswith("•") or "τμχ" in line:
+                                                    if old_str in line:
+                                                        line_text = f"• {c_set['new_pcs']} τμχ {sel_cocktail_edit}"
+                                                        current_pcs = c_set['new_pcs']
+                                                        current_cocktail = sel_cocktail_edit
+                                                        current_price = new_catalog_price
+                                                    else:
+                                                        line_text = line
+                                                        try:
+                                                            parts = line.replace('•', '').split(' τμχ ')
+                                                            current_pcs = int(parts[0].strip())
+                                                            current_cocktail = parts[1].split(' (')[0].strip()
+                                                            res_other_p = supabase.table("recipes").select("catalog_price").eq("name", current_cocktail).execute()
+                                                            current_price = float(res_other_p.data[0].get("catalog_price")) if (res_other_p.data and res_other_p.data[0].get("catalog_price")) else 0.0
+                                                        except:
+                                                            current_pcs = 0
+                                                            current_price = 0.0
                                                     
-                                            res_p = supabase.table("recipes").select("catalog_price").eq("name", current_cocktail).execute()
-                                            current_price = float(res_p.data[0].get("catalog_price")) if (res_p.data and res_p.data[0].get("catalog_price")) else 0.0
-                                            total_amount_before_discount += current_pcs * current_price
-                                            new_lines.append(line_text)
+                                                    total_amount_before_discount += current_pcs * current_price
+                                                    new_lines.append(line_text)
                                             
-                                    final_payable_amount = total_amount_before_discount * (1 - (cust_discount / 100))
-                                    
-                                    has_promo = "ΠΡΟΣΦΟΡΑ 240" in order_details
-                                    if has_promo:
-                                        import re
-                                        m_promo = re.search(r"ΠΡΟΣΦΟΡΑ 240\+24 ΔΩΡΟ στο ([^\]\n]+)", order_details)
-                                        p_cocktail = m_promo.group(1).strip() if m_promo else unique_cocktails[0]
-                                        res_promo_p = supabase.table("recipes").select("catalog_price").eq("name", p_cocktail).execute()
-                                        p_price = float(res_promo_p.data[0].get("catalog_price")) if (res_promo_p.data and res_promo_p.data[0].get("catalog_price")) else 0.0
-                                        final_payable_amount -= (24 * p_price * (1 - (cust_discount / 100)))
-                                        if final_payable_amount < 0: final_payable_amount = 0.0
-                                        
-                                    details_str = "\n".join(new_lines)
-                                    details_str += f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
-                                    if cust_discount > 0: details_str += f"\n[Έκπτωση: {cust_discount}% εφαρμόστηκε]"
-                                    if has_promo: details_str += "\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ]"
-                                    
-                                    supabase.table("b2b_orders").update({
-                                        "customer_name": new_cust,
-                                        "total_amount": round(final_payable_amount, 2),
-                                        "order_details": details_str,
-                                        "created_at": f"{new_target_date}T{base_data['Ώρα']}"
-                                    }).eq("id", order['id']).execute()
-                                    break
-                        except Exception as b2b_err:
-                            st.error(f"Σφάλμα κατά τον συγχρονισμό του ταμείου B2B: {b2b_err}")
-
-                        st.success("✅ Η ημερομηνία, το LOT και οι ποσότητες ενημερώθηκαν αυτόματα για ΟΛΑ τα κοκτέιλ του πελάτη!")
+                                            final_payable_amount = total_amount_before_discount * (1 - (cust_discount / 100))
+                                            
+                                            details_str = "\n".join(new_lines)
+                                            details_str += f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
+                                            if cust_discount > 0: details_str += f"\n[Έκπτωση: {cust_discount}% εφαρμόστηκε]"
+                                            
+                                            supabase.table("b2b_orders").update({
+                                                "customer_name": c_set["new_cust_name"],
+                                                "total_amount": round(final_payable_amount, 2),
+                                                "order_details": details_str,
+                                                "created_at": f"{new_target_date}T{fd['orig_time']}"
+                                            }).eq("id", order['id']).execute()
+                                            break
+                            except Exception as b2b_err:
+                                st.error(f"Σφάλμα κατά τον συγχρονισμό του πελάτη {orig_c}: {b2b_err}")
+                        
+                        st.success("✅ Επιτυχία! Η ημερομηνία παραγωγής και τα LOT ενημερώθηκαν μαζικά για όλους τους πελάτες αυτού του κοκτέιλ!")
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
