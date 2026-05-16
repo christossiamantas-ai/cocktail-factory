@@ -1925,6 +1925,49 @@ elif page == "📦 Lot Παραγωγής":
                 )
                 all_assignments[name] = edited_df
 
+            # =========================================================================
+            # 🌟 ΝΕΟ: ΚΕΝΤΡΙΚΟΣ ΠΙΝΑΚΑΣ LOT ΚΟΚΤΕΪΛ ΑΝΑ ΠΕΛΑΤΗ (ΜΑΖΙΚΗ ΑΛΛΑΓΗ ΜΕΡΑΣ)
+            # =========================================================================
+            unique_customers_in_batch = set()
+            for cocktail_name, edited_df in all_assignments.items():
+                if "Πελάτης" in edited_df.columns and "Τεμάχια" in edited_df.columns:
+                    for _, row in edited_df.iterrows():
+                        if int(row.get("Τεμάχια", 0)) > 0 and str(row.get("Πελάτης", "")).strip():
+                            unique_customers_in_batch.add(str(row.get("Πελάτης", "")).strip())
+
+            cust_lot_config_map = {}
+            if unique_customers_in_batch:
+                st.markdown("### 📅 1β. Ρύθμιση LOT Έτοιμου Κοκτέιλ ανά Πελάτη")
+                st.info("💡 Αν για κάποιον πελάτη μπήκες στο εργαστήριο άλλη μέρα, άλλαξε την Ημερομηνία LOT ή την Ημέρα Παραγωγής του εδώ ΜΙΑ φορά. Θα αλλάξει αυτόματα το LOT σε όλα του τα κοκτέιλ!")
+                
+                cust_lot_data = [{
+                    "Πελάτης": c, 
+                    "Ημερομηνία LOT": formatted_date, 
+                    "Ημέρα Παραγωγής": prod_day
+                } for c in sorted(list(unique_customers_in_batch))]
+                
+                df_cust_lots = pd.DataFrame(cust_lot_data)
+                
+                edited_cust_lots_df = st.data_editor(
+                    df_cust_lots,
+                    hide_index=True,
+                    use_container_width=True,
+                    key=f"cust_cocktail_lot_editor_{reset_key}",
+                    column_config={
+                        "Πελάτης": st.column_config.TextColumn("ΠΕΛΑΤΗΣ", disabled=True),
+                        "Ημερομηνία LOT": st.column_config.TextColumn("ΗΜΕΡΟΜΗΝΙΑ LOT (DD/MM/YYYY)"),
+                        "Ημέρα Παραγωγής": st.column_config.TextColumn("ΗΜΕΡΑ ΠΑΡΑΓΩΓΗΣ (Διψήφιος)", max_chars=2)
+                    }
+                )
+                
+                for _, row in edited_cust_lots_df.iterrows():
+                    c_name_key = row["Πελάτης"]
+                    cust_lot_config_map[c_name_key] = {
+                        "prod_date": str(row["Ημερομηνία LOT"]).strip(),
+                        "lot_cocktail": f"{str(row['Ημερομηνία LOT']).strip()}-{str(row['Ημέρα Παραγωγής']).strip()}"
+                    }
+            # =========================================================================
+
             # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML ---
             ing_totals = {}
             for cocktail_name in selected_cocktails:
