@@ -2276,8 +2276,7 @@ elif page == "📦 Lot Παραγωγής":
                 with st.form(f"edit_batch_form_{batch_id}"):
                     h_edit = st.columns([2, 1, 1.2, 1.2, 1.2, 1.2])
                     h_labels = ["Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
-                    for col, label in zip(h_edit, h_labels):
-                        col.caption(label)
+                    for col, label in zip(h_edit, h_labels): col.caption(label)
 
                     final_updated = []
                     for i, itm in enumerate(display_ingredients):
@@ -2313,6 +2312,22 @@ elif page == "📦 Lot Παραγωγής":
                         for di in ids_to_del: 
                             supabase.table("production_log").delete().eq("id", di).execute()
                         
+                        # --- ΥΠΟΛΟΓΙΣΜΟΣ ΝΕΟΥ ΚΛΕΙΔΩΜΕΝΟΥ ΚΟΣΤΟΥΣ ---
+                        current_unit_cost = 0.22
+                        new_recipe_res = df_rec[df_rec["Ονομα"] == new_cock]
+                        if not new_recipe_res.empty:
+                            new_recipe_row = new_recipe_res.iloc[0]
+                            for idx_ing in range(1, 14):
+                                tmp_ing = str(new_recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{idx_ing}", "ΚΕΝΟ"))
+                                if tmp_ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
+                                    tmp_ml = get_recipe_ml(new_recipe_row, idx_ing)
+                                    tmp_match = df_ing[df_ing["Name"] == tmp_ing]
+                                    if not tmp_match.empty:
+                                        v = float(tmp_match.iloc[0].get("Volume", tmp_match.iloc[0].get("volume", 1)))
+                                        p = float(tmp_match.iloc[0].get("Price", tmp_match.iloc[0].get("price", 0))) 
+                                        if v > 0:
+                                            current_unit_cost += tmp_ml * (p / v)
+
                         new_batch = []
                         for fd in final_updated:
                             g_calc = fd["ml"]
@@ -2324,40 +2339,109 @@ elif page == "📦 Lot Παραγωγής":
                                 "prod_date": base_data["Ημερομηνία"], "prod_time": base_data["Ώρα"], "customer": new_cust if new_cust.strip() else "Άγνωστος", 
                                 "cocktail_name": new_cock, "lot_cocktail": new_lot_c, "pieces": int(new_pcs), 
                                 "ingredient_name": fd["ing"], "total_ml": fd["ml"], "target_g": round(g_calc, 1), 
-                                "lot_number": fd["lot"], "expiry_date": fd["exp"]
+                                "lot_number": fd["lot"], "expiry_date": fd["exp"],
+                                "unit_cost": round(current_unit_cost, 4)
                             })
                         supabase.table("production_log").insert(new_batch).execute()
-                        st.success("✅ Η ποσότητα και η παραγγελία ενημερώθηκαν επιτυχώς!")
+
+                        # =========================================================================
+                        # 🌟 ΑΥΤΟΜΑΤΟΣ ΣΥΓΧΡΟΝΙΣΜΟΣ ΜΕ B2B_ORDERS (ΤΑΜΕΙΟ) 🌟
+                        # =========================================================================
+                        try:
+                            target_date = datetime.strptime(base_data["Ημερομηνία"], "%d/%m/%Y").strftime("%Y-%m-%d")
+                            res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", base_data["Πελάτης"]).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
+                            
+                            if res_orders.data:
+                                for order in res_orders.data:
+                                    order_details = str(order.get('order_details', ''))
+                                    old_str = f"{old_pieces} τμχ {base_data['Cocktail']}"
+                                    
+                                    # Αν βρούμε την οικονομική εγγραφή που περιέχει αυτή την παλιά γραμμή
+                                    if old_str in order_details:
+                                        # 1. Βρίσκουμε την επίσημη τιμή καταλόγου του νέου κοκτέιλ
+                                        new_catalog_price = 0.0
+                                        res_p = supabase.table("recipes").select("catalog_price").eq("name", new_cock).execute()
+                                        if res_p.data and res_p.data[0].get("catalog_price"):
+                                            new_catalog_price = float(res_p.data[0].get("catalog_price"))
+                                            
+                                        # 2. Φορτώνουμε την έκπτωση του (ίσως νέου) πελάτη
+                                        cust_discount = 0.0
+                                        res_c = supabase.table("customers").select("discount").eq("name", new_cust).execute()
+                                        if res_c.data and res_c.data[0].get("discount"):
+                                            cust_discount = float(res_c.data[0].get("discount"))
+
+                                        # 3. Ελέγχουμε αν αυτή η παραγγελία είχε ενεργοποιημένη προσφορά 240+24
+                                        has_promo_240_24 = "ΠΡΟΣΦΟΡΑ 240" in order_details
+                                        promo_cocktail_name = ""
+                                        if "ΔΩΡΟ στο " in order_details:
+                                            import re
+                                            m_promo = re.search(r"ΠΡΟΣΦΟΡΑ 240\+24 ΔΩΡΟ στο ([^\]\n]+)", order_details)
+                                            if m_promo: promo_cocktail_name = m_promo.group(1).strip()
+                                        
+                                        # 4. Ανακατασκευάζουμε τις γραμμές των προϊόντων και ξαναϋπολογίζουμε την Αρχική Αξία
+                                        lines = order_details.split('\n')
+                                        new_lines = []
+                                        total_amount_before_discount = 0.0
+                                        
+                                        for line in lines:
+                                            if line.strip().startswith("•") or "τμχ" in line:
+                                                if old_str in line:
+                                                    # Αντικατάσταση της γραμμής με τα νέα στοιχεία
+                                                    line_text = f"• {new_pcs} τμχ {new_cock}"
+                                                    current_pcs = new_pcs
+                                                    current_cocktail = new_cock
+                                                    current_price = new_catalog_price
+                                                else:
+                                                    # Κρατάμε τις υπόλοιπες γραμμές ως έχουν
+                                                    line_text = line
+                                                    try:
+                                                        parts = line.replace('•', '').split(' τμχ ')
+                                                        current_pcs = int(parts[0].strip())
+                                                        current_cocktail = parts[1].split(' (')[0].strip()
+                                                        res_other_p = supabase.table("recipes").select("catalog_price").eq("name", current_cocktail).execute()
+                                                        current_price = float(res_other_p.data[0].get("catalog_price")) if (res_other_p.data and res_other_p.data[0].get("catalog_price")) else 0.0
+                                                    except:
+                                                        current_pcs = 0
+                                                        current_price = 0.0
+                                                
+                                                total_amount_before_discount += current_pcs * current_price
+                                                new_lines.append(line_text)
+                                        
+                                        # 5. Υπολογισμός τελικής αξίας με εκπτώσεις και προσφορές
+                                        final_payable_amount = total_amount_before_discount * (1 - (cust_discount / 100))
+                                        
+                                        if has_promo_240_24:
+                                            p_cocktail = promo_cocktail_name if promo_cocktail_name else new_cock
+                                            res_promo_p = supabase.table("recipes").select("catalog_price").eq("name", p_cocktail).execute()
+                                            p_price = float(res_promo_p.data[0].get("catalog_price")) if (res_promo_p.data and res_promo_p.data[0].get("catalog_price")) else 0.0
+                                            p_dealer_price = p_price * (1 - (cust_discount / 100))
+                                            final_payable_amount -= (24 * p_dealer_price)
+                                            if final_payable_amount < 0: final_payable_amount = 0.0
+                                        
+                                        # 6. Χτίσιμο του νέου κειμένου λεπτομερειών
+                                        details_str = "\n".join(new_lines)
+                                        details_str += f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
+                                        if cust_discount > 0: details_str += f"\n[Έκπτωση: {cust_discount}% εφαρμόστηκε]"
+                                        if has_promo_240_24:
+                                            if promo_cocktail_name: details_str += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ στο {promo_cocktail_name}]"
+                                            else: details_str += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ]"
+                                                
+                                        # 7. Ενημέρωση στη Supabase
+                                        supabase.table("b2b_orders").update({
+                                            "customer_name": new_cust,
+                                            "total_amount": round(final_payable_amount, 2),
+                                            "order_details": details_str
+                                        }).eq("id", order['id']).execute()
+                                        break
+                        except Exception as b2b_err:
+                            st.error(f"Σφάλμα κατά την αυτόματη ενημέρωση των οικονομικών: {b2b_err}")
+
+                        st.success("✅ Η ποσότητα, τα υλικά και ο τζίρος ενημερώθηκαν επιτυχώς παντού!")
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
 
                     if b_del.form_submit_button("🗑️ Διαγραφή Αυτής της Παραγωγής"):
-                        del_cust = base_data["Πελάτης"]
-                        del_cocktail = base_data["Cocktail"]
-                        del_pieces = old_pieces
-                        del_date_str = base_data["Ημερομηνία"]
-
-                        ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
-                        for di in ids_to_del: 
-                            supabase.table("production_log").delete().eq("id", di).execute()
-                        
-                        try:
-                            target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                            res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
-                            if res_orders.data:
-                                for order in res_orders.data:
-                                    if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
-                                        supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
-                                        st.info("Σβήστηκε και η οικονομική εγγραφή.")
-                                        break 
-                        except Exception as e:
-                            st.error(f"Σφάλμα κατά τη διαγραφή οικονομικών: {e}")
-                            
-                        st.warning("🗑️ Η παραγωγή διαγράφηκε.")
-                        st.cache_data.clear()
-                        time.sleep(1)
-                        st.rerun()
 
         # =========================================================================
         # ΚΑΡΤΕΛΑ 2: ΜΑΖΙΚΗ ΕΝΗΜΕΡΩΣΗ LOT ΑΝΑ ΥΛΙΚΟ (ΟΜΑΔΟΠΟΙΗΜΕΝΟΣ ΠΙΝΑΚΑΣ)
