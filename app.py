@@ -2832,11 +2832,11 @@ elif page == "🧼 Συντήρηση & HACCP":
             st.info("Καμία καταγραφή.")
 
 
-# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ, ΕΚΠΤΩΣΗ & ΔΥΝΑΜΙΚΑ ΔΩΡΑ) ---
+# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ, ΕΚΠΤΩΣΗ & ΙΣΤΟΡΙΚΟ ΠΡΟΣΦΟΡΩΝ) ---
 elif page == "👥 Πελατολόγιο":
     st.header("👥 Διαχείριση Πελατολογίου")
     
-    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ & ΣΥΝΤΑΓΩΝ (Για τιμές μονάδας)
+    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ & ΣΥΝΤΑΓΩΝ
     res_cust = supabase.table("customers").select("*").order("name").execute()
     df_cust = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
 
@@ -2844,7 +2844,12 @@ elif page == "👥 Πελατολόγιο":
     df_recipes = pd.DataFrame(res_rec.data) if res_rec.data else pd.DataFrame()
     recipe_prices = dict(zip(df_recipes['name'], df_recipes['catalog_price'])) if not df_recipes.empty else {}
 
-    tab_crm1, tab_crm2 = st.tabs(["📋 Καρτέλα & Ιστορικό Αγορών", "➕ Προσθήκη Νέου Πελάτη"])
+    # ΠΡΟΣΘΗΚΗ 3ου TAB ΓΙΑ ΤΟ ΙΣΤΟΡΙΚΟ ΤΩΝ ΔΩΡΩΝ
+    tab_crm1, tab_crm2, tab_crm3 = st.tabs([
+        "📋 Καρτέλα & Ιστορικό Αγορών", 
+        "➕ Προσθήκη Νέου Πελάτη", 
+        "🎁 Ιστορικό Προσφορών 240+24"
+    ])
 
     with tab_crm1:
         if not df_cust.empty:
@@ -2911,7 +2916,6 @@ elif page == "👥 Πελατολόγιο":
 
                 st.divider()
 
-                # --- 2. ΔΙΑΧΕΙΡΙΣΗ ΕΚΠΤΩΣΕΩΝ ΚΑΙ ΕΞΥΠΝΩΝ ΔΩΡΩΝ ---
                 st.subheader("💰 Εμπορική Διαχείριση & Εκπτώσεις (%)")
                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
                 
@@ -2923,16 +2927,13 @@ elif page == "👥 Πελατολόγιο":
                         current_amt = float(order['total_amount'])
                         details = str(order['order_details'])
                         
-                        # Βρίσκουμε την Αρχική Αξία
                         base_amt = current_amt
                         match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
                         if match_base:
                             base_amt = float(match_base.group(1))
                             
-                        # Ανιχνεύουμε δυναμικά ποια κοκτέιλ αναφέρονται στη συγκεκριμένη παραγγελία
                         cocktails_in_order = [name for name in recipe_prices.keys() if name in details]
                         
-                        # Υπολογίζουμε το τρέχον ποσοστό έκπτωσης που εμφανίζει η βάση
                         current_discount_pct = 0.0
                         if base_amt > 0 and base_amt > current_amt:
                             current_discount_pct = ((base_amt - current_amt) / base_amt) * 100
@@ -2948,7 +2949,6 @@ elif page == "👥 Πελατολόγιο":
                                                           min_value=0.0, max_value=100.0, 
                                                           value=float(round(current_discount_pct, 1)), step=1.0)
                                 
-                                # ΝΕΟ ΔΥΝΑΜΙΚΟ ΜΕΝΟΥ: Επιλέγεις σε ποιο κοκτέιλ πάει το 240+24
                                 selected_promo_cocktail = c2.selectbox(
                                     "🎁 Εφαρμογή Προσφοράς (240 + 24 Δώρο) στο:",
                                     options=["--- Χωρίς Προσφορά Δώρου ---"] + cocktails_in_order,
@@ -2958,22 +2958,17 @@ elif page == "👥 Πελατολόγιο":
                                 col_b1, col_b2 = st.columns(2)
                                 
                                 if col_b1.form_submit_button("💾 Εφαρμογή & Υπολογισμός", type="primary"):
-                                    # 1. Υπολογίζουμε τη βάση με την εμπορική έκπτωση
                                     discounted_base = base_amt * (1 - (new_pct / 100))
                                     
-                                    # 2. Αν επιλεχθεί κοκτέιλ για δώρο, αφαιρούμε ακριβώς 24 τεμάχια από την αξία ΤΟΥ
                                     if selected_promo_cocktail != "--- Χωρίς Προσφορά Δώρου ---" and selected_promo_cocktail in recipe_prices:
                                         catalog_p = float(recipe_prices[selected_promo_cocktail])
-                                        dealer_p = catalog_p * (1 - (new_pct / 100)) # Τιμή χονδρικής με την έκπτωση
-                                        
-                                        # Αφαιρούμε την αξία των 24 δώρων
+                                        dealer_p = catalog_p * (1 - (new_pct / 100))
                                         new_price = discounted_base - (24 * dealer_p)
                                     else:
                                         new_price = discounted_base
                                         
                                     if new_price < 0: new_price = 0.0
 
-                                    # 3. Καθαρισμός και ανανέωση του κειμένου
                                     clean_details = details.split("\n[")[0].split("\n\n[")[0].strip()
                                     new_details = clean_details + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
                                     
@@ -2982,7 +2977,6 @@ elif page == "👥 Πελατολόγιο":
                                     if selected_promo_cocktail != "--- Χωρίς Προσφορά Δώρου ---":
                                         new_details += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ στο {selected_promo_cocktail}]"
                                     
-                                    # Ενημέρωση στη Supabase
                                     supabase.table("b2b_orders").update({
                                         "total_amount": round(new_price, 2),
                                         "order_details": new_details
@@ -3024,6 +3018,53 @@ elif page == "👥 Πελατολόγιο":
                 else:
                     st.error("Το όνομα είναι υποχρεωτικό!")
 
+    # =========================================================================
+    # 🌟 ΝΕΟ TAB: ΚΕΝΤΡΙΚΟ LOG ΠΡΟΣΦΟΡΩΝ (ΠΟΙΟΣ, ΠΟΤΕ & ΣΕ ΠΟΙΟ ΠΡΟΪΟΝ)
+    # =========================================================================
+    with tab_crm3:
+        st.subheader("🎁 Μητρώο Καταγραφής Προσφορών 240+24")
+        st.write("Εδώ εμφανίζονται όλες οι παραγγελίες που έχουν κάνει χρήση της προσφοράς δώρου.")
+        
+        # Τραβάμε ΟΛΕΣ τις εγγραφές από τα b2b_orders
+        res_all_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).execute()
+        
+        if res_all_orders.data:
+            import re
+            df_all_o = pd.DataFrame(res_all_orders.data)
+            
+            # Φιλτράρουμε μόνο όσες περιέχουν τη λέξη "ΠΡΟΣΦΟΡΑ 240+24" στα details
+            df_promos = df_all_o[df_all_o['order_details'].str.contains("ΠΡΟΣΦΟΡΑ 240", na=False)].copy()
+            
+            if not df_promos.empty:
+                # Έξυπνη συνάρτηση για να τραβάει το όνομα του κοκτέιλ μέσα από τις αγκύλες []
+                def get_promo_cocktail(detail_str):
+                    match = re.search(r"ΠΡΟΣΦΟΡΑ 240\+24 ΔΩΡΟ στο ([^\]\n]+)", str(detail_str))
+                    if match:
+                        return match.group(1).strip()
+                    if "ΠΡΟΣΦΟΡΑ 240+24" in str(detail_str):
+                        return "Γενική / Παλιό Μοντέλο"
+                    return "-"
+                
+                # Μορφοποίηση δεδομένων για τον τελικό πίνακα
+                df_promos['Ημερομηνία'] = pd.to_datetime(df_promos['created_at']).dt.strftime('%d/%m/%Y %H:%M')
+                df_promos['Κοκτέιλ Προσφοράς'] = df_promos['order_details'].apply(get_promo_cocktail)
+                
+                # Εμφάνιση του πίνακα
+                st.dataframe(
+                    df_promos.rename(columns={
+                        "customer_name": "ΠΕΛΑΤΗΣ",
+                        "total_amount": "ΤΕΛΙΚΟ ΠΟΣΟ (€)"
+                    })[["Ημερομηνία", "ΠΕΛΑΤΗΣ", "Κοκτέιλ Προσφοράς", "ΤΕΛΙΚΟ ΠΟΣΟ (€)"]],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Ένα ωραίο στατιστικό metric
+                st.metric("Συνολικές Προσφορές που Δόθηκαν", f"{len(df_promos)} φορές")
+            else:
+                st.info("📭 Δεν έχει βρεθεί καμία καταχώρηση προσφοράς μέχρι στιγμής.")
+        else:
+            st.info("Δεν υπάρχουν ακόμα οικονομικές εγγραφές στη βάση.")
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
