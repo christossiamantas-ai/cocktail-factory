@@ -1867,7 +1867,7 @@ elif page == "📦 Lot Παραγωγής":
 
     st.divider()
 
-    # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ ---
+    # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ (ΕΞΥΠΝΟΣ PARSER ΓΙΑ ΤΜΧ & X) ---
     default_cocktails_list = []
     default_quantities = {}
     
@@ -1875,12 +1875,32 @@ elif page == "📦 Lot Παραγωγής":
         details = active_order.get('order_details', '')
         lines = details.split('\n')
         for line in lines:
+            # Αγνοούμε κενές γραμμές ή γραμμές με επεξηγήσεις/έκπτωσεις
+            if not line.strip() or "[" in line or "Αρχική" in line or "Έκπτωση" in line:
+                 Kakao = True
+                continue
             try:
-                parts = line.split('x ')
-                qty = int(parts[0].replace('•', '').strip())
-                c_name = parts[1].split(' (')[0].strip()
+                # Καθαρίζουμε τη γραμμή από την κουκκίδα
+                clean_line = line.replace('•', '').strip()
+                
+                # 1. Δοκιμή αν η γραμμή έχει τη μορφή "120 τμχ Μοχίτο"
+                if " τμχ " in clean_line:
+                    parts = clean_line.split(" τμχ ")
+                    qty = int(parts[0].strip())
+                    c_name = parts[1].split(' (')[0].strip()
+                
+                # 2. Δοκιμή αν η γραμμή έχει τη μορφή "120 x Μοχίτο"
+                elif "x " in clean_line:
+                    parts = clean_line.split("x ")
+                    qty = int(parts[0].strip())
+                    c_name = parts[1].split(' (')[0].strip()
+                else:
+                    continue
+                
+                # Αν το κοκτέιλ υπάρχει στις συνταγές μας, το κλειδώνουμε
                 if c_name in df_rec["Ονομα"].unique():
-                    default_cocktails_list.append(c_name)
+                    if c_name not in default_cocktails_list:
+                        default_cocktails_list.append(c_name)
                     default_quantities[c_name] = qty
             except Exception:
                 pass
