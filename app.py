@@ -2185,7 +2185,7 @@ elif page == "📦 Lot Παραγωγής":
             </style></head>
             <body><div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
             """
-            for p in df_past["Πελάτης"].unique():
+        for p in df_past["Πελάτης"].unique():
                 p_df = df_past[df_past["Πελάτης"] == p]
                 html_pro += f"<div class='customer-section'><strong>ΠΕΛΑΤΗΣ:</strong> {p}</div>"
                 for cock in p_df["Cocktail"].unique():
