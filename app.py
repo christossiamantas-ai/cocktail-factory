@@ -117,8 +117,23 @@ if not check_password():
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; }
-    [data-testid="stMetricValue"] { font-size: 28px; color: #00ffcc; }
-    div[data-testid="stMetric"] { background-color: #1e2129; border: 1px solid #333; padding: 15px; border-radius: 10px; box-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
+    
+    /* Ρυθμίσεις για τα νούμερα στα κουτάκια (Metrics) */
+    [data-testid="stMetricValue"] { 
+        font-size: 24px !important; /* Το μικρύναμε λίγο (από 28) για να χωράνε οι χιλιάδες */
+        color: #00ffcc; 
+        white-space: nowrap !important; /* ΑΥΤΟ ΕΙΝΑΙ ΤΟ ΜΑΓΙΚΟ: Απαγορεύει το κόψιμο με (...) */
+    }
+    
+    div[data-testid="stMetric"] { 
+        background-color: #1e2129; 
+        border: 1px solid #333; 
+        padding: 15px; 
+        border-radius: 10px; 
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.5); 
+        overflow: visible !important; /* Επιτρέπει στο κείμενο να απλωθεί αν χρειαστεί */
+    }
+    
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #3e4451; color: white; border: none; }
     .stButton>button:hover { border: 1px solid #00ffcc; color: #00ffcc; }
     </style>
