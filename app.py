@@ -2172,7 +2172,7 @@ elif page == "📦 Lot Παραγωγής":
 
             # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
             # 1. ΕΠΑΓΓΕΛΜΑΤΙΚΟ ΔΕΛΤΙΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ
-            html_pro = f"""
+        html_pro = f"""
             <html>
             <head><meta charset='UTF-8'><style>
                 body {{ font-family: sans-serif; color: #333; }}
