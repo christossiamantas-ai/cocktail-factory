@@ -2042,72 +2042,87 @@ elif page == "📦 Lot Παραγωγής":
 
         st.divider()
 
-        # --- ΚΥΡΙΟΣ ΠΙΝΑΚΑΣ ΜΑΖΙΚΗΣ ΔΙΟΡΘΩΣΗΣ LOT ---
-        st.markdown("### 📋 Λίστα Εγγραφών (Μαζική Διόρθωση LOT)")
-        st.info("💡 Μπορείτε να αλλάξετε τα πεδία 'Lot Number' και 'Ημ. Λήξης' απευθείας στον πίνακα για οποιαδήποτε γραμμή και να πατήσετε Αποθήκευση.")
+        # --- ΚΥΡΙΟΣ ΠΙΝΑΚΑΣ ΜΑΖΙΚΗΣ ΔΙΟΡΘΩΣΗΣ LOT (ΟΜΑΔΟΠΟΙΗΜΕΝΟΣ) ---
+        st.markdown("### 📋 Συνολικά LOT Πρώτων Υλών (Έξυπνη Διόρθωση)")
+        st.info("💡 Αλλάξτε το Lot ή τη Λήξη σε ένα υλικό, και η αλλαγή θα περάσει αυτόματα σε ΟΛΑ τα cocktails της λίστας που το χρησιμοποιούν!")
 
         if df_filtered.empty:
             st.warning("Δεν βρέθηκαν εγγραφές με τα συγκεκριμένα φίλτρα.")
         else:
-            # Επιλέγουμε τις στήλες που θα εμφανιστούν
-            df_to_edit = df_filtered[[
-                "id", "Ημερομηνία", "Ώρα", "Πελάτης", "Cocktail", "Τεμάχια", 
-                "Υλικό", "Σύνολο_ML", "Lot Number", "Ημ_Λήξης"
-            ]].copy()
-            
-            # Εμφάνιση του Editable DataFrame
-            edited_df = st.data_editor(
-                df_to_edit,
+            # 1. Ομαδοποιούμε τα δεδομένα ανά Υλικό για να φαίνεται κάθε υλικό μόνο μία φορά
+            # Κρατάμε το πρώτο LOT/Λήξη που βρίσκει για το καθένα (συνήθως είναι ίδιο για όλη τη μέρα)
+            df_grouped = df_filtered.groupby("Υλικό").agg({
+                "Σύνολο_ML": "sum",
+                "Lot Number": "first",
+                "Ημ_Λήξης": "first"
+            }).reset_index()
+
+            # 2. Εμφάνιση του Editable DataFrame
+            edited_summary = st.data_editor(
+                df_grouped,
                 column_config={
-                    "id": st.column_config.NumberColumn("ID", disabled=True),
-                    "Ημερομηνία": st.column_config.TextColumn("Ημερομηνία", disabled=True),
-                    "Ώρα": st.column_config.TextColumn("Ώρα", disabled=True),
-                    "Πελάτης": st.column_config.TextColumn("Πελάτης", disabled=True),
-                    "Cocktail": st.column_config.TextColumn("Cocktail", disabled=True),
-                    "Τεμάχια": st.column_config.NumberColumn("Τμχ", disabled=True),
-                    "Υλικό": st.column_config.TextColumn("Υλικό", disabled=True),
-                    "Σύνολο_ML": st.column_config.NumberColumn("ml", disabled=True),
-                    "Lot Number": st.column_config.TextColumn("Lot Number (Αλλαγή)"),
-                    "Ημ_Λήξης": st.column_config.TextColumn("Ημ. Λήξης (Αλλαγή)")
+                    "Υλικό": st.column_config.TextColumn("ΠΡΩΤΗ ΥΛΗ", disabled=True),
+                    "Σύνολο_ML": st.column_config.NumberColumn("ΣΥΝΟΛΟ (ml)", disabled=True),
+                    "Lot Number": st.column_config.TextColumn("LOT ΗΜΕΡΑΣ (Αλλαγή)"),
+                    "Ημ_Λήξης": st.column_config.TextColumn("ΛΗΞΗ ΗΜΕΡΑΣ (Αλλαγή)")
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="bulk_lot_editor"
+                key="grouped_lot_editor"
             )
             
             # --- ΚΟΥΜΠΙ ΑΥΤΟΜΑΤΗΣ ΕΝΗΜΕΡΩΣΗΣ ΣΤΗ ΒΑΣΗ ---
-            col_btn1, col_btn2 = st.columns([1, 4])
+            col_btn1, col_btn2 = st.columns([1.5, 4])
             with col_btn1:
-                save_bulk = st.button("💾 Αποθήκευση Αλλαγών LOT", type="primary", use_container_width=True)
+                save_grouped = st.button("💾 Ενημέρωση LOT σε όλα τα Cocktail", type="primary", use_container_width=True)
                 
-            if save_bulk:
-                success_count = 0
+            if save_grouped:
+                updates_made = 0
                 try:
-                    for idx, row in edited_df.iterrows():
-                        original_row = df_to_edit.iloc[idx]
-                        if (row["Lot Number"] != original_row["Lot Number"]) or (row["Ημ_Λήξης"] != original_row["Ημ_Λήξης"]):
-                            # Έλεγχος για να μην αποθηκευτούν τυχόν κενά ως "nan"
-                            new_lot = "" if pd.isna(row["Lot Number"]) else str(row["Lot Number"]).strip()
-                            new_exp = "" if pd.isna(row["Ημ_Λήξης"]) else str(row["Ημ_Λήξης"]).strip()
+                    for idx, row in edited_summary.iterrows():
+                        # Παίρνουμε τις αρχικές τιμές πριν την επεξεργασία
+                        orig_lot = str(df_grouped.loc[idx, "Lot Number"])
+                        orig_exp = str(df_grouped.loc[idx, "Ημ_Λήξης"])
+                        
+                        # Παίρνουμε τις νέες τιμές από τον πίνακα
+                        new_lot = str(row["Lot Number"])
+                        new_exp = str(row["Ημ_Λήξης"])
+                        
+                        # Αν ο χρήστης άλλαξε κάτι σε αυτό το υλικό...
+                        if new_lot != orig_lot or new_exp != orig_exp:
+                            # Καθαρισμός των "nan"
+                            clean_lot = "" if pd.isna(row["Lot Number"]) or new_lot == "nan" else new_lot.strip()
+                            clean_exp = "" if pd.isna(row["Ημ_Λήξης"]) or new_exp == "nan" else new_exp.strip()
                             
-                            supabase.table("production_log").update({
-                                "lot_number": new_lot,
-                                "expiry_date": new_exp
-                            }).eq("id", int(row["id"])).execute()
-                            success_count += 1
+                            # Φτιάχνουμε το query: Αλλάζουμε το LOT όπου το υλικό είναι το συγκεκριμένο
+                            query = supabase.table("production_log").update({
+                                "lot_number": clean_lot,
+                                "expiry_date": clean_exp
+                            }).eq("ingredient_name", row["Υλικό"])
+                            
+                            # Εφαρμόζουμε και τα φίλτρα (Ημερομηνία/Πελάτη) για να μην αλλάξουμε LOT παλιών ημερών!
+                            if sel_hist_date != "-- Όλες οι Ημερομηνίες --":
+                                query = query.eq("prod_date", sel_hist_date)
+                            if sel_customer != "-- Όλοι οι Πελάτες --":
+                                query = query.eq("customer", sel_customer)
+                            if sel_cocktail != "-- Όλα τα Cocktails --":
+                                query = query.eq("cocktail_name", sel_cocktail)
+                                
+                            query.execute()
+                            updates_made += 1
                     
-                    if success_count > 0:
-                        st.success(f"🎉 Ενημερώθηκαν επιτυχώς {success_count} εγγραφές υλικών στη Supabase!")
+                    if updates_made > 0:
+                        st.success("✅ Καταπληκτικά! Τα νέα LOT περάστηκαν αυτόματα σε όλες τις συνταγές της επιλογής σας.")
                         st.cache_data.clear()
                         time.sleep(1.5)
                         st.rerun()
                     else:
-                        st.info("Δεν εντοπίστηκε καμία αλλαγή στα LOT ή στις Ημερομηνίες για να αποθηκευτεί.")
+                        st.info("Δεν εντοπίστηκε καμία αλλαγή για να αποθηκευτεί.")
                         
                 except Exception as e:
-                    st.error(f"Σφάλμα κατά τη μαζική ενημέρωση: {e}")
+                    st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
-            st.divider()
+        st.divider()
 
             # --- ΠΑΛΙΑ ΛΟΓΙΚΗ ΔΙΑΓΡΑΦΗΣ ΟΛΟΚΛΗΡΗΣ ΠΑΡΑΓΩΓΗΣ ---
             with st.expander("🗑️ Διαγραφή Ολόκληρης Παραγωγής (Προχωρημένο)"):
