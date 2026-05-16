@@ -1877,7 +1877,6 @@ elif page == "📦 Lot Παραγωγής":
         for line in lines:
             # Αγνοούμε κενές γραμμές ή γραμμές με επεξηγήσεις/έκπτωσεις
             if not line.strip() or "[" in line or "Αρχική" in line or "Έκπτωση" in line:
-                 Kakao = True
                 continue
             try:
                 # Καθαρίζουμε τη γραμμή από την κουκκίδα
