@@ -2196,7 +2196,7 @@ elif page == "📦 Lot Παραγωγής":
                     for _, row in c_df.iterrows():
                         html_pro += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f}</td><td>{row['Στόχος_Γραμμάρια']}g</td><td>{row['Lot Number']}</td><td>{row['Ημ_Λήξης']}</td></tr>"
                     html_pro += "</tbody></table>"
-            html_pro += "</body></html>"
+        html_pro += "</body></html>"
 
             # --- 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME) ---
             df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
