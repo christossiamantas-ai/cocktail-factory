@@ -2231,7 +2231,7 @@ elif page == "📦 Lot Παραγωγής":
                 </div>
             """
             
-            for cock in df_daily["Cocktail"].unique():
+        for cock in df_daily["Cocktail"].unique():
                 c_data = df_daily[df_daily["Cocktail"] == cock]
                 html_daily += f"""
                 <h2 class='cocktail-header'>🍹 {cock}</h2>
