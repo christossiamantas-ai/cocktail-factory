@@ -2294,7 +2294,7 @@ elif page == "📦 Lot Παραγωγής":
         # ΚΑΡΤΕΛΑ 1: ΤΡΟΠΟΠΟΙΗΣΗ ΣΥΓΚΕΚΡΙΜΕΝΗΣ ΠΑΡΑΓΩΓΗΣ (ΑΛΛΑΓΗ ΤΕΜΑΧΙΩΝ/ΠΟΣΟΤΗΤΩΝ)
         # =========================================================================
         with tab_edit_batch:
-            st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT Πελατών")
+            st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT")
             
             # 🌟 ΦΙΛΤΡΑΡΙΣΜΑ ΑΝΑ ΚΟΚΤΕΪΛ (ΑΠΟ ΤΑ ΥΠΑΡΧΟΝΤΑ ΤΗΣ ΗΜΕΡΑΣ)
             unique_cocktails_of_day = df_past["Cocktail"].unique() if not df_past.empty else []
@@ -2309,10 +2309,31 @@ elif page == "📦 Lot Παραγωγής":
                 cocktail_df = df_past[df_past["Cocktail"] == sel_cocktail_edit]
                 unique_customers = cocktail_df["Πελάτης"].unique()
                 
-                # 📅 ΠΙΝΑΚΑΣ ΡΥΘΜΙΣΗΣ LOT & ΠΟΣΟΤΗΤΩΝ ΑΝΑ ΠΕΛΑΤΗ
-                st.markdown(f"#### 👥 Πελάτες που παρήγγειλαν {sel_cocktail_edit}")
-                st.info("💡 Αλλάξτε την Ημερομηνία LOT ή την Ημέρα Παραγωγής ξεχωριστά για κάθε πελάτη. Τα υλικά από κάτω θα ενημερωθούν αυτόματα!")
+                # Βρίσκουμε τις αρχικές τιμές LOT από τον πρώτο πελάτη για να τις βάλουμε ως προεπιλογή
+                first_cust_df = cocktail_df[cocktail_df["Πελάτης"] == unique_customers[0]]
+                old_lot_cocktail = str(first_cust_df.iloc[0]["LOT_Cocktail"])
+                if "-" in old_lot_cocktail:
+                    parts_lot = old_lot_cocktail.split("-")
+                    default_lot_date = parts_lot[0].strip()
+                    default_prod_day = parts_lot[1].strip()
+                else:
+                    default_lot_date = str(first_cust_df.iloc[0]["Ημερομηνία"])
+                    default_prod_day = default_lot_date.split("/")[0] if "/" in default_lot_date else "01"
+
+                # =========================================================================
+                # 🌟 ΚΕΝΤΡΙΚΗ ΡΥΘΜΙΣΗ (ΜΙΑ ΦΟΡΑ ΓΙΑ ΟΛΟΥΣ ΤΟΥΣ ΠΕΛΑΤΕΣ ΤΟΥ ΚΟΚΤΕΪΛ)
+                # =========================================================================
+                st.markdown(f"#### 📅 Κεντρικό LOT Παραγωγής για το {sel_cocktail_edit}")
+                c_g1, c_g2 = st.columns([2, 2])
+                new_global_lot_date = c_g1.text_input("📅 Κοινή Ημερομηνία LOT (DD/MM/YYYY)", value=default_lot_date, key=f"global_ldate_{batch_id}")
+                new_global_prod_day = c_g2.text_input("🔢 Κοινή Ημέρα Παραγωγής (Διψήφιος)", value=default_prod_day, max_chars=2, key=f"global_pday_{batch_id}")
                 
+                global_lot_c = f"{new_global_lot_date.strip()}-{new_global_prod_day.strip()}"
+                st.divider()
+                # =========================================================================
+
+                # 👥 ΛΙΣΤΑ ΠΕΛΑΤΩΝ ΜΟΝΟ ΓΙΑ ΟΝΟΜΑ & ΤΕΜΑΧΙΑ
+                st.markdown("#### 👥 Κατανόηση Ποσοτήτων ανά Πελάτη")
                 customer_settings = {}
                 
                 for cust in unique_customers:
@@ -2320,28 +2341,17 @@ elif page == "📦 Lot Παραγωγής":
                     base_cust = cust_df.iloc[0]
                     old_pcs = int(base_cust["Τεμάχια"])
                     
-                    # Αυτόματο σπάσιμο του υπάρχοντος LOT του κοκτέιλ
-                    old_lot_cocktail = str(base_cust["LOT_Cocktail"])
-                    if "-" in old_lot_cocktail:
-                        parts_lot = old_lot_cocktail.split("-")
-                        default_lot_date = parts_lot[0].strip()
-                        default_prod_day = parts_lot[1].strip()
-                    else:
-                        default_lot_date = str(base_cust["Ημερομηνία"])
-                        default_prod_day = default_lot_date.split("/")[0] if "/" in default_lot_date else "01"
-                    
                     st.markdown(f"**👤 Πελάτης: {cust}**")
-                    c1, c2, c3, c4 = st.columns([1.5, 1.5, 1, 1.2])
+                    c1, c2 = st.columns([2, 1])
                     new_cust_name = c1.text_input("Όνομα Πελάτη", value=cust, key=f"ed_cname_{batch_id}_{cust}")
-                    new_lot_date = c2.text_input("📅 Ημερομηνία LOT", value=default_lot_date, key=f"ed_ldate_{batch_id}_{cust}")
-                    new_prod_day = c3.text_input("🔢 Ημ. Παραγωγής", value=default_prod_day, max_chars=2, key=f"ed_pday_{batch_id}_{cust}")
-                    new_pcs = c4.number_input("📦 Τεμάχια", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{cust}")
+                    new_pcs = c2.number_input("📦 Τεμάχια Παραγωγής", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{cust}")
                     
+                    # Όλοι οι πελάτες κλειδώνουν στην κεντρική ημερομηνία που γράφτηκε μία φορά πάνω
                     customer_settings[cust] = {
                         "new_cust_name": new_cust_name.strip(),
-                        "new_lot_date": new_lot_date.strip(),
-                        "new_prod_day": new_prod_day.strip(),
-                        "new_lot_c": f"{new_lot_date.strip()}-{new_prod_day.strip()}",
+                        "new_lot_date": new_global_lot_date.strip(),
+                        "new_prod_day": new_global_prod_day.strip(),
+                        "new_lot_c": global_lot_c,
                         "new_pcs": new_pcs,
                         "old_pcs": old_pcs,
                         "base_date_str": base_cust["Ημερομηνία"]
@@ -2408,7 +2418,7 @@ elif page == "📦 Lot Παραγωγής":
                         for di in ids_to_del: 
                             supabase.table("production_log").delete().eq("id", di).execute()
                         
-                        # 2. Εισαγωγή νέων εγγραφών με τα σωστά custom LOT ανά πελάτη
+                        # 2. Εισαγωγή νέων εγγραφών με το κοινό LOT σε όλους τους πελάτες
                         new_batch = []
                         for fd in final_updated_rows:
                             c_set = customer_settings[fd["orig_cust"]]
@@ -2496,7 +2506,7 @@ elif page == "📦 Lot Παραγωγής":
                             except Exception as b2b_err:
                                 st.error(f"Σφάλμα κατά τον συγχρονισμό του πελάτη {orig_c}: {b2b_err}")
                         
-                        st.success("✅ Επιτυχία! Η ημερομηνία παραγωγής και τα LOT ενημερώθηκαν μαζικά για όλους τους πελάτες αυτού του κοκτέιλ!")
+                        st.success("✅ Επιτυχία! Το LOT και η ημερομηνία άλλαξαν ΜΙΑ φορά και εφαρμόστηκαν σε όλους τους πελάτες αυτού του κοκτέιλ!")
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
