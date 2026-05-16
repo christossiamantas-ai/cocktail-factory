@@ -2049,15 +2049,12 @@ elif page == "📦 Lot Παραγωγής":
         if df_filtered.empty:
             st.warning("Δεν βρέθηκαν εγγραφές με τα συγκεκριμένα φίλτρα.")
         else:
-            # 1. Ομαδοποιούμε τα δεδομένα ανά Υλικό για να φαίνεται κάθε υλικό μόνο μία φορά
-            # Κρατάμε το πρώτο LOT/Λήξη που βρίσκει για το καθένα (συνήθως είναι ίδιο για όλη τη μέρα)
             df_grouped = df_filtered.groupby("Υλικό").agg({
                 "Σύνολο_ML": "sum",
                 "Lot Number": "first",
                 "Ημ_Λήξης": "first"
             }).reset_index()
 
-            # 2. Εμφάνιση του Editable DataFrame
             edited_summary = st.data_editor(
                 df_grouped,
                 column_config={
@@ -2071,7 +2068,6 @@ elif page == "📦 Lot Παραγωγής":
                 key="grouped_lot_editor"
             )
             
-            # --- ΚΟΥΜΠΙ ΑΥΤΟΜΑΤΗΣ ΕΝΗΜΕΡΩΣΗΣ ΣΤΗ ΒΑΣΗ ---
             col_btn1, col_btn2 = st.columns([1.5, 4])
             with col_btn1:
                 save_grouped = st.button("💾 Ενημέρωση LOT σε όλα τα Cocktail", type="primary", use_container_width=True)
@@ -2080,27 +2076,21 @@ elif page == "📦 Lot Παραγωγής":
                 updates_made = 0
                 try:
                     for idx, row in edited_summary.iterrows():
-                        # Παίρνουμε τις αρχικές τιμές πριν την επεξεργασία
                         orig_lot = str(df_grouped.loc[idx, "Lot Number"])
                         orig_exp = str(df_grouped.loc[idx, "Ημ_Λήξης"])
                         
-                        # Παίρνουμε τις νέες τιμές από τον πίνακα
                         new_lot = str(row["Lot Number"])
                         new_exp = str(row["Ημ_Λήξης"])
                         
-                        # Αν ο χρήστης άλλαξε κάτι σε αυτό το υλικό...
                         if new_lot != orig_lot or new_exp != orig_exp:
-                            # Καθαρισμός των "nan"
                             clean_lot = "" if pd.isna(row["Lot Number"]) or new_lot == "nan" else new_lot.strip()
                             clean_exp = "" if pd.isna(row["Ημ_Λήξης"]) or new_exp == "nan" else new_exp.strip()
                             
-                            # Φτιάχνουμε το query: Αλλάζουμε το LOT όπου το υλικό είναι το συγκεκριμένο
                             query = supabase.table("production_log").update({
                                 "lot_number": clean_lot,
                                 "expiry_date": clean_exp
                             }).eq("ingredient_name", row["Υλικό"])
                             
-                            # Εφαρμόζουμε και τα φίλτρα (Ημερομηνία/Πελάτη) για να μην αλλάξουμε LOT παλιών ημερών!
                             if sel_hist_date != "-- Όλες οι Ημερομηνίες --":
                                 query = query.eq("prod_date", sel_hist_date)
                             if sel_customer != "-- Όλοι οι Πελάτες --":
@@ -2124,226 +2114,220 @@ elif page == "📦 Lot Παραγωγής":
 
         st.divider()
 
-            # --- ΠΑΛΙΑ ΛΟΓΙΚΗ ΔΙΑΓΡΑΦΗΣ ΟΛΟΚΛΗΡΗΣ ΠΑΡΑΓΩΓΗΣ ---
-            with st.expander("🗑️ Διαγραφή Ολόκληρης Παραγωγής (Προχωρημένο)"):
-                st.warning("Εάν θέλετε να διαγράψετε μια ολόκληρη παραγωγή (όλα της τα υλικά), επιλέξτε την από κάτω:")
-                
-                batches = df_past.groupby(['Ώρα', 'Πελάτης', 'Cocktail', 'LOT_Cocktail']).groups
-                options = ["-- Επιλέξτε Παραγωγή για Διαγραφή --"]
-                batch_mapping = {}
-                
-                for (time_v, cust, cock, lot_c), indices in batches.items():
-                    label = f"🍹 {cock} | 👤 {cust} | 🕒 {time_v} | LOT: {lot_c}"
-                    options.append(label)
-                    batch_mapping[label] = list(indices)
+        # --- ΠΑΛΙΑ ΛΟΓΙΚΗ ΔΙΑΓΡΑΦΗΣ ΟΛΟΚΛΗΡΗΣ ΠΑΡΑΓΩΓΗΣ ---
+        with st.expander("🗑️ Διαγραφή Ολόκληρης Παραγωγής (Προχωρημένο)"):
+            st.warning("Εάν θέλετε να διαγράψετε μια ολόκληρη παραγωγή (όλα της τα υλικά), επιλέξτε την από κάτω:")
+            
+            batches = df_past.groupby(['Ώρα', 'Πελάτης', 'Cocktail', 'LOT_Cocktail']).groups
+            options = ["-- Επιλέξτε Παραγωγή για Διαγραφή --"]
+            batch_mapping = {}
+            
+            for (time_v, cust, cock, lot_c), indices in batches.items():
+                label = f"🍹 {cock} | 👤 {cust} | 🕒 {time_v} | LOT: {lot_c}"
+                options.append(label)
+                batch_mapping[label] = list(indices)
 
-                selected_del_batch = st.selectbox("Επιλέξτε Παραγωγή:", options)
+            selected_del_batch = st.selectbox("Επιλέξτε Παραγωγή:", options)
+            
+            if selected_del_batch != "-- Επιλέξτε Παραγωγή για Διαγραφή --":
+                del_indices = batch_mapping[selected_del_batch]
+                base_data = df_past.loc[del_indices[0]]
+                old_pieces = int(base_data["Τεμάχια"])
                 
-                if selected_del_batch != "-- Επιλέξτε Παραγωγή για Διαγραφή --":
-                    del_indices = batch_mapping[selected_del_batch]
-                    base_data = df_past.loc[del_indices[0]]
-                    old_pieces = int(base_data["Τεμάχια"])
+                if st.button("🗑️ Οριστική Διαγραφή", type="primary"):
+                    del_cust = base_data["Πελάτης"]
+                    del_cocktail = base_data["Cocktail"]
+                    del_pieces = old_pieces
+                    del_date_str = base_data["Ημερομηνία"]
+
+                    ids_to_del = df_all_logs.loc[del_indices, "id"].tolist()
+                    for di in ids_to_del: 
+                        supabase.table("production_log").delete().eq("id", di).execute()
                     
-                    if st.button("🗑️ Οριστική Διαγραφή", type="primary"):
-                        del_cust = base_data["Πελάτης"]
-                        del_cocktail = base_data["Cocktail"]
-                        del_pieces = old_pieces
-                        del_date_str = base_data["Ημερομηνία"]
-
-                        # 1. ΔΙΑΓΡΑΦΗ ΑΠΟ ΤΗΝ ΠΑΡΑΓΩΓΗ
-                        ids_to_del = df_all_logs.loc[del_indices, "id"].tolist()
-                        for di in ids_to_del: 
-                            supabase.table("production_log").delete().eq("id", di).execute()
+                    try:
+                        target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                        res_orders = supabase.table("b2b_orders")\
+                            .select("*")\
+                            .eq("customer_name", del_cust)\
+                            .gte("created_at", f"{target_date}T00:00:00")\
+                            .lte("created_at", f"{target_date}T23:59:59")\
+                            .execute()
                         
-                        # 2. ΔΙΑΓΡΑΦΗ ΑΠΟ ΤΟ ΠΕΛΑΤΟΛΟΓΙΟ (b2b_orders)
-                        try:
-                            target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                            res_orders = supabase.table("b2b_orders")\
-                                .select("*")\
-                                .eq("customer_name", del_cust)\
-                                .gte("created_at", f"{target_date}T00:00:00")\
-                                .lte("created_at", f"{target_date}T23:59:59")\
-                                .execute()
-                            
-                            if res_orders.data:
-                                for order in res_orders.data:
-                                    if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
-                                        supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
-                                        st.info("Σβήστηκε και η οικονομική εγγραφή της παραγγελίας.")
-                                        break 
-                        except Exception as e:
-                            st.error(f"Σφάλμα κατά τη διαγραφή οικονομικών: {e}")
-                            
-                        st.warning("✅ Η παραγωγή και η οικονομική εγγραφή διαγράφηκαν.")
-                        st.cache_data.clear()
-                        time.sleep(1.5)
-                        st.rerun()
+                        if res_orders.data:
+                            for order in res_orders.data:
+                                if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
+                                    supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
+                                    st.info("Σβήστηκε και η οικονομική εγγραφή της παραγγελίας.")
+                                    break 
+                    except Exception as e:
+                        st.error(f"Σφάλμα κατά τη διαγραφή οικονομικών: {e}")
+                        
+                    st.warning("✅ Η παραγωγή και η οικονομική εγγραφή διαγράφηκαν.")
+                    st.cache_data.clear()
+                    time.sleep(1.5)
+                    st.rerun()
 
-            st.divider()
-            
-            # Δημιουργία δυναμικών τίτλων και ονομάτων αρχείων βάσει του φίλτρου πελάτη
-            cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
-            file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
+        st.divider()
+        
+        # Δημιουργία δυναμικών τίτλων και ονομάτων αρχείων βάσει του φίλτρου πελάτη
+        cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
+        file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
-            # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
-            # 1. ΕΠΑΓΓΕΛΜΑΤΙΚΟ ΔΕΛΤΙΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ
-            html_pro = f"""
-            <html>
-            <head><meta charset='UTF-8'><style>
-                body {{ font-family: sans-serif; color: #333; }}
-                .document-header {{ text-align: center; border-bottom: 2px solid #444; padding-bottom: 10px; }}
-                .customer-section {{ background-color: #f2f2f2; padding: 10px; border: 1px solid #ccc; margin-top: 20px; }}
-                .cocktail-title {{ color: #d32f2f; border-left: 5px solid #d32f2f; padding-left: 10px; margin: 15px 0 5px 0; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }}
-                th {{ background-color: #444; color: white; padding: 8px; text-align: left; }}
-                td {{ border: 1px solid #ddd; padding: 6px; }}
-            </style></head>
-            <body><div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
-            """
-            for p in df_past["Πελάτης"].unique():
-                p_df = df_past[df_past["Πελάτης"] == p]
-                html_pro += f"<div class='customer-section'><strong>ΠΕΛΑΤΗΣ:</strong> {p}</div>"
-                for cock in p_df["Cocktail"].unique():
-                    c_df = p_df[p_df["Cocktail"] == cock]
-                    c_lot = c_df["LOT_Cocktail"].iloc[0] # ΤΟ ΣΩΣΤΟ LOT ΑΝΑ COCKTAIL
-                    html_pro += f"<h3 class='cocktail-title'>{cock}</h3><p style='font-size:12px;margin:0;'>Ποσότητα: <b>{c_df['Τεμάχια'].iloc[0]} τμχ</b> | LOT: <b>{c_lot}</b></p>"
-                    html_pro += "<table><thead><tr><th>Πρώτη Ύλη</th><th>Σύνολο ml</th><th>Βάρος (g)</th><th>Lot Number</th><th>Ημ. Λήξης</th></tr></thead><tbody>"
-                    for _, row in c_df.iterrows():
-                        html_pro += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f}</td><td>{row['Στόχος_Γραμμάρια']}g</td><td>{row['Lot Number']}</td><td>{row['Ημ_Λήξης']}</td></tr>"
-                    html_pro += "</tbody></table>"
-            html_pro += "</body></html>"
+        # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
+        # 1. ΕΠΑΓΓΕΛΜΑΤΙΚΟ ΔΕΛΤΙΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ
+        html_pro = f"""
+        <html>
+        <head><meta charset='UTF-8'><style>
+            body {{ font-family: sans-serif; color: #333; }}
+            .document-header {{ text-align: center; border-bottom: 2px solid #444; padding-bottom: 10px; }}
+            .customer-section {{ background-color: #f2f2f2; padding: 10px; border: 1px solid #ccc; margin-top: 20px; }}
+            .cocktail-title {{ color: #d32f2f; border-left: 5px solid #d32f2f; padding-left: 10px; margin: 15px 0 5px 0; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }}
+            th {{ background-color: #444; color: white; padding: 8px; text-align: left; }}
+            td {{ border: 1px solid #ddd; padding: 6px; }}
+        </style></head>
+        <body><div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
+        """
+        for p in df_past["Πελάτης"].unique():
+            p_df = df_past[df_past["Πελάτης"] == p]
+            html_pro += f"<div class='customer-section'><strong>ΠΕΛΑΤΗΣ:</strong> {p}</div>"
+            for cock in p_df["Cocktail"].unique():
+                c_df = p_df[p_df["Cocktail"] == cock]
+                c_lot = c_df["LOT_Cocktail"].iloc[0] # ΤΟ ΣΩΣΤΟ LOT ΑΝΑ COCKTAIL
+                html_pro += f"<h3 class='cocktail-title'>{cock}</h3><p style='font-size:12px;margin:0;'>Ποσότητα: <b>{c_df['Τεμάχια'].iloc[0]} τμχ</b> | LOT: <b>{c_lot}</b></p>"
+                html_pro += "<table><thead><tr><th>Πρώτη Ύλη</th><th>Σύνολο ml</th><th>Βάρος (g)</th><th>Lot Number</th><th>Ημ. Λήξης</th></tr></thead><tbody>"
+                for _, row in c_df.iterrows():
+                    html_pro += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f}</td><td>{row['Στόχος_Γραμμάρια']}g</td><td>{row['Lot Number']}</td><td>{row['Ημ_Λήξης']}</td></tr>"
+                html_pro += "</tbody></table>"
+        html_pro += "</body></html>"
 
-            # --- 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME) ---
-            df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
-            
-            # Υπολογισμός Γενικού Συνόλου Ημέρας / Πελάτη
-            grand_total_pcs = df_daily["Τεμάχια"].sum()
-            total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
+        # --- 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME) ---
+        df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
+        
+        grand_total_pcs = df_daily["Τεμάχια"].sum()
+        total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
-            html_daily = f"""
-            <html><head><meta charset='UTF-8'><style>
-                body {{ font-family: sans-serif; padding: 20px; }}
-                .header {{ text-align: center; border-bottom: 3px solid #d32f2f; margin-bottom: 30px; }}
-                .cocktail-header {{ background-color: #d32f2f; color: white; padding: 10px; margin-top: 20px; border-radius: 5px 5px 0 0; }}
-                table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
-                th {{ background-color: #444; color: white; padding: 10px; text-align: left; }}
-                td {{ padding: 10px; border: 1px solid #ddd; }}
-                .grand-total {{ 
-                    margin-top: 30px; 
-                    padding: 20px; 
-                    background-color: #f8f9fa; 
-                    border: 2px solid #d32f2f; 
-                    text-align: center; 
-                    font-size: 1.4em; 
-                    border-radius: 10px;
-                }}
-                .grand-total b {{ color: #d32f2f; font-size: 1.6em; }}
-            </style></head>
-            <body>
-                <div class='header'>
-                    <h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1>
-                    <p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p>
-                </div>
-            """
-            
-            for cock in df_daily["Cocktail"].unique():
-                c_data = df_daily[df_daily["Cocktail"] == cock]
-                html_daily += f"""
-                <h2 class='cocktail-header'>🍹 {cock}</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>LOT Number</th>
-                            <th>Πελάτης</th>
-                            <th>Ποσότητα (τμχ)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                """
-                for _, row in c_data.iterrows():
-                    html_daily += f"<tr><td>{row['LOT_Cocktail']}</td><td>{row['Πελάτης']}</td><td>{row['Τεμάχια']}</td></tr>"
-                
-                # Υποσύνολο ανά Cocktail
-                html_daily += f"""
-                    <tr style='background:#f9f9f9; font-weight:bold;'>
-                        <td colspan='2' style='text-align: right;'>ΜΕΡΙΚΟ ΣΥΝΟΛΟ {cock}:</td>
-                        <td>{c_data['Τεμάχια'].sum()} τμχ</td>
-                    </tr>
-                </tbody></table>
-                """
-
-            # Προσθήκη του Γενικού Συνόλου στο τέλος της σελίδας
+        html_daily = f"""
+        <html><head><meta charset='UTF-8'><style>
+            body {{ font-family: sans-serif; padding: 20px; }}
+            .header {{ text-align: center; border-bottom: 3px solid #d32f2f; margin-bottom: 30px; }}
+            .cocktail-header {{ background-color: #d32f2f; color: white; padding: 10px; margin-top: 20px; border-radius: 5px 5px 0 0; }}
+            table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
+            th {{ background-color: #444; color: white; padding: 10px; text-align: left; }}
+            td {{ padding: 10px; border: 1px solid #ddd; }}
+            .grand-total {{ 
+                margin-top: 30px; 
+                padding: 20px; 
+                background-color: #f8f9fa; 
+                border: 2px solid #d32f2f; 
+                text-align: center; 
+                font-size: 1.4em; 
+                border-radius: 10px;
+            }}
+            .grand-total b {{ color: #d32f2f; font-size: 1.6em; }}
+        </style></head>
+        <body>
+            <div class='header'>
+                <h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1>
+                <p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p>
+            </div>
+        """
+        
+        for cock in df_daily["Cocktail"].unique():
+            c_data = df_daily[df_daily["Cocktail"] == cock]
             html_daily += f"""
-                <div class='grand-total'>
-                    {total_label_text}<br>
-                    <b>{grand_total_pcs} Τεμάχια</b>
-                </div>
-            </body></html>
-            """
-            
-            # --- 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME) ---
-            df_prep = df_past.groupby("Υλικό").agg({
-                "Σύνολο_ML": "sum", 
-                "Στόχος_Γραμμάρια": "sum",
-                "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan']))),
-                "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan'])))
-            }).reset_index()
-
-            html_prep = f"""
-            <html><head><meta charset='UTF-8'><style>
-                body {{ font-family: sans-serif; padding: 30px; }}
-                .header {{ text-align: center; border-bottom: 4px solid #2980b9; margin-bottom: 30px; }}
-                table {{ width: 100%; border-collapse: collapse; }}
-                th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
-                td {{ border: 1px solid #bdc3c7; padding: 10px; }}
-                .lot-info {{ font-size: 0.9em; color: #555; }}
-            </style></head>
-            <body>
-                <div class='header'>
-                    <h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1>
-                    <p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Πρώτη Ύλη</th>
-                            <th>Συνολική Ποσότητα (ml)</th>
-                            <th>Συνολικό Βάρος (g)</th>
-                            <th>Lot & Λήξη Πρ. Ύλης</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
-            for _, row in df_prep.iterrows():
-                display_parts = []
-                if row['Lot Number']: 
-                    display_parts.append(row['Lot Number'])
-                if row['Ημ_Λήξης']: 
-                    display_parts.append(row['Ημ_Λήξης'])
-                
-                lot_text = " | ".join(display_parts) if display_parts else "-"
-                
-                html_prep += f"""
+            <h2 class='cocktail-header'>🍹 {cock}</h2>
+            <table>
+                <thead>
                     <tr>
-                        <td><b>{row['Υλικό']}</b></td>
-                        <td>{row['Σύνολο_ML']:.0f} ml</td>
-                        <td>{row['Στόχος_Γραμμάρια']:.1f} g</td>
-                        <td class='lot-info'>{lot_text}</td>
+                        <th>LOT Number</th>
+                        <th>Πελάτης</th>
+                        <th>Ποσότητα (τμχ)</th>
                     </tr>
-                """
-            html_prep += "</tbody></table></body></html>"
+                </thead>
+                <tbody>
+            """
+            for _, row in c_data.iterrows():
+                html_daily += f"<tr><td>{row['LOT_Cocktail']}</td><td>{row['Πελάτης']}</td><td>{row['Τεμάχια']}</td></tr>"
+            
+            html_daily += f"""
+                <tr style='background:#f9f9f9; font-weight:bold;'>
+                    <td colspan='2' style='text-align: right;'>ΜΕΡΙΚΟ ΣΥΝΟΛΟ {cock}:</td>
+                    <td>{c_data['Τεμάχια'].sum()} τμχ</td>
+                </tr>
+            </tbody></table>
+            """
 
-            # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD ---
-            col_p1, col_p2, col_p3 = st.columns(3)
-            col_p1.download_button("🖨️ Δελτίο Ιχνηλασιμότητας", data=html_pro, file_name=f"Trace_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
-            col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
-            col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
+        html_daily += f"""
+            <div class='grand-total'>
+                {total_label_text}<br>
+                <b>{grand_total_pcs} Τεμάχια</b>
+            </div>
+        </body></html>
+        """
+        
+        # --- 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME) ---
+        df_prep = df_past.groupby("Υλικό").agg({
+            "Σύνολο_ML": "sum", 
+            "Στόχος_Γραμμάρια": "sum",
+            "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan']))),
+            "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan'])))
+        }).reset_index()
+
+        html_prep = f"""
+        <html><head><meta charset='UTF-8'><style>
+            body {{ font-family: sans-serif; padding: 30px; }}
+            .header {{ text-align: center; border-bottom: 4px solid #2980b9; margin-bottom: 30px; }}
+            table {{ width: 100%; border-collapse: collapse; }}
+            th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
+            td {{ border: 1px solid #bdc3c7; padding: 10px; }}
+            .lot-info {{ font-size: 0.9em; color: #555; }}
+        </style></head>
+        <body>
+            <div class='header'>
+                <h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1>
+                <p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Πρώτη Ύλη</th>
+                        <th>Συνολική Ποσότητα (ml)</th>
+                        <th>Συνολικό Βάρος (g)</th>
+                        <th>Lot & Λήξη Πρ. Ύλης</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        for _, row in df_prep.iterrows():
+            display_parts = []
+            if row['Lot Number']: 
+                display_parts.append(row['Lot Number'])
+            if row['Ημ_Λήξης']: 
+                display_parts.append(row['Ημ_Λήξης'])
+            
+            lot_text = " | ".join(display_parts) if display_parts else "-"
+            
+            html_prep += f"""
+                <tr>
+                    <td><b>{row['Υλικό']}</b></td>
+                    <td>{row['Σύνολο_ML']:.0f} ml</td>
+                    <td>{row['Στόχος_Γραμμάρια']:.1f} g</td>
+                    <td class='lot-info'>{lot_text}</td>
+                </tr>
+            """
+        html_prep += "</tbody></table></body></html>"
+
+        # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD ---
+        col_p1, col_p2, col_p3 = st.columns(3)
+        col_p1.download_button("🖨️ Δελτίο Ιχνηλασιμότητας", data=html_pro, file_name=f"Trace_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
+        col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
+        col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
     
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
     
-    # 1. Ανάκτηση όλων των δεδομένων από τη Supabase
     res_all = supabase.table("production_log").select("*").execute()
     
     if res_all.data:
@@ -2357,7 +2341,6 @@ elif page == "📦 Lot Παραγωγής":
             "pieces": "Τεμάχια"
         })
 
-        # Δημιουργία Tabs για οργάνωση
         tab_filter, tab_recall_tool = st.tabs(["📋 Αναζήτηση & Φίλτρα", "🚨 Recall Tool (Ανάκληση)"])
 
         with tab_filter:
@@ -2368,7 +2351,6 @@ elif page == "📦 Lot Παραγωγής":
                 search_ing = f3.multiselect("Πρώτη Ύλη:", sorted(df_all["Υλικό"].unique()), key="filter_ing")
                 search_lot = st.text_input("🔢 Αναζήτηση βάσει οποιουδήποτε LOT:", placeholder="π.χ. 040526 ή L123...", key="filter_lot_txt")
 
-            # Εφαρμογή Φίλτρων
             dff = df_all.copy()
             if search_cust: dff = dff[dff["Πελάτης"].isin(search_cust)]
             if search_cock: dff = dff[dff["Cocktail"].isin(search_cock)]
