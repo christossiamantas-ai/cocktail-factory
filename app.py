@@ -2142,21 +2142,27 @@ elif page == "📦 Lot Παραγωγής":
                                 # Αν είναι καταχώρηση παραγωγής από το μηδέν, φτιάχνουμε νέα εγγραφή Dashboard
                                 cust_prod = {}
                                 
-                                # Βρίσκουμε ακριβώς πόσα τεμάχια από ποιο κοκτέιλ πήρε ο κάθε πελάτης
+                                # Κρατάμε τα τεμάχια και τη custom ημερομηνία του κάθε πελάτη
                                 for entry in lot_entries:
                                     c = entry["customer"]
                                     if c not in cust_prod:
-                                        cust_prod[c] = {}
+                                        cust_prod[c] = {"products": {}, "date": entry["prod_date"]}
                                     cocktail = entry["cocktail_name"]
-                                    # Κρατάμε τα τεμάχια (overwrite επειδή η λούπα έχει πολλές πρώτες ύλες για το ίδιο κοκτέιλ)
-                                    cust_prod[c][cocktail] = entry["pieces"]
+                                    cust_prod[c]["products"][cocktail] = entry["pieces"]
                                 
                                 # Για κάθε πελάτη, φτιάχνουμε το οικονομικό δελτίο
-                                for c_name, products in cust_prod.items():
+                                for c_name, c_data in cust_prod.items():
+                                    products = c_data["products"]
+                                    p_date_str = c_data["date"]
+                                    
                                     if c_name == "Λιανική / Άγνωστος" and not products:
                                         continue 
                                         
-                                    # Παίρνουμε την έκπτωση του πελάτη από το CRM
+                                    try:
+                                        date_iso = datetime.strptime(p_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                    except:
+                                        date_iso = selected_date.isoformat()
+                                        
                                     discount = 0.0
                                     try:
                                         res_c = supabase.table("customers").select("discount").eq("name", c_name).execute()
@@ -2168,36 +2174,31 @@ elif page == "📦 Lot Παραγωγής":
                                     total_amount = 0.0
                                     details_lines = []
                                     
-                                    # Υπολογίζουμε αξία ανά κοκτέιλ
                                     for cocktail, pcs in products.items():
                                         price = 0.0
                                         try:
-                                            
-                                    # Διαβάζει σωστά την τιμή από τον πίνακα συνταγών
                                             res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
                                             if res_p.data and res_p.data[0].get("catalog_price"):
                                                 price = float(res_p.data[0].get("catalog_price"))
                                         except Exception:
-                                             pass
+                                            pass
                                             
                                         line_total = price * pcs
                                         total_amount += line_total
                                         details_lines.append(f"• {pcs} τμχ {cocktail}")
-                                    
-                                    # Εφαρμογή της προκαθορισμένης έκπτωσης
+                                        
                                     final_total = total_amount * (1 - (discount / 100))
                                     details_str = "\n".join(details_lines)
                                     
                                     if discount > 0:
                                         details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
                                         
-                                    # Καταχώρηση στη Supabase για το Dashboard!
                                     supabase.table("b2b_orders").insert({
                                         "customer_name": c_name,
                                         "total_amount": final_total,
                                         "order_details": details_str,
                                         "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
-                                        "created_at": selected_date.isoformat() # <--- ΕΔΩ ΕΙΝΑΙ Η ΔΙΟΡΘΩΣΗ
+                                        "created_at": f"{date_iso}T{current_time}:00"
                                     }).execute()
                             
                             # Ολοκλήρωση διαδικασίας
