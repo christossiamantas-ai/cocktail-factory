@@ -1452,6 +1452,90 @@ elif page == "📊 Εμπορική Πολιτική":
 # --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΤΕΛΙΚΗ ΕΚΔΟΣΗ ΜΕ ΟΛΑ ΤΑ ΣΤΟΙΧΕΙΑ) ---
 elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
+
+    # =====================================================================
+    # 🚨 ΠΡΟΣΩΡΙΝΟ ΕΡΓΑΛΕΙΟ: ΕΠΑΝΑΦΟΡΑ ΧΑΜΕΝΩΝ ΠΑΡΑΓΓΕΛΙΩΝ (ΜΙΑ ΧΡΗΣΗ)
+    # =====================================================================
+    st.error("🚨 Εργαλείο Ανεύρεσης & Επαναφοράς Χαμένων Παραγγελίων B2B")
+    if st.button("🔍 Αυτόματη Ανίχνευση και Επαναφορά"):
+        with st.spinner("Γίνεται σκανάρισμα της αποθήκης για χαμένες εγγραφές..."):
+            # 1. Φορτώνουμε όλα τα δεδομένα για τη διασταύρωση
+            res_p = supabase.table("production_log").select("*").execute()
+            res_o = supabase.table("b2b_orders").select("*").execute()
+            res_c = supabase.table("customers").select("name, discount").execute()
+            res_r = supabase.table("recipes").select("name, catalog_price").execute()
+            
+            df_p = pd.DataFrame(res_p.data) if res_p.data else pd.DataFrame()
+            df_o = pd.DataFrame(res_o.data) if res_o.data else pd.DataFrame()
+            cust_discounts = {c["name"]: float(c["discount"]) if c.get("discount") else 0.0 for c in res_c.data} if res_c.data else {}
+            recipe_prices = {r["name"]: float(r["catalog_price"]) if r.get("catalog_price") else 0.0 for r in res_r.data} if res_r.data else {}
+            
+            if not df_p.empty:
+                # Ομαδοποιούμε την παραγωγή ανά Ημερομηνία, Ώρα και Πελάτη
+                grouped_p = df_p.groupby(['prod_date', 'prod_time', 'customer'])
+                restored_counter = 0
+                
+                for (p_date, p_time, p_cust), group in grouped_p:
+                    # Αγνοούμε τη γενική λιανική αν δεν έχει προϊόντα
+                    if p_cust == "Λιανική / Άγνωστος":
+                        continue
+                    
+                    # Μετατροπή της ημερομηνίας DD/MM/YYYY σε YYYY-MM-DD
+                    try:
+                        date_iso = datetime.strptime(p_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+                    except:
+                        continue
+                    
+                    # Έλεγχος αν υπάρχει ήδη καταχωρημένη παραγγελία για αυτόν τον πελάτη αυτή τη μέρα
+                    exists = False
+                    if not df_o.empty:
+                        matching_orders = df_o[(df_o['customer_name'] == p_cust) & (df_o['created_at'].str.contains(date_iso, na=False))]
+                        if not matching_orders.empty:
+                            exists = True
+                    
+                    # ΑΝ ΔΕΝ ΥΠΑΡΧΕΙ, ΤΗΝ ΑΝΑΚΑΤΑΣΚΕΥΑΖΟΥΜΕ!
+                    if not exists:
+                        products = {}
+                        for _, row in group.iterrows():
+                            cocktail = row["cocktail_name"]
+                            pcs = int(row["pieces"])
+                            products[cocktail] = pcs
+                        
+                        total_amount = 0.0
+                        details_lines = []
+                        
+                        for cocktail, pcs in products.items():
+                            price = recipe_prices.get(cocktail, 0.0)
+                            line_total = price * pcs
+                            total_amount += line_total
+                            details_lines.append(f"• {pcs} τμχ {cocktail}")
+                        
+                        discount = cust_discounts.get(p_cust, 0.0)
+                        final_total = total_amount * (1 - (discount / 100))
+                        details_str = "\n".join(details_lines)
+                        
+                        if discount > 0:
+                            details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
+                        
+                        # Εισαγωγή της χαμένης παραγγελίας στο Ταμείο
+                        supabase.table("b2b_orders").insert({
+                            "customer_name": p_cust,
+                            "total_amount": round(final_total, 2),
+                            "order_details": details_str,
+                            "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
+                            "created_at": f"{date_iso}T{p_time}:00"
+                        }).execute()
+                        
+                        restored_counter += 1
+                
+                if restored_counter > 0:
+                    st.success(f"✅ Επιτυχία! Ανιχνεύθηκαν και επαναφέρθηκαν {restored_counter} χαμένες παραγγελίες στο B2B!")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.info("Δεν βρέθηκαν ορφανές παραγωγές. Όλες οι εγγραφές της αποθήκης είναι συγχρονισμένες με το Ταμείο!")
+    st.divider()
     
     import plotly.express as px
 
