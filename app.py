@@ -11,6 +11,18 @@ from supabase import create_client, Client
 import zipfile
 import io
 from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
+def format_gr(value):
+    """Μετατρέπει αριθμούς σε ελληνική μορφή (π.χ. 11.246,50)"""
+    if pd.isna(value) or value == "":
+        return "0,00"
+    try:
+        # Μετατροπή σε float και format με αγγλικό στυλ
+        eng_format = f"{float(value):,.2f}"
+        # Αντιστροφή: Το κόμμα γίνεται X, η τελεία κόμμα, το X τελεία
+        gr_format = eng_format.replace(",", "X").replace(".", ",").replace("X", ".")
+        return gr_format
+    except:
+        return str(value)
 
 st.set_page_config(page_title="DC Cabclub", layout="wide")
 
