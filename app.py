@@ -29,6 +29,27 @@ def format_gr(value, decimals=2):
     except:
         return str(value)
 
+def delete_order_and_production_safely(order_id, customer_name, created_at_timestamp, order_details):
+    """
+    Διαγράφει οριστικά μια παραγγελία από τα οικονομικά (b2b_orders)
+    και καθαρίζει αυτόματα όλα τα αναλωμένα υλικά από την αποθήκη (production_log)
+    """
+    # 1. Διαγραφή από τα οικονομικά (b2b_orders)
+    supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+    
+    # 2. Μετατροπή timestamp της παραγγελίας στη μορφή ημερομηνίας του production_log (DD/MM/YYYY)
+    order_date = pd.to_datetime(created_at_timestamp).strftime('%d/%m/%Y')
+    
+    # 3. Φέρνουμε όλες τις γραμμές παραγωγής αυτού του πελάτη για τη συγκεκριμένη ημέρα
+    res_prod = supabase.table("production_log").select("id, cocktail_name").eq("customer", customer_name).eq("prod_date", order_date).execute()
+    
+    if res_prod.data:
+        for row in res_prod.data:
+            # Έξυπνος έλεγχος: Αν το κοκτέιλ της γραμμής παραγωγής αναφέρεται μέσα στις λεπτομέρειες 
+            # της παραγγελίας που διαγράφουμε, τότε σβήνουμε τα υλικά του!
+            if str(row['cocktail_name']) in str(order_details):
+                supabase.table("production_log").delete().eq("id", row['id']).execute()
+
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
