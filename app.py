@@ -2203,7 +2203,7 @@ elif page == "📦 Lot Παραγωγής":
             
             # Υπολογισμός Γενικού Συνόλου Ημέρας / Πελάτη
         grand_total_pcs = df_daily["Τεμάχια"].sum()
-            total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
+        total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
             html_daily = f"""
             <html><head><meta charset='UTF-8'><style>
