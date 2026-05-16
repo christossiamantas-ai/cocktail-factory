@@ -128,16 +128,16 @@ def check_password():
 if not check_password():
     st.stop()
 
-# Προσθήκη CSS
+# Προσθήκη CSS (Διορθωμένο μέγεθος Metrics)
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; }
     
     /* Ρυθμίσεις για τα νούμερα στα κουτάκια (Metrics) */
     [data-testid="stMetricValue"] { 
-        font-size: 24px !important; /* Το μικρύναμε λίγο (από 28) για να χωράνε οι χιλιάδες */
+        font-size: 18px !important; /* Το μικρύναμε στο 18px για να χωράνε άνετα τα εκατομμύρια! */
         color: #00ffcc; 
-        white-space: nowrap !important; /* ΑΥΤΟ ΕΙΝΑΙ ΤΟ ΜΑΓΙΚΟ: Απαγορεύει το κόψιμο με (...) */
+        white-space: nowrap !important; /* Απαγορεύει το κόψιμο στην επόμενη γραμμή */
     }
     
     div[data-testid="stMetric"] { 
@@ -146,7 +146,7 @@ st.markdown("""
         padding: 15px; 
         border-radius: 10px; 
         box-shadow: 2px 2px 10px rgba(0,0,0,0.5); 
-        overflow: visible !important; /* Επιτρέπει στο κείμενο να απλωθεί αν χρειαστεί */
+        overflow: visible !important;
     }
     
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #3e4451; color: white; border: none; }
