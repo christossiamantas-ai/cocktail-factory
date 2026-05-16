@@ -2068,9 +2068,55 @@ elif page == "📦 Lot Παραγωγής":
                 key="grouped_lot_editor"
             )
             
-            col_btn1, col_btn2 = st.columns([1.5, 4])
+            # --- ΔΗΜΙΟΥΡΓΙΑ HTML ΦΥΛΛΟΥ ΚΑΤΑΓΡΑΦΗΣ (ΓΙΑ ΕΚΤΥΠΩΣΗ & ΣΤΥΛΟ) ---
+            lot_sheet_html = f"""
+            <html><head><meta charset='UTF-8'><style>
+                body {{ font-family: sans-serif; padding: 20px; }}
+                .header {{ text-align: center; border-bottom: 3px solid #333; margin-bottom: 30px; padding-bottom: 10px; }}
+                table {{ width: 100%; border-collapse: collapse; }}
+                th {{ background-color: #f0f0f0; border: 2px solid #333; padding: 12px; font-size: 14px; text-align: left; }}
+                /* Το padding: 22px δίνει αρκετό ύψος στο κελί για να γράφει ο συνεργάτης άνετα με το στυλό */
+                td {{ border: 1px solid #555; padding: 22px 10px; font-size: 14px; }}
+            </style></head>
+            <body>
+                <div class='header'>
+                    <h2>📝 Φύλλο Καταγραφής LOT Πρώτων Υλών</h2>
+                    <p>Ημερομηνία Παραγωγής: <b>{sel_hist_date}</b></p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40%;">Πρώτη Ύλη</th>
+                            <th style="width: 15%;">Σύνολο (ml)</th>
+                            <th style="width: 25%;">LOT Number (Γράψτε εδώ)</th>
+                            <th style="width: 20%;">Ημ. Λήξης (Γράψτε εδώ)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """
+            for _, row in df_grouped.iterrows():
+                lot_sheet_html += f"""
+                    <tr>
+                        <td><b>{row['Υλικό']}</b></td>
+                        <td>{row['Σύνολο_ML']} ml</td>
+                        <td></td> <td></td> </tr>
+                """
+            lot_sheet_html += "</tbody></table></body></html>"
+
+            # --- ΚΟΥΜΠΙΑ: ΑΠΟΘΗΚΕΥΣΗ & ΕΚΤΥΠΩΣΗ ΦΥΛΛΟΥ ---
+            st.write("") # Λίγο κενό
+            col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 1])
             with col_btn1:
                 save_grouped = st.button("💾 Ενημέρωση LOT σε όλα τα Cocktail", type="primary", use_container_width=True)
+            with col_btn2:
+                safe_date = sel_hist_date.replace("/", "_") if sel_hist_date != "-- Όλες οι Ημερομηνίες --" else "ALL"
+                st.download_button(
+                    label="🖨️ Εκτύπωση Κενού Φύλλου Καταγραφής LOT",
+                    data=lot_sheet_html,
+                    file_name=f"Blank_LOT_Sheet_{safe_date}.html",
+                    mime="text/html",
+                    use_container_width=True
+                )
                 
             if save_grouped:
                 updates_made = 0
@@ -2102,7 +2148,7 @@ elif page == "📦 Lot Παραγωγής":
                             updates_made += 1
                     
                     if updates_made > 0:
-                        st.success("✅ Καταπληκτικά! Τα νέα LOT περάστηκαν αυτόματα σε όλες τις συνταγές της επιλογής σας.")
+                        st.success("✅ Καταπληκτικά! Τα νέα LOT περάστηκαν αυτόματα σε όλες τις συνταγές.")
                         st.cache_data.clear()
                         time.sleep(1.5)
                         st.rerun()
