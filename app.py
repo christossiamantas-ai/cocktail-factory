@@ -2493,630 +2493,630 @@ if st.button("📑 Προετοιμασία Πλήρους Ιστορικού γ
 
 # --- 1.6 ΣΥΝΤΗΡΗΣΗ & HACCP (ULΤΙΜΑΤΕ VERSION) ---
 elif page == "🧼 Συντήρηση & HACCP":
-st.header("🧼 Ψηφιακό Μητρώο HACCP & Καθαρισμού")
-
-# --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ ΓΙΑ REPORT ΜΕ ΥΠΟΓΡΑΦΗ ---
-def generate_haccp_report_html(data, title="ΑΡΧΕΙΟ HACCP"):
-    rows_html = ""
-    for _, r in data.iterrows():
-        extra_info = r['cleaner'] if r['log_type'] == "Καθαρισμός" else r['notes']
-        rows_html += f"<tr><td>{r['date']}</td><td>{r['time']}</td><td>{r['item']}</td><td>{r['value']}</td><td>{r['status']}</td><td>{extra_info}</td><td>{r['user_name']}</td></tr>"
+    st.header("🧼 Ψηφιακό Μητρώο HACCP & Καθαρισμού")
     
-    return f"""
-    <html><head><meta charset='UTF-8'><style>
-        body {{ font-family: DejaVu Sans, Arial, sans-serif; padding: 30px; }}
-        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-        th {{ background: #1e3a8a; color: white; padding: 10px; font-size: 12px; }}
-        td {{ border: 1px solid #000; padding: 8px; text-align: center; font-size: 10px; }}
-        h2 {{ text-align: center; color: #1e3a8a; text-transform: uppercase; }}
-        .signature-section {{ margin-top: 50px; width: 100%; }}
-        .sig-box {{ float: right; width: 250px; text-align: center; border-top: 1px solid #000; padding-top: 10px; margin-top: 20px; font-weight: bold; }}
-        .date-box {{ float: left; width: 200px; text-align: center; border-top: 1px solid #000; padding-top: 10px; margin-top: 20px; }}
-    </style></head><body>
-        <h2>CABCLUB COCKTAILS - {title}</h2>
-        <table><thead><tr><th>Ημ/νία</th><th>Ώρα</th><th>Στοιχείο</th><th>Τιμή/Τύπος</th><th>Κατάσταση</th><th>Λεπτομέρειες/Καθαριστικά</th><th>Υπεύθυνος</th></tr></thead>
-        <tbody>{rows_html}</tbody></table>
-        <div class='signature-section'>
-            <div class='date-box'>Ημερομηνία Ελέγχου</div>
-            <div class='sig-box'>Υπογραφή Υπευθύνου</div>
-        </div>
-    </body></html>"""
-
-# --- ΚΕΝΤΡΙΚΑ ΠΕΔΙΑ ---
-col_u1, col_u2 = st.columns([2, 1])
-with col_u1:
-    staff_name = st.text_input("👤 Υπεύθυνος Καταγραφής:", placeholder="Ονοματεπώνυμο...")
-with col_u2:
-    selected_date = st.date_input("📅 Ημερομηνία:", value=datetime.now())
-    date_str = selected_date.strftime("%d/%m/%Y")
-
-tab1, tab2, tab3 = st.tabs(["🌡️ Θερμοκρασίες", "🧹 Checklists Καθαρισμού", "📋 Αρχείο & Εκτυπώσεις"])
-
-# --- TAB 1: ΘΕΡΜΟΚΡΑΣΙΕΣ ---
-with tab1:
-    st.subheader("🌡️ Έλεγχος Ψυκτικών Θαλάμων")
-    with st.form("temp_form_final_supabase"):
-        c1, c2, c3 = st.columns([2, 1, 2])
-        device = c1.selectbox("Συσκευή:", ["Ψυγείο 1", "Ψυγείο 2", "Ψυγείο 3", "Κατάψυξη 1", "Κατάψυξη 2"])
-        is_freezer = "Κατάψυξη" in device
-        temp = c2.number_input("Θερμοκρασία (°C):", value=-18.0 if is_freezer else 4.0, step=0.5)
-        notes = c3.text_input("Παρατηρήσεις / Διορθωτικές Ενέργειες:")
-        is_ok = not ((is_freezer and temp > -15.0) or (not is_freezer and temp > 7.0))
+    # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ ΓΙΑ REPORT ΜΕ ΥΠΟΓΡΑΦΗ ---
+    def generate_haccp_report_html(data, title="ΑΡΧΕΙΟ HACCP"):
+        rows_html = ""
+        for _, r in data.iterrows():
+            extra_info = r['cleaner'] if r['log_type'] == "Καθαρισμός" else r['notes']
+            rows_html += f"<tr><td>{r['date']}</td><td>{r['time']}</td><td>{r['item']}</td><td>{r['value']}</td><td>{r['status']}</td><td>{extra_info}</td><td>{r['user_name']}</td></tr>"
         
-        if st.form_submit_button("💾 Αποθήκευση Μέτρησης", type="primary"):
-            if staff_name:
-                log = {"date": date_str, "time": datetime.now().strftime("%H:%M"), "user_name": staff_name, 
-                       "log_type": "Θερμοκρασία", "item": device, "value": f"{temp}°C", 
-                       "status": "ΕΝΤΟΣ ΟΡΙΩΝ" if is_ok else "ΕΚΤΟΣ ΟΡΙΩΝ", "cleaner": "-", "notes": notes if notes else "-"}
-                supabase.table("haccp_log").insert([log]).execute()
-                st.success("Καταγράφηκε!")
-                time.sleep(1); st.rerun()
-            else: st.error("Συμπληρώστε το όνομα!")
-
-# --- TAB 2: CHECKLISTS ΚΑΘΑΡΙΣΜΟΥ (ΑΚΡΙΒΩΣ ΟΙ ΕΡΓΑΣΙΕΣ ΣΟΥ) ---
-with tab2:
-    tasks_data = {
-        "Ημερήσιος Καθαρισμός": ["Πάγκοι Εργασίας", "Εξοπλισμός (Blenders/Shakers)", "Δάπεδο Εργαστηρίου", "Απομάκρυνση Απορριμμάτων", "Απολύμανση Χεριών"],
-        "Εβδομαδιαίος Καθαρισμός": ["Εσωτερικό Ψυγείων", "Ράφια Αποθήκης", "Τοίχοι & Πλακάκια", "Γενική Απολύμανση"],
-        "Μηνιαίος Καθαρισμός": ["Φίλτρα Εξαερισμού", "Σύστημα Κλιματισμού", "Καθαρισμός Οροφής"]
-    }
-    category = st.radio("Πρόγραμμα:", list(tasks_data.keys()), horizontal=True)
-    with st.form(f"cleaning_{category}"):
-        st.markdown(f"#### {category}")
-        responses = []
-        for i, task in enumerate(tasks_data[category]):
-            c_task, c_clean = st.columns([0.5, 0.5])
-            done = c_task.checkbox(task, key=f"c_{category}_{i}")
-            cleaner = c_clean.text_input("Καθαριστικό", key=f"cl_{category}_{i}", placeholder="π.χ. Χλώριο", label_visibility="collapsed")
-            if done: responses.append(f"{task} ({cleaner if cleaner else 'Νερό'})")
-        
-        if st.form_submit_button("🚀 Οριστικοποίηση"):
-            if staff_name and len(responses) == len(tasks_data[category]):
-                log = {"date": date_str, "time": datetime.now().strftime("%H:%M"), "user_name": staff_name, 
-                       "log_type": "Καθαρισμός", "item": category, "value": "ΟΛΟΚΛΗΡΩΘΗΚΕ", 
-                       "status": "ΟΚ", "cleaner": " | ".join(responses), "notes": "-"}
-                supabase.table("haccp_log").insert([log]).execute()
-                st.success("Ενημερώθηκε!")
-                time.sleep(1); st.rerun()
-            else: st.error("Επιλέξτε όλες τις εργασίες και βάλτε όνομα!")
-
-# --- TAB 3: ΑΡΧΕΙΟ & ΕΚΤΥΠΩΣΕΙΣ ---
-with tab3:
-    res = supabase.table("haccp_log").select("*").execute()
-    if res.data:
-        df = pd.DataFrame(res.data)
-        df['dt_obj'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
-        df = df.sort_values(by=['dt_obj', 'time'], ascending=[False, False])
-
-        # --- ΦΙΛΤΡΑ ΕΚΤΥΠΩΣΗΣ ---
-        with st.expander("🖨️ Επιλεκτική Εκτύπωση (Φίλτρα)", expanded=False):
-            c1, c2 = st.columns(2)
-            p_days = c1.multiselect("Ημερομηνίες:", options=df['date'].unique())
-            p_types = c2.multiselect("Τύπος:", ["Θερμοκρασία", "Καθαρισμός"], default=["Θερμοκρασία", "Καθαρισμός"])
-            df_rep = df.copy()
-            if p_days: df_rep = df_rep[df_rep['date'].isin(p_days)]
-            df_rep = df_rep[df_rep['log_type'].isin(p_types)]
-            st.download_button("📥 Λήψη Επιλεγμένου Report", generate_haccp_report_html(df_rep), "HACCP_Custom.html", "text/html", use_container_width=True)
-
-        st.divider()
-        
-        # --- ΙΣΤΟΡΙΚΟ ΜΕ NESTED EXPANDERS ---
-        greek_months = {1:"Ιανουάριος", 2:"Φεβρουάριος", 3:"Μάρτιος", 4:"Απρίλιος", 5:"Μάιος", 6:"Ιούνιος", 
-                        7:"Ιούλιος", 8:"Αύγουστος", 9:"Σεπτέμβριος", 10:"Οκτώβριος", 11:"Νοέμβριος", 12:"Δεκέμβριος"}
-        df['m_label'] = df['dt_obj'].dt.month.map(greek_months) + " " + df['dt_obj'].dt.year.astype(str)
-
-        for m in df['m_label'].unique():
-            with st.expander(f"📅 {m}", expanded=False):
-                m_df = df[df['m_label'] == m]
-                for d in m_df['date'].unique():
-                    with st.expander(f"🗓️ Ημέρα: {d}", expanded=False):
-                        d_df = m_df[m_df['date'] == d]
-                        for _, row in d_df.iterrows():
-                            col_txt, col_del = st.columns([4, 1])
-                            with col_txt:
-                                ic = "🌡️" if row['log_type']=="Θερμοκρασία" else "🧹"
-                                st.write(f"**{ic} {row['item']}** ({row['time']}) -> {row['value']}")
-                                if row['cleaner'] != "-": st.caption(f"🧪 {row['cleaner']}")
-                            with col_del:
-                                if st.button("🗑️", key=f"del_{row['id']}"):
-                                    supabase.table("haccp_log").delete().eq("id", row['id']).execute()
-                                    st.rerun()
-
-        # --- ΚΟΥΜΠΙ ΕΚΤΥΠΩΣΗΣ ΟΛΩΝ ΣΤΟ ΤΕΛΟΣ ---
-        st.divider()
-        st.download_button(
-            label="🖨️ ΕΚΤΥΠΩΣΗ ΟΛΟΥ ΤΟΥ ΑΡΧΕΙΟΥ (Χωρίς Φίλτρα)",
-            data=generate_haccp_report_html(df, "ΠΛΗΡΕΣ ΜΗΤΡΩΟ HACCP"),
-            file_name="HACCP_Full_Archive.html",
-            mime="text/html",
-            use_container_width=True,
-            type="primary"
-        )
-    else:
-        st.info("Καμία καταγραφή.")
-
-
-# --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ & ΕΚΠΤΩΣΗ) ---
-elif page == "👥 Πελατολόγιο":
-st.header("👥 Διαχείριση Πελατολογίου")
-
-# 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ
-res_cust = supabase.table("customers").select("*").order("name").execute()
-df_cust = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
-
-tab_crm1, tab_crm2 = st.tabs(["📋 Καρτέλα & Ιστορικό Αγορών", "➕ Προσθήκη Νέου Πελάτη"])
-
-with tab_crm1:
-    if not df_cust.empty:
-        col_crm_a, col_crm_b = st.columns([1, 2.5])
-        
-        with col_crm_a:
-            st.subheader("👤 Στοιχεία")
-            sel_name = st.selectbox("Επιλέξτε Πελάτη:", options=df_cust["name"].tolist(), key="crm_select_final")
-            customer_data = df_cust[df_cust["name"] == sel_name].iloc[0]
+        return f"""
+        <html><head><meta charset='UTF-8'><style>
+            body {{ font-family: DejaVu Sans, Arial, sans-serif; padding: 30px; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+            th {{ background: #1e3a8a; color: white; padding: 10px; font-size: 12px; }}
+            td {{ border: 1px solid #000; padding: 8px; text-align: center; font-size: 10px; }}
+            h2 {{ text-align: center; color: #1e3a8a; text-transform: uppercase; }}
+            .signature-section {{ margin-top: 50px; width: 100%; }}
+            .sig-box {{ float: right; width: 250px; text-align: center; border-top: 1px solid #000; padding-top: 10px; margin-top: 20px; font-weight: bold; }}
+            .date-box {{ float: left; width: 200px; text-align: center; border-top: 1px solid #000; padding-top: 10px; margin-top: 20px; }}
+        </style></head><body>
+            <h2>CABCLUB COCKTAILS - {title}</h2>
+            <table><thead><tr><th>Ημ/νία</th><th>Ώρα</th><th>Στοιχείο</th><th>Τιμή/Τύπος</th><th>Κατάσταση</th><th>Λεπτομέρειες/Καθαριστικά</th><th>Υπεύθυνος</th></tr></thead>
+            <tbody>{rows_html}</tbody></table>
+            <div class='signature-section'>
+                <div class='date-box'>Ημερομηνία Ελέγχου</div>
+                <div class='sig-box'>Υπογραφή Υπευθύνου</div>
+            </div>
+        </body></html>"""
+    
+    # --- ΚΕΝΤΡΙΚΑ ΠΕΔΙΑ ---
+    col_u1, col_u2 = st.columns([2, 1])
+    with col_u1:
+        staff_name = st.text_input("👤 Υπεύθυνος Καταγραφής:", placeholder="Ονοματεπώνυμο...")
+    with col_u2:
+        selected_date = st.date_input("📅 Ημερομηνία:", value=datetime.now())
+        date_str = selected_date.strftime("%d/%m/%Y")
+    
+    tab1, tab2, tab3 = st.tabs(["🌡️ Θερμοκρασίες", "🧹 Checklists Καθαρισμού", "📋 Αρχείο & Εκτυπώσεις"])
+    
+    # --- TAB 1: ΘΕΡΜΟΚΡΑΣΙΕΣ ---
+    with tab1:
+        st.subheader("🌡️ Έλεγχος Ψυκτικών Θαλάμων")
+        with st.form("temp_form_final_supabase"):
+            c1, c2, c3 = st.columns([2, 1, 2])
+            device = c1.selectbox("Συσκευή:", ["Ψυγείο 1", "Ψυγείο 2", "Ψυγείο 3", "Κατάψυξη 1", "Κατάψυξη 2"])
+            is_freezer = "Κατάψυξη" in device
+            temp = c2.number_input("Θερμοκρασία (°C):", value=-18.0 if is_freezer else 4.0, step=0.5)
+            notes = c3.text_input("Παρατηρήσεις / Διορθωτικές Ενέργειες:")
+            is_ok = not ((is_freezer and temp > -15.0) or (not is_freezer and temp > 7.0))
             
-            # Εμφάνιση στοιχείων (με ΑΦΜ και Έκπτωση)
-            st.info(f"""
-            **Στοιχεία Επικοινωνίας:**
-            * 📞 {customer_data.get('phone') if customer_data.get('phone') else '-'}
-            * ✉️ {customer_data.get('email') if customer_data.get('email') else '-'}
-            * 📍 {customer_data.get('address') if customer_data.get('address') else '-'}
+            if st.form_submit_button("💾 Αποθήκευση Μέτρησης", type="primary"):
+                if staff_name:
+                    log = {"date": date_str, "time": datetime.now().strftime("%H:%M"), "user_name": staff_name, 
+                           "log_type": "Θερμοκρασία", "item": device, "value": f"{temp}°C", 
+                           "status": "ΕΝΤΟΣ ΟΡΙΩΝ" if is_ok else "ΕΚΤΟΣ ΟΡΙΩΝ", "cleaner": "-", "notes": notes if notes else "-"}
+                    supabase.table("haccp_log").insert([log]).execute()
+                    st.success("Καταγράφηκε!")
+                    time.sleep(1); st.rerun()
+                else: st.error("Συμπληρώστε το όνομα!")
+    
+    # --- TAB 2: CHECKLISTS ΚΑΘΑΡΙΣΜΟΥ (ΑΚΡΙΒΩΣ ΟΙ ΕΡΓΑΣΙΕΣ ΣΟΥ) ---
+    with tab2:
+        tasks_data = {
+            "Ημερήσιος Καθαρισμός": ["Πάγκοι Εργασίας", "Εξοπλισμός (Blenders/Shakers)", "Δάπεδο Εργαστηρίου", "Απομάκρυνση Απορριμμάτων", "Απολύμανση Χεριών"],
+            "Εβδομαδιαίος Καθαρισμός": ["Εσωτερικό Ψυγείων", "Ράφια Αποθήκης", "Τοίχοι & Πλακάκια", "Γενική Απολύμανση"],
+            "Μηνιαίος Καθαρισμός": ["Φίλτρα Εξαερισμού", "Σύστημα Κλιματισμού", "Καθαρισμός Οροφής"]
+        }
+        category = st.radio("Πρόγραμμα:", list(tasks_data.keys()), horizontal=True)
+        with st.form(f"cleaning_{category}"):
+            st.markdown(f"#### {category}")
+            responses = []
+            for i, task in enumerate(tasks_data[category]):
+                c_task, c_clean = st.columns([0.5, 0.5])
+                done = c_task.checkbox(task, key=f"c_{category}_{i}")
+                cleaner = c_clean.text_input("Καθαριστικό", key=f"cl_{category}_{i}", placeholder="π.χ. Χλώριο", label_visibility="collapsed")
+                if done: responses.append(f"{task} ({cleaner if cleaner else 'Νερό'})")
             
-            **Φορολογικά & Εμπορικά:**
-            * 🆔 **ΑΦΜ:** {customer_data.get('afm') if customer_data.get('afm') else '-'}
-            * 📉 **Προκαθορισμένη Έκπτωση:** {customer_data.get('discount') if customer_data.get('discount') else '0'}%
-            ---
-            **Σημειώσεις:**
-            {customer_data.get('notes') if customer_data.get('notes') else 'Καμία σημείωση'}
-            """)
-            
-            # --- ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
-            with st.expander("📝 Επεξεργασία Στοιχείων"):
-                with st.form(f"edit_cust_{customer_data['id']}"):
-                    e_name = st.text_input("Όνομα / Επωνυμία", value=customer_data['name'])
-                    e_afm = st.text_input("ΑΦΜ", value=customer_data.get('afm', ''))
-                    e_discount = st.text_input("Ποσοστό Έκπτωσης (%)", value=customer_data.get('discount', ''))
-                    e_phone = st.text_input("Τηλέφωνο", value=customer_data['phone'])
-                    e_email = st.text_input("Email", value=customer_data['email'])
-                    e_addr = st.text_area("Διεύθυνση", value=customer_data['address'])
-                    e_notes = st.text_area("Σημειώσεις", value=customer_data['notes'])
-                    
-                    if st.form_submit_button("💾 Ενημέρωση Στοιχείων"):
-                        supabase.table("customers").update({
-                            "name": e_name, 
-                            "afm": e_afm,
-                            "discount": e_discount,
-                            "phone": e_phone, 
-                            "email": e_email, 
-                            "address": e_addr, 
-                            "notes": e_notes
-                        }).eq("id", customer_data["id"]).execute()
-                        st.success("✅ Τα στοιχεία ενημερώθηκαν!")
-                        st.rerun()
-
+            if st.form_submit_button("🚀 Οριστικοποίηση"):
+                if staff_name and len(responses) == len(tasks_data[category]):
+                    log = {"date": date_str, "time": datetime.now().strftime("%H:%M"), "user_name": staff_name, 
+                           "log_type": "Καθαρισμός", "item": category, "value": "ΟΛΟΚΛΗΡΩΘΗΚΕ", 
+                           "status": "ΟΚ", "cleaner": " | ".join(responses), "notes": "-"}
+                    supabase.table("haccp_log").insert([log]).execute()
+                    st.success("Ενημερώθηκε!")
+                    time.sleep(1); st.rerun()
+                else: st.error("Επιλέξτε όλες τις εργασίες και βάλτε όνομα!")
+    
+    # --- TAB 3: ΑΡΧΕΙΟ & ΕΚΤΥΠΩΣΕΙΣ ---
+    with tab3:
+        res = supabase.table("haccp_log").select("*").execute()
+        if res.data:
+            df = pd.DataFrame(res.data)
+            df['dt_obj'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
+            df = df.sort_values(by=['dt_obj', 'time'], ascending=[False, False])
+    
+            # --- ΦΙΛΤΡΑ ΕΚΤΥΠΩΣΗΣ ---
+            with st.expander("🖨️ Επιλεκτική Εκτύπωση (Φίλτρα)", expanded=False):
+                c1, c2 = st.columns(2)
+                p_days = c1.multiselect("Ημερομηνίες:", options=df['date'].unique())
+                p_types = c2.multiselect("Τύπος:", ["Θερμοκρασία", "Καθαρισμός"], default=["Θερμοκρασία", "Καθαρισμός"])
+                df_rep = df.copy()
+                if p_days: df_rep = df_rep[df_rep['date'].isin(p_days)]
+                df_rep = df_rep[df_rep['log_type'].isin(p_types)]
+                st.download_button("📥 Λήψη Επιλεγμένου Report", generate_haccp_report_html(df_rep), "HACCP_Custom.html", "text/html", use_container_width=True)
+    
             st.divider()
-            if st.button("🗑️ Διαγραφή Πελάτη", type="secondary"):
-                supabase.table("customers").delete().eq("id", customer_data["id"]).execute()
-                st.success("Ο πελάτης διαγράφηκε!")
-                st.rerun()
-
-        with col_crm_b:
-            # --- 1. ΠΑΛΙΟ ΙΣΤΟΡΙΚΟ (Από production_log - Τεμάχια) ---
-            st.subheader(f"📊 Ιστορικό Παραγωγής: {sel_name}")
-            res_prod = supabase.table("production_log").select("prod_date, cocktail_name, pieces, lot_cocktail, prod_time").eq("customer", sel_name).order("prod_date", desc=True).execute()
             
-            if res_prod.data:
-                df_p = pd.DataFrame(res_prod.data)
-                df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail", "cocktail_name"])
+            # --- ΙΣΤΟΡΙΚΟ ΜΕ NESTED EXPANDERS ---
+            greek_months = {1:"Ιανουάριος", 2:"Φεβρουάριος", 3:"Μάρτιος", 4:"Απρίλιος", 5:"Μάιος", 6:"Ιούνιος", 
+                            7:"Ιούλιος", 8:"Αύγουστος", 9:"Σεπτέμβριος", 10:"Οκτώβριος", 11:"Νοέμβριος", 12:"Δεκέμβριος"}
+            df['m_label'] = df['dt_obj'].dt.month.map(greek_months) + " " + df['dt_obj'].dt.year.astype(str)
+    
+            for m in df['m_label'].unique():
+                with st.expander(f"📅 {m}", expanded=False):
+                    m_df = df[df['m_label'] == m]
+                    for d in m_df['date'].unique():
+                        with st.expander(f"🗓️ Ημέρα: {d}", expanded=False):
+                            d_df = m_df[m_df['date'] == d]
+                            for _, row in d_df.iterrows():
+                                col_txt, col_del = st.columns([4, 1])
+                                with col_txt:
+                                    ic = "🌡️" if row['log_type']=="Θερμοκρασία" else "🧹"
+                                    st.write(f"**{ic} {row['item']}** ({row['time']}) -> {row['value']}")
+                                    if row['cleaner'] != "-": st.caption(f"🧪 {row['cleaner']}")
+                                with col_del:
+                                    if st.button("🗑️", key=f"del_{row['id']}"):
+                                        supabase.table("haccp_log").delete().eq("id", row['id']).execute()
+                                        st.rerun()
+    
+            # --- ΚΟΥΜΠΙ ΕΚΤΥΠΩΣΗΣ ΟΛΩΝ ΣΤΟ ΤΕΛΟΣ ---
+            st.divider()
+            st.download_button(
+                label="🖨️ ΕΚΤΥΠΩΣΗ ΟΛΟΥ ΤΟΥ ΑΡΧΕΙΟΥ (Χωρίς Φίλτρα)",
+                data=generate_haccp_report_html(df, "ΠΛΗΡΕΣ ΜΗΤΡΩΟ HACCP"),
+                file_name="HACCP_Full_Archive.html",
+                mime="text/html",
+                use_container_width=True,
+                type="primary"
+            )
+        else:
+            st.info("Καμία καταγραφή.")
+    
+    
+    # --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ & ΕΚΠΤΩΣΗ) ---
+    elif page == "👥 Πελατολόγιο":
+    st.header("👥 Διαχείριση Πελατολογίου")
+    
+    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ
+    res_cust = supabase.table("customers").select("*").order("name").execute()
+    df_cust = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
+    
+    tab_crm1, tab_crm2 = st.tabs(["📋 Καρτέλα & Ιστορικό Αγορών", "➕ Προσθήκη Νέου Πελάτη"])
+    
+    with tab_crm1:
+        if not df_cust.empty:
+            col_crm_a, col_crm_b = st.columns([1, 2.5])
+            
+            with col_crm_a:
+                st.subheader("👤 Στοιχεία")
+                sel_name = st.selectbox("Επιλέξτε Πελάτη:", options=df_cust["name"].tolist(), key="crm_select_final")
+                customer_data = df_cust[df_cust["name"] == sel_name].iloc[0]
                 
+                # Εμφάνιση στοιχείων (με ΑΦΜ και Έκπτωση)
+                st.info(f"""
+                **Στοιχεία Επικοινωνίας:**
+                * 📞 {customer_data.get('phone') if customer_data.get('phone') else '-'}
+                * ✉️ {customer_data.get('email') if customer_data.get('email') else '-'}
+                * 📍 {customer_data.get('address') if customer_data.get('address') else '-'}
+                
+                **Φορολογικά & Εμπορικά:**
+                * 🆔 **ΑΦΜ:** {customer_data.get('afm') if customer_data.get('afm') else '-'}
+                * 📉 **Προκαθορισμένη Έκπτωση:** {customer_data.get('discount') if customer_data.get('discount') else '0'}%
+                ---
+                **Σημειώσεις:**
+                {customer_data.get('notes') if customer_data.get('notes') else 'Καμία σημείωση'}
+                """)
+                
+                # --- ΕΠΕΞΕΡΓΑΣΙΑ ΣΤΟΙΧΕΙΩΝ ---
+                with st.expander("📝 Επεξεργασία Στοιχείων"):
+                    with st.form(f"edit_cust_{customer_data['id']}"):
+                        e_name = st.text_input("Όνομα / Επωνυμία", value=customer_data['name'])
+                        e_afm = st.text_input("ΑΦΜ", value=customer_data.get('afm', ''))
+                        e_discount = st.text_input("Ποσοστό Έκπτωσης (%)", value=customer_data.get('discount', ''))
+                        e_phone = st.text_input("Τηλέφωνο", value=customer_data['phone'])
+                        e_email = st.text_input("Email", value=customer_data['email'])
+                        e_addr = st.text_area("Διεύθυνση", value=customer_data['address'])
+                        e_notes = st.text_area("Σημειώσεις", value=customer_data['notes'])
+                        
+                        if st.form_submit_button("💾 Ενημέρωση Στοιχείων"):
+                            supabase.table("customers").update({
+                                "name": e_name, 
+                                "afm": e_afm,
+                                "discount": e_discount,
+                                "phone": e_phone, 
+                                "email": e_email, 
+                                "address": e_addr, 
+                                "notes": e_notes
+                            }).eq("id", customer_data["id"]).execute()
+                            st.success("✅ Τα στοιχεία ενημερώθηκαν!")
+                            st.rerun()
+    
+                st.divider()
+                if st.button("🗑️ Διαγραφή Πελάτη", type="secondary"):
+                    supabase.table("customers").delete().eq("id", customer_data["id"]).execute()
+                    st.success("Ο πελάτης διαγράφηκε!")
+                    st.rerun()
+    
+            with col_crm_b:
+                # --- 1. ΠΑΛΙΟ ΙΣΤΟΡΙΚΟ (Από production_log - Τεμάχια) ---
+                st.subheader(f"📊 Ιστορικό Παραγωγής: {sel_name}")
+                res_prod = supabase.table("production_log").select("prod_date, cocktail_name, pieces, lot_cocktail, prod_time").eq("customer", sel_name).order("prod_date", desc=True).execute()
+                
+                if res_prod.data:
+                    df_p = pd.DataFrame(res_prod.data)
+                    df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail", "cocktail_name"])
+                    
+                    st.dataframe(
+                        df_p_clean.rename(columns={
+                            "prod_date": "Ημερομηνία",
+                            "cocktail_name": "Cocktail",
+                            "pieces": "Τεμάχια"
+                        })[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.metric("Συνολικές Αγορές (Τεμάχια)", f"{int(df_p_clean['pieces'].sum())} τμχ")
+                else:
+                    st.info("Δεν βρέθηκε ιστορικό παραγωγής για αυτόν τον πελάτη.")
+    
+                st.divider()
+    
+                # --- 2. ΔΙΑΧΕΙΡΙΣΗ DASHBOARD (Με ακριβή υπολογισμό % έκπτωσης, Δώρα & Reset) ---
+                st.subheader("💰 Εμπορική Διαχείριση & Εκπτώσεις (%)")
+                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
+                
+                if res_orders.data:
+                    import re # Απαραίτητο για να διαβάζουμε την αρχική τιμή και τα τεμάχια από το κείμενο
+                    
+                    for order in res_orders.data:
+                        order_id = order['id']
+                        current_amt = float(order['total_amount'])
+                        details = str(order['order_details'])
+                        
+                        # 1. Βρίσκουμε την Αρχική Αξία (πριν από κάθε έκπτωση)
+                        base_amt = current_amt
+                        match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
+                        if match_base:
+                            base_amt = float(match_base.group(1))
+                            
+                        # 2. Βρίσκουμε τα Συνολικά Τεμάχια της Παραγγελίας από το κείμενο (π.χ. "264 τμχ")
+                        total_pieces = 264 # Default τιμή ασφαλείας
+                        match_pieces = re.search(r"(\d+)\s*τμχ", details)
+                        if match_pieces:
+                            total_pieces = int(match_pieces.group(1))
+                            
+                        # 3. Υπολογίζουμε τι ποσοστό έκπτωσης εμφανίζεται αυτή τη στιγμή στη βάση
+                        current_discount_pct = 0.0
+                        if base_amt > 0 and base_amt > current_amt:
+                            current_discount_pct = ((base_amt - current_amt) / base_amt) * 100
+    
+                        with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | {current_amt:.2f}€  (Έκπτωση: {current_discount_pct:.1f}%)"):
+                            
+                            # Εμφάνιση ξεκάθαρων στοιχείων
+                            st.info(f"**Αρχική Αξία (Χωρίς Εκπτώσεις):** {base_amt:.2f} €\n\n**Συνολικά Τεμάχια:** {total_pieces} τμχ\n\n**Τρέχουσα Χρέωση:** {current_amt:.2f} €")
+                            st.caption(f"Λεπτομέρειες:\n{details}")
+                            
+                            with st.form(key=f"edit_order_pct_{order_id}"):
+                                c1, c2 = st.columns(2)
+                                
+                                # Εδώ βάζεις το ποσοστό έκπτωσης (π.χ. 10% κλπ)
+                                new_pct = c1.number_input("Ποσοστό Εμπορικής Έκπτωσης (%)", 
+                                                          min_value=0.0, max_value=100.0, 
+                                                          value=float(round(current_discount_pct, 1)), 
+                                                          step=1.0)
+                                
+                                # Το Checkbox ελέγχει αν υπάρχει ήδη η σημείωση της προσφοράς
+                                add_offer = c2.checkbox("Προσφορά 240 + 24 Δώρο", value="ΠΡΟΣΦΟΡΑ 240+24" in details)
+                                
+                                col_b1, col_b2 = st.columns(2)
+                                
+                                if col_b1.form_submit_button("💾 Εφαρμογή Έκπτωσης", type="primary"):
+                                    # 1. Υπολογισμός Τιμής Μονάδας (Καταλόγου και Χονδρικής)
+                                    unit_price_catalog = base_amt / total_pieces if total_pieces > 0 else 0
+                                    unit_price_dealer = unit_price_catalog * (1 - (new_pct / 100))
+                                    
+                                    # 2. Υπολογισμός Τελικού Ποσού βάσει Προσφοράς
+                                    if add_offer and total_pieces >= 24:
+                                        # Υπολογισμός: (Συνολικά Τεμάχια - 24 δώρα) x Τιμή Χονδρικής
+                                        # Π.χ. (264 - 24) * 2.95€ = 708.00€
+                                        payable_pieces = total_pieces - 24
+                                        new_price = payable_pieces * unit_price_dealer
+                                    else:
+                                        # Κανονική χρέωση όλης της ποσότητας με την έκπτωση
+                                        new_price = total_pieces * unit_price_dealer
+                                    
+                                    if new_price < 0: new_price = 0.0
+    
+                                    # 3. ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ
+                                    clean_details = details.split("\n[")[0].split("\n\n[")[0].strip()
+                                    
+                                    # Ξαναγράφει καθαρά το ιστορικό της παραγγελίας
+                                    new_details = clean_details + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
+                                    
+                                    if new_pct > 0:
+                                        new_details += f"\n[Έκπτωση: {new_pct}% εφαρμόστηκε]"
+                                        
+                                    if add_offer:
+                                        new_details += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ | Χρέωση {total_pieces-24} τμχ]"
+                                    
+                                    # Ενημέρωση στη Supabase
+                                    supabase.table("b2b_orders").update({
+                                        "total_amount": new_price,
+                                        "order_details": new_details
+                                    }).eq("id", order_id).execute()
+                                    
+                                    st.success(f"Επιτυχία! Το νέο σύνολο διαμορφώθηκε στα {new_price:.2f}€")
+                                    time.sleep(1)
+                                    st.rerun()
+                                    
+                                if col_b2.form_submit_button("🗑️ Διαγραφή Παραγγελίας"):
+                                    supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                    st.warning("Η παραγγελία διαγράφηκε από τα οικονομικά.")
+                                    time.sleep(1)
+                                    st.rerun()
+                else:
+                    st.info("Δεν έχουν δημιουργηθεί ακόμα οικονομικές εγγραφές.")
+    
+        else:
+            st.warning("⚠️ Η λίστα πελατών είναι άδεια.")
+    
+    with tab_crm2:
+        st.subheader("➕ Καταχώρηση Νέου Πελάτη")
+        with st.form("new_customer_form_final", clear_on_submit=True):
+            n_name = st.text_input("Όνομα / Επωνυμία *")
+            n_afm = st.text_input("ΑΦΜ")
+            n_discount = st.text_input("Ποσοστό Έκπτωσης (%)")
+            n_phone = st.text_input("Τηλέφωνο")
+            n_email = st.text_input("Email")
+            n_addr = st.text_area("Διεύθυνση")
+            n_notes = st.text_area("Σημειώσεις")
+            
+            if st.form_submit_button("💾 Αποθήκευση"):
+                if n_name:
+                    supabase.table("customers").insert({
+                        "name": n_name, 
+                        "afm": n_afm,
+                        "discount": n_discount,
+                        "phone": n_phone, 
+                        "email": n_email, 
+                        "address": n_addr, 
+                        "notes": n_notes
+                    }).execute()
+                    st.success("✅ Ο πελάτης προστέθηκε επιτυχώς!")
+                    st.rerun()
+                else:
+                    st.error("Το όνομα είναι υποχρεωτικό!")
+    
+    # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
+    elif page == "🔄 Αντικατάσταση":
+    st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
+    st.info("Σύγκριση Τιμών: Χρησιμοποιούνται οι δικές σας καταχωρημένες τιμές λιανικής. Ο Αντιπρόσωπος υπολογίζεται στο -26%.")
+    
+    # Βοηθητική συνάρτηση για καθαρούς αριθμούς (χωρίς περιττά μηδενικά)
+    def format_num(n):
+        if n is None or n == 0: return "0"
+        return f"{n:g}"
+    
+    # 1. Ανάκτηση δεδομένων από τη βάση
+    res_all_items = supabase.table("recipe_items").select("*").execute()
+    df_all_items = pd.DataFrame(res_all_items.data) if res_all_items.data else pd.DataFrame()
+    
+    if not df_all_items.empty and not df_ing.empty:
+        # Λίστα υλικών που χρησιμοποιούνται όντως σε συνταγές
+        used_ings = sorted(df_all_items["ingredient_name"].unique().tolist())
+        
+        col_r1, col_r2 = st.columns(2)
+        old_ing = col_r1.selectbox("❌ Παλιό Υλικό:", options=used_ings, index=None, placeholder="Επιλέξτε υλικό...")
+        new_ing = col_r2.selectbox("✅ Νέο Υλικό:", options=sorted(df_ing["Name"].unique().tolist()), index=None, placeholder="Από την αποθήκη...")
+    
+        if old_ing and new_ing and old_ing != new_ing:
+            # Τιμές ανά ml από την αποθήκη
+            price_old_ml = df_ing[df_ing["Name"] == old_ing]["Τιμή/ml"].values[0]
+            price_new_ml = df_ing[df_ing["Name"] == new_ing]["Τιμή/ml"].values[0]
+            diff_ml = price_new_ml - price_old_ml
+    
+            # Εύρεση συνταγών που επηρεάζονται
+            affected_recipes_ids = df_all_items[df_all_items["ingredient_name"] == old_ing]["recipe_id"].unique().tolist()
+            
+            if affected_recipes_ids:
+                # Φέρνουμε τις υπάρχουσες τιμές λιανικής από τον πίνακα recipes
+                res_rec_info = supabase.table("recipes").select("id, name, catalog_price").in_("id", affected_recipes_ids).execute()
+                rec_lookup = {r['id']: r for r in res_rec_info.data}
+    
+                analysis_data = []
+                for rid in affected_recipes_ids:
+                    r_items = df_all_items[df_all_items["recipe_id"] == rid]
+                    r_name = rec_lookup[rid]['name']
+                    # Η τιμή που έχεις ήδη καταχωρήσει εσύ
+                    old_retail = rec_lookup[rid]['catalog_price'] or 0.0
+                    old_agent = old_retail * 0.74 # -26% 
+                    
+                    # Υπολογισμός τρέχοντος κόστους για να βρούμε το περιθώριο κέρδους
+                    current_cost = 0.22 # TOTAL_FIXED
+                    ml_of_old = 0
+                    for _, item in r_items.iterrows():
+                        ing_n = item['ingredient_name']
+                        ml = item['ml_per_unit']
+                        if ing_n == old_ing: ml_of_old = ml
+                        ing_info = df_ing[df_ing["Name"] == ing_n]
+                        if not ing_info.empty:
+                            current_cost += ml * ing_info["Τιμή/ml"].values[0]
+                    
+                    # Υπολογισμός Μεταβολής
+                    cost_diff = ml_of_old * diff_ml
+                    new_cost = current_cost + cost_diff
+                    
+                    # Υπολογισμός Νέας Λιανικής (διατηρώντας το ίδιο Markup: Retail/Cost)
+                    # Αν δεν υπάρχει τιμή, χρησιμοποιούμε το default Food Cost 25%
+                    if current_cost > 0 and old_retail > 0:
+                        markup_factor = old_retail / current_cost
+                        new_retail = new_cost * markup_factor
+                    else:
+                        new_retail = new_cost / 0.25
+                        
+                    new_agent = new_retail * 0.74
+    
+                    analysis_data.append({
+                        "Cocktail": r_name,
+                        "Μεταβολή (€)": round(cost_diff, 3),
+                        "Παλιά Λιανική (€)": round(old_retail, 2),
+                        "Νέα Λιανική (€)": round(new_retail, 2),
+                        "Παλιά Αντιπρ. (€)": round(old_agent, 2),
+                        "Νέα Αντιπρ. (€)": round(new_agent, 2)
+                    })
+    
+                # Δημιουργία DataFrame
+                df_res = pd.DataFrame(analysis_data)
+    
+                # Μορφοποίηση αριθμών (καθαρισμός μηδενικών)
+                # Κρατάμε τη Μεταβολή ως float για το styling
+                plot_df = df_res.copy()
+                for col in ["Παλιά Λιανική (€)", "Νέα Λιανική (€)", "Παλιά Αντιπρ. (€)", "Νέα Αντιπρ. (€)"]:
+                    plot_df[col] = plot_df[col].apply(format_num)
+    
+                # Χρωματισμός Μεταβολής
+                def style_diff(val):
+                    color = '#ff4b4b' if val > 0 else '#00ffcc'
+                    return f'color: {color}; font-weight: bold'
+    
+                st.subheader(f"📊 Σύγκριση Τιμών: {old_ing} ➡️ {new_ing}")
+                
+                # Προβολή πίνακα με .map() για Pandas 2.1+
                 st.dataframe(
-                    df_p_clean.rename(columns={
-                        "prod_date": "Ημερομηνία",
-                        "cocktail_name": "Cocktail",
-                        "pieces": "Τεμάχια"
-                    })[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
+                    plot_df.style.map(style_diff, subset=['Μεταβολή (€)']).format({"Μεταβολή (€)": lambda x: f"{x:g}"}),
                     use_container_width=True,
                     hide_index=True
                 )
-                st.metric("Συνολικές Αγορές (Τεμάχια)", f"{int(df_p_clean['pieces'].sum())} τμχ")
-            else:
-                st.info("Δεν βρέθηκε ιστορικό παραγωγής για αυτόν τον πελάτη.")
-
-            st.divider()
-
-            # --- 2. ΔΙΑΧΕΙΡΙΣΗ DASHBOARD (Με ακριβή υπολογισμό % έκπτωσης, Δώρα & Reset) ---
-            st.subheader("💰 Εμπορική Διαχείριση & Εκπτώσεις (%)")
-            res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
-            
-            if res_orders.data:
-                import re # Απαραίτητο για να διαβάζουμε την αρχική τιμή και τα τεμάχια από το κείμενο
-                
-                for order in res_orders.data:
-                    order_id = order['id']
-                    current_amt = float(order['total_amount'])
-                    details = str(order['order_details'])
-                    
-                    # 1. Βρίσκουμε την Αρχική Αξία (πριν από κάθε έκπτωση)
-                    base_amt = current_amt
-                    match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
-                    if match_base:
-                        base_amt = float(match_base.group(1))
-                        
-                    # 2. Βρίσκουμε τα Συνολικά Τεμάχια της Παραγγελίας από το κείμενο (π.χ. "264 τμχ")
-                    total_pieces = 264 # Default τιμή ασφαλείας
-                    match_pieces = re.search(r"(\d+)\s*τμχ", details)
-                    if match_pieces:
-                        total_pieces = int(match_pieces.group(1))
-                        
-                    # 3. Υπολογίζουμε τι ποσοστό έκπτωσης εμφανίζεται αυτή τη στιγμή στη βάση
-                    current_discount_pct = 0.0
-                    if base_amt > 0 and base_amt > current_amt:
-                        current_discount_pct = ((base_amt - current_amt) / base_amt) * 100
-
-                    with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | {current_amt:.2f}€  (Έκπτωση: {current_discount_pct:.1f}%)"):
-                        
-                        # Εμφάνιση ξεκάθαρων στοιχείων
-                        st.info(f"**Αρχική Αξία (Χωρίς Εκπτώσεις):** {base_amt:.2f} €\n\n**Συνολικά Τεμάχια:** {total_pieces} τμχ\n\n**Τρέχουσα Χρέωση:** {current_amt:.2f} €")
-                        st.caption(f"Λεπτομέρειες:\n{details}")
-                        
-                        with st.form(key=f"edit_order_pct_{order_id}"):
-                            c1, c2 = st.columns(2)
-                            
-                            # Εδώ βάζεις το ποσοστό έκπτωσης (π.χ. 10% κλπ)
-                            new_pct = c1.number_input("Ποσοστό Εμπορικής Έκπτωσης (%)", 
-                                                      min_value=0.0, max_value=100.0, 
-                                                      value=float(round(current_discount_pct, 1)), 
-                                                      step=1.0)
-                            
-                            # Το Checkbox ελέγχει αν υπάρχει ήδη η σημείωση της προσφοράς
-                            add_offer = c2.checkbox("Προσφορά 240 + 24 Δώρο", value="ΠΡΟΣΦΟΡΑ 240+24" in details)
-                            
-                            col_b1, col_b2 = st.columns(2)
-                            
-                            if col_b1.form_submit_button("💾 Εφαρμογή Έκπτωσης", type="primary"):
-                                # 1. Υπολογισμός Τιμής Μονάδας (Καταλόγου και Χονδρικής)
-                                unit_price_catalog = base_amt / total_pieces if total_pieces > 0 else 0
-                                unit_price_dealer = unit_price_catalog * (1 - (new_pct / 100))
-                                
-                                # 2. Υπολογισμός Τελικού Ποσού βάσει Προσφοράς
-                                if add_offer and total_pieces >= 24:
-                                    # Υπολογισμός: (Συνολικά Τεμάχια - 24 δώρα) x Τιμή Χονδρικής
-                                    # Π.χ. (264 - 24) * 2.95€ = 708.00€
-                                    payable_pieces = total_pieces - 24
-                                    new_price = payable_pieces * unit_price_dealer
-                                else:
-                                    # Κανονική χρέωση όλης της ποσότητας με την έκπτωση
-                                    new_price = total_pieces * unit_price_dealer
-                                
-                                if new_price < 0: new_price = 0.0
-
-                                # 3. ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ
-                                clean_details = details.split("\n[")[0].split("\n\n[")[0].strip()
-                                
-                                # Ξαναγράφει καθαρά το ιστορικό της παραγγελίας
-                                new_details = clean_details + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
-                                
-                                if new_pct > 0:
-                                    new_details += f"\n[Έκπτωση: {new_pct}% εφαρμόστηκε]"
-                                    
-                                if add_offer:
-                                    new_details += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ | Χρέωση {total_pieces-24} τμχ]"
-                                
-                                # Ενημέρωση στη Supabase
-                                supabase.table("b2b_orders").update({
-                                    "total_amount": new_price,
-                                    "order_details": new_details
-                                }).eq("id", order_id).execute()
-                                
-                                st.success(f"Επιτυχία! Το νέο σύνολο διαμορφώθηκε στα {new_price:.2f}€")
-                                time.sleep(1)
-                                st.rerun()
-                                
-                            if col_b2.form_submit_button("🗑️ Διαγραφή Παραγγελίας"):
-                                supabase.table("b2b_orders").delete().eq("id", order_id).execute()
-                                st.warning("Η παραγγελία διαγράφηκε από τα οικονομικά.")
-                                time.sleep(1)
-                                st.rerun()
-            else:
-                st.info("Δεν έχουν δημιουργηθεί ακόμα οικονομικές εγγραφές.")
-
-    else:
-        st.warning("⚠️ Η λίστα πελατών είναι άδεια.")
-
-with tab_crm2:
-    st.subheader("➕ Καταχώρηση Νέου Πελάτη")
-    with st.form("new_customer_form_final", clear_on_submit=True):
-        n_name = st.text_input("Όνομα / Επωνυμία *")
-        n_afm = st.text_input("ΑΦΜ")
-        n_discount = st.text_input("Ποσοστό Έκπτωσης (%)")
-        n_phone = st.text_input("Τηλέφωνο")
-        n_email = st.text_input("Email")
-        n_addr = st.text_area("Διεύθυνση")
-        n_notes = st.text_area("Σημειώσεις")
-        
-        if st.form_submit_button("💾 Αποθήκευση"):
-            if n_name:
-                supabase.table("customers").insert({
-                    "name": n_name, 
-                    "afm": n_afm,
-                    "discount": n_discount,
-                    "phone": n_phone, 
-                    "email": n_email, 
-                    "address": n_addr, 
-                    "notes": n_notes
-                }).execute()
-                st.success("✅ Ο πελάτης προστέθηκε επιτυχώς!")
-                st.rerun()
-            else:
-                st.error("Το όνομα είναι υποχρεωτικό!")
-
-# --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
-elif page == "🔄 Αντικατάσταση":
-st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
-st.info("Σύγκριση Τιμών: Χρησιμοποιούνται οι δικές σας καταχωρημένες τιμές λιανικής. Ο Αντιπρόσωπος υπολογίζεται στο -26%.")
-
-# Βοηθητική συνάρτηση για καθαρούς αριθμούς (χωρίς περιττά μηδενικά)
-def format_num(n):
-    if n is None or n == 0: return "0"
-    return f"{n:g}"
-
-# 1. Ανάκτηση δεδομένων από τη βάση
-res_all_items = supabase.table("recipe_items").select("*").execute()
-df_all_items = pd.DataFrame(res_all_items.data) if res_all_items.data else pd.DataFrame()
-
-if not df_all_items.empty and not df_ing.empty:
-    # Λίστα υλικών που χρησιμοποιούνται όντως σε συνταγές
-    used_ings = sorted(df_all_items["ingredient_name"].unique().tolist())
     
-    col_r1, col_r2 = st.columns(2)
-    old_ing = col_r1.selectbox("❌ Παλιό Υλικό:", options=used_ings, index=None, placeholder="Επιλέξτε υλικό...")
-    new_ing = col_r2.selectbox("✅ Νέο Υλικό:", options=sorted(df_ing["Name"].unique().tolist()), index=None, placeholder="Από την αποθήκη...")
-
-    if old_ing and new_ing and old_ing != new_ing:
-        # Τιμές ανά ml από την αποθήκη
-        price_old_ml = df_ing[df_ing["Name"] == old_ing]["Τιμή/ml"].values[0]
-        price_new_ml = df_ing[df_ing["Name"] == new_ing]["Τιμή/ml"].values[0]
-        diff_ml = price_new_ml - price_old_ml
-
-        # Εύρεση συνταγών που επηρεάζονται
-        affected_recipes_ids = df_all_items[df_all_items["ingredient_name"] == old_ing]["recipe_id"].unique().tolist()
-        
-        if affected_recipes_ids:
-            # Φέρνουμε τις υπάρχουσες τιμές λιανικής από τον πίνακα recipes
-            res_rec_info = supabase.table("recipes").select("id, name, catalog_price").in_("id", affected_recipes_ids).execute()
-            rec_lookup = {r['id']: r for r in res_rec_info.data}
-
-            analysis_data = []
-            for rid in affected_recipes_ids:
-                r_items = df_all_items[df_all_items["recipe_id"] == rid]
-                r_name = rec_lookup[rid]['name']
-                # Η τιμή που έχεις ήδη καταχωρήσει εσύ
-                old_retail = rec_lookup[rid]['catalog_price'] or 0.0
-                old_agent = old_retail * 0.74 # -26% 
+                st.divider()
+                st.caption("💡 Η 'Νέα Λιανική' υπολογίζεται ώστε να διατηρηθεί το ίδιο ποσοστό κέρδους που είχατε με την παλιά πρώτη ύλη.")
                 
-                # Υπολογισμός τρέχοντος κόστους για να βρούμε το περιθώριο κέρδους
-                current_cost = 0.22 # TOTAL_FIXED
-                ml_of_old = 0
-                for _, item in r_items.iterrows():
-                    ing_n = item['ingredient_name']
-                    ml = item['ml_per_unit']
-                    if ing_n == old_ing: ml_of_old = ml
-                    ing_info = df_ing[df_ing["Name"] == ing_n]
-                    if not ing_info.empty:
-                        current_cost += ml * ing_info["Τιμή/ml"].values[0]
-                
-                # Υπολογισμός Μεταβολής
-                cost_diff = ml_of_old * diff_ml
-                new_cost = current_cost + cost_diff
-                
-                # Υπολογισμός Νέας Λιανικής (διατηρώντας το ίδιο Markup: Retail/Cost)
-                # Αν δεν υπάρχει τιμή, χρησιμοποιούμε το default Food Cost 25%
-                if current_cost > 0 and old_retail > 0:
-                    markup_factor = old_retail / current_cost
-                    new_retail = new_cost * markup_factor
-                else:
-                    new_retail = new_cost / 0.25
-                    
-                new_agent = new_retail * 0.74
-
-                analysis_data.append({
-                    "Cocktail": r_name,
-                    "Μεταβολή (€)": round(cost_diff, 3),
-                    "Παλιά Λιανική (€)": round(old_retail, 2),
-                    "Νέα Λιανική (€)": round(new_retail, 2),
-                    "Παλιά Αντιπρ. (€)": round(old_agent, 2),
-                    "Νέα Αντιπρ. (€)": round(new_agent, 2)
-                })
-
-            # Δημιουργία DataFrame
-            df_res = pd.DataFrame(analysis_data)
-
-            # Μορφοποίηση αριθμών (καθαρισμός μηδενικών)
-            # Κρατάμε τη Μεταβολή ως float για το styling
-            plot_df = df_res.copy()
-            for col in ["Παλιά Λιανική (€)", "Νέα Λιανική (€)", "Παλιά Αντιπρ. (€)", "Νέα Αντιπρ. (€)"]:
-                plot_df[col] = plot_df[col].apply(format_num)
-
-            # Χρωματισμός Μεταβολής
-            def style_diff(val):
-                color = '#ff4b4b' if val > 0 else '#00ffcc'
-                return f'color: {color}; font-weight: bold'
-
-            st.subheader(f"📊 Σύγκριση Τιμών: {old_ing} ➡️ {new_ing}")
-            
-            # Προβολή πίνακα με .map() για Pandas 2.1+
-            st.dataframe(
-                plot_df.style.map(style_diff, subset=['Μεταβολή (€)']).format({"Μεταβολή (€)": lambda x: f"{x:g}"}),
-                use_container_width=True,
-                hide_index=True
-            )
-
-            st.divider()
-            st.caption("💡 Η 'Νέα Λιανική' υπολογίζεται ώστε να διατηρηθεί το ίδιο ποσοστό κέρδους που είχατε με την παλιά πρώτη ύλη.")
-            
-            # --- ΕΚΤΕΛΕΣΗ ---
-            confirm = st.checkbox(f"Επιβεβαιώνω την αντικατάσταση σε {len(df_res)} συνταγές.")
-            if st.button("🚀 ΕΚΤΕΛΕΣΗ ΑΝΤΙΚΑΤΑΣΤΑΣΗΣ ΤΩΡΑ", type="primary", disabled=not confirm):
-                with st.spinner("Ενημέρωση συστατικών..."):
-                    supabase.table("recipe_items").update({"ingredient_name": new_ing}).eq("ingredient_name", old_ing).execute()
-                    st.success("✅ Η αντικατάσταση ολοκληρώθηκε!")
-                    st.cache_data.clear()
-                    time.sleep(1.5)
-                    st.rerun()
-        else:
-            st.info("Το υλικό δεν βρέθηκε σε καμία συνταγή.")
-else:
-    st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
-
-# --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B & E-SHOP ---
-elif page == "📦 Παραγγελίες B2B":
-st.header("📦 Διαχείριση Παραγγελιών B2B")
-
-# --- ΛΕΙΤΟΥΡΓΙΑ WOOCOMMERCE SYNC ---
-from woocommerce import API
-try:
-    wcapi = API(
-        url=st.secrets["woo"]["url"],
-        consumer_key=st.secrets["woo"]["ck"],
-        consumer_secret=st.secrets["woo"]["cs"],
-        version="wc/v3",
-        timeout=20
-    )
-except Exception as e:
-    st.error(f"⚠️ Πρόβλημα WooCommerce: {e}")
-
-# Κουμπί Συγχρονισμού στην κορυφή
-col_sync1, col_sync2 = st.columns([1, 2])
-with col_sync1:
-    if st.button("📥 Συγχρονισμός με E-shop", use_container_width=True, type="primary"):
-        with st.spinner("Τραβάω παραγγελίες από το site..."):
-            try:
-                # Τραβάμε παραγγελίες που είναι "processing" (Σε επεξεργασία στο Woo)
-                woo_orders = wcapi.get("orders", params={"status": "processing"}).json()
-                
-                new_entries = 0
-                for o in woo_orders:
-                    # Έλεγχος αν η παραγγελία υπάρχει ήδη στη Supabase
-                    check = supabase.table("b2b_orders").select("id").eq("woo_id", str(o['id'])).execute()
-                    
-                    if not check.data:
-                        # Προετοιμασία κειμένου παραγγελίας
-                        items = []
-                        for item in o['line_items']:
-                            items.append(f"{item['quantity']}x {item['name']}")
-                        order_text = "\n".join(items)
-                        
-                        # Αποθήκευση στη Supabase
-                        data = {
-                            "customer_name": f"{o['billing']['first_name']} {o['billing']['last_name']}",
-                            "total_amount": float(o['total']),
-                            "status": "ΝΕΑ (E-shop)",
-                            "order_details": order_text,
-                            "notes": o.get('customer_note', ''),
-                            "woo_id": str(o['id']),
-                            "created_at": o['date_created']
-                        }
-                        supabase.table("b2b_orders").insert(data).execute()
-                        new_entries += 1
-                
-                if new_entries > 0:
-                    st.success(f"✅ Εισήχθησαν {new_entries} νέες παραγγελίες!")
-                else:
-                    st.info("Δεν βρέθηκαν νέες παραγγελίες στο E-shop.")
-                time.sleep(1)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Σφάλμα σύνδεσης: {e}")
-
-st.divider()
-
-tab1, tab2 = st.tabs(["🔔 Τρέχουσες Παραγγελίες", "📜 Ιστορικό & Αναζήτηση"])
-
-# --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ ---
-with tab1:
-    res_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).execute()
-    if res_orders.data:
-        df_orders = pd.DataFrame(res_orders.data)
-        
-        # Φίλτρο για να περιλαμβάνει και το νέο status από το E-shop
-        all_statuses = ["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"]
-        status_filter = st.multiselect("Φίλτρο Κατάστασης:", all_statuses, default=["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ"])
-        
-        df_filtered = df_orders[df_orders["status"].isin(status_filter)]
-
-        for _, row in df_filtered.iterrows():
-            # Εικονίδια ανάλογα με την κατάσταση
-            icon = "🔵" if "ΝΕΑ" in row['status'] else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "✅"
-            
-            with st.expander(f"{icon} {row['customer_name']} - {row['total_amount']:.2f} €"):
-                c1, c2 = st.columns([2, 1])
-                with c1:
-                    st.code(row['order_details'])
-                    if row['notes']: st.info(f"📝 {row['notes']}")
-                    st.caption(f"ID: {row['id']} | WooID: {row.get('woo_id','-')} | Ημερομηνία: {row['created_at']}")
-                
-                with c2:
-                    # Επιλογή νέας κατάστασης
-                    current_idx = all_statuses.index(row['status']) if row['status'] in all_statuses else 0
-                    new_status = st.selectbox("Αλλαγή Κατάστασης:", all_statuses, index=current_idx, key=f"st_upd_{row['id']}")
-                    
-                    if st.button("Ενημέρωση", key=f"btn_upd_{row['id']}", use_container_width=True):
-                        supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
-                        st.success("Ενημερώθηκε!")
-                        time.sleep(0.5)
+                # --- ΕΚΤΕΛΕΣΗ ---
+                confirm = st.checkbox(f"Επιβεβαιώνω την αντικατάσταση σε {len(df_res)} συνταγές.")
+                if st.button("🚀 ΕΚΤΕΛΕΣΗ ΑΝΤΙΚΑΤΑΣΤΑΣΗΣ ΤΩΡΑ", type="primary", disabled=not confirm):
+                    with st.spinner("Ενημέρωση συστατικών..."):
+                        supabase.table("recipe_items").update({"ingredient_name": new_ing}).eq("ingredient_name", old_ing).execute()
+                        st.success("✅ Η αντικατάσταση ολοκληρώθηκε!")
+                        st.cache_data.clear()
+                        time.sleep(1.5)
                         st.rerun()
-                    
-                    st.divider()
-                    if st.button("🗑️ Διαγραφή", key=f"del_b2b_{row['id']}", type="secondary", use_container_width=True):
-                        supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
-                        st.rerun()
+            else:
+                st.info("Το υλικό δεν βρέθηκε σε καμία συνταγή.")
     else:
-        st.info("Δεν υπάρχουν παραγγελίες στη βάση.")
-
-# --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ ---
-with tab2:
-    st.subheader("🔍 Αναζήτηση στο Ιστορικό")
-    if res_orders.data:
-        df_hist = pd.DataFrame(res_orders.data)
-        
-        search_col1, search_col2 = st.columns(2)
-        with search_col1:
-            cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hist["customer_name"].unique()))
-        with search_col2:
-            # Εξαγωγή ονομάτων κοκτέιλ από το κείμενο της παραγγελίας
-            all_cocktails = set()
-            for details in df_hist["order_details"]:
-                lines = str(details).split('\n')
-                for line in lines:
-                    if 'x ' in line:
-                        # Παίρνει το όνομα μετά το "x "
-                        parts = line.split('x ')
-                        if len(parts) > 1:
-                            name = parts[1].split(' (')[0].strip()
-                            all_cocktails.add(name)
-            cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=sorted(list(all_cocktails)))
-
-        # Φιλτράρισμα
-        mask = pd.Series([True] * len(df_hist))
-        if cust_search: 
-            mask &= df_hist["customer_name"].isin(cust_search)
-        if cocktail_search:
-            cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
-            mask &= cocktail_mask
-
-        df_results = df_hist[mask]
-
-        if not df_results.empty:
-            st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
-            for _, row in df_results.iterrows():
-                with st.expander(f"📅 {str(row['created_at'])[:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
-                    col_h1, col_h2 = st.columns([2, 1])
-                    with col_h1:
-                        st.markdown(f"**Κατάσταση:** {row['status']}")
-                        st.text(row['order_details'])
-                    with col_h2:
-                        if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
+        st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
+    
+    # --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B & E-SHOP ---
+    elif page == "📦 Παραγγελίες B2B":
+    st.header("📦 Διαχείριση Παραγγελιών B2B")
+    
+    # --- ΛΕΙΤΟΥΡΓΙΑ WOOCOMMERCE SYNC ---
+    from woocommerce import API
+    try:
+        wcapi = API(
+            url=st.secrets["woo"]["url"],
+            consumer_key=st.secrets["woo"]["ck"],
+            consumer_secret=st.secrets["woo"]["cs"],
+            version="wc/v3",
+            timeout=20
+        )
+    except Exception as e:
+        st.error(f"⚠️ Πρόβλημα WooCommerce: {e}")
+    
+    # Κουμπί Συγχρονισμού στην κορυφή
+    col_sync1, col_sync2 = st.columns([1, 2])
+    with col_sync1:
+        if st.button("📥 Συγχρονισμός με E-shop", use_container_width=True, type="primary"):
+            with st.spinner("Τραβάω παραγγελίες από το site..."):
+                try:
+                    # Τραβάμε παραγγελίες που είναι "processing" (Σε επεξεργασία στο Woo)
+                    woo_orders = wcapi.get("orders", params={"status": "processing"}).json()
+                    
+                    new_entries = 0
+                    for o in woo_orders:
+                        # Έλεγχος αν η παραγγελία υπάρχει ήδη στη Supabase
+                        check = supabase.table("b2b_orders").select("id").eq("woo_id", str(o['id'])).execute()
+                        
+                        if not check.data:
+                            # Προετοιμασία κειμένου παραγγελίας
+                            items = []
+                            for item in o['line_items']:
+                                items.append(f"{item['quantity']}x {item['name']}")
+                            order_text = "\n".join(items)
+                            
+                            # Αποθήκευση στη Supabase
+                            data = {
+                                "customer_name": f"{o['billing']['first_name']} {o['billing']['last_name']}",
+                                "total_amount": float(o['total']),
+                                "status": "ΝΕΑ (E-shop)",
+                                "order_details": order_text,
+                                "notes": o.get('customer_note', ''),
+                                "woo_id": str(o['id']),
+                                "created_at": o['date_created']
+                            }
+                            supabase.table("b2b_orders").insert(data).execute()
+                            new_entries += 1
+                    
+                    if new_entries > 0:
+                        st.success(f"✅ Εισήχθησαν {new_entries} νέες παραγγελίες!")
+                    else:
+                        st.info("Δεν βρέθηκαν νέες παραγγελίες στο E-shop.")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Σφάλμα σύνδεσης: {e}")
+    
+    st.divider()
+    
+    tab1, tab2 = st.tabs(["🔔 Τρέχουσες Παραγγελίες", "📜 Ιστορικό & Αναζήτηση"])
+    
+    # --- TAB 1: ΤΡΕΧΟΥΣΕΣ ΠΑΡΑΓΓΕΛΙΕΣ ---
+    with tab1:
+        res_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).execute()
+        if res_orders.data:
+            df_orders = pd.DataFrame(res_orders.data)
+            
+            # Φίλτρο για να περιλαμβάνει και το νέο status από το E-shop
+            all_statuses = ["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ", "ΟΛΟΚΛΗΡΩΘΗΚΕ"]
+            status_filter = st.multiselect("Φίλτρο Κατάστασης:", all_statuses, default=["ΝΕΑ", "ΝΕΑ (E-shop)", "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ"])
+            
+            df_filtered = df_orders[df_orders["status"].isin(status_filter)]
+    
+            for _, row in df_filtered.iterrows():
+                # Εικονίδια ανάλογα με την κατάσταση
+                icon = "🔵" if "ΝΕΑ" in row['status'] else "🟡" if row['status'] == "ΣΕ ΕΠΕΞΕΡΓΑΣΙΑ" else "✅"
+                
+                with st.expander(f"{icon} {row['customer_name']} - {row['total_amount']:.2f} €"):
+                    c1, c2 = st.columns([2, 1])
+                    with c1:
+                        st.code(row['order_details'])
+                        if row['notes']: st.info(f"📝 {row['notes']}")
+                        st.caption(f"ID: {row['id']} | WooID: {row.get('woo_id','-')} | Ημερομηνία: {row['created_at']}")
+                    
+                    with c2:
+                        # Επιλογή νέας κατάστασης
+                        current_idx = all_statuses.index(row['status']) if row['status'] in all_statuses else 0
+                        new_status = st.selectbox("Αλλαγή Κατάστασης:", all_statuses, index=current_idx, key=f"st_upd_{row['id']}")
+                        
+                        if st.button("Ενημέρωση", key=f"btn_upd_{row['id']}", use_container_width=True):
+                            supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
+                            st.success("Ενημερώθηκε!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        
+                        st.divider()
+                        if st.button("🗑️ Διαγραφή", key=f"del_b2b_{row['id']}", type="secondary", use_container_width=True):
                             supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
                             st.rerun()
         else:
-            st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
+            st.info("Δεν υπάρχουν παραγγελίες στη βάση.")
+    
+    # --- TAB 2: ΙΣΤΟΡΙΚΟ & ΑΝΑΖΗΤΗΣΗ ---
+    with tab2:
+        st.subheader("🔍 Αναζήτηση στο Ιστορικό")
+        if res_orders.data:
+            df_hist = pd.DataFrame(res_orders.data)
+            
+            search_col1, search_col2 = st.columns(2)
+            with search_col1:
+                cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hist["customer_name"].unique()))
+            with search_col2:
+                # Εξαγωγή ονομάτων κοκτέιλ από το κείμενο της παραγγελίας
+                all_cocktails = set()
+                for details in df_hist["order_details"]:
+                    lines = str(details).split('\n')
+                    for line in lines:
+                        if 'x ' in line:
+                            # Παίρνει το όνομα μετά το "x "
+                            parts = line.split('x ')
+                            if len(parts) > 1:
+                                name = parts[1].split(' (')[0].strip()
+                                all_cocktails.add(name)
+                cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=sorted(list(all_cocktails)))
+    
+            # Φιλτράρισμα
+            mask = pd.Series([True] * len(df_hist))
+            if cust_search: 
+                mask &= df_hist["customer_name"].isin(cust_search)
+            if cocktail_search:
+                cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
+                mask &= cocktail_mask
+    
+            df_results = df_hist[mask]
+    
+            if not df_results.empty:
+                st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
+                for _, row in df_results.iterrows():
+                    with st.expander(f"📅 {str(row['created_at'])[:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
+                        col_h1, col_h2 = st.columns([2, 1])
+                        with col_h1:
+                            st.markdown(f"**Κατάσταση:** {row['status']}")
+                            st.text(row['order_details'])
+                        with col_h2:
+                            if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
+                                supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
+                                st.rerun()
+            else:
+                st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
