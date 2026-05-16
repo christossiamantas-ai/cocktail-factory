@@ -2205,7 +2205,7 @@ elif page == "📦 Lot Παραγωγής":
         grand_total_pcs = df_daily["Τεμάχια"].sum()
         total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
-            html_daily = f"""
+        html_daily = f"""
             <html><head><meta charset='UTF-8'><style>
                 body {{ font-family: sans-serif; padding: 20px; }}
                 .header {{ text-align: center; border-bottom: 3px solid #d32f2f; margin-bottom: 30px; }}
