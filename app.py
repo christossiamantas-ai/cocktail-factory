@@ -3600,6 +3600,7 @@ elif page == "📦 Παραγγελίες B2B":
                             if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
                                 delete_order_and_production_safely(row['id'], row['customer_name'], row['created_at'], row['order_details'])
                                 st.success("🔄 Διαγράφηκε πλήρως από οικονομικά και αποθήκη!")
+                                st.cache_data.clear() # 🌟 ΝΕΟ: Αδειάζει τη μνήμη για να εξαφανιστεί αμέσως η εγγραφή
                                 time.sleep(1)
                                 st.rerun()
             else:
