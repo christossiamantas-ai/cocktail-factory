@@ -1946,7 +1946,6 @@ elif page == "📦 Lot Παραγωγής":
                     st.session_state['active_b2b_order'] = None
                 st.rerun()
                 
-            # --- ΑΥΤΟΜΑΤΗ ΜΕΤΑΤΡΟΠΗ ΓΙΑ ΝΑ ΔΟΥΛΕΨΟΥΝ ΤΑ ΕΠΟΜΕΝΑ ΒΗΜΑΤΑ ---
             for item in st.session_state.production_batch_items:
                 cocktail = item["Κοκτέιλ"]
                 c_name = item["Πελάτης"]
@@ -1962,9 +1961,8 @@ elif page == "📦 Lot Παραγωγής":
         else:
             st.warning("⚠️ Η παρτίδα είναι άδεια. Προσθέστε παραγγελίες παραπάνω για να εμφανιστούν τα υλικά και τα LOT.")
 
-            # =========================================================================
-            # 🌟 ΝΕΟ: ΚΕΝΤΡΙΚΟΣ ΠΙΝΑΚΑΣ LOT ΚΟΚΤΕΪΛ ΑΝΑ ΠΕΛΑΤΗ (ΜΑΖΙΚΗ ΑΛΛΑΓΗ ΜΕΡΑΣ)
-            # =========================================================================
+        # 🌟 Η ΓΕΦΥΡΑ: Ανοίγει το μπλοκ που ξεκλειδώνει όλο τον υπόλοιπο κώδικά σου (Βήμα 2 & Βήμα 3)
+        if selected_cocktails:
             unique_customers_in_batch = set()
             for cocktail_name, edited_df in all_assignments.items():
                 if "Πελάτης" in edited_df.columns and "Τεμάχια" in edited_df.columns:
