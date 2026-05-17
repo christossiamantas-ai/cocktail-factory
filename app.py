@@ -11,6 +11,11 @@ from supabase import create_client, Client
 import zipfile
 import io
 from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
+import pytz
+greece_tz = pytz.timezone('Europe/Athens')
+# Παράδειγμα αντικατάστασης:
+selected_date = st.date_input("📅 Ημερομηνία LOT", value=datetime.now(greece_tz), format="DD/MM/YYYY")
+current_time = datetime.now(greece_tz).strftime('%H:%M')
 
 st.set_page_config(page_title="DC Cabclub", layout="wide")
 
