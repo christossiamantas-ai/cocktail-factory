@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import math
 from datetime import datetime, timedelta
+import pytz  # 🌟 ΝΕΟ: Εισαγωγή βιβλιοθήκης για ζώνες ώρας
 import plotly.express as px
 import imaplib
 import email
@@ -10,8 +11,9 @@ import time
 from supabase import create_client, Client
 import zipfile
 import io
-from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
-import pytz
+from fpdf import FPDF
+
+# 🌟 ΝΕΟ: Κλείδωμα Ώρας Ελλάδος (για να μην καταγράφει ώρα Αγγλίας ο server)
 greece_tz = pytz.timezone('Europe/Athens')
 
 st.set_page_config(page_title="DC Cabclub", layout="wide")
