@@ -2855,43 +2855,47 @@ elif page == "📦 Lot Παραγωγής":
             st.dataframe(dff, use_container_width=True, hide_index=True)
 
         with tab_recall_tool:
-            st.markdown("#### 🚨 Εργαλείο Άμεσης Ανάκλησης")
-            st.write("Αν ένας προμηθευτής αναφέρει πρόβλημα σε ένα υλικό, εισάγετε το **Lot Number** ή την **Ημερομηνία Λήξης** του υλικού παρακάτω.")
+            st.markdown("#### 🚨 Εργαλείο Άμεσης Ανάκλησης Πρώτων Υλών")
+            st.write("Αν ένας προμηθευτής αναφέρει πρόβλημα, εισάγετε το **Lot Number** ή την **Ημερομηνία Λήξης** της πρώτης ύλης παρακάτω.")
             
             recall_query = st.text_input(
-                "Εισάγετε το Lot Number ή την Ημερομηνία Λήξης της Πρώτης Ύλης:", 
+                "Εισάγετε το Lot Number ή την Ημερομηνία Λήξης προς αναζήτηση:", 
                 placeholder="π.χ. LOT-GIN-2024 ή 15/12/2026", 
-                key="recall_input"
+                key="recall_input_final"
             )
             
-            # Όλα τα παρακάτω εκτελούνται ΜΟΝΟ αν ο χρήστης γράψει κάτι στο κουτί
             if recall_query:
                 search_val = str(recall_query).strip()
                 
-                df_affected = df_all[
-                    df_all["Lot Number"].astype(str).str.contains(search_val, case=False, na=False) |
-                    df_all["Ημ_Λήξης"].astype(str).str.contains(search_val, case=False, na=False)
+                # 🌟 ΕΞΥΠΝΗ ΑΝΑΖΗΤΗΣΗ: Ψάχνει ταυτόχρονα και στις δύο στήλες του production_log!
+                # Χρησιμοποιούμε .str.contains για να "πιάνει" το υλικό ακόμα κι αν γράφτηκε ως "L1 / L2"
+                df_affected = df_all_logs_renamed[
+                    df_all_logs_renamed["Lot Number"].astype(str).str.contains(search_val, case=False, na=False) |
+                    df_all_logs_renamed["Ημ_Λήξης"].astype(str).str.contains(search_val, case=False, na=False)
                 ]
                 
                 if not df_affected.empty:
-                    st.error(f"⚠️ **Βρέθηκαν {len(df_affected)} εγγραφές παραγωγής** που σχετίζονται με αυτό το στοιχείο πρώτης ύλης!")
+                    st.error(f"⚠️ **Βρέθηκαν {len(df_affected)} εγγραφές υλικών** στην παραγωγή που σχετίζονται με αυτό το στοιχείο!")
                     
+                    # Κρατάμε μια καθαρή εικόνα των έτοιμων κοκτέιλ και των πελατών που τα πήραν
                     df_display = df_affected[["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
                     st.dataframe(df_display, use_container_width=True, hide_index=True)
                     
-                    affected_cust_list = df_affected["Πελάτης"].unique().tolist()
-                    st.warning(f"📞 **Πελάτες που πρέπει να ενημερωθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
+                    # Εμφάνιση των πελατών που πρέπει να ενημερωθούν
+                    affected_cust_list = df_display["Πελάτης"].unique().tolist()
+                    st.warning(f"📞 **B2B Πελάτες που πρέπει να ειδοποιηθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
                     
+                    # Εξαγωγή της λίστας ανάκλησης σε CSV
                     recall_csv = df_affected.to_csv(index=False, encoding="utf-8-sig")
                     safe_file_name = search_val.replace("/", "_")
                     st.download_button(
-                        label="📥 Λήψη Λίστας Ανάκλησης (CSV)", 
+                        label="📥 Λήψη Αναφοράς Ανάκλησης (CSV)", 
                         data=recall_csv, 
                         file_name=f"RECALL_REPORT_{safe_file_name}.csv", 
                         mime="text/csv"
                     )
                 else:
-                    st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot ή ημερομηνία λήξης πρώτης ύλης. Δεν απαιτείται ανάκληση.")
+                    st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot ή ημερομηνία λήξης πρώτης ύλης. Το στοκ σας είναι ασφαλές!")
     
     # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (ΚΑΘΑΡΟ ΧΩΡΙΣ ΠΡΩΤΕΣ ΥΛΕΣ) ---
     st.divider()
