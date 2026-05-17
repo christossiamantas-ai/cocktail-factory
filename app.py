@@ -2664,34 +2664,51 @@ elif page == "📦 Lot Παραγωγής":
         file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
         # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
-        # 1. ΕΠΑΓΓΕΛΜΑΤΙΚΟ ΔΕΛΤΙΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ
+        # 1. ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ (ΚΑΘΑΡΟ REPORT ΧΩΡΙΣ ΠΡΩΤΕΣ ΥΛΕΣ)
         html_pro = f"""
         <html>
         <head><meta charset='UTF-8'><style>
-            body {{ font-family: sans-serif; color: #333; }}
-            .document-header {{ text-align: center; border-bottom: 2px solid #444; padding-bottom: 10px; }}
-            .customer-section {{ background-color: #f2f2f2; padding: 10px; border: 1px solid #ccc; margin-top: 20px; }}
-            .cocktail-title {{ color: #d32f2f; border-left: 5px solid #d32f2f; padding-left: 10px; margin: 15px 0 5px 0; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }}
-            th {{ background-color: #444; color: white; padding: 8px; text-align: left; }}
-            td {{ border: 1px solid #ddd; padding: 6px; }}
+            body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 20px; line-height: 1.5; }}
+            .document-header {{ text-align: center; border-bottom: 3px solid #0275d8; padding-bottom: 15px; margin-bottom: 25px; }}
+            .document-header h1 {{ color: #0275d8; font-size: 24px; margin: 0; }}
+            .document-header h2 {{ color: #555; font-size: 16px; margin: 5px 0 0 0; font-weight: normal; }}
+            .customer-section {{ background-color: #f8f9fa; padding: 12px; border: 1px solid #dee2e6; margin-top: 25px; font-size: 14px; border-left: 5px solid #0275d8; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }}
+            th {{ background-color: #0275d8; color: white; padding: 10px; text-align: left; font-weight: bold; }}
+            td {{ border: 1px solid #dee2e6; padding: 10px; }}
+            tr:nth-child(even) {{ background-color: #fdfdfd; }}
+            .badge {{ background-color: #e9ecef; color: #495057; padding: 3px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; }}
         </style></head>
-        <body><div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>ΔΕΛΤΙΟ ΠΑΡΑΓΩΓΗΣ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</h2><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
+        <body>
+            <div class='document-header'>
+                <h1>CABCLUB COCKTAILS</h1>
+                <h2>📋 ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ</h2>
+                <p>Ημερομηνία Φιλτραρίσματος: <b>{sel_hist_date}</b>{cust_label}</p>
+            </div>
         """
+        
         for p in df_past["Πελάτης"].unique():
             p_df = df_past[df_past["Πελάτης"] == p]
-            # Τραβάμε την πραγματική ημερομηνία παραγωγής του συγκεκριμένου πελάτη από τη βάση
             actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
             
-            html_pro += f"<div class='customer-section'><strong>ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div>"
+            html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div>"
+            html_pro += "<table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα</th></tr></thead><tbody>"
+            
+            # Χρησιμοποιούμε το unique για να πάρουμε κάθε κοκτέιλ του πελάτη ΜΙΑ φορά
             for cock in p_df["Cocktail"].unique():
                 c_df = p_df[p_df["Cocktail"] == cock]
-                c_lot = c_df["LOT_Cocktail"].iloc[0] # ΤΟ ΣΩΣΤΟ LOT ΑΝΑ COCKTAIL
-                html_pro += f"<h3 class='cocktail-title'>{cock}</h3><p style='font-size:12px;margin:0;'>Ποσότητα: <b>{c_df['Τεμάχια'].iloc[0]} τμχ</b> | LOT: <b>{c_lot}</b></p>"
-                html_pro += "<table><thead><tr><th>Πρώτη Ύλη</th><th>Σύνολο ml</th><th>Βάρος (g)</th><th>Lot Number</th><th>Ημ. Λήξης</th></tr></thead><tbody>"
-                for _, row in c_df.iterrows():
-                    html_pro += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f}</td><td>{row['Στόχος_Γραμμάρια']}g</td><td>{row['Lot Number']}</td><td>{row['Ημ_Λήξης']}</td></tr>"
-                html_pro += "</tbody></table>"
+                c_lot = c_df["LOT_Cocktail"].iloc[0]
+                c_qty = c_df['Τεμάχια'].iloc[0]
+                
+                html_pro += f"""
+                <tr>
+                    <td><strong>{cock}</strong></td>
+                    <td><span class='badge'>{c_lot}</span></td>
+                    <td>{int(c_qty)} τμχ</td>
+                </tr>
+                """
+            html_pro += "</tbody></table>"
+            
         html_pro += "</body></html>"
 
         # --- 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME) ---
