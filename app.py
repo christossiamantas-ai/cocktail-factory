@@ -2274,28 +2274,34 @@ elif page == "📦 Lot Παραγωγής":
             "total_ml": "Σύνολο_ML", "target_g": "Στόχος_Γραμμάρια", "lot_number": "Lot Number", "expiry_date": "Ημ_Λήξης"
         })
 
-        # --- ΦΙΛΤΡΑ ΣΤΗΝ ΚΟΡΥΦΗ ---
+        # --- ΦΙΛΤΡΑ ΣΤΗΝ ΚΟΡΥΦΗ (ΔΥΝΑΜΙΚΑ & ΑΛΛΗΛΕΝΔΕΤΑ) ---
         st.markdown("### 🔍 Φίλτρα Αναζήτησης")
-        col_f1, col_f2, col_f3 = st.columns(3)
+        
+        # 1. ΠΡΩΤΑ ΦΙΑΧΝΟΥΜΕ ΤΟ ΦΙΛΤΡΟ ΗΜΕΡΟΜΗΝΙΑΣ
+        all_dates = sorted(df_all_logs_renamed["Ημερομηνία"].dropna().unique(), reverse=True)
+        date_options = ["-- Όλες οι Ημερομηνίες --"] + list(all_dates)
+        
+        # Το βάζουμε σε ένα widget πλήρους πλάτους ή στην αρχή
+        sel_hist_date = st.selectbox("📅 Φίλτρο Ημερομηνίας:", options=date_options)
 
-        with col_f1:
-            all_dates = sorted(df_all_logs_renamed["Ημερομηνία"].dropna().unique(), reverse=True)
-            date_options = ["-- Όλες οι Ημερομηνίες --"] + list(all_dates)
-            sel_hist_date = st.selectbox("📅 Φίλτρο Ημερομηνίας:", options=date_options)
+        # 2. ΦΙΛΤΡΑΡΟΥΜΕ ΠΡΟΣΩΡΙΝΑ ΜΕ ΒΑΣΗ ΤΗΝ ΗΜΕΡΟΜΗΝΙΑ ΓΙΑ ΝΑ ΒΡΟΥΜΕ ΤΑ ΔΙΑΘΕΣΙΜΑ ΣΤΟΙΧΕΙΑ
+        df_temp_date = df_all_logs_renamed.copy()
+        if sel_hist_date != "-- Όλες οι Ημερομηνίες --":
+            df_temp_date = df_temp_date[df_temp_date["Ημερομηνία"] == sel_hist_date]
+
+        # 3. ΤΩΡΑ ΔΗΜΙΟΥΡΓΟΥΜΕ ΤΑ ΑΛΛΑ ΔΥΟ ΦΙΛΤΡΑ ΜΕ ΒΑΣΗ ΜΟΝΟ ΟΣΑ ΥΠΑΡΧΟΥΝ ΕΚΕΙΝΗ ΤΗ ΜΕΡΑ
+        col_f2, col_f3 = st.columns(2)
 
         with col_f2:
-            cust_options = ["-- Όλοι οι Πελάτες --"] + sorted(list(df_all_logs_renamed["Πελάτης"].dropna().unique()))
+            cust_options = ["-- Όλοι οι Πελάτες --"] + sorted(list(df_temp_date["Πελάτης"].dropna().unique()))
             sel_customer = st.selectbox("👤 Φίλτρο Πελάτη:", options=cust_options)
 
         with col_f3:
-            cocktail_options = ["-- Όλα τα Cocktails --"] + sorted(list(df_all_logs_renamed["Cocktail"].dropna().unique()))
+            cocktail_options = ["-- Όλα τα Cocktails --"] + sorted(list(df_temp_date["Cocktail"].dropna().unique()))
             sel_cocktail = st.selectbox("🍹 Φίλτρο ανά Cocktail:", options=cocktail_options)
 
-        # --- ΕΦΑΡΜΟΓΗ ΦΙΛΤΡΩΝ ΣΤΟ DATAFRAME ---
-        df_filtered = df_all_logs_renamed.copy()
-
-        if sel_hist_date != "-- Όλες οι Ημερομηνίες --":
-            df_filtered = df_filtered[df_filtered["Ημερομηνία"] == sel_hist_date]
+        # --- ΤΕΛΙΚΗ ΕΦΑΡΜΟΓΗ ΟΛΩΝ ΤΩΝ ΦΙΛΤΡΩΝ ΣΤΟ DATAFRAME ---
+        df_filtered = df_temp_date.copy()
 
         if sel_customer != "-- Όλοι οι Πελάτες --":
             df_filtered = df_filtered[df_filtered["Πελάτης"] == sel_customer]
