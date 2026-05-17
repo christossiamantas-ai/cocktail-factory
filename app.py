@@ -11,6 +11,8 @@ from supabase import create_client, Client
 import zipfile
 import io
 from fpdf import FPDF # Αν δεν το έχεις ήδη στα imports σου
+import pytz
+greece_tz = pytz.timezone('Europe/Athens')
 
 st.set_page_config(page_title="DC Cabclub", layout="wide")
 
