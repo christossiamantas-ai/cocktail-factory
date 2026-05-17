@@ -8,3 +8,4 @@ streamlit-lottie
 requests
 WooCommerce
 fpdf2
+pytz
