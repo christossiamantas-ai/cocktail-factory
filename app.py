@@ -2876,14 +2876,18 @@ elif page == "📦 Lot Παραγωγής":
                 if not df_affected.empty:
                     st.error(f"⚠️ **Βρέθηκαν {len(df_affected)} εγγραφές υλικών** στην παραγωγή που σχετίζονται με αυτό το στοιχείο!")
                     
-                    # Καθαρή εικόνα έτοιμων κοκτέιλ και πελατών
+                    # 🌟 ΝΕΟ: Βρίσκουμε αυτόματα ποια είναι η Πρώτη Ύλη από τις εγγραφές που επηρεάστηκαν
+                    detected_ingredients = df_affected["Υλικό"].dropna().unique().tolist()
+                    ingredient_title = ", ".join([f"{ing}" for ing in detected_ingredients]) if detected_ingredients else "Άγνωστο Υλικό"
+                    
+                    # Καθαρή εικόνα έτοιμων κοκτέιλ και πελατών για το Streamlit
                     df_display = df_affected[["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
                     st.dataframe(df_display, use_container_width=True, hide_index=True)
                     
                     affected_cust_list = df_display["Πελάτης"].unique().tolist()
                     st.warning(f"📞 **B2B Πελάτες που πρέπει να ειδοποιηθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
                     
-                    # 🌟 ΝΕΟ: Δημιουργία ΠΕΡΙΠΟΙΗΜΕΝΟΥ HTML για Εκτύπωση
+                    # 🌟 ΕΜΦΑΝΙΣΗ ΠΕΡΙΠΟΙΗΜΕΝΟΥ HTML ΓΙΑ ΕΚΤΥΠΩΣΗ ΜΕ ΤΗΝ ΠΡΩΤΗ ΥΛΗ ΣΤΗΝ ΚΟΡΥΦΗ
                     html_content = f"""
                     <!DOCTYPE html>
                     <html>
@@ -2895,6 +2899,12 @@ elif page == "📦 Lot Παραγωγής":
                             .header {{ border-bottom: 4px solid #d9534f; padding-bottom: 15px; margin-bottom: 25px; }}
                             .title {{ color: #d9534f; font-size: 26px; font-weight: bold; margin: 0; }}
                             .subtitle {{ color: #666; font-size: 13px; margin-top: 5px; }}
+                            
+                            /* 🌟 ΣΤΥΛ ΓΙΑ ΤΟ ΝΕΟ ΤΙΤΛΟ ΣΤΗΝ ΑΡΧΗ ΤΗΣ ΣΕΛΙΔΑΣ */
+                            .target-box {{ background-color: #f7f7f7; border: 2px solid #d9534f; border-left: 8px solid #d9534f; padding: 15px; margin-bottom: 20px; border-radius: 4px; }}
+                            .target-box h2 {{ margin: 0 0 5px 0; color: #333; font-size: 20px; }}
+                            .target-box p {{ margin: 0; font-size: 16px; color: #555; }}
+                            
                             .danger-box {{ background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; padding: 15px; margin-bottom: 30px; color: #721c24; }}
                             .danger-title {{ font-weight: bold; font-size: 18px; margin-bottom: 5px; }}
                             .cust-list {{ background: #fff3cd; border-left: 5px solid #ffc107; padding: 12px; font-size: 16px; font-weight: bold; color: #856404; margin-bottom: 25px; border-radius: 4px; }}
@@ -2916,10 +2926,15 @@ elif page == "📦 Lot Παραγωγής":
                             <div class="subtitle">Ημερομηνία & Ώρα Αναφοράς: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
                         </div>
 
+                        <div class="target-box">
+                            <h2>🎯 ΣΤΟΧΟΣ ΑΝΑΚΛΗΣΗΣ</h2>
+                            <p><strong>Πρώτη Ύλη:</strong> {ingredient_title}</p>
+                            <p><strong>LOT / Ημ. Λήξης που αναζητήθηκε:</strong> <span class="badge" style="font-size: 14px;">{search_val}</span></p>
+                        </div>
+
                         <div class="danger-box">
                             <div class="danger-title">⚠️ ΣΤΟΙΧΕΙΑ ΕΛΕΓΧΟΥ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</div>
-                            <div>Αναζήτηση LOT / Ημερομηνίας Λήξης: <strong>{search_val}</strong></div>
-                            <div>Συνολικές εγγραφές παραγωγής που επηρεάζονται: <strong>{len(df_affected)}</strong></div>
+                            <div>Συνολικές εγγραφές παραγωγής που εντοπίστηκαν: <strong>{len(df_affected)}</strong></div>
                         </div>
 
                         <h3 style="color: #495057; margin-bottom: 10px;">📞 Λίστα Επείγουσας Ειδοποίησης Πελατών (B2B):</h3>
