@@ -2867,8 +2867,7 @@ elif page == "📦 Lot Παραγωγής":
             if recall_query:
                 search_val = str(recall_query).strip()
                 
-                # 🌟 ΕΞΥΠΝΗ ΑΝΑΖΗΤΗΣΗ: Ψάχνει ταυτόχρονα και στις δύο στήλες του production_log!
-                # Χρησιμοποιούμε .str.contains για να "πιάνει" το υλικό ακόμα κι αν γράφτηκε ως "L1 / L2"
+                # Αναζήτηση και στις δύο στήλες του production_log
                 df_affected = df_all_logs_renamed[
                     df_all_logs_renamed["Lot Number"].astype(str).str.contains(search_val, case=False, na=False) |
                     df_all_logs_renamed["Ημ_Λήξης"].astype(str).str.contains(search_val, case=False, na=False)
@@ -2877,22 +2876,101 @@ elif page == "📦 Lot Παραγωγής":
                 if not df_affected.empty:
                     st.error(f"⚠️ **Βρέθηκαν {len(df_affected)} εγγραφές υλικών** στην παραγωγή που σχετίζονται με αυτό το στοιχείο!")
                     
-                    # Κρατάμε μια καθαρή εικόνα των έτοιμων κοκτέιλ και των πελατών που τα πήραν
+                    # Καθαρή εικόνα έτοιμων κοκτέιλ και πελατών
                     df_display = df_affected[["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
                     st.dataframe(df_display, use_container_width=True, hide_index=True)
                     
-                    # Εμφάνιση των πελατών που πρέπει να ενημερωθούν
                     affected_cust_list = df_display["Πελάτης"].unique().tolist()
                     st.warning(f"📞 **B2B Πελάτες που πρέπει να ειδοποιηθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
                     
-                    # Εξαγωγή της λίστας ανάκλησης σε CSV
-                    recall_csv = df_affected.to_csv(index=False, encoding="utf-8-sig")
+                    # 🌟 ΝΕΟ: Δημιουργία ΠΕΡΙΠΟΙΗΜΕΝΟΥ HTML για Εκτύπωση
+                    html_content = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <title>Αναφορά Άμεσης Ανάκλησης - Cocktail Factory</title>
+                        <style>
+                            body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 30px; line-height: 1.6; }}
+                            .header {{ border-bottom: 4px solid #d9534f; padding-bottom: 15px; margin-bottom: 25px; }}
+                            .title {{ color: #d9534f; font-size: 26px; font-weight: bold; margin: 0; }}
+                            .subtitle {{ color: #666; font-size: 13px; margin-top: 5px; }}
+                            .danger-box {{ background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; padding: 15px; margin-bottom: 30px; color: #721c24; }}
+                            .danger-title {{ font-weight: bold; font-size: 18px; margin-bottom: 5px; }}
+                            .cust-list {{ background: #fff3cd; border-left: 5px solid #ffc107; padding: 12px; font-size: 16px; font-weight: bold; color: #856404; margin-bottom: 25px; border-radius: 4px; }}
+                            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                            th {{ background-color: #f1f1f1; border: 1px solid #dee2e6; text-align: left; padding: 12px; font-weight: bold; color: #495057; font-size: 14px; }}
+                            td {{ border: 1px solid #dee2e6; text-align: left; padding: 12px; font-size: 14px; }}
+                            tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                            .badge {{ background-color: #d9534f; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; letter-spacing: 0.5px; }}
+                            .footer {{ margin-top: 50px; font-size: 12px; color: #777; text-align: center; border-top: 1px solid #e9ecef; padding-top: 15px; }}
+                            @media print {{
+                                body {{ margin: 15mm 10mm; }}
+                                .no-print {{ display: none; }}
+                            }}
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <div class="title">🚨 COCKTAIL FACTORY - ΕΚΘΕΣΗ ΑΝΑΚΛΗΣΗΣ ΠΡΩΤΩΝ ΥΛΩΝ</div>
+                            <div class="subtitle">Ημερομηνία & Ώρα Αναφοράς: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+                        </div>
+
+                        <div class="danger-box">
+                            <div class="danger-title">⚠️ ΣΤΟΙΧΕΙΑ ΕΛΕΓΧΟΥ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</div>
+                            <div>Αναζήτηση LOT / Ημερομηνίας Λήξης: <strong>{search_val}</strong></div>
+                            <div>Συνολικές εγγραφές παραγωγής που επηρεάζονται: <strong>{len(df_affected)}</strong></div>
+                        </div>
+
+                        <h3 style="color: #495057; margin-bottom: 10px;">📞 Λίστα Επείγουσας Ειδοποίησης Πελατών (B2B):</h3>
+                        <div class="cust-list">
+                            {', '.join([f'{c}' for c in affected_cust_list])}
+                        </div>
+
+                        <h3 style="color: #495057; margin-bottom: 5px;">📋 Αναλυτικό Πλάνο Διανομής Μολυσμένων Παρτίδων</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Ημερομηνία</th>
+                                    <th>Πελάτης B2B</th>
+                                    <th>Έτοιμο Προϊόν (Cocktail)</th>
+                                    <th>LOT Τελικού Προϊόντος</th>
+                                    <th>Ποσότητα (Τεμάχια)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    """
+                    
+                    for _, row in df_display.iterrows():
+                        html_content += f"""
+                                <tr>
+                                    <td>{row['Ημερομηνία']}</td>
+                                    <td><strong>{row['Πελάτης']}</strong></td>
+                                    <td>{row['Cocktail']}</td>
+                                    <td><span class="badge">{row['LOT_Cocktail']}</span></td>
+                                    <td>{int(row['Τεμάχια'])} τμχ</td>
+                                </tr>
+                        """
+                        
+                    html_content += """
+                            </tbody>
+                        </table>
+
+                        <div class="footer">
+                            Το έγγραφο αυτό αποτελεί επίσημο αντίγραφο ιχνηλασιμότητας από το λογισμικό Cocktail Factory.<br>
+                            Υπεύθυνος Εργαστηρίου: ___________________________ &nbsp;&nbsp;&nbsp;&nbsp; Υπογραφή: ___________________________
+                        </div>
+                    </body>
+                    </html>
+                    """
+                    
                     safe_file_name = search_val.replace("/", "_")
                     st.download_button(
-                        label="📥 Λήψη Αναφοράς Ανάκλησης (CSV)", 
-                        data=recall_csv, 
-                        file_name=f"RECALL_REPORT_{safe_file_name}.csv", 
-                        mime="text/csv"
+                        label="📄 Λήψη Έκθεσης Ανάκλησης (Έτοιμο HTML για Εκτύπωση)", 
+                        data=html_content, 
+                        file_name=f"RECALL_REPORT_{safe_file_name}.html", 
+                        mime="text/html",
+                        use_container_width=True
                     )
                 else:
                     st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot ή ημερομηνία λήξης πρώτης ύλης. Το στοκ σας είναι ασφαλές!")
