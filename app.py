@@ -2718,6 +2718,9 @@ elif page == "📦 Lot Παραγωγής":
         df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
         
         grand_total_pcs = df_daily["Τεμάχια"].sum()
+        # 🌟 ΝΕΟ: Υπολογισμός μοναδικών κοκτέιλ που παρασκευάστηκαν τη συγκεκριμένη μέρα
+        total_different_cocktails = df_daily["Cocktail"].nunique() if not df_daily.empty else 0
+        
         total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
         html_daily = f"""
@@ -2736,8 +2739,11 @@ elif page == "📦 Lot Παραγωγής":
                 text-align: center; 
                 font-size: 1.4em; 
                 border-radius: 10px;
+                line-height: 1.8;
             }}
             .grand-total b {{ color: #d32f2f; font-size: 1.6em; }}
+            /* Στυλ για την εμφάνιση των διαφορετικών κοκτέιλ */
+            .cocktail-count {{ color: #444; font-size: 1.1em; font-weight: bold; margin-top: 5px; display: block; }}
         </style></head>
         <body>
             <div class='header'>
@@ -2771,10 +2777,12 @@ elif page == "📦 Lot Παραγωγής":
             </tbody></table>
             """
 
+        # 🌟 Εδώ προστέθηκε η μεταβλητή total_different_cocktails στο τελικό κουτί
         html_daily += f"""
             <div class='grand-total'>
                 {total_label_text}<br>
                 <b>{grand_total_pcs} Τεμάχια</b>
+                <span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span>
             </div>
         </body></html>
         """
