@@ -2694,7 +2694,7 @@ elif page == "📦 Lot Παραγωγής":
             html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div>"
             html_pro += "<table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα</th></tr></thead><tbody>"
             
-            # Χρησιμοποιούμε το unique για να πάρουμε κάθε κοκτέιλ του πελάτη ΜΙΑ φορά
+            # Παίρνουμε κάθε μοναδικό κοκτέιλ του πελάτη
             for cock in p_df["Cocktail"].unique():
                 c_df = p_df[p_df["Cocktail"] == cock]
                 c_lot = c_df["LOT_Cocktail"].iloc[0]
@@ -2828,9 +2828,9 @@ elif page == "📦 Lot Παραγωγής":
             """
         html_prep += "</tbody></table></body></html>"
 
-        # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD ---
+        # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD (ΜΕ ΤΟ ΝΕΟ ΟΝΟΜΑ ΣΤΟ ΚΟΥΜΠΙ 1) ---
         col_p1, col_p2, col_p3 = st.columns(3)
-        col_p1.download_button("🖨️ Δελτίο Ιχνηλασιμότητας", data=html_pro, file_name=f"Trace_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
+        col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
     
