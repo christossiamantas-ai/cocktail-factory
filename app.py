@@ -2872,25 +2872,27 @@ elif page == "📦 Lot Παραγωγής":
                 else:
                     st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot πρώτης ύλης. Δεν απαιτείται ανάκληση.")
     
-    # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (ΣΥΝΔΕΣΗ ΜΕ SUPABASE) ---
+    # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (ΚΑΘΑΡΟ ΧΩΡΙΣ ΠΡΩΤΕΣ ΥΛΕΣ) ---
     st.divider()
     st.subheader("📊 Γενικό Αρχείο Παραγωγής")
     st.info("Εδώ μπορείτε να εκτυπώσετε ολόκληρο το ιστορικό παραγωγής από τη Supabase.")
     
     if st.button("📑 Προετοιμασία Πλήρους Ιστορικού για Εκτύπωση"):
         if res_all.data:
-            df_full_hist = pd.DataFrame(res_all.data).rename(columns={
+            df_raw_hist = pd.DataFrame(res_all.data).rename(columns={
                 "prod_date": "Ημερομηνία",
                 "customer": "Πελάτης",
                 "cocktail_name": "Cocktail",
                 "lot_cocktail": "LOT_Cocktail",
-                "ingredient_name": "Υλικό",
-                "lot_number": "Lot Number",
                 "pieces": "Τεμάχια"
             })
             
-            df_full_hist['temp_date'] = pd.to_datetime(df_full_hist['Ημερομηνία'], format='%d/%m/%Y')
-            df_full_hist = df_full_hist.sort_values(by='temp_date', ascending=False)
+            # Μετατροπή ημερομηνίας για σωστή ταξινόμηση (από την πιο πρόσφατη στην πιο παλιά)
+            df_raw_hist['temp_date'] = pd.to_datetime(df_raw_hist['Ημερομηνία'], format='%d/%m/%Y')
+            df_raw_hist = df_raw_hist.sort_values(by='temp_date', ascending=False)
+            
+            # 🌟 ΜΑΓΙΚΟ ΦΙΛΤΡΟ: Αφαιρεί τα διπλότυπα των υλικών για να φαίνονται μόνο τα έτοιμα ποτά
+            df_full_hist = df_raw_hist.drop_duplicates(subset=["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail"])
     
             full_html = f"""
             <html>
@@ -2910,7 +2912,7 @@ elif page == "📦 Lot Παραγωγής":
             <body>
                 <h1>ΚΑΤΑΣΤΑΣΗ ΟΛΙΚΗΣ ΠΑΡΑΓΩΓΗΣ - CABCLUB</h1>
                 <div class='summary'>
-                    Συνολικές Εγγραφές: <b>{len(df_full_hist)}</b><br>
+                    Συνολικά Cocktail / Παρτίδες: <b>{len(df_full_hist)}</b><br>
                     Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}
                 </div>
                 <table>
@@ -2920,8 +2922,6 @@ elif page == "📦 Lot Παραγωγής":
                             <th>Πελάτης</th>
                             <th>Cocktail</th>
                             <th>LOT</th>
-                            <th>Υλικό</th>
-                            <th>Lot Ύλης</th>
                             <th>Τμχ</th>
                         </tr>
                     </thead>
@@ -2935,8 +2935,6 @@ elif page == "📦 Lot Παραγωγής":
                         <td>{row['Πελάτης']}</td>
                         <td><b>{row['Cocktail']}</b></td>
                         <td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td>
-                        <td>{row['Υλικό']}</td>
-                        <td>{row['Lot Number']}</td>
                         <td>{row['Τεμάχια']}</td>
                     </tr>
                 """
