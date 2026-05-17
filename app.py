@@ -2665,6 +2665,13 @@ elif page == "📦 Lot Παραγωγής":
 
         # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
         # 1. ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ (ΚΑΘΑΡΟ REPORT ΧΩΡΙΣ ΠΡΩΤΕΣ ΥΛΕΣ)
+        
+        # 🌟 ΔΗΜΙΟΥΡΓΙΑ ΚΑΘΑΡΟΥ ΠΙΝΑΚΑ: Ομαδοποίηση ανά Πελάτη, Κοκτέιλ και LOT, και άθροισμα στα Τεμάχια
+        # Με αυτόν τον τρόπο εξαφανίζονται ΠΛΗΡΩΣ τα υλικά και οι διπλές γραμμές πριν μπουν στο HTML!
+        df_clean_customers = df_past.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
+            "Τεμάχια": "first"  # ή "max" ή "first", ανάλογα με το πώς καταγράφεται η ποσότητα στην παραγωγή σας
+        })
+
         html_pro = f"""
         <html>
         <head><meta charset='UTF-8'><style>
@@ -2687,24 +2694,20 @@ elif page == "📦 Lot Παραγωγής":
             </div>
         """
         
-        for p in df_past["Πελάτης"].unique():
-            p_df = df_past[df_past["Πελάτης"] == p]
+        # 🌟 Τώρα το loop τρέχει πάνω στον ΠΕΝΤΑΚΑΘΑΡΟ πίνακα
+        for p in df_clean_customers["Πελάτης"].unique():
+            p_df = df_clean_customers[df_clean_customers["Πελάτης"] == p]
             actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
             
             html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div>"
             html_pro += "<table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα</th></tr></thead><tbody>"
             
-            # Παίρνουμε κάθε μοναδικό κοκτέιλ του πελάτη
-            for cock in p_df["Cocktail"].unique():
-                c_df = p_df[p_df["Cocktail"] == cock]
-                c_lot = c_df["LOT_Cocktail"].iloc[0]
-                c_qty = c_df['Τεμάχια'].iloc[0]
-                
+            for _, row in p_df.iterrows():
                 html_pro += f"""
                 <tr>
-                    <td><strong>{cock}</strong></td>
-                    <td><span class='badge'>{c_lot}</span></td>
-                    <td>{int(c_qty)} τμχ</td>
+                    <td><strong>{row['Cocktail']}</strong></td>
+                    <td><span class='badge'>{row['LOT_Cocktail']}</span></td>
+                    <td>{int(row['Τεμάχια'])} τμχ</td>
                 </tr>
                 """
             html_pro += "</tbody></table>"
@@ -2828,7 +2831,7 @@ elif page == "📦 Lot Παραγωγής":
             """
         html_prep += "</tbody></table></body></html>"
 
-        # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD (ΜΕ ΤΟ ΝΕΟ ΟΝΟΜΑ ΣΤΟ ΚΟΥΜΠΙ 1) ---
+        # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD ---
         col_p1, col_p2, col_p3 = st.columns(3)
         col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
