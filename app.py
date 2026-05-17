@@ -2866,11 +2866,10 @@ elif page == "📦 Lot Παραγωγής":
                 key="recall_input"
             )
             
+            # Όλα τα παρακάτω εκτελούνται ΜΟΝΟ αν ο χρήστης γράψει κάτι στο κουτί
             if recall_query:
                 search_val = str(recall_query).strip()
                 
-                # 🌟 ΕΞΥΠΝΗ ΔΙΠΛΗ ΑΝΑΖΗΤΗΣΗ (Ψάχνει ταυτόχρονα και στο Lot Number και στην Ημερομηνία Λήξης)
-                # Χρησιμοποιούμε .contains επειδή αν μια εγγραφή έχει διπλό Lot (π.χ. L1 / L2), η απλή ισότητα θα έχανε το αποτέλεσμα!
                 df_affected = df_all[
                     df_all["Lot Number"].astype(str).str.contains(search_val, case=False, na=False) |
                     df_all["Ημ_Λήξης"].astype(str).str.contains(search_val, case=False, na=False)
@@ -2879,23 +2878,20 @@ elif page == "📦 Lot Παραγωγής":
                 if not df_affected.empty:
                     st.error(f"⚠️ **Βρέθηκαν {len(df_affected)} εγγραφές παραγωγής** που σχετίζονται με αυτό το στοιχείο πρώτης ύλης!")
                     
-                    # Αφαιρούμε τα διπλότυπα για την καθαρή εμφάνιση των επηρεαζόμενων τελικών κοκτέιλ
                     df_display = df_affected[["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
-                    
-                    st.dataframe(
-                        df_display,
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
                     
                     affected_cust_list = df_affected["Πελάτης"].unique().tolist()
                     st.warning(f"📞 **Πελάτες που πρέπει να ενημερωθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
                     
-                    # Εξαγωγή πλήρους αναφοράς σε CSV για τις αρχές ή τον έλεγχο
                     recall_csv = df_affected.to_csv(index=False, encoding="utf-8-sig")
-                    # Καθαρίζουμε το όνομα του αρχείου από κάθετες αν ο χρήστης έβαλε ημερομηνία (π.χ. 11/05/2026)
-                    safe_file_name = str(search_val).replace("/", "_")
-                    st.download_button("📥 Λήψη Λίστας Ανάκλησης (CSV)", data=recall_csv, file_name=f"RECALL_REPORT_{safe_file_name}.csv", mime="text/csv")
+                    safe_file_name = search_val.replace("/", "_")
+                    st.download_button(
+                        label="📥 Λήψη Λίστας Ανάκλησης (CSV)", 
+                        data=recall_csv, 
+                        file_name=f"RECALL_REPORT_{safe_file_name}.csv", 
+                        mime="text/csv"
+                    )
                 else:
                     st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot ή ημερομηνία λήξης πρώτης ύλης. Δεν απαιτείται ανάκληση.")
     
