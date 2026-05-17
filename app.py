@@ -2280,8 +2280,6 @@ elif page == "📦 Lot Παραγωγής":
         # 1. ΠΡΩΤΑ ΦΙΑΧΝΟΥΜΕ ΤΟ ΦΙΛΤΡΟ ΗΜΕΡΟΜΗΝΙΑΣ
         all_dates = sorted(df_all_logs_renamed["Ημερομηνία"].dropna().unique(), reverse=True)
         date_options = ["-- Όλες οι Ημερομηνίες --"] + list(all_dates)
-        
-        # Το βάζουμε σε ένα widget πλήρους πλάτους ή στην αρχή
         sel_hist_date = st.selectbox("📅 Φίλτρο Ημερομηνίας:", options=date_options)
 
         # 2. ΦΙΛΤΡΑΡΟΥΜΕ ΠΡΟΣΩΡΙΝΑ ΜΕ ΒΑΣΗ ΤΗΝ ΗΜΕΡΟΜΗΝΙΑ ΓΙΑ ΝΑ ΒΡΟΥΜΕ ΤΑ ΔΙΑΘΕΣΙΜΑ ΣΤΟΙΧΕΙΑ
