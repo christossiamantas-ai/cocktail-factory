@@ -2858,29 +2858,46 @@ elif page == "📦 Lot Παραγωγής":
 
         with tab_recall_tool:
             st.markdown("#### 🚨 Εργαλείο Άμεσης Ανάκλησης")
-            st.write("Αν ένας προμηθευτής αναφέρει πρόβλημα σε ένα υλικό, βάλτε το **Lot Number του υλικού** παρακάτω.")
+            st.write("Αν ένας προμηθευτής αναφέρει πρόβλημα σε ένα υλικό, εισάγετε το **Lot Number** ή την **Ημερομηνία Λήξης** του υλικού παρακάτω.")
             
-            recall_lot = st.text_input("Εισάγετε το Lot Number της Πρώτης Ύλης:", placeholder="π.χ. LOT-GIN-2024", key="recall_input")
+            recall_query = st.text_input(
+                "Εισάγετε το Lot Number ή την Ημερομηνία Λήξης της Πρώτης Ύλης:", 
+                placeholder="π.χ. LOT-GIN-2024 ή 15/12/2026", 
+                key="recall_input"
+            )
             
-            if recall_lot:
-                df_affected = df_all[df_all["Lot Number"] == recall_lot]
+            if recall_query:
+                search_val = recall_query.strip()
+                
+                # 🌟 ΕΞΥΠΝΗ ΔΙΠΛΗ ΑΝΑΖΗΤΗΣΗ (Ψάχνει ταυτόχρονα και στο Lot Number και στην Ημερομηνία Λήξης)
+                # Χρησιμοποιούμε .contains επειδή αν μια εγγραφή έχει διπλό Lot (π.χ. L1 / L2), η απλή ισότητα θα έχανε το αποτέλεσμα!
+                df_affected = df_all[
+                    df_all["Lot Number"].astype(str).str.contains(search_val, case=False, na=False) |
+                    df_all["Ημ_Λήξης"].astype(str).str.contains(search_val, case=False, na=False)
+                ]
                 
                 if not df_affected.empty:
-                    st.error(f"⚠️ **Βρέθηκαν {len(df_affected)} εγγραφές παραγωγής** που περιέχουν αυτό το υλικό!")
+                    st.error(f"⚠️ **Βρέθηκαν {len(df_affected)} εγγραφές παραγωγής** που σχετίζονται με αυτό το στοιχείο πρώτης ύλης!")
+                    
+                    # Αφαιρούμε τα διπλότυπα για την καθαρή εμφάνιση των επηρεαζόμενων τελικών κοκτέιλ
+                    df_display = df_affected[["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
                     
                     st.dataframe(
-                        df_affected[["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail", "Τεμάχια"]],
+                        df_display,
                         use_container_width=True,
                         hide_index=True
                     )
                     
                     affected_cust_list = df_affected["Πελάτης"].unique().tolist()
-                    st.warning(f"📞 **Πελάτες που πρέπει να ενημερωθούν:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
+                    st.warning(f"📞 **Πελάτες που πρέπει να ενημερωθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
                     
+                    # Εξαγωγή πλήρους αναφοράς σε CSV για τις αρχές ή τον έλεγχο
                     recall_csv = df_affected.to_csv(index=False, encoding="utf-8-sig")
-                    st.download_button("📥 Λήψη Λίστας Ανάκλησης (CSV)", data=recall_csv, file_name=f"RECALL_REPORT_{recall_lot}.csv", mime="text/csv")
+                    # Καθαρίζουμε το όνομα του αρχείου από κάθετες αν ο χρήστης έβαλε ημερομηνία (π.χ. 11/05/2026)
+                    safe_file_name = search_val.replace("/", "_")
+                    st.download_button("📥 Λήψη Λίστας Ανάκλησης (CSV)", data=recall_csv, file_name=f"RECALL_REPORT_{safe_file_name}.csv", mime="text/csv")
                 else:
-                    st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot πρώτης ύλης. Δεν απαιτείται ανάκληση.")
+                    st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot ή ημερομηνία λήξης πρώτης ύλης. Δεν απαιτείται ανάκληση.")
     
     # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (ΚΑΘΑΡΟ ΧΩΡΙΣ ΠΡΩΤΕΣ ΥΛΕΣ) ---
     st.divider()
