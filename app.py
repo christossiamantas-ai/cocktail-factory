@@ -1867,28 +1867,24 @@ elif page == "📦 Lot Παραγωγής":
 
     st.divider()
 
-    # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ (ΕΞΥΠΝΟΣ PARSER ΓΙΑ ΤΜΧ & X) ---
-    default_cocktails_list = []
-    default_quantities = {}
-    
-    if active_order is not None and not df_rec.empty:
+    # --- ΑΡΧΙΚΟΠΟΙΗΣΗ ΤΟΥ "ΚΑΛΑΘΙΟΥ" ΠΑΡΑΓΩΓΗΣ ---
+    if "production_batch_items" not in st.session_state:
+        st.session_state.production_batch_items = []
+
+    # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ B2B ΚΑΤΕΥΘΕΙΑΝ ΣΤΟ ΚΑΛΑΘΙ ---
+    if active_order is not None and not df_rec.empty and len(st.session_state.production_batch_items) == 0:
         details = active_order.get('order_details', '')
+        b2b_customer = active_order.get('customer_name', 'Λιανική / Άγνωστος')
         lines = details.split('\n')
         for line in lines:
-            # Αγνοούμε κενές γραμμές ή γραμμές με επεξηγήσεις/έκπτωσεις
             if not line.strip() or "[" in line or "Αρχική" in line or "Έκπτωση" in line:
                 continue
             try:
-                # Καθαρίζουμε τη γραμμή από την κουκκίδα
                 clean_line = line.replace('•', '').strip()
-                
-                # 1. Δοκιμή αν η γραμμή έχει τη μορφή "120 τμχ Μοχίτο"
                 if " τμχ " in clean_line:
                     parts = clean_line.split(" τμχ ")
                     qty = int(parts[0].strip())
                     c_name = parts[1].split(' (')[0].strip()
-                
-                # 2. Δοκιμή αν η γραμμή έχει τη μορφή "120 x Μοχίτο"
                 elif "x " in clean_line:
                     parts = clean_line.split("x ")
                     qty = int(parts[0].strip())
@@ -1896,53 +1892,75 @@ elif page == "📦 Lot Παραγωγής":
                 else:
                     continue
                 
-                # Αν το κοκτέιλ υπάρχει στις συνταγές μας, το κλειδώνουμε
                 if c_name in df_rec["Ονομα"].unique():
-                    if c_name not in default_cocktails_list:
-                        default_cocktails_list.append(c_name)
-                    default_quantities[c_name] = qty
+                    st.session_state.production_batch_items.append({
+                        "Πελάτης": b2b_customer,
+                        "Κοκτέιλ": c_name,
+                        "Τεμάχια": qty
+                    })
             except Exception:
                 pass
 
-    # 2. ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ
+    # 2. ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ (ΝΕΟ ΣΥΣΤΗΜΑ "ΚΑΛΑΘΙΟΥ")
     if not df_rec.empty:
-        selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique(), default=default_cocktails_list)
+        st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
+        
+        st.markdown("### 🛒 1. Καταχώρηση Παραγγελιών ανά Πελάτη")
+        
+        c_col1, c_col2, c_col3, c_col4 = st.columns([2, 2, 1, 1.2])
+        
+        sel_cust = c_col1.selectbox("👤 1. Επιλέξτε Πελάτη:", customer_options, key=f"batch_cust_{reset_key}")
+        recipe_options = list(df_rec["Ονομα"].unique())
+        sel_cocktail = c_col2.selectbox("🍹 2. Επιλέξτε Κοκτέιλ:", recipe_options, key=f"batch_cocktail_{reset_key}")
+        sel_pcs = c_col3.number_input("📦 3. Τεμάχια:", min_value=1, step=1, value=1, key=f"batch_pcs_{reset_key}")
+        
+        st.write("") 
+        if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
+            if sel_cocktail:
+                found = False
+                for item in st.session_state.production_batch_items:
+                    if item["Πελάτης"] == sel_cust and item["Κοκτέιλ"] == sel_cocktail:
+                        item["Τεμάχια"] += sel_pcs
+                        found = True
+                        break
+                if not found:
+                    st.session_state.production_batch_items.append({
+                        "Πελάτης": sel_cust,
+                        "Κοκτέιλ": sel_cocktail,
+                        "Τεμάχια": sel_pcs
+                    })
+                st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} στον πελάτη {sel_cust}!")
+                st.rerun()
 
-        if selected_cocktails:
-            st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
+        selected_cocktails = []
+        all_assignments = {}
+
+        if st.session_state.production_batch_items:
+            st.markdown("#### 📋 Στοιχεία Τρέχουσας Παρτίδας προς Παραγωγή")
+            df_current_batch = pd.DataFrame(st.session_state.production_batch_items)
+            st.dataframe(df_current_batch, use_container_width=True, hide_index=True)
             
-            # --- ΒΗΜΑ 1: ΚΑΤΑΝΟΜΗ ΤΕΜΑΧΙΩΝ ΑΝΑ ΠΕΛΑΤΗ ---
-            st.markdown("### 🔢 1. Τεμάχια Παραγωγής & Πελάτες")
-            st.info("💡 Επιλέξτε τον πελάτη από τη λίστα. Αν είναι νέα παραγγελία λιανικής, αφήστε 'Λιανική / Άγνωστος'.")
-            
-            all_assignments = {}
-            default_global_cust = active_order.get('customer_name', 'Λιανική / Άγνωστος') if active_order else "Λιανική / Άγνωστος"
-
-            for name in selected_cocktails:
-                st.markdown(f"**🍹 {name}**")
-                # Αν ο πελάτης από το B2B δεν υπάρχει στη λίστα (σπάνιο), τον προσθέτουμε προσωρινά για να μην σκάσει το dropdown
-                current_options = customer_options.copy()
-                if default_global_cust not in current_options:
-                    current_options.append(default_global_cust)
-
-                init_data = [{"Πελάτης": default_global_cust, "Τεμάχια": default_quantities.get(name, 1)}]
-                df_init = pd.DataFrame(init_data)
+            if st.button("🗑️ Καθαρισμός Παρτίδας", type="secondary"):
+                st.session_state.production_batch_items = []
+                if 'active_b2b_order' in st.session_state:
+                    st.session_state['active_b2b_order'] = None
+                st.rerun()
                 
-                edited_df = st.data_editor(
-                    df_init,
-                    num_rows="dynamic",
-                    key=f"editor_{name}_{reset_key}",
-                    use_container_width=True,
-                    column_config={
-                        "Τεμάχια": st.column_config.NumberColumn(min_value=1, step=1, default=1),
-                        "Πελάτης": st.column_config.SelectboxColumn(
-                            "Πελάτης",
-                            options=current_options,
-                            required=True
-                        )
-                    }
-                )
-                all_assignments[name] = edited_df
+            # --- ΑΥΤΟΜΑΤΗ ΜΕΤΑΤΡΟΠΗ ΓΙΑ ΝΑ ΔΟΥΛΕΨΟΥΝ ΤΑ ΕΠΟΜΕΝΑ ΒΗΜΑΤΑ ---
+            for item in st.session_state.production_batch_items:
+                cocktail = item["Κοκτέιλ"]
+                c_name = item["Πελάτης"]
+                pcs = item["Τεμάχια"]
+                
+                if cocktail not in all_assignments:
+                    all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια"])
+                
+                new_row = pd.DataFrame([{"Πελάτης": c_name, "Τεμάχια": int(pcs)}])
+                all_assignments[cocktail] = pd.concat([all_assignments[cocktail], new_row], ignore_index=True)
+
+            selected_cocktails = list(all_assignments.keys())
+        else:
+            st.warning("⚠️ Η παρτίδα είναι άδεια. Προσθέστε παραγγελίες παραπάνω για να εμφανιστούν τα υλικά και τα LOT.")
 
             # =========================================================================
             # 🌟 ΝΕΟ: ΚΕΝΤΡΙΚΟΣ ΠΙΝΑΚΑΣ LOT ΚΟΚΤΕΪΛ ΑΝΑ ΠΕΛΑΤΗ (ΜΑΖΙΚΗ ΑΛΛΑΓΗ ΜΕΡΑΣ)
@@ -2162,6 +2180,7 @@ elif page == "📦 Lot Παραγωγής":
                         try:
                             # 1. Αποθήκευση Πρώτων Υλών & Τεμαχίων (Για την Παραγωγή / Ιχνηλασιμότητα)
                             supabase.table("production_log").insert(lot_entries).execute()
+                            st.session_state.production_batch_items = []
                             
                             # 2. ΑΥΤΟΜΑΤΗ ΕΝΗΜΕΡΩΣΗ ΟΙΚΟΝΟΜΙΚΩΝ ΣΤΟ DASHBOARD
                             if active_order is not None:
