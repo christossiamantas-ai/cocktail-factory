@@ -3578,33 +3578,43 @@ elif page == "📦 Παραγγελίες B2B":
         if res_orders.data:
             df_hist = pd.DataFrame(res_orders.data)
             
-            search_col1, search_col2 = st.columns(2)
-            with search_col1:
-                cust_search = st.multiselect("Φίλτρο Πελάτη:", options=sorted(df_hist["customer_name"].unique()))
-            with search_col2:
-                # Εξαγωγή ονομάτων κοκτέιλ από το κείμενο της παραγγελίας
-                all_cocktails = set()
-                for details in df_hist["order_details"]:
+            # --- ΔΥΝΑΜΙΚΑ ΦΙΛΤΡΑ (Ασφαλή για άδειες μέρες) ---
+            if not df_hist.empty and "customer_name" in df_hist.columns:
+                # 1. Βρίσκουμε τους πελάτες
+                available_customers = sorted(df_hist["customer_name"].dropna().unique().tolist())
+                
+                # 2. Βρίσκουμε τα κοκτέιλ με τη δική σου λογική (split με 'x ')
+                available_cocktails = set()
+                for details in df_hist["order_details"].dropna():
                     lines = str(details).split('\n')
                     for line in lines:
                         if 'x ' in line:
-                            # Παίρνει το όνομα μετά το "x "
                             parts = line.split('x ')
                             if len(parts) > 1:
                                 name = parts[1].split(' (')[0].strip()
-                                all_cocktails.add(name)
-                cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=sorted(list(all_cocktails)))
+                                available_cocktails.add(name)
+                available_cocktails = sorted(list(available_cocktails))
+            else:
+                available_customers = []
+                available_cocktails = []
+
+            search_col1, search_col2 = st.columns(2)
+            with search_col1:
+                cust_search = st.multiselect("Φίλτρο Πελάτη:", options=available_customers)
+            with search_col2:
+                cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=available_cocktails)
 
             # Φιλτράρισμα
-            mask = pd.Series([True] * len(df_hist))
-            if cust_search: 
-                mask &= df_hist["customer_name"].isin(cust_search)
-            if cocktail_search:
-                cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
-                mask &= cocktail_mask
-
-            df_results = df_hist[mask]
-
+            if not df_hist.empty:
+                mask = pd.Series([True] * len(df_hist))
+                if cust_search: 
+                    mask &= df_hist["customer_name"].isin(cust_search)
+                if cocktail_search:
+                    cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
+                    mask &= cocktail_mask
+                df_results = df_hist[mask]
+            else:
+                df_results = df_hist
             if not df_results.empty:
                 st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
                 for _, row in df_results.iterrows():
