@@ -474,7 +474,7 @@ if page == "📦 Αποθήκη":
                 <div class='header'>
                     {f'<img src="data:image/png;base64,{logo_base64}" class="logo-img"><br>' if logo_base64 else ''}
                     <h1>CABCLUB | LISTA ΠΡΩΤΩΝ ΥΛΩΝ</h1>
-                    <p>Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+                    <p>Ημερομηνία Εξαγωγής: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}</p>
                 </div>
                 <table>
                     <thead>
@@ -520,7 +520,7 @@ if page == "📦 Αποθήκη":
         st.download_button(
             label="📄 Λήψη Λίστας Αποθήκης (HTML)",
             data=html_ing,
-            file_name=f"CabClub_Warehouse_{datetime.now().strftime('%d_%m_%Y')}.html",
+            file_name=f"CabClub_Warehouse_{datetime.now(greece_tz).strftime('%d_%m_%Y')}.html",
             mime="text/html",
             use_container_width=True
         )
@@ -1030,7 +1030,7 @@ elif page == "🔍 Ανάλυση":
                     <div class='meta-item'><strong>Barcode:</strong> {current_barcode}</div>
                     <div class='meta-item'><strong>Συνολικά ML:</strong> {total_ml_cocktail:g} ml</div>
                     <div class='meta-item'><strong>Αλκοόλ (ABV):</strong> {final_abv:g}%</div>
-                    <div class='meta-item'><strong>Ημερομηνία:</strong> {datetime.now().strftime('%d/%m/%Y')}</div>
+                    <div class='meta-item'><strong>Ημερομηνία:</strong> {datetime.now(greece_tz).strftime('%d/%m/%Y')}</div>
                 </div>
 
                 <h3 style='color: #2c3e50; border-left: 4px solid #d32f2f; padding-left: 10px;'>📋 Συνταγή</h3>
@@ -1251,7 +1251,7 @@ elif page == "🔍 Ανάλυση":
             """
         html_book += f"""
             <div class='footer'>
-                Αυτόματη εξαγωγή από το σύστημα διαχείρισης CABCLUB: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+                Αυτόματη εξαγωγή από το σύστημα διαχείρισης CABCLUB: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}
             </div>
         </body>
         </html>
@@ -1260,7 +1260,7 @@ elif page == "🔍 Ανάλυση":
         st.download_button(
             label="📑 Λήψη Κίτρινου Βιβλίου Συνταγών (με Logo)",
             data=html_book,
-            file_name=f"Recipe_Book_Yellow_{datetime.now().strftime('%d_%m_%Y')}.html",
+            file_name=f"Recipe_Book_Yellow_{datetime.now(greece_tz).strftime('%d_%m_%Y')}.html",
             mime="text/html",
             use_container_width=True
         )
@@ -1407,7 +1407,7 @@ elif page == "📊 Εμπορική Πολιτική":
             
             # 5. ΥΠΕΡ-ΑΝΑΛΥΤΙΚΟ ΕΠΑΓΓΕΛΜΑΤΙΚΟ REPORT
             if st.button("💾 Λήψη Πλήρους Φακέλου Ανάλυσης (Full Audit Report)"):
-                now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+                now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
                 
                 # Υπολογισμός Έμμεσης Έκπτωσης για το Σενάριο Α
                 sA_indirect_disc = ((1 - sA_effective/p_agent_base)*100) if p_agent_base > 0 else 0
@@ -1861,13 +1861,13 @@ elif page == "📦 Lot Παραγωγής":
     # 1. ΚΕΝΤΡΙΚΟΣ ΟΡΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ & LOT
     col_date1, col_date2 = st.columns([2, 1])
     with col_date1:
-        selected_date = st.date_input("📅 Ημερομηνία LOT", value=datetime.now(), format="DD/MM/YYYY")
+        selected_date = st.date_input("📅 Ημερομηνία LOT", value=datetime.now(greece_tz), format="DD/MM/YYYY")
     with col_date2:
-        prod_day = st.text_input("Ημερομηνία Παραγωγής", value=datetime.now().strftime('%d'), max_chars=2)
+        prod_day = st.text_input("Ημερομηνία Παραγωγής", value=datetime.now(greece_tz).strftime('%d'), max_chars=2)
 
     formatted_date = selected_date.strftime('%d/%m/%Y')
     date_lot_label = f"{formatted_date}-{prod_day}" 
-    current_time = datetime.now().strftime('%H:%M')
+    current_time = datetime.now(greece_tz).strftime('%H:%M')
 
     st.divider()
 
@@ -2082,7 +2082,7 @@ elif page == "📦 Lot Παραγωγής":
                     st.download_button(
                         label="🖨️ Εκτύπωση Λίστας για Αποθήκη",
                         data=quick_lot_html,
-                        file_name=f"Live_Prep_Sheet_{datetime.now().strftime('%H%M')}.html",
+                        file_name=f"Live_Prep_Sheet_{datetime.now(greece_tz).strftime('%H%M')}.html",
                         mime="text/html",
                         use_container_width=True
                     )
@@ -2917,7 +2917,7 @@ elif page == "📦 Lot Παραγωγής":
                 <h1>ΚΑΤΑΣΤΑΣΗ ΟΛΙΚΗΣ ΠΑΡΑΓΩΓΗΣ - CABCLUB</h1>
                 <div class='summary'>
                     Συνολικά Cocktail / Παρτίδες: <b>{len(df_full_hist)}</b><br>
-                    Ημερομηνία Εξαγωγής: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+                    Ημερομηνία Εξαγωγής: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}
                 </div>
                 <table>
                     <thead>
@@ -2948,7 +2948,7 @@ elif page == "📦 Lot Παραγωγής":
             st.download_button(
                 label="📥 Λήψη Πλήρους Ιστορικού (HTML)",
                 data=full_html,
-                file_name=f"Full_Production_History_{datetime.now().strftime('%d_%m_%y')}.html",
+                file_name=f"Full_Production_History_{datetime.now(greece_tz).strftime('%d_%m_%y')}.html",
                 mime="text/html"
             )
         else:
@@ -2990,7 +2990,7 @@ elif page == "🧼 Συντήρηση & HACCP":
     with col_u1:
         staff_name = st.text_input("👤 Υπεύθυνος Καταγραφής:", placeholder="Ονοματεπώνυμο...")
     with col_u2:
-        selected_date = st.date_input("📅 Ημερομηνία:", value=datetime.now())
+        selected_date = st.date_input("📅 Ημερομηνία:", value=datetime.now(greece_tz))
         date_str = selected_date.strftime("%d/%m/%Y")
     
     tab1, tab2, tab3 = st.tabs(["🌡️ Θερμοκρασίες", "🧹 Checklists Καθαρισμού", "📋 Αρχείο & Εκτυπώσεις"])
@@ -3008,7 +3008,7 @@ elif page == "🧼 Συντήρηση & HACCP":
             
             if st.form_submit_button("💾 Αποθήκευση Μέτρησης", type="primary"):
                 if staff_name:
-                    log = {"date": date_str, "time": datetime.now().strftime("%H:%M"), "user_name": staff_name, 
+                    log = {"date": date_str, "time": datetime.now(greece_tz).strftime("%H:%M"), "user_name": staff_name, 
                            "log_type": "Θερμοκρασία", "item": device, "value": f"{temp}°C", 
                            "status": "ΕΝΤΟΣ ΟΡΙΩΝ" if is_ok else "ΕΚΤΟΣ ΟΡΙΩΝ", "cleaner": "-", "notes": notes if notes else "-"}
                     supabase.table("haccp_log").insert([log]).execute()
@@ -3035,7 +3035,7 @@ elif page == "🧼 Συντήρηση & HACCP":
             
             if st.form_submit_button("🚀 Οριστικοποίηση"):
                 if staff_name and len(responses) == len(tasks_data[category]):
-                    log = {"date": date_str, "time": datetime.now().strftime("%H:%M"), "user_name": staff_name, 
+                    log = {"date": date_str, "time": datetime.now(greece_tz).strftime("%H:%M"), "user_name": staff_name, 
                            "log_type": "Καθαρισμός", "item": category, "value": "ΟΛΟΚΛΗΡΩΘΗΚΕ", 
                            "status": "ΟΚ", "cleaner": " | ".join(responses), "notes": "-"}
                     supabase.table("haccp_log").insert([log]).execute()
