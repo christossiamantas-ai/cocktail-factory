@@ -2672,19 +2672,23 @@ elif page == "📦 Lot Παραγωγής":
         """
         for p in df_past["Πελάτης"].unique():
             p_df = df_past[df_past["Πελάτης"] == p]
-            # Τραβάμε την πραγματική ημερομηνία παραγωγής του συγκεκριμένου πελάτη από τη βάση
             actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
             
+            # Κεφαλίδα Πελάτη και Ημερομηνίας
             html_pro += f"<div class='customer-section'><strong>ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div>"
-            for cock in p_df["Cocktail"].unique():
-                c_df = p_df[p_df["Cocktail"] == cock]
-                c_lot = c_df["LOT_Cocktail"].iloc[0] # ΤΟ ΣΩΣΤΟ LOT ΑΝΑ COCKTAIL
-                html_pro += f"<h3 class='cocktail-title'>{cock}</h3><p style='font-size:12px;margin:0;'>Ποσότητα: <b>{c_df['Τεμάχια'].iloc[0]} τμχ</b> | LOT: <b>{c_lot}</b></p>"
-                html_pro += "<table><thead><tr><th>Πρώτη Ύλη</th><th>Σύνολο ml</th><th>Βάρος (g)</th><th>Lot Number</th><th>Ημ. Λήξης</th></tr></thead><tbody>"
-                for _, row in c_df.iterrows():
-                    html_pro += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f}</td><td>{row['Στόχος_Γραμμάρια']}g</td><td>{row['Lot Number']}</td><td>{row['Ημ_Λήξης']}</td></tr>"
-                html_pro += "</tbody></table>"
-        html_pro += "</body></html>"
+            
+            # Παίρνουμε μόνο τα μοναδικά κοκτέιλ του πελάτη (αγνοώντας τις επαναλήψεις των υλικών)
+            df_cocktails_only = p_df.drop_duplicates(subset=["Cocktail", "LOT_Cocktail"])
+            
+            html_pro += "<div style='margin-bottom: 15px; padding-left: 10px;'>"
+            for _, c_row in df_cocktails_only.iterrows():
+                html_pro += f"""
+                <div style='font-size: 14px; margin-bottom: 5px;'>
+                    • <strong>{int(c_row['Τεμάχια'])} τμχ</strong> {c_row['Cocktail']} 
+                    <span style='color: #555; margin-left: 15px;'>(LOT Έτοιμου Ποτού: <strong>{c_row['LOT_Cocktail']}</strong>)</span>
+                </div>
+                """
+            html_pro += "</div>"
 
         # --- 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME) ---
         df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
