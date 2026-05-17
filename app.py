@@ -2867,7 +2867,7 @@ elif page == "📦 Lot Παραγωγής":
             )
             
             if recall_query:
-                search_val = recall_query.strip()
+                search_val = str(recall_query).strip()
                 
                 # 🌟 ΕΞΥΠΝΗ ΔΙΠΛΗ ΑΝΑΖΗΤΗΣΗ (Ψάχνει ταυτόχρονα και στο Lot Number και στην Ημερομηνία Λήξης)
                 # Χρησιμοποιούμε .contains επειδή αν μια εγγραφή έχει διπλό Lot (π.χ. L1 / L2), η απλή ισότητα θα έχανε το αποτέλεσμα!
@@ -2894,7 +2894,7 @@ elif page == "📦 Lot Παραγωγής":
                     # Εξαγωγή πλήρους αναφοράς σε CSV για τις αρχές ή τον έλεγχο
                     recall_csv = df_affected.to_csv(index=False, encoding="utf-8-sig")
                     # Καθαρίζουμε το όνομα του αρχείου από κάθετες αν ο χρήστης έβαλε ημερομηνία (π.χ. 11/05/2026)
-                    safe_file_name = search_val.replace("/", "_")
+                    safe_file_name = str(search_val).replace("/", "_")
                     st.download_button("📥 Λήψη Λίστας Ανάκλησης (CSV)", data=recall_csv, file_name=f"RECALL_REPORT_{safe_file_name}.csv", mime="text/csv")
                 else:
                     st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot ή ημερομηνία λήξης πρώτης ύλης. Δεν απαιτείται ανάκληση.")
