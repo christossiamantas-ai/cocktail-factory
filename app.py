@@ -2718,7 +2718,8 @@ elif page == "📦 Lot Παραγωγής":
         df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
         
         grand_total_pcs = df_daily["Τεμάχια"].sum()
-        total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
+        # 🌟 ΝΕΟ: Υπολογισμός μοναδικών κοκτέιλ της ημέρας
+        total_different_cocktails = df_daily["Cocktail"].nunique() if not df_daily.empty else 0
 
         html_daily = f"""
         <html><head><meta charset='UTF-8'><style>
