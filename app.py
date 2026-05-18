@@ -3349,9 +3349,21 @@ elif page == "👥 Πελατολόγιο":
                             
                         cocktails_in_order = [name for name in recipe_prices.keys() if name in details]
                         
+                        # 🌟 ΝΕΟ: Εντοπίζουμε το πραγματικό ποσοστό έκπτωσης, αγνοώντας την αξία των δώρων
                         current_discount_pct = 0.0
-                        if base_amt > 0 and base_amt > current_amt:
-                            current_discount_pct = ((base_amt - current_amt) / base_amt) * 100
+                        match_pct_crm = re.search(r"Έκπτωση CRM:\s*([\d\.]+)", details)
+                        match_pct_edit = re.search(r"Έκπτωση:\s*([\d\.]+)", details)
+                        
+                        if match_pct_crm:
+                            current_discount_pct = float(match_pct_crm.group(1))
+                        elif match_pct_edit:
+                            current_discount_pct = float(match_pct_edit.group(1))
+                        else:
+                            # Αν δεν υπάρχει πουθενά, αντλούμε τη στάνταρ έκπτωση από το προφίλ του πελάτη!
+                            try:
+                                current_discount_pct = float(customer_data['discount']) if customer_data['discount'] else 0.0
+                            except:
+                                current_discount_pct = 0.0
 
                         with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | {current_amt:.2f}€"):
                             st.info(f"**Αρχική Αξία Παραγγελίας:** {base_amt:.2f} €\n\n**Τρέχουσα Χρέωση Ταμείου:** {current_amt:.2f} €")
