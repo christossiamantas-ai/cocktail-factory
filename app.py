@@ -3428,52 +3428,108 @@ elif page == "👥 Πελατολόγιο":
                     st.error("Το όνομα είναι υποχρεωτικό!")
 
     # =========================================================================
-    # 🌟 ΝΕΟ TAB: ΚΕΝΤΡΙΚΟ LOG ΠΡΟΣΦΟΡΩΝ (ΠΟΙΟΣ, ΠΟΤΕ & ΣΕ ΠΟΙΟ ΠΡΟΪΟΝ)
+    # 🌟 ΝΕΟ TAB 3: ΕΜΠΟΡΙΚΗ ΔΙΑΧΕΙΡΙΣΗ & ΕΦΑΡΜΟΓΗ ΔΩΡΩΝ ΣΕ ΠΑΡΑΓΓΕΛΙΕΣ
     # =========================================================================
     with tab_crm3:
-        st.subheader("🎁 Μητρώο Καταγραφής Προσφορών 240+24")
-        st.write("Εδώ εμφανίζονται όλες οι παραγγελίες που έχουν κάνει χρήση της προσφοράς δώρου.")
-        
-        # Τραβάμε ΟΛΕΣ τις εγγραφές από τα b2b_orders
-        res_all_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).execute()
-        
-        if res_all_orders.data:
-            import re
-            df_all_o = pd.DataFrame(res_all_orders.data)
+        st.subheader("🎁 Εμπορική Διαχείριση: Εφαρμογή Δώρων")
+        st.write("Βρείτε την παραγγελία που ετοίμασε η αποθήκη και αφαιρέστε τεμάχια ως δώρο. Η αξία της παραγγελίας θα μειωθεί, αλλά το κόστος παραγωγής θα παραμείνει στο σύνολο των τεμαχίων.")
+
+        # 1. Φέρνουμε παραγγελίες
+        res_orders = supabase.table("b2b_orders").select("*").order("created_at", desc=True).limit(200).execute()
+        if res_orders.data:
+            df_orders = pd.DataFrame(res_orders.data)
             
-            # Φιλτράρουμε μόνο όσες περιέχουν τη λέξη "ΠΡΟΣΦΟΡΑ 240+24" στα details
-            df_promos = df_all_o[df_all_o['order_details'].str.contains("ΠΡΟΣΦΟΡΑ 240", na=False)].copy()
+            col_g1, col_g2 = st.columns(2)
+            sel_cust_gift = col_g1.selectbox("👤 1. Πελάτης:", options=["-- Επιλέξτε --"] + sorted(df_orders['customer_name'].unique().tolist()), key="gift_c")
             
-            if not df_promos.empty:
-                # Έξυπνη συνάρτηση για να τραβάει το όνομα του κοκτέιλ μέσα από τις αγκύλες []
-                def get_promo_cocktail(detail_str):
-                    match = re.search(r"ΠΡΟΣΦΟΡΑ 240\+24 ΔΩΡΟ στο ([^\]\n]+)", str(detail_str))
-                    if match:
-                        return match.group(1).strip()
-                    if "ΠΡΟΣΦΟΡΑ 240+24" in str(detail_str):
-                        return "Γενική / Παλιό Μοντέλο"
-                    return "-"
+            if sel_cust_gift != "-- Επιλέξτε --":
+                cust_orders = df_orders[df_orders['customer_name'] == sel_cust_gift]
                 
-                # Μορφοποίηση δεδομένων για τον τελικό πίνακα
-                df_promos['Ημερομηνία'] = pd.to_datetime(df_promos['created_at']).dt.strftime('%d/%m/%Y %H:%M')
-                df_promos['Κοκτέιλ Προσφοράς'] = df_promos['order_details'].apply(get_promo_cocktail)
+                order_dict = {}
+                for _, r in cust_orders.iterrows():
+                    # Ασφαλής μετατροπή ώρας
+                    dt = pd.to_datetime(r['created_at'])
+                    dt_str = dt.tz_convert('Europe/Athens').strftime('%d/%m %H:%M') if dt.tzinfo else dt.strftime('%d/%m %H:%M')
+                    order_dict[r['id']] = f"📅 {dt_str} | Αξία: {float(r['total_amount']):.2f}€"
+                    
+                sel_order_id = col_g2.selectbox("🛒 2. Επιλογή Παραγγελίας:", options=list(order_dict.keys()), format_func=lambda x: order_dict[x], key="gift_o")
                 
-                # Εμφάνιση του πίνακα
-                st.dataframe(
-                    df_promos.rename(columns={
-                        "customer_name": "ΠΕΛΑΤΗΣ",
-                        "total_amount": "ΤΕΛΙΚΟ ΠΟΣΟ (€)"
-                    })[["Ημερομηνία", "ΠΕΛΑΤΗΣ", "Κοκτέιλ Προσφοράς", "ΤΕΛΙΚΟ ΠΟΣΟ (€)"]],
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                # Ένα ωραίο στατιστικό metric
-                st.metric("Συνολικές Προσφορές που Δόθηκαν", f"{len(df_promos)} φορές")
-            else:
-                st.info("📭 Δεν έχει βρεθεί καμία καταχώρηση προσφοράς μέχρι στιγμής.")
+                if sel_order_id:
+                    selected_order = cust_orders[cust_orders['id'] == sel_order_id].iloc[0]
+                    current_details = selected_order['order_details']
+                    st.info(f"**Περιεχόμενο Παραγγελίας από Αποθήκη:**\n{current_details}")
+                    
+                    # Αναζήτηση παραγωγών για αυτή τη μέρα στο production_log
+                    order_dt = pd.to_datetime(selected_order['created_at'])
+                    prod_date_str = order_dt.strftime('%d/%m/%Y')
+                    
+                    res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, prod_time").eq("customer", sel_cust_gift).eq("prod_date", prod_date_str).execute()
+                    
+                    if res_prod.data:
+                        # Κρατάμε 1 εγγραφή ανά κοκτέιλ (γιατί στο log υπάρχουν πολλαπλές λόγω υλικών)
+                        df_prod = pd.DataFrame(res_prod.data).drop_duplicates(subset=["cocktail_name", "prod_time"])
+                        
+                        # Φέρνουμε έκπτωση πελάτη και τιμές καταλόγου για επανυπολογισμό
+                        res_cust = supabase.table("customers").select("discount").eq("name", sel_cust_gift).execute()
+                        cust_discount = float(res_cust.data[0]['discount']) if (res_cust.data and res_cust.data[0]['discount']) else 0.0
+                        
+                        res_rec = supabase.table("recipes").select("name, catalog_price").execute()
+                        rec_prices = {r['name']: float(r['catalog_price'] or 0) for r in res_rec.data} if res_rec.data else {}
+                        
+                        st.markdown("#### 🎁 Ορισμός Δώρων ανά Κωδικό")
+                        with st.form("apply_gifts_form"):
+                            gift_inputs = {}
+                            for _, prow in df_prod.iterrows():
+                                c_name = prow['cocktail_name']
+                                t_pcs = int(prow['pieces'])
+                                curr_free = int(prow['free_pieces']) if 'free_pieces' in prow and pd.notnull(prow['free_pieces']) else 0
+                                
+                                gift_inputs[(c_name, prow['prod_time'])] = st.number_input(
+                                    f"🍹 {c_name} (Παράχθηκαν: {t_pcs} τμχ) - Πόσα είναι δώρο;", 
+                                    min_value=0, max_value=t_pcs, value=curr_free, step=1
+                                )
+                                
+                            if st.form_submit_button("💾 Εφαρμογή Δώρων & Ενημέρωση Αξίας", type="primary"):
+                                new_total = 0.0
+                                gift_text_append = "\n\n--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---\n"
+                                has_gifts = False
+                                
+                                with st.spinner("Ενημέρωση συστήματος..."):
+                                    for _, prow in df_prod.iterrows():
+                                        c_name = prow['cocktail_name']
+                                        p_time = prow['prod_time']
+                                        t_pcs = int(prow['pieces'])
+                                        free_pcs = gift_inputs[(c_name, p_time)]
+                                        
+                                        # 1. Ενημέρωση παραγωγής (για το Dashboard)
+                                        supabase.table("production_log").update({"free_pieces": free_pcs}).eq("customer", sel_cust_gift).eq("prod_date", prod_date_str).eq("prod_time", p_time).eq("cocktail_name", c_name).execute()
+                                        
+                                        # 2. Υπολογισμός αξίας ΜΟΝΟ για τα πληρωμένα τεμάχια
+                                        paid_pcs = t_pcs - free_pcs
+                                        unit_price = rec_prices.get(c_name, 0.0) * (1 - cust_discount / 100)
+                                        new_total += (paid_pcs * unit_price)
+                                        
+                                        if free_pcs > 0:
+                                            gift_text_append += f"🎁 {free_pcs}x {c_name} (ΔΩΡΟ)\n"
+                                            has_gifts = True
+                                            
+                                    # 3. Ενημέρωση της Παραγγελίας B2B
+                                    final_details = current_details.split("\n\n--- ΔΩΡΑ")[0] # Καθαρισμός παλιών σημειώσεων
+                                    if has_gifts:
+                                        final_details += gift_text_append
+                                        
+                                    supabase.table("b2b_orders").update({"total_amount": new_total, "order_details": final_details}).eq("id", sel_order_id).execute()
+                                    
+                                st.success(f"✅ Επιτυχία! Τα δώρα περάστηκαν και η νέα αξία της παραγγελίας είναι {new_total:.2f} €")
+                                st.cache_data.clear()
+                                time.sleep(1.5)
+                                st.rerun()
+                    else:
+                        st.warning("Δεν βρέθηκαν εγγραφές παραγωγής γι' αυτή την παραγγελία. Ίσως η παραγωγή έγινε άλλη ημερομηνία.")
         else:
-            st.info("Δεν υπάρχουν ακόμα οικονομικές εγγραφές στη βάση.")
+            st.info("Δεν υπάρχουν παραγγελίες στο σύστημα.")
+
+
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
