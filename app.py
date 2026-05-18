@@ -1537,7 +1537,13 @@ elif page == "📈 Dashboard":
         df_filtered['customer_discount'] = df_filtered['customer'].map(cust_discount_dict).fillna(0)
         
         df_filtered['dealer_price'] = df_filtered['catalog_price'] * (1 - (df_filtered['customer_discount'] / 100))
-        df_filtered['Theoretical_Revenue'] = df_filtered['pieces'] * df_filtered['dealer_price']
+        if 'free_pieces' in df_filtered.columns:
+            df_filtered['free_pieces'] = pd.to_numeric(df_filtered['free_pieces'], errors='coerce').fillna(0)
+        else:
+            df_filtered['free_pieces'] = 0.0
+            
+        # Ο τζίρος υπολογίζεται ΜΟΝΟ για τα κομμάτια που πληρώθηκαν
+        df_filtered['Theoretical_Revenue'] = (df_filtered['pieces'] - df_filtered['free_pieces']) * df_filtered['dealer_price']
         
         # Έλεγχος αν υπάρχει η νέα στήλη unit_cost στη βάση
         if 'unit_cost' in df_filtered.columns:
@@ -3352,40 +3358,62 @@ elif page == "👥 Πελατολόγιο":
                             st.caption(f"Λεπτομέρειες Παραγγελίας:\n{details}")
                             
                             with st.form(key=f"edit_order_pct_{order_id}"):
-                                c1, c2 = st.columns(2)
+                                st.markdown("#### ⚙️ Εμπορική Έκπτωση & Δώρα")
                                 
-                                new_pct = c1.number_input("Ποσοστό Εμπορικής Έκπτωσης (%)", 
+                                new_pct = st.number_input("Ποσοστό Εμπορικής Έκπτωσης (%)", 
                                                           min_value=0.0, max_value=100.0, 
                                                           value=float(round(current_discount_pct, 1)), step=1.0)
                                 
-                                selected_promo_cocktail = c2.selectbox(
-                                    "🎁 Εφαρμογή Προσφοράς (240 + 24 Δώρο) στο:",
-                                    options=["--- Χωρίς Προσφορά Δώρου ---"] + cocktails_in_order,
-                                    index=next((i+1 for i, name in enumerate(cocktails_in_order) if f"ΔΩΡΟ στο {name}" in details), 0)
-                                )
+                                st.markdown("##### 🎁 Δώρα ανά Κωδικό (από την παραγγελία)")
+                                gift_inputs = {}
+                                for c_name in cocktails_in_order:
+                                    # Ψάχνουμε αν έχει ήδη καταχωρηθεί δώρο στο παρελθόν
+                                    match_gift = re.search(fr"\[ΔΩΡΟ:\s*(\d+)x\s*{re.escape(c_name)}\]", details)
+                                    curr_gift = int(match_gift.group(1)) if match_gift else 0
+                                    
+                                    # Δημιουργεί ένα πεδίο αριθμού για κάθε κοκτέιλ που περιέχει η παραγγελία
+                                    gift_inputs[c_name] = st.number_input(
+                                        f"Πόσα τεμάχια {c_name} είναι ΔΩΡΟ;", 
+                                        min_value=0, value=curr_gift, step=1, key=f"g_{order_id}_{c_name}"
+                                    )
                                 
                                 col_b1, col_b2 = st.columns(2)
                                 
                                 if col_b1.form_submit_button("💾 Εφαρμογή & Υπολογισμός", type="primary"):
                                     discounted_base = base_amt * (1 - (new_pct / 100))
                                     
-                                    if selected_promo_cocktail != "--- Χωρίς Προσφορά Δώρου ---" and selected_promo_cocktail in recipe_prices:
-                                        catalog_p = float(recipe_prices[selected_promo_cocktail])
-                                        dealer_p = catalog_p * (1 - (new_pct / 100))
-                                        new_price = discounted_base - (24 * dealer_p)
-                                    else:
-                                        new_price = discounted_base
+                                    gift_value_deduction = 0.0
+                                    gift_text = ""
+                                    
+                                    # Υπολογισμός σωστής ημερομηνίας παραγγελίας για την αποθήκη
+                                    dt_obj = pd.to_datetime(order['created_at'])
+                                    if dt_obj.tzinfo is None:
+                                        dt_obj = dt_obj.tz_localize('UTC')
+                                    order_date_str = dt_obj.tz_convert('Europe/Athens').strftime('%d/%m/%Y')
+                                    
+                                    for c_name, g_qty in gift_inputs.items():
+                                        if g_qty > 0 and c_name in recipe_prices:
+                                            # Υπολογίζουμε την αξία των δώρων για να την αφαιρέσουμε από το σύνολο
+                                            catalog_p = float(recipe_prices[c_name])
+                                            dealer_p = catalog_p * (1 - (new_pct / 100))
+                                            gift_value_deduction += (g_qty * dealer_p)
+                                            gift_text += f"\n[ΔΩΡΟ: {g_qty}x {c_name}]"
+                                            
+                                        # ΕΝΗΜΕΡΩΣΗ ΑΠΟΘΗΚΗΣ: Γράφουμε τα δώρα στο production_log
+                                        supabase.table("production_log").update({"free_pieces": g_qty}).eq("customer", sel_name).eq("prod_date", order_date_str).eq("cocktail_name", c_name).execute()
                                         
+                                    new_price = discounted_base - gift_value_deduction
                                     if new_price < 0: new_price = 0.0
 
-                                    clean_details = details.split("\n[")[0].split("\n\n[")[0].strip()
+                                    # Καθαρισμός παλιών σημειώσεων προσφορών για να μην διπλογράφονται
+                                    clean_details = details.split("\n\n[Αρχική")[0].split("\n[Αρχική")[0].split("\n[ΔΩΡΟ:")[0].split("\n[ΠΡΟΣΦΟΡΑ")[0].strip()
                                     new_details = clean_details + f"\n\n[Αρχική Αξία: {base_amt:.2f}€]"
                                     
                                     if new_pct > 0:
                                         new_details += f"\n[Έκπτωση: {new_pct}% εφαρμόστηκε]"
-                                    if selected_promo_cocktail != "--- Χωρίς Προσφορά Δώρου ---":
-                                        new_details += f"\n[ΠΡΟΣΦΟΡΑ 240+24 ΔΩΡΟ στο {selected_promo_cocktail}]"
+                                    new_details += gift_text
                                     
+                                    # Ενημέρωση ταμείου
                                     supabase.table("b2b_orders").update({
                                         "total_amount": round(new_price, 2),
                                         "order_details": new_details
