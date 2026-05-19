@@ -3102,7 +3102,7 @@ elif page == "📦 Lot Παραγωγής":
         else:
             st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
 
-# --- 1.6 ΣΥΝΤΗΡΗΣΗ & HACCP (ULΤΙΜΑΤΕ VERSION) ---
+# --- 1.6 ΣΥΝΤΗΡΗΣΗ & HACCP (ULΤΙΜΑΤΕ VERSION ΜΕ DROP-DOWN ΚΑΘΑΡΙΣΤΙΚΩΝ) ---
 elif page == "🧼 Συντήρηση & HACCP":
     st.header("🧼 Ψηφιακό Μητρώο HACCP & Καθαρισμού")
 
@@ -3164,7 +3164,7 @@ elif page == "🧼 Συντήρηση & HACCP":
                     time.sleep(1); st.rerun()
                 else: st.error("Συμπληρώστε το όνομα!")
 
-    # --- TAB 2: CHECKLISTS ΚΑΘΑΡΙΣΜΟΥ (ΑΚΡΙΒΩΣ ΟΙ ΕΡΓΑΣΙΕΣ ΣΟΥ) ---
+    # --- TAB 2: CHECKLISTS ΚΑΘΑΡΙΣΜΟΥ (ΜΕ DROPDOWN) ---
     with tab2:
         tasks_data = {
             "Ημερήσιος Καθαρισμός": ["Πάγκοι Εργασίας", "Εξοπλισμός (Blenders/Shakers)", "Δάπεδο Εργαστηρίου", "Απομάκρυνση Απορριμμάτων", "Απολύμανση Χεριών"],
@@ -3172,15 +3172,10 @@ elif page == "🧼 Συντήρηση & HACCP":
             "Μηνιαίος Καθαρισμός": ["Φίλτρα Εξαερισμού", "Σύστημα Κλιματισμού", "Καθαρισμός Οροφής"]
         }
         
-        # Η λίστα με τα εγκεκριμένα καθαριστικά σου για το HACCP
+        # Λίστα εγκεκριμένων καθαριστικών
         approved_cleaners = [
-            "Drolio", 
-            "P3-Steril", 
-            "Eco-Bac Fuam Plus", 
-            "Swaz", 
-            "Crystal Class Cleaner Ammonia",
-            "Αντισηπτικό Χεριών",
-            "Νερό (Σκέτο)"
+            "Drolio", "P3-Steril", "Eco-Bac Fuam Plus", "Swaz", 
+            "Crystal Class Cleaner Ammonia", "Αντισηπτικό Χεριών", "Νερό (Σκέτο)"
         ]
         
         category = st.radio("Πρόγραμμα:", list(tasks_data.keys()), horizontal=True)
@@ -3188,24 +3183,20 @@ elif page == "🧼 Συντήρηση & HACCP":
             st.markdown(f"#### {category}")
             responses = []
             
-            # Δημιουργία των στηλών (πιο πλατιά στήλη για τα drop-downs)
             for i, task in enumerate(tasks_data[category]):
                 c_task, c_clean = st.columns([0.4, 0.6])
-                
-                # Checkbox για το αν έγινε η εργασία
                 done = c_task.checkbox(task, key=f"c_{category}_{i}")
                 
-                # Multiselect αντί για πληκτρολόγηση κειμένου
+                # Dropdown για τα καθαριστικά
                 selected_cleaners = c_clean.multiselect(
                     "Καθαριστικό", 
                     options=approved_cleaners,
                     key=f"cl_{category}_{i}", 
-                    placeholder="Επιλέξτε καθαριστικό(ά)...", 
+                    placeholder="Επιλέξτε καθαριστικό...",
                     label_visibility="collapsed"
                 )
                 
                 if done: 
-                    # Φτιάχνει ένα ωραίο string με τα υλικά που επέλεξες
                     cleaners_str = ", ".join(selected_cleaners) if selected_cleaners else "Χωρίς Καθαριστικό"
                     responses.append(f"{task} ({cleaners_str})")
             
@@ -3216,10 +3207,8 @@ elif page == "🧼 Συντήρηση & HACCP":
                            "status": "ΟΚ", "cleaner": " | ".join(responses), "notes": "-"}
                     supabase.table("haccp_log").insert([log]).execute()
                     st.success("Ενημερώθηκε!")
-                    time.sleep(1)
-                    st.rerun()
-                else: 
-                    st.error("Επιλέξτε όλες τις εργασίες (check) και βάλτε το όνομά σας πάνω-πάνω!")
+                    time.sleep(1); st.rerun()
+                else: st.error("Επιλέξτε όλες τις εργασίες και βάλτε όνομα!")
 
     # --- TAB 3: ΑΡΧΕΙΟ & ΕΚΤΥΠΩΣΕΙΣ ---
     with tab3:
@@ -3229,7 +3218,6 @@ elif page == "🧼 Συντήρηση & HACCP":
             df['dt_obj'] = pd.to_datetime(df['date'], format='%d/%m/%Y')
             df = df.sort_values(by=['dt_obj', 'time'], ascending=[False, False])
 
-            # --- ΦΙΛΤΡΑ ΕΚΤΥΠΩΣΗΣ ---
             with st.expander("🖨️ Επιλεκτική Εκτύπωση (Φίλτρα)", expanded=False):
                 c1, c2 = st.columns(2)
                 p_days = c1.multiselect("Ημερομηνίες:", options=df['date'].unique())
@@ -3239,43 +3227,17 @@ elif page == "🧼 Συντήρηση & HACCP":
                 df_rep = df_rep[df_rep['log_type'].isin(p_types)]
                 st.download_button("📥 Λήψη Επιλεγμένου Report", generate_haccp_report_html(df_rep), "HACCP_Custom.html", "text/html", use_container_width=True)
 
-            st.divider()
-            
-            # --- ΙΣΤΟΡΙΚΟ ΜΕ NESTED EXPANDERS ---
-            greek_months = {1:"Ιανουάριος", 2:"Φεβρουάριος", 3:"Μάρτιος", 4:"Απρίλιος", 5:"Μάιος", 6:"Ιούνιος", 
-                            7:"Ιούλιος", 8:"Αύγουστος", 9:"Σεπτέμβριος", 10:"Οκτώβριος", 11:"Νοέμβριος", 12:"Δεκέμβριος"}
-            df['m_label'] = df['dt_obj'].dt.month.map(greek_months) + " " + df['dt_obj'].dt.year.astype(str)
-
-            for m in df['m_label'].unique():
+            # Ιστορικό
+            for m in df['dt_obj'].dt.strftime('%m/%Y').unique():
                 with st.expander(f"📅 {m}", expanded=False):
-                    m_df = df[df['m_label'] == m]
+                    m_df = df[df['dt_obj'].dt.strftime('%m/%Y') == m]
                     for d in m_df['date'].unique():
-                        with st.expander(f"🗓️ Ημέρα: {d}", expanded=False):
-                            d_df = m_df[m_df['date'] == d]
-                            for _, row in d_df.iterrows():
-                                col_txt, col_del = st.columns([4, 1])
-                                with col_txt:
-                                    ic = "🌡️" if row['log_type']=="Θερμοκρασία" else "🧹"
-                                    st.write(f"**{ic} {row['item']}** ({row['time']}) -> {row['value']}")
-                                    if row['cleaner'] != "-": st.caption(f"🧪 {row['cleaner']}")
-                                with col_del:
-                                    if st.button("🗑️", key=f"del_{row['id']}"):
-                                        supabase.table("haccp_log").delete().eq("id", row['id']).execute()
-                                        st.rerun()
-
-            # --- ΚΟΥΜΠΙ ΕΚΤΥΠΩΣΗΣ ΟΛΩΝ ΣΤΟ ΤΕΛΟΣ ---
-            st.divider()
-            st.download_button(
-                label="🖨️ ΕΚΤΥΠΩΣΗ ΟΛΟΥ ΤΟΥ ΑΡΧΕΙΟΥ (Χωρίς Φίλτρα)",
-                data=generate_haccp_report_html(df, "ΠΛΗΡΕΣ ΜΗΤΡΩΟ HACCP"),
-                file_name="HACCP_Full_Archive.html",
-                mime="text/html",
-                use_container_width=True,
-                type="primary"
-            )
-        else:
-            st.info("Καμία καταγραφή.")
-
+                        with st.expander(f"🗓️ Ημέρα: {d}"):
+                            for _, row in m_df[m_df['date'] == d].iterrows():
+                                ic = "🌡️" if row['log_type']=="Θερμοκρασία" else "🧹"
+                                st.write(f"**{ic} {row['item']}** ({row['time']}) -> {row['value']}")
+                                if row['cleaner'] != "-": st.caption(f"🧪 {row['cleaner']}")
+        else: st.info("Καμία καταγραφή.")
 
 # --- 10. ΠΕΛΑΤΟΛΟΓΙΟ (CRM - ΜΕ ΑΦΜ, ΕΚΠΤΩΣΗ & ΙΣΤΟΡΙΚΟ ΠΡΟΣΦΟΡΩΝ) ---
 elif page == "👥 Πελατολόγιο":
