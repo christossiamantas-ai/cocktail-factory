@@ -3886,18 +3886,40 @@ elif page == "📦 Παραγγελίες B2B":
 
 # --- ΕΝΟΤΗΤΑ: ΔΙΑΓΡΑΦΗ ΠΑΡΑΓΩΓΗΣ ΚΟΚΤΕΙΛ ---
     
-elif page == "🛠️ Διαγραφή Παραγωγής":
-    st.header("🛠️ Εργαλείο Καθαρισμού Βάσης")
-    st.warning("Προσοχή: Εδώ βλέπεις ΟΛΕΣ τις εγγραφές του production_log για χειροκίνητη διαγραφή.")
+elif page == "🛠️ Emergency Delete":
+    st.header("🛠️ Επιλεκτική Διαγραφή Παραγωγής")
     
+    # 1. Φόρτωση δεδομένων από το production_log
     res = supabase.table("production_log").select("*").execute()
     if res.data:
-        df_emergency = pd.DataFrame(res.data)
-        # Εμφάνιση μόνο των βασικών στηλών για να μην "σκάει" από έλλειψη LOT
-        st.dataframe(df_emergency[['id', 'prod_date', 'customer', 'cocktail_name', 'pieces']], use_container_width=True)
+        df = pd.DataFrame(res.data)
         
-        del_id = st.text_input("Βάλε το ID της εγγραφής που θέλεις να σβήσεις:")
-        if st.button("🗑️ ΟΡΙΣΤΙΚΗ ΔΙΑΓΡΑΦΗ ID"):
-            supabase.table("production_log").delete().eq("id", del_id).execute()
-            st.success(f"Το ID {del_id} διαγράφηκε!")
+        # 2. Drop-down για Ημερομηνία
+        dates = sorted(df['prod_date'].unique(), reverse=True)
+        sel_date = st.selectbox("📅 Επιλέξτε Ημερομηνία Παραγωγής:", dates)
+        
+        # Φιλτράρισμα βάσει ημερομηνίας
+        df_date = df[df['prod_date'] == sel_date]
+        
+        # 3. Drop-down για Κοκτέιλ της συγκεκριμένης ημέρας
+        cocktails = sorted(df_date['cocktail_name'].unique())
+        sel_cocktail = st.selectbox("🍹 Επιλέξτε Κοκτέιλ για διαγραφή:", cocktails)
+        
+        # Φιλτράρισμα βάσει κοκτέιλ
+        df_final = df_date[df_date['cocktail_name'] == sel_cocktail]
+        
+        st.write("---")
+        st.write("### Εγγραφές προς διαγραφή:")
+        st.dataframe(df_final[['id', 'prod_date', 'customer', 'cocktail_name', 'pieces']], use_container_width=True)
+        
+        # 4. Κουμπί Διαγραφής
+        if st.button("🗑️ ΟΡΙΣΤΙΚΗ ΔΙΑΓΡΑΦΗ ΑΥΤΗΣ ΤΗΣ ΕΓΓΡΑΦΗΣ", type="primary"):
+            for index, row in df_final.iterrows():
+                supabase.table("production_log").delete().eq("id", row['id']).execute()
+            
+            st.success(f"Η παραγωγή για το {sel_cocktail} στις {sel_date} διαγράφηκε!")
+            st.cache_data.clear()
+            time.sleep(1)
             st.rerun()
+    else:
+        st.info("Δεν βρέθηκαν δεδομένα παραγωγής.")
