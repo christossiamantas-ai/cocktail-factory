@@ -268,7 +268,7 @@ with st.sidebar:
         [
             "📦 Αποθήκη", "🔄 Αντικατάσταση", "📝 Νέα Συνταγή", "📊 Διαχείριση", 
             "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📦 Παραγγελίες B2B", 
-            "📦 Lot Παραγωγής", "🛠️ Emergency Delete", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP"
+            "📦 Lot Παραγωγής", "🛠️ Διαγραφή Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP"
         ],
         key="main_page"
     )
@@ -3883,3 +3883,21 @@ elif page == "📦 Παραγγελίες B2B":
                                 st.rerun()
             else:
                 st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
+
+# --- ΕΝΟΤΗΤΑ: ΔΙΑΓΡΑΦΗ ΠΑΡΑΓΩΓΗΣ ΚΟΚΤΕΙΛ ---
+    
+elif page == "🛠️ Emergency Delete":
+    st.header("🛠️ Εργαλείο Καθαρισμού Βάσης")
+    st.warning("Προσοχή: Εδώ βλέπεις ΟΛΕΣ τις εγγραφές του production_log για χειροκίνητη διαγραφή.")
+    
+    res = supabase.table("production_log").select("*").execute()
+    if res.data:
+        df_emergency = pd.DataFrame(res.data)
+        # Εμφάνιση μόνο των βασικών στηλών για να μην "σκάει" από έλλειψη LOT
+        st.dataframe(df_emergency[['id', 'prod_date', 'customer', 'cocktail_name', 'pieces']], use_container_width=True)
+        
+        del_id = st.text_input("Βάλε το ID της εγγραφής που θέλεις να σβήσεις:")
+        if st.button("🗑️ ΟΡΙΣΤΙΚΗ ΔΙΑΓΡΑΦΗ ID"):
+            supabase.table("production_log").delete().eq("id", del_id).execute()
+            st.success(f"Το ID {del_id} διαγράφηκε!")
+            st.rerun()
