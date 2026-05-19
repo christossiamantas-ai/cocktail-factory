@@ -1708,6 +1708,50 @@ elif page == "📈 Dashboard":
                     )
         # =====================================================================
 
+        # =========================================================================
+        # 🌟 ΝΕΑ ΕΝΟΤΗΤΑ: ΑΝΑΛΥΣΗ ΑΠΟΔΟΣΗΣ ΑΝΑ COCKTAIL (PRODUCT PERFORMANCE)
+        # =========================================================================
+        st.divider()
+        st.subheader("🥇 Ανάλυση Απόδοσης ανά Cocktail")
+        if not df_filtered.empty:
+            # 1. Ομαδοποίηση δεδομένων ανά Cocktail
+            df_perf = df_filtered.groupby("cocktail_name").agg(
+                Τεμάχια=("pieces", "sum"),
+                Δώρα=("free_pieces", "sum"),
+                Τζίρος=("Theoretical_Revenue", "sum"),
+                Κόστος=("Total_Cost", "sum"),
+                Κέρδος=("Profit", "sum"),
+                # Ενώνει τα ονόματα των μοναδικών πελατών με κόμμα
+                Πελάτες=("customer", lambda x: ", ".join(sorted(set(str(c) for c in x if str(c).strip() != ""))))
+            ).reset_index()
+
+            # 2. Υπολογισμός Ποσοστών Συνεισφοράς
+            tot_rev_perf = df_perf["Τζίρος"].sum()
+            tot_prof_perf = df_perf["Κέρδος"].sum()
+            
+            df_perf["% Τζίρου"] = df_perf.apply(lambda r: (r["Τζίρος"] / tot_rev_perf * 100) if tot_rev_perf > 0 else 0, axis=1)
+            df_perf["% Κέρδους"] = df_perf.apply(lambda r: (r["Κέρδος"] / tot_prof_perf * 100) if tot_prof_perf > 0 else 0, axis=1)
+
+            # 3. Ταξινόμηση: Πρώτα αυτά που φέρνουν το μεγαλύτερο Κέρδος
+            df_perf = df_perf.sort_values(by="Κέρδος", ascending=False)
+
+            # 4. Μορφοποίηση & Εμφάνιση (Με χρωματικές κλίμακες)
+            st.dataframe(
+                df_perf.rename(columns={"cocktail_name": "Cocktail"}).style.format({
+                    "Τεμάχια": "{:.0f}",
+                    "Δώρα": "{:.0f}",
+                    "Τζίρος": "{:.2f} €",
+                    "Κόστος": "{:.2f} €",
+                    "Κέρδος": "{:.2f} €",
+                    "% Τζίρου": "{:.1f}%",
+                    "% Κέρδους": "{:.1f}%"
+                }).background_gradient(subset=["Κέρδος", "% Κέρδους"], cmap="Greens")
+                  .background_gradient(subset=["Τζίρος", "% Τζίρου"], cmap="Blues"),
+                use_container_width=True,
+                hide_index=True
+            )
+        # =========================================================================
+
         # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
         with st.expander("📄 Αναλυτικό Αρχείο (LOT & Profit)"):
             display_df = df_filtered.copy()
