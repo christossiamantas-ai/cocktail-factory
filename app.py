@@ -3171,15 +3171,42 @@ elif page == "🧼 Συντήρηση & HACCP":
             "Εβδομαδιαίος Καθαρισμός": ["Εσωτερικό Ψυγείων", "Ράφια Αποθήκης", "Τοίχοι & Πλακάκια", "Γενική Απολύμανση"],
             "Μηνιαίος Καθαρισμός": ["Φίλτρα Εξαερισμού", "Σύστημα Κλιματισμού", "Καθαρισμός Οροφής"]
         }
+        
+        # Η λίστα με τα εγκεκριμένα καθαριστικά σου για το HACCP
+        approved_cleaners = [
+            "Drolio", 
+            "P3-Steril", 
+            "Eco-Bac Fuam Plus", 
+            "Swaz", 
+            "Crystal Class Cleaner Ammonia",
+            "Νερό (Σκέτο)"
+        ]
+        
         category = st.radio("Πρόγραμμα:", list(tasks_data.keys()), horizontal=True)
         with st.form(f"cleaning_{category}"):
             st.markdown(f"#### {category}")
             responses = []
+            
+            # Δημιουργία των στηλών (πιο πλατιά στήλη για τα drop-downs)
             for i, task in enumerate(tasks_data[category]):
-                c_task, c_clean = st.columns([0.5, 0.5])
+                c_task, c_clean = st.columns([0.4, 0.6])
+                
+                # Checkbox για το αν έγινε η εργασία
                 done = c_task.checkbox(task, key=f"c_{category}_{i}")
-                cleaner = c_clean.text_input("Καθαριστικό", key=f"cl_{category}_{i}", placeholder="π.χ. Χλώριο", label_visibility="collapsed")
-                if done: responses.append(f"{task} ({cleaner if cleaner else 'Νερό'})")
+                
+                # Multiselect αντί για πληκτρολόγηση κειμένου
+                selected_cleaners = c_clean.multiselect(
+                    "Καθαριστικό", 
+                    options=approved_cleaners,
+                    key=f"cl_{category}_{i}", 
+                    placeholder="Επιλέξτε καθαριστικό(ά)...", 
+                    label_visibility="collapsed"
+                )
+                
+                if done: 
+                    # Φτιάχνει ένα ωραίο string με τα υλικά που επέλεξες
+                    cleaners_str = ", ".join(selected_cleaners) if selected_cleaners else "Χωρίς Καθαριστικό"
+                    responses.append(f"{task} ({cleaners_str})")
             
             if st.form_submit_button("🚀 Οριστικοποίηση"):
                 if staff_name and len(responses) == len(tasks_data[category]):
@@ -3188,8 +3215,10 @@ elif page == "🧼 Συντήρηση & HACCP":
                            "status": "ΟΚ", "cleaner": " | ".join(responses), "notes": "-"}
                     supabase.table("haccp_log").insert([log]).execute()
                     st.success("Ενημερώθηκε!")
-                    time.sleep(1); st.rerun()
-                else: st.error("Επιλέξτε όλες τις εργασίες και βάλτε όνομα!")
+                    time.sleep(1)
+                    st.rerun()
+                else: 
+                    st.error("Επιλέξτε όλες τις εργασίες (check) και βάλτε το όνομά σας πάνω-πάνω!")
 
     # --- TAB 3: ΑΡΧΕΙΟ & ΕΚΤΥΠΩΣΕΙΣ ---
     with tab3:
