@@ -3829,12 +3829,16 @@ elif page == "📦 Παραγγελίες B2B":
         if res_orders.data:
             df_hist = pd.DataFrame(res_orders.data)
             
-            # --- ΔΥΝΑΜΙΚΑ ΦΙΛΤΡΑ (Ασφαλή για άδειες μέρες) ---
+            # Μετατροπή σε σωστή ημερομηνία για το φιλτράρισμα
+            df_hist['date_only'] = pd.to_datetime(df_hist['created_at']).dt.date
+            
+            # --- ΔΥΝΑΜΙΚΑ ΦΙΛΤΡΑ ---
             if not df_hist.empty and "customer_name" in df_hist.columns:
-                # 1. Βρίσκουμε τους πελάτες
+                # 1. Πελάτες
                 available_customers = sorted(df_hist["customer_name"].dropna().unique().tolist())
-                
-                # 2. Βρίσκουμε τα κοκτέιλ με τη δική σου λογική (split με 'x ')
+                # 2. Ημερομηνίες
+                available_dates = sorted(df_hist["date_only"].unique().tolist(), reverse=True)
+                # 3. Κοκτέιλ
                 available_cocktails = set()
                 for details in df_hist["order_details"].dropna():
                     lines = str(details).split('\n')
@@ -3847,13 +3851,17 @@ elif page == "📦 Παραγγελίες B2B":
                 available_cocktails = sorted(list(available_cocktails))
             else:
                 available_customers = []
+                available_dates = []
                 available_cocktails = []
 
-            search_col1, search_col2 = st.columns(2)
+            # Τρεις στήλες για τα φίλτρα
+            search_col1, search_col2, search_col3 = st.columns(3)
             with search_col1:
                 cust_search = st.multiselect("Φίλτρο Πελάτη:", options=available_customers)
             with search_col2:
                 cocktail_search = st.multiselect("Φίλτρο Κοκτέιλ:", options=available_cocktails)
+            with search_col3:
+                date_search = st.multiselect("Φίλτρο Ημερομηνίας:", options=available_dates)
 
             # Φιλτράρισμα
             if not df_hist.empty:
@@ -3863,45 +3871,43 @@ elif page == "📦 Παραγγελίες B2B":
                 if cocktail_search:
                     cocktail_mask = df_hist["order_details"].apply(lambda x: any(c in str(x) for c in cocktail_search))
                     mask &= cocktail_mask
+                if date_search:
+                    mask &= df_hist["date_only"].isin(date_search)
+                    
                 df_results = df_hist[mask]
             else:
                 df_results = df_hist
+
+            # Αποτελέσματα
             if not df_results.empty:
                 st.write(f"Βρέθηκαν **{len(df_results)}** παραγγελίες.")
                 for _, row in df_results.iterrows():
-                    with st.expander(f"📅 {str(row['created_at'])[:10]} | {row['customer_name']} | {row['total_amount']:.2f} €"):
+                    with st.expander(f"📅 {row['date_only']} | {row['customer_name']} | {row['total_amount']:.2f} €"):
                         col_h1, col_h2 = st.columns([2, 1])
                         with col_h1:
                             st.markdown(f"**Κατάσταση:** {row['status']}")
                             
-                            # --- ΝΕΟ: Διαγραφή ανά γραμμή (κοκτέιλ) ---
+                            # --- Διαγραφή ανά κοκτέιλ (το λειτουργικό που θέλεις) ---
                             items = str(row['order_details']).split('\n')
-                            
                             for i, item in enumerate(items):
-                                if item.strip(): # Μόνο αν δεν είναι κενή γραμμή
+                                if item.strip():
                                     c_txt, c_del = st.columns([6, 1])
                                     c_txt.text(item)
-                                    
-                                    # Κουμπί διαγραφής για το συγκεκριμένο κοκτέιλ
                                     if c_del.button("🗑️", key=f"del_item_{row['id']}_{i}"):
-                                        # 1. Αφαιρούμε το στοιχείο από τη λίστα
                                         items.pop(i)
-                                        
-                                        # 2. Φτιάχνουμε το νέο κείμενο
                                         new_details = "\n".join(items)
-                                        
-                                        # 3. Update στη βάση
                                         try:
                                             supabase.table("b2b_orders").update({"order_details": new_details}).eq("id", row['id']).execute()
                                             st.success("Το κοκτέιλ αφαιρέθηκε!")
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Σφάλμα: {e}")
+                        
                         with col_h2:
-                            if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
+                            if st.button("🗑️ Διαγραφή Ολόκληρης Παραγγελίας", key=f"del_hist_{row['id']}", use_container_width=True):
                                 delete_order_and_production_safely(row['id'], row['customer_name'], row['created_at'], row['order_details'])
-                                st.success("🔄 Διαγράφηκε πλήρως από οικονομικά και αποθήκη!")
-                                st.cache_data.clear() # 🌟 ΝΕΟ: Αδειάζει τη μνήμη για να εξαφανιστεί αμέσως η εγγραφή
+                                st.success("🔄 Διαγράφηκε πλήρως!")
+                                st.cache_data.clear()
                                 time.sleep(1)
                                 st.rerun()
             else:
