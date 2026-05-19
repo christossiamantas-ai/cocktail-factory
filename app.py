@@ -2543,10 +2543,10 @@ elif page == "📦 Lot Παραγωγής":
                         st.rerun()
 
                     if b_del.form_submit_button("🗑️ Διαγραφή Αυτής της Παραγωγής"):
-                        del_cust = base_data["Πελάτης"]
-                        del_cocktail = base_data["Cocktail"]
-                        del_pieces = old_pieces
-                        del_date_str = base_data["Ημερομηνία"]
+                        del_cust = row.get("Πελάτης", "Άγνωστος")
+                        del_cocktail = row.get("Cocktail", "Άγνωστο")
+                        del_pieces = row.get("pieces", 0) # ή old_pieces αν το έχεις ορίσει
+                        del_date_str = row.get("Ημερομηνία", "")
 
                         ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
                         for di in ids_to_del: 
