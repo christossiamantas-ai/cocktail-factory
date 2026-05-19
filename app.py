@@ -2542,25 +2542,31 @@ elif page == "📦 Lot Παραγωγής":
                         time.sleep(1)
                         st.rerun()
 
-                    if b_del.form_submit_button("🗑️ Διαγραφή Αυτής της Παραγωγής"):
-                        del_cust = base_data["Πελάτης"]
-                        del_cocktail = base_data["Cocktail"]
+                    iif b_del.form_submit_button("🗑️ Διαγραφή Αυτής της Παραγωγής"):
+                        # Χρήση .get() για ασφαλή πρόσβαση στα δεδομένα
+                        del_cust = base_data.get("Πελάτης", "Άγνωστος")
+                        del_cocktail = base_data.get("Cocktail", "Άγνωστο")
                         del_pieces = old_pieces
-                        del_date_str = base_data["Ημερομηνία"]
+                        del_date_str = base_data.get("Ημερομηνία", "")
 
+                        # Διαγραφή από το production_log
                         ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
                         for di in ids_to_del: 
                             supabase.table("production_log").delete().eq("id", di).execute()
                         
                         try:
-                            target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                            res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
-                            if res_orders.data:
-                                for order in res_orders.data:
-                                    if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
-                                        supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
-                                        st.info("Σβήστηκε και η οικονομική εγγραφή.")
-                                        break 
+                            if del_date_str:
+                                target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
+                                
+                                if res_orders.data:
+                                    for order in res_orders.data:
+                                        # Ασφαλής έλεγχος με .get()
+                                        order_details = order.get('order_details', '')
+                                        if f"{del_pieces} τμχ {del_cocktail}" in str(order_details):
+                                            supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
+                                            st.info("Σβήστηκε και η οικονομική εγγραφή.")
+                                            break 
                         except Exception as e:
                             st.error(f"Σφάλμα κατά τη διαγραφή οικονομικών: {e}")
                             
@@ -2568,7 +2574,6 @@ elif page == "📦 Lot Παραγωγής":
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
-
         # =========================================================================
         # ΚΑΡΤΕΛΑ 2: ΜΑΖΙΚΗ ΕΝΗΜΕΡΩΣΗ LOT ΑΝΑ ΥΛΙΚΟ (ΟΜΑΔΟΠΟΙΗΜΕΝΟΣ ΠΙΝΑΚΑΣ)
         # =========================================================================
