@@ -2542,31 +2542,37 @@ elif page == "📦 Lot Παραγωγής":
                         time.sleep(1)
                         st.rerun()
 
-                    if b_del.form_submit_button("🗑️ Διαγραφή Αυτής της Παραγωγής"):
-                        del_cust = base_data["Πελάτης"]
-                        del_cocktail = base_data["Cocktail"]
-                        del_pieces = old_pieces
-                        del_date_str = base_data["Ημερομηνία"]
-
-                        ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
-                        for di in ids_to_del: 
-                            supabase.table("production_log").delete().eq("id", di).execute()
+                    if st.button("🗑️ Διαγραφή Παραγωγής", key=f"del_prod_{row['id']}"):
+    
+                        # 2. Χρησιμοποιούμε τα δεδομένα απευθείας από το 'row' (το οποίο είναι πάντα διαθέσιμο)
+                        del_cust = row.get("Πελάτης", "Άγνωστος")
+                        del_cocktail = row.get("Cocktail", "Άγνωστο")
+                        del_pieces = row.get("pieces", 0)
+                        del_date_str = row.get("Ημερομηνία", "")
+                    
+                        # 3. Διαγραφή από production_log
+                        # Αφού έχουμε το row['id'], σβήνουμε μόνο αυτό
+                        supabase.table("production_log").delete().eq("id", row['id']).execute()
                         
+                        # 4. Οικονομική διαγραφή
                         try:
                             target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                            
+                            # Αναζήτηση παραγγελίας
                             res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
+                            
                             if res_orders.data:
                                 for order in res_orders.data:
+                                    # Έλεγχος περιεχομένου (προσοχή στο format, εδώ χρησιμοποιούμε το 'τμχ' που είδαμε στο screenshot)
                                     if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
                                         supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
                                         st.info("Σβήστηκε και η οικονομική εγγραφή.")
                                         break 
                         except Exception as e:
-                            st.error(f"Σφάλμα κατά τη διαγραφή οικονομικών: {e}")
+                            st.error(f"Σφάλμα οικονομικών: {e}")
                             
                         st.warning("🗑️ Η παραγωγή διαγράφηκε.")
                         st.cache_data.clear()
-                        time.sleep(1)
                         st.rerun()
 
         # =========================================================================
