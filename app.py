@@ -2541,16 +2541,16 @@ elif page == "📦 Lot Παραγωγής":
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
 
                     # ---------------------------------------------------------
-                    # ΛΟΓΙΚΗ ΔΙΑΓΡΑΦΗΣ
+                    # ΛΟΓΙΚΗ ΔΙΑΓΡΑΦΗΣ (ΧΕΙΡΟΥΡΓΙΚΗ ΑΦΑΙΡΕΣΗ ΚΟΚΤΕΪΛ)
                     # ---------------------------------------------------------
                     if btn_del:
                         try:
-                            # 1. Διαγράφουμε ΟΛΗ την παρτίδα αυτού του κοκτέιλ από την αποθήκη
+                            # 1. Διαγράφουμε όλη την παρτίδα αυτού του κοκτέιλ από την αποθήκη (production_log)
                             ids_to_del = df_all_logs.loc[cocktail_df.index, "id"].tolist()
                             for di in ids_to_del: 
                                 supabase.table("production_log").delete().eq("id", di).execute()
                             
-                            # 2. Διαγραφή από τα οικονομικά (B2B) για ΚΑΘΕ πελάτη αυτής της παρτίδας
+                            # 2. Χειρουργική αφαίρεση από τα οικονομικά (B2B) για κάθε πελάτη
                             for orig_c, c_set in customer_settings.items():
                                 del_cust = orig_c
                                 del_cocktail = sel_cocktail_edit
@@ -2562,44 +2562,61 @@ elif page == "📦 Lot Παραγωγής":
                                 
                                 if res_orders.data:
                                     for order in res_orders.data:
-                                        if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
-                                            supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
+                                        order_details = str(order.get('order_details', ''))
+                                        old_str = f"{del_pieces} τμχ {del_cocktail}"
+                                        
+                                        if old_str in order_details:
+                                            lines = order_details.split('\n')
+                                            new_lines = []
+                                            total_amount_before_discount = 0.0
+                                            
+                                            # Παίρνουμε την έκπτωση του πελάτη για τον επαναϋπολογισμό
+                                            cust_discount = 0.0
+                                            res_c = supabase.table("customers").select("discount").eq("name", del_cust).execute()
+                                            if res_c.data and res_c.data[0].get("discount"):
+                                                cust_discount = float(res_c.data[0].get("discount"))
+                                                
+                                            for line in lines:
+                                                # Προσπερνάμε κενές γραμμές και τα παλιά σύνολα
+                                                if not line.strip() or "[Αρχική Αξία:" in line or "Έκπτωση:" in line:
+                                                    continue
+                                                
+                                                if line.strip().startswith("•") or "τμχ" in line:
+                                                    if old_str in line:
+                                                        # Βρήκαμε το κοκτέιλ προς διαγραφή, το προσπερνάμε (αφαιρείται)
+                                                        continue
+                                                    else:
+                                                        # Κρατάμε τα υπόλοιπα κοκτέιλ της παραγγελίας
+                                                        new_lines.append(line)
+                                                        # Υπολογίζουμε την αξία των κοκτέιλ που απομένουν
+                                                        try:
+                                                            parts = line.replace('•', '').split(' τμχ ')
+                                                            current_pcs = int(parts[0].strip())
+                                                            current_cocktail = parts[1].split(' (')[0].strip()
+                                                            res_other_p = supabase.table("recipes").select("catalog_price").eq("name", current_cocktail).execute()
+                                                            current_price = float(res_other_p.data[0].get("catalog_price")) if (res_other_p.data and res_other_p.data[0].get("catalog_price")) else 0.0
+                                                            total_amount_before_discount += current_pcs * current_price
+                                                        except:
+                                                            pass
+                                            
+                                            # ΑΝ ΔΕΝ ΕΜΕΙΝΕ ΚΑΝΕΝΑ ΑΛΛΟ ΚΟΚΤΕΪΛ: Σβήνουμε τελείως την εγγραφή
+                                            if not new_lines:
+                                                supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
+                                            else:
+                                                # ΑΝ ΑΠΕΜΕΙΝΑΝ ΚΑΙ ΑΛΛΑ ΚΟΚΤΕΪΛ: Κάνουμε Update με το νέο κείμενο και το νέο ποσό
+                                                final_payable_amount = total_amount_before_discount * (1 - (cust_discount / 100))
+                                                details_str = "\n".join(new_lines)
+                                                details_str += f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
+                                                if cust_discount > 0: 
+                                                    details_str += f"\n[Έκπτωση: {cust_discount}% εφαρμόστηκε]"
+                                                
+                                                supabase.table("b2b_orders").update({
+                                                    "total_amount": round(final_payable_amount, 2),
+                                                    "order_details": details_str
+                                                }).eq("id", order['id']).execute()
                                             break 
                                             
-                            st.warning("🗑️ Η παραγωγή διαγράφηκε πλήρως για όλους τους πελάτες.")
-                            st.cache_data.clear()
-                            time.sleep(1)
-                            st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
-                    # ---------------------------------------------------------
-                    # 3. ΛΟΓΙΚΗ ΔΙΑΓΡΑΦΗΣ (Όταν πατηθεί το δεύτερο κουμπί)
-                    # ---------------------------------------------------------
-                    if btn_del:
-                        try:
-                            del_cust = base_cust["Πελάτης"]
-                            del_cocktail = base_cust["Cocktail"]
-                            del_pieces = base_cust["Τεμάχια"]  # <--- 🌟 ΕΔΩ ΕΓΙΝΕ Η ΔΙΟΡΘΩΣΗ 🌟
-                            del_date_str = base_cust["Ημερομηνία"]
-
-                            # Διαγραφή από την αποθήκη
-                            ids_to_del = df_all_logs.loc[cust_df.index, "id"].tolist()
-                            for di in ids_to_del: 
-                                supabase.table("production_log").delete().eq("id", di).execute()
-                            
-                            # Διαγραφή από τα οικονομικά
-                            target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                            res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
-                            
-                            if res_orders.data:
-                                for order in res_orders.data:
-                                    if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
-                                        supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
-                                        st.info("Σβήστηκε και η οικονομική εγγραφή.")
-                                        break 
-                                        
-                            st.warning("🗑️ Η παραγωγή διαγράφηκε πλήρως.")
+                            st.warning("🗑️ Η παραγωγή ενημερώθηκε και το κοκτέιλ αφαιρέθηκε χειρουργικά.")
                             st.cache_data.clear()
                             time.sleep(1)
                             st.rerun()
