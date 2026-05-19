@@ -2542,39 +2542,36 @@ elif page == "📦 Lot Παραγωγής":
                         time.sleep(1)
                         st.rerun()
 
-                    if b_del.form_submit_button("🗑️ Διαγραφή Αυτής της Παραγωγής"):
-                            try:
-                                # Χρησιμοποιούμε το 'base_cust' (έτσι λέγεται η μεταβλητή στον κώδικά σου)
-                                del_cust = base_cust["Πελάτης"]
-                                del_cocktail = base_cust["Cocktail"]
-                                del_pieces = old_pieces
-                                del_date_str = base_cust["Ημερομηνία"]
+                    if btn_del:
+                        try:
+                            del_cust = base_cust["Πελάτης"]
+                            del_cocktail = base_cust["Cocktail"]
+                            del_pieces = base_cust["Τεμάχια"]  # <--- 🌟 ΕΔΩ ΕΓΙΝΕ Η ΔΙΟΡΘΩΣΗ 🌟
+                            del_date_str = base_cust["Ημερομηνία"]
 
-                                # Παίρνουμε τα ID προς διαγραφή κατευθείαν από το cust_df
-                                ids_to_del = df_all_logs.loc[cust_df.index, "id"].tolist()
-                                
-                                # 1. Διαγραφή από την αποθήκη (production_log)
-                                for di in ids_to_del: 
-                                    supabase.table("production_log").delete().eq("id", di).execute()
-                                
-                                # 2. Διαγραφή από τα οικονομικά (b2b_orders)
-                                target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
-                                
-                                if res_orders.data:
-                                    for order in res_orders.data:
-                                        if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
-                                            supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
-                                            st.info("Σβήστηκε και η οικονομική εγγραφή.")
-                                            break 
-                                            
-                                st.warning("🗑️ Η παραγωγή διαγράφηκε πλήρως.")
-                                st.cache_data.clear()
-                                time.sleep(1)
-                                st.rerun()
-                                
-                            except Exception as e:
-                                st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
+                            # Διαγραφή από την αποθήκη
+                            ids_to_del = df_all_logs.loc[cust_df.index, "id"].tolist()
+                            for di in ids_to_del: 
+                                supabase.table("production_log").delete().eq("id", di).execute()
+                            
+                            # Διαγραφή από τα οικονομικά
+                            target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                            res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
+                            
+                            if res_orders.data:
+                                for order in res_orders.data:
+                                    if f"{del_pieces} τμχ {del_cocktail}" in str(order.get('order_details', '')):
+                                        supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
+                                        st.info("Σβήστηκε και η οικονομική εγγραφή.")
+                                        break 
+                                        
+                            st.warning("🗑️ Η παραγωγή διαγράφηκε πλήρως.")
+                            st.cache_data.clear()
+                            time.sleep(1)
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
 
         # =========================================================================
         # ΚΑΡΤΕΛΑ 2: ΜΑΖΙΚΗ ΕΝΗΜΕΡΩΣΗ LOT ΑΝΑ ΥΛΙΚΟ (ΟΜΑΔΟΠΟΙΗΜΕΝΟΣ ΠΙΝΑΚΑΣ)
