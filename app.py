@@ -2542,7 +2542,7 @@ elif page == "📦 Lot Παραγωγής":
                         time.sleep(1)
                         st.rerun()
 
-                    if st.button("🗑️ Διαγραφή Αυτής της Παραγωγής", key=f"del_prod_{row['id']}"):
+if st.button("🗑️ Διαγραφή Αυτής της Παραγωγής", key=f"del_prod_{row['id']}"):
     
     # 1. Διαγραφή από το production_log
     ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
