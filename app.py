@@ -3179,6 +3179,7 @@ elif page == "🧼 Συντήρηση & HACCP":
             "Eco-Bac Fuam Plus", 
             "Swaz", 
             "Crystal Class Cleaner Ammonia",
+            "Αντισηπτικό Χεριών",
             "Νερό (Σκέτο)"
         ]
         
