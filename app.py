@@ -2542,12 +2542,12 @@ elif page == "📦 Lot Παραγωγής":
                         time.sleep(1)
                         st.rerun()
 
-if st.button("🗑️ Διαγραφή Αυτής της Παραγωγής", key=f"del_prod_{row['id']}"):
+            if st.button("🗑️ Διαγραφή Αυτής της Παραγωγής", key=f"del_prod_{row['id']}"):
     
-    # 1. Διαγραφή από το production_log
-    ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
-    for di in ids_to_del: 
-        supabase.table("production_log").delete().eq("id", di).execute()
+    # 1. Διαγραφή από το production_log                                                                
+                    ids_to_del = df_all_logs.loc[row_indices, "id"].tolist()
+                    for di in ids_to_del: 
+                    supabase.table("production_log").delete().eq("id", di).execute()
     
     # 2. Διαγραφή από b2b_orders (η λογική σου είναι σωστή, την κρατάμε)
     try:
