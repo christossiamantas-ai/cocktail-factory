@@ -1020,14 +1020,16 @@ elif page == "🔍 Ανάλυση":
         if res_sales.data:
             df_sales = pd.DataFrame(res_sales.data)
             
-            # Καθαρισμός διπλοεγγραφών (υλικά)
+            # 1. Καθαρισμός διπλοεγγραφών (κρατάμε μία εγγραφή ανά παραγωγή)
             if "prod_time" in df_sales.columns:
                 df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_time", "customer"])
             
-            total_produced_pcs = 0
-            total_free_pcs = 0
-            total_real_revenue = 0.0
+            # 2. ΑΠΟΛΥΤΗ ΚΑΤΑΜΕΤΡΗΣΗ (Πριν από οποιαδήποτε λογική πωλήσεων)
+            total_produced_pcs = int(df_sales["pieces"].sum())
+            total_free_pcs = int(df_sales["free_pieces"].sum())
             
+            # 3. ΥΠΟΛΟΓΙΣΜΟΣ ΤΖΙΡΟΥ (Με loop μόνο για τον τζίρο)
+            total_real_revenue = 0.0
             for _, row in df_sales.iterrows():
                 cust = row.get("customer", "")
                 
@@ -1040,40 +1042,27 @@ elif page == "🔍 Ανάλυση":
                 try: disc_pct = float(row.get("discount_pct", 0.0))
                 except: disc_pct = 0.0
                 
-                total_produced_pcs += pcs
-                total_free_pcs += fr
-                
-                # ΕΔΩ ΠΛΕΟΝ ΔΙΑΒΑΖΕΙ ΤΟ ΣΩΣΤΟ 26% (ή ό,τι έκπτωση έχει ο πελάτης)
                 cust_discount = cust_discount_map.get(cust, 0.0)
                 
                 try: sold_price = float(row.get("sold_price", 0.0))
                 except: sold_price = 0.0
                 
                 if pd.notnull(sold_price) and sold_price > 0:
-                    # 🚀 ΝΕΕΣ ΠΩΛΗΣΕΙΣ (Με το sold_price κλειδωμένο)
                     if fr + disc_pcs > pcs:
                         disc_pcs = max(0, pcs - fr)
                     norm_pcs = max(0, pcs - fr - disc_pcs)
-                    
                     rev_norm = norm_pcs * sold_price
                     rev_spec = disc_pcs * p_retail * (1 - (disc_pct / 100.0))
-                    
                     revenue_for_this_order = rev_norm + rev_spec
                 else:
-                    # 📜 ΠΑΛΙΕΣ ΠΩΛΗΣΕΙΣ (Υπολογισμός με Λιανική μείον την Έκπτωση του Πελάτη)
-                    revenue_for_this_order = pcs * p_retail * (1 - (cust_discount / 100.0))
+                    paid_pcs = max(0, pcs - fr)
+                    revenue_for_this_order = paid_pcs * p_retail * (1 - (cust_discount / 100.0))
                 
                 total_real_revenue += revenue_for_this_order
-                
+            
+            # 4. ΚΟΣΤΟΣ ΜΕ ΒΑΣΗ ΤΗ ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ (540 * 2.9€)
             total_production_cost = total_produced_pcs * total_production
             total_net_profit = total_real_revenue - total_production_cost
-            
-            if total_real_revenue > 0:
-                profit_percentage = (total_net_profit / total_real_revenue) * 100.0
-                cost_percentage = (total_production_cost / total_real_revenue) * 100.0
-            else:
-                profit_percentage = 0.0
-                cost_percentage = 0.0
                 
             m1, m2, m3, m4 = st.columns(4)
             m1.metric(label="Συνολική Παραγωγή", value=f"{total_produced_pcs} τμχ", delta=f"{total_free_pcs} δώρα", delta_color="off")
