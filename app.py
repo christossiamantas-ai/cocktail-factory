@@ -775,48 +775,47 @@ elif page == "📊 Διαχείριση":
                     submitted = st.form_submit_button("💾 Αποθήκευση Αλλαγών Συνταγής", type="primary")
 
                     if submitted:
-                        try:
-                            # ΔΙΟΡΘΩΣΗ 1: Χρησιμοποιούμε το rec_row (και το rec_id)
-                            current_version = int(rec_row.get("version", 1)) if "version" in rec_row else 1
+                    try:
+                        # 1. Προετοιμασία δεδομένων
+                        current_version = int(rec_row.get("version", 1)) if pd.notna(rec_row.get("version")) else 1
+                        new_version_num = current_version + 1
+                        
+                        # 2. Χρήση transaction-like λογικής (κάνουμε πρώτα το insert της νέας)
+                        # Έτσι αν το insert αποτύχει, η παλιά συνταγή μένει ενεργή και δεν χάνεις τίποτα
+                        res = supabase.table("recipes").insert({
+                            "name": edit_name,
+                            "barcode": edit_barcode,
+                            "catalog_price": edit_price,
+                            "is_active": True,
+                            "version": new_version_num
+                        }).execute()
+                        
+                        new_recipe_id = res.data[0]["id"]
+                        
+                        # 3. Τώρα αρχειοθετούμε την παλιά (αφού η νέα δημιουργήθηκε επιτυχώς)
+                        supabase.table("recipes").update({"is_active": False}).eq("id", rec_id).execute()
+                        
+                        # 4. Αποθήκευση Νέων Υλικών για το new_recipe_id
+                        items_to_insert = [
+                            {
+                                "recipe_id": new_recipe_id,
+                                "ingredient_name": item["name"],
+                                "ml_per_unit": float(item["ml"])
+                            }
+                            for item in new_ingredients_list 
+                            if item["name"] != "ΚΕΝΟ" and float(item["ml"]) > 0
+                        ]
+                        
+                        if items_to_insert:
+                            supabase.table("recipe_items").insert(items_to_insert).execute()
                             
-                            # 2. ΑΡΧΕΙΟΘΕΤΗΣΗ ΠΑΛΙΑΣ
-                            supabase.table("recipes").update({
-                                "is_active": False
-                            }).eq("id", rec_id).execute()
-                            
-                            # 3. ΔΗΜΙΟΥΡΓΙΑ ΝΕΑΣ ΕΚΔΟΣΗΣ
-                            res = supabase.table("recipes").insert({
-                                "name": edit_name,
-                                "barcode": edit_barcode,
-                                "catalog_price": edit_price,
-                                "is_active": True,
-                                "version": current_version + 1
-                            }).execute()
-                            
-                            new_recipe_id = res.data[0]["id"]
-                            
-                            # 4. ΑΠΟΘΗΚΕΥΣΗ ΝΕΩΝ ΥΛΙΚΩΝ
-                            items_to_insert = []
-                            # ΔΙΟΡΘΩΣΗ 2: Χρησιμοποιούμε το new_ingredients_list που γεμίσαμε μόλις!
-                            for item in new_ingredients_list:
-                                # ΔΙΟΡΘΩΣΗ 3: Αποθηκεύουμε ΜΟΝΟ αν το υλικό δεν είναι "ΚΕΝΟ" και τα ml είναι > 0
-                                if item["name"] != "ΚΕΝΟ" and float(item["ml"]) > 0:
-                                    items_to_insert.append({
-                                        "recipe_id": new_recipe_id,
-                                        "ingredient_name": item["name"],
-                                        "ml_per_unit": float(item["ml"])
-                                    })
-                                    
-                            if items_to_insert:
-                                supabase.table("recipe_items").insert(items_to_insert).execute()
-                            
-                            st.success(f"✅ Η συνταγή αναβαθμίστηκε επιτυχώς στην Έκδοση v{current_version + 1}!")
-                            st.cache_data.clear()
-                            time.sleep(2)
-                            st.rerun()
+                        st.success(f"✅ Η συνταγή αναβαθμίστηκε επιτυχώς στην Έκδοση v{new_version_num}!")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
 
-                        except Exception as e:
-                            st.error(f"Σφάλμα κατά την αναβάθμιση έκδοσης: {e}")
+                    except Exception as e:
+                        st.error(f"Σφάλμα κατά την αναβάθμιση έκδοσης: {e}. Η παλιά συνταγή παρέμεινε ενεργή για ασφάλεια.")
 
             with tab_del:
                 st.warning(f"⚠️ Είστε σίγουροι ότι θέλετε να διαγράψετε το **{recipe_to_edit}**;")
