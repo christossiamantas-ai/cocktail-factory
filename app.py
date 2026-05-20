@@ -1013,6 +1013,91 @@ elif page == "🔍 Ανάλυση":
                     df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
             st.table(df_render[["Υλικό", "ML", "Alc %", "Κόστος"]])
 
+
+        st.markdown("### 📊 Ανάλυση Απόδοσης & Στατιστικά ανά Κοκτέιλ")
+st.write("Επιλέξτε ένα κοκτέιλ για να δείτε τα οικονομικά του στοιχεία και την πορεία του στις πωλήσεις.")
+
+# 1. Επιλογή του Κοκτέιλ (από τη λίστα των ενεργών συνταγών σου)
+# Υποθέτουμε ότι το 'recipe_options' υπάρχει ήδη από την καρτέλα των συνταγών
+selected_analysis_cocktail = st.selectbox("🍸 Επιλογή Κοκτέιλ:", options=recipe_options, key="analysis_sel")
+
+if selected_analysis_cocktail:
+    # 2. Τραβάμε ΟΛΕΣ τις πωλήσεις (από την αποθήκη/production_log) για αυτό το κοκτέιλ
+    # Αν έχεις ήδη ένα γενικό dataframe df_prod, φιλτράρουμε εκεί:
+    # Εναλλακτικά κάνεις query στη Supabase απευθείας:
+    res_analytics = supabase.table("production_log").select("*").eq("cocktail_name", selected_analysis_cocktail).execute()
+    
+    if res_analytics.data:
+        df_cocktail_sales = pd.DataFrame(res_analytics.data)
+        
+        # --- ΜΑΘΗΜΑΤΙΚΑ & ΥΠΟΛΟΓΙΣΜΟΙ ---
+        # Υπολογισμός τεμαχίων
+        total_pieces_produced = df_cocktail_sales['pieces'].astype(int).sum()
+        total_free_pieces = df_cocktail_sales['free_pieces'].astype(int).sum() if 'free_pieces' in df_cocktail_sales.columns else 0
+        sold_pieces = total_pieces_produced - total_free_pieces
+        
+        # Για το παράδειγμα, βρίσκουμε την Τιμή Λιανικής (την έχεις στο df_rec)
+        # Βρίσκουμε τη γραμμή της συνταγής από το df_rec
+        recipe_row = df_rec[df_rec['Ονομα'] == selected_analysis_cocktail]
+        catalog_price = float(recipe_row['Τιμή Καταλόγου'].iloc[0]) if not recipe_row.empty else 0.0
+        
+        # Υποθετικό Κόστος (αν το υπολογίζεις κάπου, το βάζεις εδώ. Έστω π.χ. 3.5€ το μπουκάλι)
+        # Αν έχεις συνάρτηση get_recipe_cost(name), την καλείς εδώ!
+        unit_cost = 3.50 # ΑΛΛΑΞΕ ΤΟ: Εδώ βάζεις το πραγματικό κόστος υλικών της συνταγής σου
+        
+        # Οικονομικά Σύνολα (Μικτά, χωρίς να υπολογίζουμε πολύπλοκες εκπτώσεις πελατών εδώ)
+        total_gross_revenue = sold_pieces * catalog_price
+        total_cost = total_pieces_produced * unit_cost
+        net_profit = total_gross_revenue - total_cost
+        
+        profit_margin_pct = (net_profit / total_gross_revenue * 100) if total_gross_revenue > 0 else 0
+        
+        # --- 3. ΠΡΟΒΟΛΗ KPI METRICS (Τα μεγάλα νούμερα) ---
+        st.markdown("#### 🎯 Βασικοί Δείκτες (KPIs)")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        col1.metric(label="Συνολικά Τεμάχια", value=f"{total_pieces_produced}", delta=f"-{total_free_pieces} Δώρα", delta_color="normal")
+        col2.metric(label="Μικτός Τζίρος", value=f"{total_gross_revenue:,.2f} €")
+        col3.metric(label="Κόστος Παραγωγής", value=f"{total_cost:,.2f} €")
+        col4.metric(label="Καθαρό Κέρδος", value=f"{net_profit:,.2f} €", delta=f"{profit_margin_pct:.1f}% Περιθώριο", delta_color="normal" if net_profit > 0 else "inverse")
+        
+        st.markdown("---")
+        
+        # --- 4. ΟΠΤΙΚΟΠΟΙΗΣΗ (ΓΡΑΦΗΜΑΤΑ PLOTLY) ---
+        g1, g2 = st.columns(2)
+        
+        with g1:
+            st.markdown("**Κατανομή Κέρδους vs Κόστους**")
+            # Ένα ωραίο Pie Chart που δείχνει πόσο "τρώει" το κόστος από τον τζίρο
+            fig_pie = px.pie(
+                names=["Καθαρό Κέρδος", "Κόστος Υλικών"], 
+                values=[net_profit if net_profit > 0 else 0, total_cost],
+                hole=0.4, # Το κάνει "Ντόνατ" αντί για συμπαγή πίτα
+                color_discrete_sequence=["#198754", "#dc3545"] # Πράσινο για κέρδος, Κόκκινο για κόστος
+            )
+            fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig_pie, use_container_width=True)
+            
+        with g2:
+            st.markdown("**Ποιοι Πελάτες το Αγοράζουν Περισσότερο;**")
+            # Ομαδοποιούμε τις πωλήσεις ανά πελάτη για το συγκεκριμένο κοκτέιλ
+            df_cust = df_cocktail_sales.groupby('customer')['pieces'].sum().reset_index()
+            df_cust = df_cust.sort_values(by='pieces', ascending=True).tail(5) # Τα top 5
+            
+            fig_bar = px.bar(
+                df_cust, 
+                x="pieces", 
+                y="customer", 
+                orientation='h', # Οριζόντιες μπάρες
+                text="pieces",
+                color_discrete_sequence=["#0d6efd"]
+            )
+            fig_bar.update_layout(margin=dict(t=0, b=0, l=0, r=0), xaxis_title="Τεμάχια", yaxis_title="")
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+    else:
+        st.info("Δεν υπάρχουν ακόμα δεδομένα πωλήσεων (στο ιστορικό παραγωγής) για αυτό το κοκτέιλ.")
+
         # --- 📜 ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ ΕΠΑΓΓΕΛΜΑΤΙΚΟΥ REPORT (HTML) ---
         st.divider()
         st.subheader("📜 Εξαγωγή Τεχνικού Φακέλου")
