@@ -1015,28 +1015,38 @@ elif page == "🔍 Ανάλυση":
         if res_sales.data:
             df_sales = pd.DataFrame(res_sales.data)
             
+            # 🔴 Η ΚΡΙΣΙΜΗ ΔΙΟΡΘΩΣΗ: Αφαίρεση των διπλότυπων γραμμών της ίδιας παραγγελίας!
+            # Κρατάμε μόνο μία εγγραφή ανά κοκτέιλ και ώρα παραγωγής.
+            if "prod_time" in df_sales.columns:
+                df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_time"])
+            
             total_produced_pcs = 0
             total_free_pcs = 0
             total_real_revenue = 0.0
             
             for _, row in df_sales.iterrows():
                 cust = row.get("customer", "")
-                pcs = int(row.get("pieces", 0) if pd.notnull(row.get("pieces")) else 0)
-                fr = int(row.get("free_pieces", 0) if pd.notnull(row.get("free_pieces")) else 0)
+                
+                # Ασφαλής μετατροπή σε ακέραιο (integer)
+                try: pcs = int(float(row.get("pieces", 0)))
+                except: pcs = 0
+                
+                try: fr = int(float(row.get("free_pieces", 0)))
+                except: fr = 0
                 
                 total_produced_pcs += pcs
                 total_free_pcs += fr
                 
-                # Τραβάμε τη γενική έκπτωση του πελάτη
+                # Τραβάμε τη γενική έκπτωση του πελάτη από το λεξικό που φτιάξαμε πιο πάνω
                 cust_discount = cust_discount_map.get(cust, 0.0)
                 
-                # Ο ΙΔΙΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΜΕ ΤΟ DASHBOARD: 
-                # (Συνολικά Τεμάχια) * (Τιμή Λιανικής) * (1 - Έκπτωση Πελάτη)
+                # ΥΠΟΛΟΓΙΣΜΟΣ ΟΠΩΣ ΣΤΟ DASHBOARD (Τεμάχια * Τιμή * Έκπτωση)
+                # (Αν θέλεις να αφαιρούνται τα δώρα από τον τζίρο, βάζουμε (pcs - fr) αντί για pcs)
                 revenue_for_this_order = pcs * p_retail * (1 - (cust_discount / 100.0))
                 
                 total_real_revenue += revenue_for_this_order
                 
-            # Το κόστος παραμένει: Συνολικά Τεμάχια * Κόστος Φιάλης
+            # Το κόστος παραμένει: Συνολικά Τεμάχια * Κόστος ανά Φιάλη
             total_production_cost = total_produced_pcs * total_production
             total_net_profit = total_real_revenue - total_production_cost
             
@@ -1067,6 +1077,7 @@ elif page == "🔍 Ανάλυση":
                 st.plotly_chart(fig_pie, use_container_width=True)
             with g2:
                 st.markdown("**🏆 Top 5 Αγοραστές (Τεμάχια)**")
+                # Για το γράφημα, αθροίζουμε τα πραγματικά τεμάχια ανά πελάτη
                 df_cust = df_sales.groupby("customer")["pieces"].sum().reset_index()
                 df_cust = df_cust.sort_values(by="pieces", ascending=True).tail(5)
                 fig_bar = px.bar(
