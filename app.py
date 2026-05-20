@@ -305,12 +305,16 @@ with st.sidebar:
     try:
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Προστέθηκαν ΟΛΟΙ οι πίνακες του συστήματος
             tables = {
                 "Production_LOT": "production_log",
                 "B2B_Orders": "b2b_orders",
                 "Inventory": "ingredients",
                 "HACCP_Log": "haccp_log", 
-                "Recipes": "recipes"
+                "Recipes": "recipes",
+                "Recipe_Items_Dosages": "recipe_items",
+                "CRM_Customers": "customers",
+                "CRM_Special_Discounts": "customer_specials"
             }
             for file_label, table_name in tables.items():
                 try:
@@ -319,7 +323,7 @@ with st.sidebar:
                     csv_data = df_temp.to_csv(index=False).encode('utf-8-sig')
                     zf.writestr(f"{file_label}_{now_athens.strftime('%d_%m_%Y')}.csv", csv_data)
                 except:
-                    continue # Αν ένας πίνακας έχει πρόβλημα, πάμε στον επόμενο
+                    continue # Αν ένας πίνακας έχει πρόβλημα (π.χ. είναι άδειος), προχωράει στον επόμενο χωρίς να κρασάρει
         
         st.download_button(
             label="📥 Λήψη Όλων των Δεδομένων (.zip)",
@@ -330,7 +334,6 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Σφάλμα Backup: {e}")
-
     st.divider()
     st.write(f"🕒 Ώρα Ελλάδος: {now_athens.strftime('%H:%M:%S')}")
     st.write(f"📅 Ημερομηνία: {now_athens.strftime('%d/%m/%Y')}")
