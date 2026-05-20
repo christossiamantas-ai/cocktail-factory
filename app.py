@@ -2265,89 +2265,89 @@ elif page == "📦 Lot Παραγωγής":
                 
                 st.divider()
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud", type="primary"):
-        if lot_entries:
-            try:
-                # 1. ΕΜΠΛΟΥΤΙΣΜΟΣ ΤΩΝ LOT_ENTRIES ΜΕ ΤΗΝ ΚΛΕΙΔΩΜΕΝΗ ΤΙΜΗ ΠΩΛΗΣΗΣ (SOLD_PRICE)
-                for entry in lot_entries:
-                    c_name = entry.get("customer")
-                    cocktail = entry.get("cocktail_name")
-                    price = 0.0
-                    try:
-                        res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
-                        if res_p.data and res_p.data[0].get("catalog_price"):
-                            price = float(res_p.data[0].get("catalog_price"))
-                    except:
-                        pass
-                    discount = 0.0
-                    try:
-                        res_c = supabase.table("customers").select("discount").eq("name", c_name).execute()
-                        if res_c.data and res_c.data[0].get("discount"):
-                            discount = float(res_c.data[0].get("discount"))
-                    except:
-                        pass
-                    entry["sold_price"] = price * (1 - (discount / 100.0))
-                # Αποθήκευση Πρώτων Υλών, Τεμαχίων & Κλειδωμένης Τιμής (Ιχνηλασιμότητα / Ανάλυση)
-                supabase.table("production_log").insert(lot_entries).execute()
-                st.session_state.production_batch_items = []
-                # 2. ΑΥΤΟΜΑΤΗ ΕΝΗΜΕΡΩΣΗ ΟΙΚΟΝΟΜΙΚΩΝ ΣΤΟ DASHBOARD
-                if active_order is not None:
-                    supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
-                    st.session_state['active_b2b_order'] = None 
-                else:
-                    cust_prod = {}
-                    for entry in lot_entries:
-                        c = entry["customer"]
-                        if c not in cust_prod:
-                            cust_prod[c] = {"products": {}, "date": entry["prod_date"]}
-                        cocktail = entry["cocktail_name"]
-                        cust_prod[c]["products"][cocktail] = entry["pieces"]
-                    for c_name, c_data in cust_prod.items():
-                        products = c_data["products"]
-                        p_date_str = c_data["date"]
-                        if c_name == "Λιανική / Άγνωστος" and not products:
-                            continue 
+                    if lot_entries:
                         try:
-                            date_iso = datetime.strptime(p_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                        except:
-                            date_iso = selected_date.isoformat()
-                        discount = 0.0
-                        try:
-                            res_c = supabase.table("customers").select("discount").eq("name", c_name).execute()
-                            if res_c.data and res_c.data[0].get("discount"):
-                                discount = float(res_c.data[0].get("discount"))
-                        except Exception:
-                            pass
-                        total_amount = 0.0
-                        details_lines = []
-                        for cocktail, pcs in products.items():
-                            price = 0.0
-                            try:
-                                res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
-                                if res_p.data and res_p.data[0].get("catalog_price"):
-                                    price = float(res_p.data[0].get("catalog_price"))
-                            except Exception:
-                                pass
-                            line_total = price * pcs
-                            total_amount += line_total
-                            details_lines.append(f"• {pcs} τμχ {cocktail}")
-                        final_total = total_amount * (1 - (discount / 100))
-                        details_str = "\n".join(details_lines)
-                        if discount > 0:
-                            details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
-                        supabase.table("b2b_orders").insert({
-                            "customer_name": c_name,
-                            "total_amount": final_total,
-                            "order_details": details_str,
-                            "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
-                            "created_at": f"{date_iso}T{current_time}:00"
-                        }).execute()
-                st.session_state['lot_reset_key'] += 1
-                st.success("✅ Η παρτίδα αποθηκεύτηκε και το Dashboard ενημερώθηκε αυτόματα!")
-                st.cache_data.clear()
-                time.sleep(2)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
+                            # 1. ΕΜΠΛΟΥΤΙΣΜΟΣ ΤΩΝ LOT_ENTRIES ΜΕ ΤΗΝ ΚΛΕΙΔΩΜΕΝΗ ΤΙΜΗ ΠΩΛΗΣΗΣ (SOLD_PRICE)
+                            for entry in lot_entries:
+                                c_name = entry.get("customer")
+                                cocktail = entry.get("cocktail_name")
+                                price = 0.0
+                                try:
+                                    res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
+                                    if res_p.data and res_p.data[0].get("catalog_price"):
+                                        price = float(res_p.data[0].get("catalog_price"))
+                                except:
+                                    pass
+                                discount = 0.0
+                                try:
+                                    res_c = supabase.table("customers").select("discount").eq("name", c_name).execute()
+                                    if res_c.data and res_c.data[0].get("discount"):
+                                        discount = float(res_c.data[0].get("discount"))
+                                except:
+                                    pass
+                                entry["sold_price"] = price * (1 - (discount / 100.0))
+                            # Αποθήκευση Πρώτων Υλών, Τεμαχίων & Κλειδωμένης Τιμής (Ιχνηλασιμότητα / Ανάλυση)
+                            supabase.table("production_log").insert(lot_entries).execute()
+                            st.session_state.production_batch_items = []
+                            # 2. ΑΥΤΟΜΑΤΗ ΕΝΗΜΕΡΩΣΗ ΟΙΚΟΝΟΜΙΚΩΝ ΣΤΟ DASHBOARD
+                            if active_order is not None:
+                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
+                                st.session_state['active_b2b_order'] = None 
+                            else:
+                                cust_prod = {}
+                                for entry in lot_entries:
+                                    c = entry["customer"]
+                                    if c not in cust_prod:
+                                        cust_prod[c] = {"products": {}, "date": entry["prod_date"]}
+                                    cocktail = entry["cocktail_name"]
+                                    cust_prod[c]["products"][cocktail] = entry["pieces"]
+                                for c_name, c_data in cust_prod.items():
+                                    products = c_data["products"]
+                                    p_date_str = c_data["date"]
+                                    if c_name == "Λιανική / Άγνωστος" and not products:
+                                        continue 
+                                    try:
+                                        date_iso = datetime.strptime(p_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                    except:
+                                        date_iso = selected_date.isoformat()
+                                    discount = 0.0
+                                    try:
+                                        res_c = supabase.table("customers").select("discount").eq("name", c_name).execute()
+                                        if res_c.data and res_c.data[0].get("discount"):
+                                            discount = float(res_c.data[0].get("discount"))
+                                    except Exception:
+                                        pass
+                                    total_amount = 0.0
+                                    details_lines = []
+                                    for cocktail, pcs in products.items():
+                                        price = 0.0
+                                        try:
+                                            res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
+                                            if res_p.data and res_p.data[0].get("catalog_price"):
+                                                price = float(res_p.data[0].get("catalog_price"))
+                                        except Exception:
+                                            pass
+                                        line_total = price * pcs
+                                        total_amount += line_total
+                                        details_lines.append(f"• {pcs} τμχ {cocktail}")
+                                    final_total = total_amount * (1 - (discount / 100))
+                                    details_str = "\n".join(details_lines)
+                                    if discount > 0:
+                                        details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
+                                    supabase.table("b2b_orders").insert({
+                                        "customer_name": c_name,
+                                        "total_amount": final_total,
+                                        "order_details": details_str,
+                                        "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
+                                        "created_at": f"{date_iso}T{current_time}:00"
+                                    }).execute()
+                            st.session_state['lot_reset_key'] += 1
+                            st.success("✅ Η παρτίδα αποθηκεύτηκε και το Dashboard ενημερώθηκε αυτόματα!")
+                            st.cache_data.clear()
+                            time.sleep(2)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
                             
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
