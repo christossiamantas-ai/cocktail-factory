@@ -1008,7 +1008,7 @@ elif page == "🔍 Ανάλυση":
         st.write(f"### 📈 Οικονομική Απόδοση & Πωλήσεις ({choice})")
         
         # Ανάκτηση των γενικών εκπτώσεων πελατών για σωστούς υπολογισμούς
-        res_cust = supabase.table("customers").select("name, general_discount").execute()
+        res_cust = supabase.table("customers").select("name, discount").execute()
         cust_discount_map = {c["name"]: float(c.get("general_discount", 0.0)) for c in res_cust.data} if res_cust.data else {}
         
         res_sales = supabase.table("production_log").select("*").eq("cocktail_name", choice).execute()
