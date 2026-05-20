@@ -37,23 +37,36 @@ def delete_order_and_production_safely(order_id, customer_name, created_at_times
     """
     Διαγράφει οριστικά μια παραγγελία από τα οικονομικά (b2b_orders)
     και καθαρίζει αυτόματα όλα τα αναλωμένα υλικά από την αποθήκη (production_log)
+    Με πλήρη ασφάλεια ζώνης ώρας (Europe/Athens).
     """
-    # 1. Διαγραφή από τα οικονομικά (b2b_orders)
-    supabase.table("b2b_orders").delete().eq("id", order_id).execute()
-    
-    # 2. Μετατροπή timestamp της παραγγελίας στη μορφή ημερομηνίας του production_log (DD/MM/YYYY)
-    order_date = pd.to_datetime(created_at_timestamp).strftime('%d/%m/%Y')
-    
-    # 3. Φέρνουμε όλες τις γραμμές παραγωγής αυτού του πελάτη για τη συγκεκριμένη ημέρα
-    res_prod = supabase.table("production_log").select("id, cocktail_name").eq("customer", customer_name).eq("prod_date", order_date).execute()
-    
-    if res_prod.data:
-        for row in res_prod.data:
-            # Έξυπνος έλεγχος: Αν το κοκτέιλ της γραμμής παραγωγής αναφέρεται μέσα στις λεπτομέρειες 
-            # της παραγγελίας που διαγράφουμε, τότε σβήνουμε τα υλικά του!
-            if str(row['cocktail_name']) in str(order_details):
-                supabase.table("production_log").delete().eq("id", row['id']).execute()
-
+    try:
+        # 1. Διαγραφή από τα οικονομικά (b2b_orders)
+        supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+        
+        # 2. Ασφαλής μετατροπή timestamp σε Ώρα Ελλάδος για να μη χάσουμε την ημερομηνία
+        dt = pd.to_datetime(created_at_timestamp)
+        if dt.tzinfo is None:
+            dt = dt.tz_localize('UTC')
+        order_date = dt.tz_convert('Europe/Athens').strftime('%d/%m/%Y')
+        
+        # 3. Φέρνουμε όλες τις γραμμές παραγωγής αυτού του πελάτη για τη συγκεκριμένη ημέρα
+        res_prod = supabase.table("production_log").select("id, cocktail_name").eq("customer", customer_name).eq("prod_date", order_date).execute()
+        
+        if res_prod.data:
+            # Μαζεύουμε όλα τα ID που πρέπει να σβηστούν σε μια λίστα
+            ids_to_delete = []
+            for row in res_prod.data:
+                if str(row['cocktail_name']) in str(order_details):
+                    ids_to_delete.append(row['id'])
+            
+            # Χειρουργική και μαζική διαγραφή όλων των γραμμών μαζί (1 hit στη βάση)
+            if ids_to_delete:
+                supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
+        
+        return True
+    except Exception as e:
+        st.error(f"Σφάλμα κατά την ασφαλή διαγραφή: {e}")
+        return False
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
