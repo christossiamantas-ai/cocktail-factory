@@ -1007,18 +1007,22 @@ elif page == "🔍 Ανάλυση":
         st.markdown("---")
         st.write(f"### 📈 Οικονομική Απόδοση & Πωλήσεις ({choice})")
         
-        # Ανάκτηση των γενικών εκπτώσεων πελατών για σωστούς υπολογισμούς
-        res_cust = supabase.table("customers").select("name, discount").execute()
-        cust_discount_map = {c["name"]: float(c.get("general_discount", 0.0)) for c in res_cust.data} if res_cust.data else {}
+        # 🔴 ΔΙΟΡΘΩΣΗ: Τραβάμε σωστά τη στήλη "discount" αντί για "general_discount"
+        cust_discount_map = {}
+        try:
+            res_cust = supabase.table("customers").select("name, discount").execute()
+            if res_cust.data:
+                cust_discount_map = {c["name"]: float(c.get("discount", 0.0) or 0.0) for c in res_cust.data}
+        except Exception as e:
+            pass
         
         res_sales = supabase.table("production_log").select("*").eq("cocktail_name", choice).execute()
         if res_sales.data:
             df_sales = pd.DataFrame(res_sales.data)
             
-            # 🔴 Η ΚΡΙΣΙΜΗ ΔΙΟΡΘΩΣΗ: Αφαίρεση των διπλότυπων γραμμών της ίδιας παραγγελίας!
-            # Κρατάμε μόνο μία εγγραφή ανά κοκτέιλ και ώρα παραγωγής.
+            # Καθαρισμός διπλοεγγραφών (υλικά)
             if "prod_time" in df_sales.columns:
-                df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_time"])
+                df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_time", "customer"])
             
             total_produced_pcs = 0
             total_free_pcs = 0
@@ -1027,26 +1031,40 @@ elif page == "🔍 Ανάλυση":
             for _, row in df_sales.iterrows():
                 cust = row.get("customer", "")
                 
-                # Ασφαλής μετατροπή σε ακέραιο (integer)
                 try: pcs = int(float(row.get("pieces", 0)))
                 except: pcs = 0
-                
                 try: fr = int(float(row.get("free_pieces", 0)))
                 except: fr = 0
+                try: disc_pcs = int(float(row.get("discounted_pieces", 0)))
+                except: disc_pcs = 0
+                try: disc_pct = float(row.get("discount_pct", 0.0))
+                except: disc_pct = 0.0
                 
                 total_produced_pcs += pcs
                 total_free_pcs += fr
                 
-                # Τραβάμε τη γενική έκπτωση του πελάτη από το λεξικό που φτιάξαμε πιο πάνω
+                # ΕΔΩ ΠΛΕΟΝ ΔΙΑΒΑΖΕΙ ΤΟ ΣΩΣΤΟ 26% (ή ό,τι έκπτωση έχει ο πελάτης)
                 cust_discount = cust_discount_map.get(cust, 0.0)
                 
-                # ΥΠΟΛΟΓΙΣΜΟΣ ΟΠΩΣ ΣΤΟ DASHBOARD (Τεμάχια * Τιμή * Έκπτωση)
-                # (Αν θέλεις να αφαιρούνται τα δώρα από τον τζίρο, βάζουμε (pcs - fr) αντί για pcs)
-                revenue_for_this_order = pcs * p_retail * (1 - (cust_discount / 100.0))
+                try: sold_price = float(row.get("sold_price", 0.0))
+                except: sold_price = 0.0
+                
+                if pd.notnull(sold_price) and sold_price > 0:
+                    # 🚀 ΝΕΕΣ ΠΩΛΗΣΕΙΣ (Με το sold_price κλειδωμένο)
+                    if fr + disc_pcs > pcs:
+                        disc_pcs = max(0, pcs - fr)
+                    norm_pcs = max(0, pcs - fr - disc_pcs)
+                    
+                    rev_norm = norm_pcs * sold_price
+                    rev_spec = disc_pcs * p_retail * (1 - (disc_pct / 100.0))
+                    
+                    revenue_for_this_order = rev_norm + rev_spec
+                else:
+                    # 📜 ΠΑΛΙΕΣ ΠΩΛΗΣΕΙΣ (Υπολογισμός με Λιανική μείον την Έκπτωση του Πελάτη)
+                    revenue_for_this_order = pcs * p_retail * (1 - (cust_discount / 100.0))
                 
                 total_real_revenue += revenue_for_this_order
                 
-            # Το κόστος παραμένει: Συνολικά Τεμάχια * Κόστος ανά Φιάλη
             total_production_cost = total_produced_pcs * total_production
             total_net_profit = total_real_revenue - total_production_cost
             
@@ -1058,8 +1076,8 @@ elif page == "🔍 Ανάλυση":
                 cost_percentage = 0.0
                 
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric(label="Συνολικές Πωλήσεις", value=f"{total_produced_pcs} τμχ", delta=f"{total_free_pcs} δώρα δοθήκαν", delta_color="off")
-            m2.metric(label="Συνολικός Τζίρος", value=f"{total_real_revenue:,.2f} €")
+            m1.metric(label="Συνολική Παραγωγή", value=f"{total_produced_pcs} τμχ", delta=f"{total_free_pcs} δώρα", delta_color="off")
+            m2.metric(label="Τζίρος Προϊόντος", value=f"{total_real_revenue:,.2f} €")
             m3.metric(label="Συνολικό Κόστος", value=f"{total_production_cost:,.2f} €", delta=f"{cost_percentage:.1f}% επί τζίρου", delta_color="inverse")
             m4.metric(label="Καθαρό Κέρδος", value=f"{total_net_profit:,.2f} €", delta=f"{profit_percentage:.1f}% περιθώριο")
             
@@ -1077,13 +1095,13 @@ elif page == "🔍 Ανάλυση":
                 st.plotly_chart(fig_pie, use_container_width=True)
             with g2:
                 st.markdown("**🏆 Top 5 Αγοραστές (Τεμάχια)**")
-                # Για το γράφημα, αθροίζουμε τα πραγματικά τεμάχια ανά πελάτη
-                df_cust = df_sales.groupby("customer")["pieces"].sum().reset_index()
-                df_cust = df_cust.sort_values(by="pieces", ascending=True).tail(5)
+                df_sales['paid_pieces'] = df_sales['pieces'].astype(float) - df_sales['free_pieces'].astype(float).fillna(0)
+                df_cust = df_sales.groupby("customer")["paid_pieces"].sum().reset_index()
+                df_cust = df_cust.sort_values(by="paid_pieces", ascending=True).tail(5)
                 fig_bar = px.bar(
-                    df_cust, x="pieces", y="customer", orientation="h", text="pieces", color_discrete_sequence=["#007bff"]
+                    df_cust, x="paid_pieces", y="customer", orientation="h", text="paid_pieces", color_discrete_sequence=["#007bff"]
                 )
-                fig_bar.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250, xaxis_title="Τεμάχια", yaxis_title="")
+                fig_bar.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250, xaxis_title="Πληρωμένα Τεμάχια", yaxis_title="")
                 st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Δεν βρέθηκαν καταγεγραμμένες πωλήσεις/παραγωγή για το συγκεκριμένο κοκτέιλ.")
