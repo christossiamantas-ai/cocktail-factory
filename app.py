@@ -3600,7 +3600,8 @@ elif page == "👥 Πελατολόγιο":
                     order_dt = pd.to_datetime(selected_order['created_at'])
                     prod_date_str = order_dt.strftime('%d/%m/%Y')
                     
-                    res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, prod_time").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
+                    # Διαβάζουμε και τις νέες στήλες έκπτωσης (discounted_pieces, discount_pct) από τη Supabase
+                    res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, prod_time").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
                     
                     if res_prod.data:
                         df_prod = pd.DataFrame(res_prod.data).drop_duplicates(subset=["cocktail_name", "prod_time"])
@@ -3621,15 +3622,19 @@ elif page == "👥 Πελατολόγιο":
                                 t_pcs = int(prow['pieces'])
                                 curr_free = int(prow['free_pieces']) if 'free_pieces' in prow and pd.notnull(prow['free_pieces']) else 0
                                 
+                                # Τραβάμε τις αποθηκευμένες τιμές έκπτωσης, αν δεν υπάρχουν βάζουμε 0
+                                curr_s_pcs = int(prow.get('discounted_pieces', 0)) if pd.notnull(prow.get('discounted_pieces', 0)) else 0
+                                curr_s_pct = float(prow.get('discount_pct', 0.0)) if pd.notnull(prow.get('discount_pct', 0.0)) else 0.0
+                                
                                 c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1])
                                 c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ)")
                                 
                                 # Δώρα
                                 f_pcs = c2.number_input("Δώρο", min_value=0, max_value=t_pcs, value=curr_free, step=1, key=f"f_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
                                 
-                                # Ειδική Έκπτωση
-                                s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=0, step=1, key=f"s_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
-                                s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key=f"p_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
+                                # Ειδική Έκπτωση (Τραβάει τις αποθηκευμένες τιμές ως value)
+                                s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
+                                s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
                                 
                                 inputs[(c_name, prow['prod_time'])] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
                                 
@@ -3655,15 +3660,19 @@ elif page == "👥 Πελατολόγιο":
                                         
                                         normal_pcs = t_pcs - f_pcs - s_pcs
                                         
-                                        # 1. Update δωρεάν τεμάχια στην αποθήκη (ιχνηλασιμότητα)
-                                        supabase.table("production_log").update({"free_pieces": f_pcs}).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("prod_time", p_time).eq("cocktail_name", c_name).execute()
+                                        # ΚΑΝΟΥΜΕ UPDATE ΣΕ ΟΛΑ ΤΑ ΠΕΔΙΑ ΣΤΟ production_log
+                                        supabase.table("production_log").update({
+                                            "free_pieces": f_pcs,
+                                            "discounted_pieces": s_pcs,
+                                            "discount_pct": s_pct
+                                        }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("prod_time", p_time).eq("cocktail_name", c_name).execute()
                                         
                                         catalog_p = rec_prices.get(c_name, 0.0)
                                         
-                                        # 2. Υπολογισμός Κανονικών Τεμαχίων (με τη γενική έκπτωση πελάτη)
+                                        # Υπολογισμός Κανονικών Τεμαχίων (με τη γενική έκπτωση πελάτη)
                                         cost_normal = normal_pcs * catalog_p * (1 - cust_discount / 100)
                                         
-                                        # 3. Υπολογισμός Εκπτωτικών Τεμαχίων (Αγνοεί τη γενική έκπτωση και εφαρμόζει την Ειδική)
+                                        # Υπολογισμός Εκπτωτικών Τεμαχίων (Αγνοεί τη γενική έκπτωση και εφαρμόζει την Ειδική)
                                         cost_spec = s_pcs * catalog_p * (1 - s_pct / 100)
                                         
                                         new_total += (cost_normal + cost_spec)
@@ -3673,7 +3682,7 @@ elif page == "👥 Πελατολόγιο":
                                         if s_pcs > 0:
                                             disc_text += f"📉 {s_pcs}x {c_name} (Έκπτωση {s_pct}%)\n"
                                             
-                                    # 4. Καθαρισμός και επανασύνθεση του κειμένου της παραγγελίας
+                                    # Καθαρισμός και επανασύνθεση του κειμένου της παραγγελίας
                                     final_details = current_details.split("\n\n--- ΔΩΡΑ")[0].split("\n\n--- ΕΙΔΙΚΕΣ")[0]
                                     
                                     if gift_text:
@@ -3691,7 +3700,6 @@ elif page == "👥 Πελατολόγιο":
                         st.warning("Δεν βρέθηκε γραμμή παραγωγής (υλικά) για τη συγκεκριμένη παραγγελία.")
             else:
                 st.info("Δεν βρέθηκαν προηγούμενες παραγγελίες για αυτόν τον πελάτη.")
-
 
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
 elif page == "🔄 Αντικατάσταση":
