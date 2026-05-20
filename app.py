@@ -1023,22 +1023,20 @@ elif page == "🔍 Ανάλυση":
                 cust = row.get("customer", "")
                 pcs = int(row.get("pieces", 0) if pd.notnull(row.get("pieces")) else 0)
                 fr = int(row.get("free_pieces", 0) if pd.notnull(row.get("free_pieces")) else 0)
-                disc_pcs = int(row.get("discounted_pieces", 0) if pd.notnull(row.get("discounted_pieces")) else 0)
-                disc_pct = float(row.get("discount_pct", 0.0) if pd.notnull(row.get("discount_pct")) else 0.0)
                 
                 total_produced_pcs += pcs
                 total_free_pcs += fr
                 
+                # Τραβάμε τη γενική έκπτωση του πελάτη
                 cust_discount = cust_discount_map.get(cust, 0.0)
                 
-                if fr + disc_pcs > pcs:
-                    disc_pcs = max(0, pcs - fr)
-                norm_pcs = max(0, pcs - fr - disc_pcs)
+                # Ο ΙΔΙΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΜΕ ΤΟ DASHBOARD: 
+                # (Συνολικά Τεμάχια) * (Τιμή Λιανικής) * (1 - Έκπτωση Πελάτη)
+                revenue_for_this_order = pcs * p_retail * (1 - (cust_discount / 100.0))
                 
-                rev_norm = norm_pcs * p_retail * (1 - cust_discount / 100.0)
-                rev_spec = disc_pcs * p_retail * (1 - disc_pct / 100.0)
-                total_real_revenue += (rev_norm + rev_spec)
+                total_real_revenue += revenue_for_this_order
                 
+            # Το κόστος παραμένει: Συνολικά Τεμάχια * Κόστος Φιάλης
             total_production_cost = total_produced_pcs * total_production
             total_net_profit = total_real_revenue - total_production_cost
             
@@ -1050,8 +1048,8 @@ elif page == "🔍 Ανάλυση":
                 cost_percentage = 0.0
                 
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric(label="Συνολικές Πωλήσεις", value=f"{total_produced_pcs} τμχ", delta=f"-{total_free_pcs} δώρα")
-            m2.metric(label="Πραγματικός Τζίρος", value=f"{total_real_revenue:,.2f} €")
+            m1.metric(label="Συνολικές Πωλήσεις", value=f"{total_produced_pcs} τμχ", delta=f"{total_free_pcs} δώρα δοθήκαν", delta_color="off")
+            m2.metric(label="Συνολικός Τζίρος", value=f"{total_real_revenue:,.2f} €")
             m3.metric(label="Συνολικό Κόστος", value=f"{total_production_cost:,.2f} €", delta=f"{cost_percentage:.1f}% επί τζίρου", delta_color="inverse")
             m4.metric(label="Καθαρό Κέρδος", value=f"{total_net_profit:,.2f} €", delta=f"{profit_percentage:.1f}% περιθώριο")
             
@@ -1078,7 +1076,6 @@ elif page == "🔍 Ανάλυση":
                 st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Δεν βρέθηκαν καταγεγραμμένες πωλήσεις/παραγωγή για το συγκεκριμένο κοκτέιλ.")
-
         # =====================================================================
         # --- 📜 ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ ΕΠΑΓΓΕΛΜΑΤΙΚΟΥ REPORT (HTML) ---
         st.divider()
