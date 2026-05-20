@@ -3234,6 +3234,31 @@ elif page == "🧼 Συντήρηση & HACCP":
 
     # --- TAB 2: CHECKLISTS ΚΑΘΑΡΙΣΜΟΥ (ΑΚΡΙΒΩΣ ΟΙ ΕΡΓΑΣΙΕΣ ΣΟΥ) ---
     with tab2:
+        # --- 📌 ΠΙΝΑΚΑΣ ΑΝΑΦΟΡΑΣ ΚΑΘΑΡΙΣΤΙΚΩΝ ---
+        st.markdown("##### 📌 Πίνακας Αναφοράς Εγκεκριμένων Καθαριστικών")
+        
+        reference_data = {
+            "Καθαριστικό / Απολυμαντικό": [
+                "🧪 Drolio", 
+                "🧪 P3-Steril", 
+                "🧪 Eco-Bac Foam Plus", 
+                "🧪 Swaz", 
+                "🧪 Crystal Class Cleaner Ammonia"
+            ],
+            "Ενδεδειγμένη Εφαρμογή & Διαδικασία": [
+                "Σκεύη, εργαλεία",
+                "Εξοπλισμός, επιφάνειες που έρχονται σε επαφή με τρόφιμα, ψυγεία/καταψύκτες, ράφια",
+                "Δάπεδα χώρου παρασκευής, δάπεδα αποθηκών",
+                "Τουαλέτες & αποδυτήρια, τοίχοι",
+                "Τζαμαρίες, παράθυρα, οροφές, φώτα, εξαερισμός"
+            ]
+        }
+        # Εμφάνιση του πίνακα όμορφα και καθαρά
+        st.table(pd.DataFrame(reference_data).set_index("Καθαριστικό / Απολυμαντικό"))
+        
+        st.divider()
+
+        # Οι δικές σου αναλυτικές λίστες εργασιών
         tasks_data = {
             "Ημερήσιος Καθαρισμός": ["Σκεύη (ταψιά, πιάτα κτλ)", "Εργαλεία (μαχαίρια, κουτάλια, σπάτουλες κτλ)", "Εξοπλισμός (μηχανές τεμαχισμού, μηχανές επεξεργασίας κτλ)", "Επιφάνειες που έρχονται σε επαφή με τρόφιμα", "Δάπεδα χώρου παραγωγής, πόμολα και διακόπτες", "Τουαλέτες - Αποδυτήρια", "Απομάκρυνση απορριμμάτων", "Δάπεδα χώρου πώλησης" ],
             "Εβδομαδιαίος Καθαρισμός": ["Δάπεδα αποθηκών", "Ψυγεία - καταψύκτες", "Φούρνοι - θερμοθάλαμοι", "Τοίχοι", "Κάδοι απορριμμάτων", "Τζαμαρίες", "Καρέκλες - τραπέζια", "Ράφια"],
@@ -3244,7 +3269,7 @@ elif page == "🧼 Συντήρηση & HACCP":
         approved_cleaners = [
             "Drolio", 
             "P3-Steril", 
-            "Eco-Bac Fuam Plus", 
+            "Eco-Bac Foam Plus", 
             "Swaz", 
             "Crystal Class Cleaner Ammonia",
             "Αντισηπτικό Χεριών",
@@ -3277,11 +3302,14 @@ elif page == "🧼 Συντήρηση & HACCP":
                     cleaners_str = ", ".join(selected_cleaners) if selected_cleaners else "Χωρίς Καθαριστικό"
                     responses.append(f"{task} ({cleaners_str})")
             
+            st.divider()
+            notes = st.text_input("📝 Παρατηρήσεις / Προβλήματα:", placeholder="π.χ. Έλλειψη απορρυπαντικού...", key=f"notes_{category}")
+            
             if st.form_submit_button("🚀 Οριστικοποίηση"):
                 if staff_name and len(responses) == len(tasks_data[category]):
                     log = {"date": date_str, "time": datetime.now(greece_tz).strftime("%H:%M"), "user_name": staff_name, 
                            "log_type": "Καθαρισμός", "item": category, "value": "ΟΛΟΚΛΗΡΩΘΗΚΕ", 
-                           "status": "ΟΚ", "cleaner": " | ".join(responses), "notes": "-"}
+                           "status": "ΟΚ", "cleaner": " | ".join(responses), "notes": notes if notes else "-"}
                     supabase.table("haccp_log").insert([log]).execute()
                     st.success("Ενημερώθηκε!")
                     time.sleep(1)
