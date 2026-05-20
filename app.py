@@ -257,11 +257,22 @@ def load_all_recipes():
         
         reconstructed = []
         for _, row in df_rec.iterrows():
+            # --- ΕΝΣΩΜΑΤΩΣΗ ΤΗΣ ΕΚΔΟΣΗΣ ΣΤΟ ΟΝΟΜΑ ---
+            base_name = row["name"]
+            version = row.get("version", "")
+            
+            # Ελέγχουμε αν υπάρχει τιμή στο version (και αν δεν είναι κενό ή παύλα)
+            if pd.notna(version) and str(version).strip() not in ["", "-", "None"]:
+                display_name = f"{base_name} ({str(version).strip()})"
+            else:
+                display_name = base_name
+
             rec_dict = {
-                "Ονομα": row["name"],
+                "Ονομα": display_name,  # Πλέον το όνομα αποθηκεύεται μαζί με την έκδοση!
                 "Barcode": row["barcode"],
                 "Τιμή Καταλόγου": row.get("catalog_price", 0.0)
             }
+            
             items = df_items[df_items["recipe_id"] == row["id"]]
             for i, (_, item) in enumerate(items.iterrows(), start=1):
                 rec_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = item["ingredient_name"]
@@ -277,6 +288,7 @@ df_ing = load_all_ingredients()
 df_rec = load_all_recipes()
 
 ing_options = ["ΚΕΝΟ", "Νερό"] + sorted(df_ing["Name"].unique().tolist()) if not df_ing.empty else ["ΚΕΝΟ", "Νερό"]
+# Εδώ το recipe_options θα πάρει αυτόματα τα νέα ονόματα με τις παρενθέσεις!
 recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
 # Υπολογισμός ώρας Ελλάδος (UTC + 3)
