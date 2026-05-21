@@ -1957,12 +1957,15 @@ elif page == "📈 Dashboard":
     else:
         df_chart = pd.DataFrame(res_chart.data)
         
-        # ΑΣΦΑΛΕΙΑ: Μετατρέπουμε ρητά τις κρίσιμες στήλες σε αριθμούς για να δουλέψουν σωστά οι πράξεις
-        df_chart["pieces"] = pd.to_numeric(df_chart["pieces"], errors='coerce').fillna(0)
-        df_chart["sold_price"] = pd.to_numeric(df_chart["sold_price"], errors='coerce').fillna(0)
-        df_chart["unit_cost"] = pd.to_numeric(df_chart["unit_cost"], errors='coerce').fillna(0)
+        # ΑΣΦΑΛΕΙΑ 1: Ελέγχουμε αν υπάρχουν οι στήλες (για παλιά δεδομένα). Αν όχι, τις φτιάχνουμε.
+        for col in ["pieces", "sold_price", "unit_cost"]:
+            if col not in df_chart.columns:
+                df_chart[col] = 0.0
+            # Μετατρέπουμε με ασφάλεια σε αριθμούς
+            df_chart[col] = pd.to_numeric(df_chart[col], errors='coerce').fillna(0.0)
         
-        # 2. ΚΑΘΑΡΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ: Κρατάμε μόνο μία εγγραφή ανά παρτίδα (για να μην διπλομετράμε τεμάχια)
+        # 2. ΚΑΘΑΡΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ: Κρατάμε μόνο μία εγγραφή ανά παρτίδα
+        # Ομαδοποιούμε με βάση την ώρα και τον πελάτη για να πάρουμε τα σωστά τεμάχια
         df_unique_sales = df_chart.groupby(["prod_date", "prod_time", "customer", "cocktail_name"]).agg(
             pieces=("pieces", "first"),
             sold_price=("sold_price", "first"), 
@@ -1994,10 +1997,9 @@ elif page == "📈 Dashboard":
         sort_order = col_sort.radio("↕️ Ταξινόμηση:", ["Φθίνουσα (Υψηλότερα πρώτα)", "Αύξουσα (Χαμηλότερα πρώτα)"])
         ascending_bool = True if sort_order == "Αύξουσα (Χαμηλότερα πρώτα)" else False
         
-        # Ταξινόμηση του DataFrame με βάση την επιλογή του χρήστη
         df_grouped_chart = df_grouped_chart.sort_values(by=selected_metric, ascending=ascending_bool)
         
-        # 6. Δημιουργία Γραφήματος με Plotly
+        # 6. Δημιουργία Γραφήματος με Plotly (Απλοποιημένο Hover για 100% συμβατότητα)
         fig = px.bar(
             df_grouped_chart,
             x="cocktail_name",
@@ -2006,15 +2008,30 @@ elif page == "📈 Dashboard":
             color=selected_metric,
             color_continuous_scale="Viridis", 
             labels={"cocktail_name": "Ονομασία Κοκτέιλ", selected_metric: selected_metric},
-            # Εμφανίζει ΟΛΕΣ τις μετρικές όταν περνάς το ποντίκι
-            hover_data={
-                "cocktail_name": False, 
-                "Τεμάχια (τμχ)": True,
-                "Τζίρος (€)": ":.2f",
-                "Συνολικό Κόστος (€)": ":.2f",
-                "Καθαρό Κέρδος (€)": ":.2f"
-            }
+            hover_data=["Τεμάχια (τμχ)", "Τζίρος (€)", "Συνολικό Κόστος (€)", "Καθαρό Κέρδος (€)"]
         )
+        
+        fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+        fig.update_layout(
+            xaxis_tickangle=-45,
+            height=500,
+            margin=dict(t=50, b=100),
+            plot_bgcolor="rgba(0,0,0,0)" 
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        with st.expander("📋 Προβολή Αναλυτικού Πίνακα Δεδομένων"):
+            st.dataframe(
+                df_grouped_chart.style.format({
+                    "Τεμάχια (τμχ)": "{:.0f}",
+                    "Τζίρος (€)": "{:.2f} €",
+                    "Συνολικό Κόστος (€)": "{:.2f} €",
+                    "Καθαρό Κέρδος (€)": "{:.2f} €"
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
         
         # Μορφοποίηση του γραφήματος
         fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
