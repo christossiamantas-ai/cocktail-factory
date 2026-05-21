@@ -2209,8 +2209,8 @@ elif page == "📦 Lot Παραγωγής":
 
                     mr = st.columns([2, 1.5, 1.5, 1.5])
                     mr[0].write(f"**{ing}**")
-                    # Εμφάνιση με 1 δεκαδικό και αντικατάσταση της τελείας με κόμμα
-                    mr[1].write(f"**{total_ml:.1f} ml | {weight_g:.1f} g**".replace('.', ','))
+                    # Εμφάνιση με 2 δεκαδικά ψηφία και αντικατάσταση της τελείας με κόμμα
+                    mr[1].write(f"**{total_ml:.2f} ml | {weight_g:.2f} g**".replace('.', ','))
                     mr[2].text_input("LOT", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
                     mr[3].text_input("EXP", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
 
@@ -2253,9 +2253,9 @@ elif page == "📦 Lot Παραγωγής":
                         if pkg_volume > 0 and pkg_weight > 0:
                             weight_g = (pkg_weight / pkg_volume) * total_ml
 
-                    # Μορφοποίηση 1 δεκαδικού με κόμμα και για το PDF/HTML
-                    ml_str = f"{total_ml:.1f}".replace('.', ',')
-                    g_str = f"{weight_g:.1f}".replace('.', ',')
+                    # Μορφοποίηση 2 δεκαδικών με κόμμα και για το PDF/HTML
+                    ml_str = f"{total_ml:.2f}".replace('.', ',')
+                    g_str = f"{weight_g:.2f}".replace('.', ',')
 
                     quick_lot_html += f"""
                         <tr>
@@ -2277,6 +2277,7 @@ elif page == "📦 Lot Παραγωγής":
                         mime="text/html",
                         use_container_width=True
                     )
+                    
             # --- ΒΗΜΑ 3: ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ ---
             st.markdown("### 🏷️ 3. Αναλυτικό Δελτίο & Οριστικοποίηση")
             lot_entries = []
