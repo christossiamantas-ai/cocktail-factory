@@ -2511,13 +2511,12 @@ elif page == "📦 Lot Παραγωγής":
         # ΚΑΡΤΕΛΑ 1: ΤΡΟΠΟΠΟΙΗΣΗ ΣΥΓΚΕΚΡΙΜΕΝΗΣ ΠΑΡΑΓΩΓΗΣ (ΑΛΛΑΓΗ ΤΕΜΑΧΙΩΝ/ΠΟΣΟΤΗΤΩΝ)
         # =========================================================================
         with tab_edit_batch:
-            st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT")
+            st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση Ημερομηνιών/LOT")
             
             unique_cocktails_of_day = df_past["Cocktail"].unique() if not df_past.empty else []
             options = ["-- Επιλέξτε Κοκτέιλ για Επεξεργασία --"] + list(unique_cocktails_of_day)
             sel_cocktail_edit = st.selectbox("Διαλέξτε το Κοκτέιλ που παράγεται:", options, key="batch_edit_by_cocktail_key")
             
-            # Εδώ είναι η προστασία: Ο κώδικας τρέχει ΜΟΝΟ αν έχει επιλεγεί κοκτέιλ
             if sel_cocktail_edit != "-- Επιλέξτε Κοκτέιλ για Επεξεργασία --":
                 batch_id = str(hash(sel_cocktail_edit))
                 
@@ -2526,18 +2525,24 @@ elif page == "📦 Lot Παραγωγής":
                 
                 first_cust_df = cocktail_df[cocktail_df["Πελάτης"] == unique_customers[0]]
                 old_lot_cocktail = str(first_cust_df.iloc[0]["LOT_Cocktail"])
+                
+                # Απομόνωση πραγματικής ημερομηνίας παραγωγής
+                default_real_date = str(first_cust_df.iloc[0]["Ημερομηνία"])
+                
                 if "-" in old_lot_cocktail:
                     parts_lot = old_lot_cocktail.split("-")
                     default_lot_date = parts_lot[0].strip()
                     default_prod_day = parts_lot[1].strip()
                 else:
-                    default_lot_date = str(first_cust_df.iloc[0]["Ημερομηνία"])
+                    default_lot_date = default_real_date
                     default_prod_day = default_lot_date.split("/")[0] if "/" in default_lot_date else "01"
 
-                st.markdown(f"#### 📅 Κεντρικό LOT Παραγωγής για το {sel_cocktail_edit}")
-                c_g1, c_g2 = st.columns([2, 2])
-                new_global_lot_date = c_g1.text_input("📅 Κοινή Ημερομηνία LOT (DD/MM/YYYY)", value=default_lot_date, key=f"global_ldate_{batch_id}")
-                new_global_prod_day = c_g2.text_input("🔢 Κοινή Ημέρα Παραγωγής (Διψήφιος)", value=default_prod_day, max_chars=2, key=f"global_pday_{batch_id}")
+                # ΝΕΟ: 3 Ξεχωριστά πεδία για απόλυτο έλεγχο!
+                st.markdown(f"#### 📅 Κεντρικά Στοιχεία Παραγωγής για το {sel_cocktail_edit}")
+                c_g1, c_g2, c_g3 = st.columns([1.5, 1.5, 1])
+                new_global_real_date = c_g1.text_input("📆 Ημερ. Παραγωγής (DD/MM/YYYY)", value=default_real_date, key=f"global_rdate_{batch_id}")
+                new_global_lot_date = c_g2.text_input("🏷️ Ημερομηνία LOT (DD/MM/YYYY)", value=default_lot_date, key=f"global_ldate_{batch_id}")
+                new_global_prod_day = c_g3.text_input("🔢 Ημέρα LOT", value=default_prod_day, max_chars=2, key=f"global_pday_{batch_id}")
                 
                 global_lot_c = f"{new_global_lot_date.strip()}-{new_global_prod_day.strip()}"
                 st.divider()
@@ -2557,9 +2562,8 @@ elif page == "📦 Lot Παραγωγής":
                     
                     customer_settings[cust] = {
                         "new_cust_name": new_cust_name.strip(),
-                        "new_lot_date": new_global_lot_date.strip(),
-                        "new_prod_day": new_global_prod_day.strip(),
-                        "new_lot_c": global_lot_c,
+                        "new_real_date": new_global_real_date.strip(), # <-- Κρατάει την πραγματική ημερομηνία!
+                        "new_lot_c": global_lot_c, # <-- Κρατάει την ετικέτα LOT ανεξάρτητα
                         "new_pcs": new_pcs,
                         "old_pcs": old_pcs,
                         "base_date_str": base_cust["Ημερομηνία"]
@@ -2618,16 +2622,12 @@ elif page == "📦 Lot Παραγωγής":
                     st.divider()
                     
                     # ---------------------------------------------------------
-                    # ΚΟΥΜΠΙΑ ΜΕΣΑ ΣΤΗ ΦΟΡΜΑ
-                    # ---------------------------------------------------------
                     col_save, col_del = st.columns(2)
                     with col_save:
                         btn_save = st.form_submit_button("💾 Αποθήκευση Αλλαγών Κοκτέιλ", type="primary")
                     with col_del:
                         btn_del = st.form_submit_button("🗑️ Διαγραφή Παραγωγής")
                         
-                    # ---------------------------------------------------------
-                    # ΛΟΓΙΚΗ ΑΠΟΘΗΚΕΥΣΗΣ
                     # ---------------------------------------------------------
                     if btn_save:
                         try:
@@ -2646,11 +2646,11 @@ elif page == "📦 Lot Παραγωγής":
                                     g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
                                 
                                 new_batch.append({
-                                    "prod_date": c_set["new_lot_date"], 
+                                    "prod_date": c_set["new_real_date"], # <-- Εφαρμόζει τη νέα ημερομηνία παραγωγής!
                                     "prod_time": fd["orig_time"], 
                                     "customer": c_set["new_cust_name"], 
                                     "cocktail_name": sel_cocktail_edit, 
-                                    "lot_cocktail": c_set["new_lot_c"], 
+                                    "lot_cocktail": c_set["new_lot_c"], # <-- Εφαρμόζει το νέο LOT!
                                     "pieces": int(c_set["new_pcs"]), 
                                     "ingredient_name": fd["ing"], "total_ml": fd["ml"], "target_g": round(g_calc, 1), 
                                     "lot_number": fd["lot"], "expiry_date": fd["exp"],
@@ -2661,7 +2661,7 @@ elif page == "📦 Lot Παραγωγής":
                             # 3. Ενημέρωση B2B
                             for orig_c, c_set in customer_settings.items():
                                 old_target_date = datetime.strptime(c_set["base_date_str"], "%d/%m/%Y").strftime("%Y-%m-%d")
-                                new_target_date = datetime.strptime(c_set["new_lot_date"], "%d/%m/%Y").strftime("%Y-%m-%d")
+                                new_target_date = datetime.strptime(c_set["new_real_date"], "%d/%m/%Y").strftime("%Y-%m-%d")
                                 
                                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", orig_c).gte("created_at", f"{old_target_date}T00:00:00").lte("created_at", f"{old_target_date}T23:59:59").execute()
                                 
@@ -2702,7 +2702,7 @@ elif page == "📦 Lot Παραγωγής":
                                                         except:
                                                             current_pcs = 0
                                                             current_price = 0.0
-                                                    
+                                                
                                                     total_amount_before_discount += current_pcs * current_price
                                                     new_lines.append(line_text)
                                             
@@ -2719,7 +2719,7 @@ elif page == "📦 Lot Παραγωγής":
                                                 "created_at": f"{new_target_date}T{fd['orig_time']}"
                                             }).eq("id", order['id']).execute()
                                             break
-                            st.success("✅ Επιτυχία! Το LOT και η ημερομηνία άλλαξαν και εφαρμόστηκαν σε όλους!")
+                            st.success("✅ Επιτυχία! Η ημερομηνία παραγωγής, το LOT και οι ποσότητες ενημερώθηκαν!")
                             st.cache_data.clear()
                             time.sleep(1)
                             st.rerun()
