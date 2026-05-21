@@ -2209,7 +2209,8 @@ elif page == "📦 Lot Παραγωγής":
 
                     mr = st.columns([2, 1.5, 1.5, 1.5])
                     mr[0].write(f"**{ing}**")
-                    mr[1].write(f"**{total_ml:.0f} ml | {weight_g:.0f} g**")
+                    # Εμφάνιση με 1 δεκαδικό και αντικατάσταση της τελείας με κόμμα
+                    mr[1].write(f"**{total_ml:.1f} ml | {weight_g:.1f} g**".replace('.', ','))
                     mr[2].text_input("LOT", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
                     mr[3].text_input("EXP", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
 
@@ -2252,10 +2253,14 @@ elif page == "📦 Lot Παραγωγής":
                         if pkg_volume > 0 and pkg_weight > 0:
                             weight_g = (pkg_weight / pkg_volume) * total_ml
 
+                    # Μορφοποίηση 1 δεκαδικού με κόμμα και για το PDF/HTML
+                    ml_str = f"{total_ml:.1f}".replace('.', ',')
+                    g_str = f"{weight_g:.1f}".replace('.', ',')
+
                     quick_lot_html += f"""
                         <tr>
                             <td><b>{ing}</b></td>
-                            <td style="font-size: 16px;"><b>{total_ml:.0f} ml</b> <br><span style="font-size: 13px; color: #555;">({weight_g:.0f} g)</span></td>
+                            <td style="font-size: 16px;"><b>{ml_str} ml</b> <br><span style="font-size: 13px; color: #555;">({g_str} g)</span></td>
                             <td></td>
                             <td></td>
                         </tr>
