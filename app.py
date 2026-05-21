@@ -1020,16 +1020,19 @@ elif page == "🔍 Ανάλυση":
         if res_sales.data:
             df_sales = pd.DataFrame(res_sales.data)
             
-            # ΣΒΗΣΑΜΕ ΤΟ DROP_DUPLICATES ΠΟΥ ΜΑΣ ΕΚΟΒΕ ΤΑ ΔΩΡΑ!
+            # 🛡️ Η ΣΩΤΗΡΙΑ: Καθαρίζει τον θόρυβο (που έστειλε τα νούμερα στον θεό), 
+            # αλλά ΚΡΑΤΑΕΙ ΤΑ ΔΩΡΑ επειδή βάλαμε τα "pieces" στον κανόνα διαχωρισμού!
+            if "prod_time" in df_sales.columns:
+                df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_time", "customer", "pieces"])
             
             # =================================================================
-            # 2. ΑΠΟΛΥΤΗ ΚΑΤΑΜΕΤΡΗΣΗ ΠΑΡΑΓΩΓΗΣ (Περιλαμβάνει ΚΑΙ τα Δώρα = 540)
+            # 2. ΑΠΟΛΥΤΗ ΚΑΤΑΜΕΤΡΗΣΗ ΠΑΡΑΓΩΓΗΣ (Σώθηκαν τα δώρα! Σύνολο = 540)
             # =================================================================
             total_produced_pcs = int(df_sales["pieces"].astype(float).fillna(0).sum())
             total_free_pcs = int(df_sales["free_pieces"].astype(float).fillna(0).sum())
             
             # =================================================================
-            # 3. ΥΠΟΛΟΓΙΣΜΟΣ ΤΖΙΡΟΥ (Μόνο τα πληρωμένα = 516)
+            # 3. ΥΠΟΛΟΓΙΣΜΟΣ ΤΖΙΡΟΥ (Μόνο τα πληρωμένα)
             # =================================================================
             total_real_revenue = 0.0
             
@@ -1056,9 +1059,9 @@ elif page == "🔍 Ανάλυση":
                         disc_pcs = max(0, pcs - fr)
                     
                     norm_pcs = max(0, pcs - fr - disc_pcs) 
-                    
                     rev_norm = norm_pcs * sold_price
                     rev_spec = disc_pcs * p_retail * (1 - (disc_pct / 100.0))
+                    
                     revenue_for_this_order = rev_norm + rev_spec
                 else:
                     # 📜 ΠΑΛΙΕΣ ΠΩΛΗΣΕΙΣ
@@ -1068,7 +1071,7 @@ elif page == "🔍 Ανάλυση":
                 total_real_revenue += revenue_for_this_order
             
             # =================================================================
-            # 4. ΤΕΛΙΚΑ ΜΑΘΗΜΑΤΙΚΑ & ΚΟΣΤΟΣ (Υπολογίζεται σε ΟΛΑ τα τεμάχια)
+            # 4. ΤΕΛΙΚΑ ΜΑΘΗΜΑΤΙΚΑ & ΚΟΣΤΟΣ (Υπολογίζεται σε ΟΛΑ τα 540 τεμάχια)
             # =================================================================
             total_production_cost = total_produced_pcs * total_production
             total_net_profit = total_real_revenue - total_production_cost
