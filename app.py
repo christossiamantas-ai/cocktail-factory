@@ -1938,6 +1938,98 @@ elif page == "📈 Dashboard":
 
     else:
         st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
+
+# --- ΒΑΛΕ ΤΟΝ ΝΕΟ ΚΩΔΙΚΑ ΑΚΡΙΒΩΣ ΕΔΩ (στο ίδιο επίπεδο με το παραπάνω else) ---
+    st.divider()
+
+    import plotly.express as px
+    
+    # =========================================================================
+    # 📊 ΔΥΝΑΜΙΚΟ ΓΡΑΦΗΜΑ ΠΩΛΗΣΕΩΝ & ΚΕΡΔΟΦΟΡΙΑΣ ΚΟΚΤΕΙΛ
+    # =========================================================================
+    st.markdown("### 📈 Δυναμική Ανάλυση Πωλήσεων Cocktails")
+
+    # 1. Άντληση δεδομένων από την παραγωγή
+    res_chart = supabase.table("production_log").select("*").execute()
+
+    if not res_chart.data:
+        st.info("Δεν υπάρχουν ακόμα δεδομένα παραγωγής για να εμφανιστεί το γράφημα.")
+    else:
+        df_chart = pd.DataFrame(res_chart.data)
+        
+        # 2. ΚΑΘΑΡΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ: Κρατάμε μόνο μία εγγραφή ανά παρτίδα (για να μην διπλομετράμε τεμάχια)
+        df_unique_sales = df_chart.groupby(["prod_date", "prod_time", "customer", "cocktail_name"]).agg(
+            pieces=("pieces", "first"),
+            sold_price=("sold_price", "first"), 
+            unit_cost=("unit_cost", "first")    
+        ).reset_index()
+        
+        # Αν κάποια πεδία είναι κενά, τα κάνουμε 0
+        df_unique_sales.fillna({"sold_price": 0, "unit_cost": 0}, inplace=True)
+        
+        # 3. Υπολογισμός Οικονομικών Δεικτών (Τζίρος, Κόστος, Κέρδος)
+        df_unique_sales["Τζίρος (€)"] = df_unique_sales["pieces"] * df_unique_sales["sold_price"]
+        df_unique_sales["Συνολικό Κόστος (€)"] = df_unique_sales["pieces"] * df_unique_sales["unit_cost"]
+        df_unique_sales["Καθαρό Κέρδος (€)"] = df_unique_sales["Τζίρος (€)"] - df_unique_sales["Συνολικό Κόστος (€)"]
+        df_unique_sales.rename(columns={"pieces": "Τεμάχια (τμχ)"}, inplace=True)
+        
+        # 4. Ομαδοποίηση ανά Κοκτέιλ για το γράφημα
+        df_grouped_chart = df_unique_sales.groupby("cocktail_name").agg(
+            **{
+                "Τεμάχια (τμχ)": ("Τεμάχια (τμχ)", "sum"),
+                "Τζίρος (€)": ("Τζίρος (€)", "sum"),
+                "Συνολικό Κόστος (€)": ("Συνολικό Κόστος (€)", "sum"),
+                "Καθαρό Κέρδος (€)": ("Καθαρό Κέρδος (€)", "sum")
+            }
+        ).reset_index()
+        
+        # 5. UI: Φίλτρα ελέγχου γραφήματος
+        col_metric, col_sort = st.columns([2, 1])
+        
+        metrics_list = ["Τεμάχια (τμχ)", "Τζίρος (€)", "Καθαρό Κέρδος (€)", "Συνολικό Κόστος (€)"]
+        selected_metric = col_metric.selectbox("🎯 Επιλέξτε Μετρική για Ανάλυση:", metrics_list)
+        
+        sort_order = col_sort.radio("↕️ Ταξινόμηση:", ["Φθίνουσα (Υψηλότερα πρώτα)", "Αύξουσα (Χαμηλότερα πρώτα)"])
+        ascending_bool = True if sort_order == "Αύξουσα (Χαμηλότερα πρώτα)" else False
+        
+        # Ταξινόμηση του DataFrame με βάση την επιλογή του χρήστη
+        df_grouped_chart = df_grouped_chart.sort_values(by=selected_metric, ascending=ascending_bool)
+        
+        # 6. Δημιουργία Γραφήματος με Plotly
+        fig = px.bar(
+            df_grouped_chart,
+            x="cocktail_name",
+            y=selected_metric,
+            text=selected_metric,
+            color=selected_metric,
+            color_continuous_scale="Viridis", 
+            labels={"cocktail_name": "Ονομασία Κοκτέιλ", selected_metric: selected_metric}
+        )
+        
+        # Μορφοποίηση του γραφήματος
+        fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+        fig.update_layout(
+            xaxis_tickangle=-45,
+            height=500,
+            margin=dict(t=50, b=100),
+            plot_bgcolor="rgba(0,0,0,0)" 
+        )
+        
+        # Εμφάνιση στο Streamlit
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # (Προαιρετικό) Εμφάνιση Πίνακα
+        with st.expander("📋 Προβολή Αναλυτικού Πίνακα Δεδομένων"):
+            st.dataframe(
+                df_grouped_chart.style.format({
+                    "Τεμάχια (τμχ)": "{:.0f}",
+                    "Τζίρος (€)": "{:.2f} €",
+                    "Συνολικό Κόστος (€)": "{:.2f} €",
+                    "Καθαρό Κέρδος (€)": "{:.2f} €"
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ) ---
 elif page == "📦 Lot Παραγωγής":
