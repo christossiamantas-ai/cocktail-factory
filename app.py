@@ -2157,17 +2157,29 @@ elif page == "📦 Lot Παραγωγής":
             # =========================================================================
 
             # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML & ΒΑΡΟΥΣ ---
+            
+            # 💡 ΝΕΟ: Φορτώνουμε τα βάρη απευθείας από τη Supabase για σίγουρο αποτέλεσμα
+            ing_weights_map = {}
+            try:
+                res_ing_db = supabase.table("ingredients").select("name, weight_full, volume").execute()
+                if res_ing_db.data:
+                    for item in res_ing_db.data:
+                        ing_weights_map[item["name"]] = {
+                            "weight": float(item.get("weight_full", 0) or 0),
+                            "volume": float(item.get("volume", 0) or 0)
+                        }
+            except:
+                pass
+
             ing_totals = {}
             for cocktail_name in selected_cocktails:
                 df_assign = all_assignments[cocktail_name]
-                # Υποθέτουμε ότι η στήλη "Τεμάχια" περιλαμβάνει το συνολικό ζητούμενο της παραγωγής
                 total_qty_for_cocktail = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
                 
                 if total_qty_for_cocktail > 0:
                     recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
                     for i in range(1, 14):
-                        ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                        # ΒΓΑΛΑΜΕ ΤΟ "Νερό" ΑΠΟ ΤΗΝ ΑΠΑΓΟΡΕΥΣΗ ΓΙΑ ΝΑ ΤΟ ΔΙΑΒΑΖΕΙ ΚΑΝΟΝΙΚΑ!
+                        ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
                         if ing not in ["ΚΕΝΟ", "nan", "", "-", "0"]: 
                             ml_u = get_recipe_ml(recipe_row, i)
                             ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * total_qty_for_cocktail)
@@ -2176,7 +2188,6 @@ elif page == "📦 Lot Παραγωγής":
             st.markdown("### 🔄 2. Συνολικά Υλικά Παραγγελίας & Γρήγορη Εκτύπωση")
             
             with st.expander("📋 Πίνακας Μοναδικών Υλικών & Συνολικών Ποσοτήτων", expanded=True):
-                # Προσαρμόσαμε τα πλάτη των στηλών για να χωράει το βάρος
                 mh = st.columns([2, 1.5, 1.5, 1.5]) 
                 mh[0].caption("ΠΡΩΤΗ ΥΛΗ")
                 mh[1].caption("ΣΥΝΟΛΟ (ml / g)")
@@ -2186,15 +2197,15 @@ elif page == "📦 Lot Παραγωγής":
                 for ing in sorted(ing_totals.keys()):
                     total_ml = ing_totals[ing]
                     
-                    # --- Υπολογισμός Βάρους (Όπως και στην Ανάλυση) ---
-                    weight_g = total_ml  # Default: 1 ml = 1 g (Ισχύει απόλυτα για το Νερό)
-                    if ing != "Νερό" and 'df_ing' in locals() and not df_ing.empty and ing in df_ing["Name"].values:
-                        match_ing = df_ing[df_ing["Name"] == ing].iloc[0]
-                        pkg_weight = float(match_ing.get("weight_full", 0) or 0)
-                        pkg_volume = float(match_ing.get("Volume", 0) or 0)
+                    # --- Σωστός Υπολογισμός Βάρους ---
+                    weight_g = total_ml  # Default για το Νερό
+                    
+                    if ing != "Νερό" and ing in ing_weights_map:
+                        pkg_weight = ing_weights_map[ing]["weight"]
+                        pkg_volume = ing_weights_map[ing]["volume"]
                         if pkg_volume > 0 and pkg_weight > 0:
                             weight_g = (pkg_weight / pkg_volume) * total_ml
-                    # --------------------------------------------------
+                    # ---------------------------------
 
                     mr = st.columns([2, 1.5, 1.5, 1.5])
                     mr[0].write(f"**{ing}**")
@@ -2234,12 +2245,10 @@ elif page == "📦 Lot Παραγωγής":
                 for ing in sorted(ing_totals.keys()):
                     total_ml = ing_totals[ing]
                     
-                    # Υπολογισμός Βάρους και για την εκτύπωση HTML
                     weight_g = total_ml 
-                    if ing != "Νερό" and 'df_ing' in locals() and not df_ing.empty and ing in df_ing["Name"].values:
-                        match_ing = df_ing[df_ing["Name"] == ing].iloc[0]
-                        pkg_weight = float(match_ing.get("weight_full", 0) or 0)
-                        pkg_volume = float(match_ing.get("Volume", 0) or 0)
+                    if ing != "Νερό" and ing in ing_weights_map:
+                        pkg_weight = ing_weights_map[ing]["weight"]
+                        pkg_volume = ing_weights_map[ing]["volume"]
                         if pkg_volume > 0 and pkg_weight > 0:
                             weight_g = (pkg_weight / pkg_volume) * total_ml
 
@@ -2263,7 +2272,6 @@ elif page == "📦 Lot Παραγωγής":
                         mime="text/html",
                         use_container_width=True
                     )
-
             # --- ΒΗΜΑ 3: ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ ---
             st.markdown("### 🏷️ 3. Αναλυτικό Δελτίο & Οριστικοποίηση")
             lot_entries = []
