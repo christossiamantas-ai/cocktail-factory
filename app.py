@@ -1148,6 +1148,7 @@ elif page == "🔍 Ανάλυση":
             <tr>
                 <td>{item['Υλικό']}</td>
                 <td style='text-align:right;'>{item['ML']:g} ml</td>
+                <td style='text-align:right;'>{item.get('Βάρος (g)', item['ML']):.1f} g</td>
                 <td style='text-align:right;'>{item.get('Alc %', 0):g}%</td>
                 <td style='text-align:right;'>{item['Κόστος']:.3f} €</td>
             </tr>
@@ -1184,6 +1185,7 @@ elif page == "🔍 Ανάλυση":
                     <div class='meta-item'><strong>Cocktail:</strong> {choice}</div>
                     <div class='meta-item'><strong>Barcode:</strong> {current_barcode}</div>
                     <div class='meta-item'><strong>Συνολικά ML:</strong> {total_ml_cocktail:g} ml</div>
+                    <div class='meta-item'><strong>Συνολικό Βάρος:</strong> {total_weight_cocktail:.1f} g</div>
                     <div class='meta-item'><strong>Αλκοόλ (ABV):</strong> {final_abv:g}%</div>
                     <div class='meta-item'><strong>Ημερομηνία:</strong> {datetime.now(greece_tz).strftime('%d/%m/%Y')}</div>
                 </div>
@@ -1193,6 +1195,7 @@ elif page == "🔍 Ανάλυση":
                         <tr>
                             <th>Υλικό</th>
                             <th style='text-align:right;'>Ποσότητα</th>
+                            <th style='text-align:right;'>Βάρος</th>
                             <th style='text-align:right;'>ABV</th>
                             <th style='text-align:right;'>Κόστος</th>
                         </tr>
@@ -1322,6 +1325,7 @@ elif page == "🔍 Ανάλυση":
                         <tr>
                             <th>Συστατικό Συνταγής</th>
                             <th>Ποσότητα (ml)</th>
+                            <th>Βάρος (g)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1329,6 +1333,7 @@ elif page == "🔍 Ανάλυση":
             
             r_total_ml = 0
             r_total_alc = 0
+            r_total_weight = 0  # Νέος αθροιστής για το βιβλίο
             r_found_ing = 0
             
             for i in range(1, 14):
@@ -1343,9 +1348,22 @@ elif page == "🔍 Ανάλυση":
                 ing_check = ing_clean.upper()
                 
                 if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"] and ml > 0:
-                    html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.2f} ml</td></tr>"
+                    
+                    # --- Υπολογισμός Βάρους για το Βιβλίο ---
+                    ing_weight = ml
+                    if ing_clean == "Νερό":
+                        ing_weight = ml
+                    elif not df_ing.empty and ing_clean in df_ing["Name"].values:
+                        ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
+                        pkg_weight = float(ing_row.get("weight_full", 0) or 0)
+                        pkg_volume = float(ing_row.get("Volume", 0) or 0)
+                        if pkg_volume > 0 and pkg_weight > 0:
+                            ing_weight = (pkg_weight / pkg_volume) * ml
+                    
+                    html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.2f} ml</td><td>{ing_weight:.1f} g</td></tr>"
                     r_found_ing += 1
                     r_total_ml += ml
+                    r_total_weight += ing_weight
                     
                     if not df_ing.empty and ing_clean in df_ing["Name"].values:
                         ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
@@ -1360,7 +1378,7 @@ elif page == "🔍 Ανάλυση":
                         r_total_alc += ml * (abv / 100)
             
             if r_found_ing == 0:
-                html_book += "<tr><td colspan='2'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
+                html_book += "<tr><td colspan='3'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
 
             r_final_abv = (r_total_alc / r_total_ml * 100) if r_total_ml > 0 else 0
             r_sugg_price = float(str(recipe.get("Τιμή Καταλόγου", 0.0)).replace(',', '.'))
@@ -1369,7 +1387,8 @@ elif page == "🔍 Ανάλυση":
                     </tbody>
                 </table>
                 <div class='analysis-box'>
-                    <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{r_final_abv:.2f}%</b></span>
+                    <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{r_final_abv:.2f}%</b></span> | 
+                    <span style='font-size:16px;'>Συνολικό Βάρος: <b>{r_total_weight:.1f} g</b></span>
                     <span style='float:right; font-size:18px; color:#b38f00;'>Προτεινόμενη Λιανική: <b>{r_sugg_price:.2f} €</b></span>
                 </div>
             </div>
