@@ -2832,7 +2832,7 @@ elif page == "📦 Lot Παραγωγής":
                                                         except:
                                                             current_pcs = 0
                                                             current_price = 0.0
-                                                    
+                                                
                                                     total_amount_before_discount += current_pcs * current_price
                                                     new_lines.append(line_text)
                                             
@@ -2851,10 +2851,87 @@ elif page == "📦 Lot Παραγωγής":
                                             break
                             st.success("✅ Επιτυχία! Το LOT και η ημερομηνία άλλαξαν και εφαρμόστηκαν σε όλους!")
                             st.cache_data.clear()
+                            import time
                             time.sleep(1)
                             st.rerun()
                         except Exception as save_err:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
+
+                    # ---------------------------------------------------------
+                    # ΛΟΓΙΚΗ ΔΙΑΓΡΑΦΗΣ (Μπαίνει ακριβώς κάτω από το btn_save)
+                    # ---------------------------------------------------------
+                    if btn_del:
+                        try:
+                            # 1. Διαγραφή από την παραγωγή (production_log)
+                            ids_to_del = [f["orig_id"] for f in final_updated_rows]
+                            for di in ids_to_del: 
+                                supabase.table("production_log").delete().eq("id", di).execute()
+                            
+                            # 2. Αφαίρεση από τα Οικονομικά (b2b_orders) και επανυπολογισμός
+                            for orig_c, c_set in customer_settings.items():
+                                old_target_date = datetime.strptime(c_set["base_date_str"], "%d/%m/%Y").strftime("%Y-%m-%d")
+                                
+                                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", orig_c).gte("created_at", f"{old_target_date}T00:00:00").lte("created_at", f"{old_target_date}T23:59:59").execute()
+                                
+                                if res_orders.data:
+                                    for order in res_orders.data:
+                                        order_details = str(order.get('order_details', ''))
+                                        old_str = f"{c_set['old_pcs']} τμχ {sel_cocktail_edit}"
+                                        
+                                        if old_str in order_details:
+                                            cust_discount = 0.0
+                                            res_c = supabase.table("customers").select("discount").eq("name", orig_c).execute()
+                                            if res_c.data and res_c.data[0].get("discount"):
+                                                cust_discount = float(res_c.data[0].get("discount"))
+                                            
+                                            lines = order_details.split('\n')
+                                            new_lines = []
+                                            total_amount_before_discount = 0.0
+                                            
+                                            for line in lines:
+                                                if line.strip().startswith("•") or "τμχ" in line:
+                                                    if old_str in line:
+                                                        # ΠΡΟΣΠΕΡΝΑΜΕ ΤΗ ΓΡΑΜΜΗ (Ουσιαστικά τη διαγράφουμε από την απόδειξη)
+                                                        continue
+                                                    else:
+                                                        new_lines.append(line)
+                                                        try:
+                                                            parts = line.replace('•', '').split(' τμχ ')
+                                                            current_pcs = int(parts[0].strip())
+                                                            current_cocktail = parts[1].split(' (')[0].strip()
+                                                            res_other_p = supabase.table("recipes").select("catalog_price").eq("name", current_cocktail).execute()
+                                                            current_price = float(res_other_p.data[0].get("catalog_price")) if (res_other_p.data and res_other_p.data[0].get("catalog_price")) else 0.0
+                                                            total_amount_before_discount += current_pcs * current_price
+                                                        except:
+                                                            pass
+                                                else:
+                                                    # Κρατάμε κενές γραμμές κλπ αν χρειάζεται
+                                                    if not line.startswith("["):
+                                                        new_lines.append(line)
+                                            
+                                            # Αν δεν έμεινε κανένα κοκτέιλ στην παραγγελία, διαγράφουμε όλη την παραγγελία
+                                            if not any("τμχ" in l for l in new_lines):
+                                                supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
+                                            else:
+                                                # Αλλιώς, σώζουμε τη νέα μειωμένη τιμή
+                                                final_payable_amount = total_amount_before_discount * (1 - (cust_discount / 100))
+                                                details_str = "\n".join(new_lines).strip()
+                                                details_str += f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
+                                                if cust_discount > 0: details_str += f"\n[Έκπτωση: {cust_discount}% εφαρμόστηκε]"
+                                                
+                                                supabase.table("b2b_orders").update({
+                                                    "total_amount": round(final_payable_amount, 2),
+                                                    "order_details": details_str
+                                                }).eq("id", order['id']).execute()
+                                            break
+
+                            st.success(f"✅ Το κοκτέιλ '{sel_cocktail_edit}' διαγράφηκε επιτυχώς από την παραγωγή και τα οικονομικά!")
+                            st.cache_data.clear()
+                            import time
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as del_err:
+                            st.error(f"Σφάλμα κατά τη διαγραφή: {del_err}")
 
                     # ---------------------------------------------------------
                     # ΛΟΓΙΚΗ ΔΙΑΓΡΑΦΗΣ (ΧΕΙΡΟΥΡΓΙΚΗ ΑΦΑΙΡΕΣΗ ΚΟΚΤΕΪΛ)
