@@ -1957,15 +1957,17 @@ elif page == "📈 Dashboard":
     else:
         df_chart = pd.DataFrame(res_chart.data)
         
+        # ΑΣΦΑΛΕΙΑ: Μετατρέπουμε ρητά τις κρίσιμες στήλες σε αριθμούς για να δουλέψουν σωστά οι πράξεις
+        df_chart["pieces"] = pd.to_numeric(df_chart["pieces"], errors='coerce').fillna(0)
+        df_chart["sold_price"] = pd.to_numeric(df_chart["sold_price"], errors='coerce').fillna(0)
+        df_chart["unit_cost"] = pd.to_numeric(df_chart["unit_cost"], errors='coerce').fillna(0)
+        
         # 2. ΚΑΘΑΡΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ: Κρατάμε μόνο μία εγγραφή ανά παρτίδα (για να μην διπλομετράμε τεμάχια)
         df_unique_sales = df_chart.groupby(["prod_date", "prod_time", "customer", "cocktail_name"]).agg(
             pieces=("pieces", "first"),
             sold_price=("sold_price", "first"), 
             unit_cost=("unit_cost", "first")    
         ).reset_index()
-        
-        # Αν κάποια πεδία είναι κενά, τα κάνουμε 0
-        df_unique_sales.fillna({"sold_price": 0, "unit_cost": 0}, inplace=True)
         
         # 3. Υπολογισμός Οικονομικών Δεικτών (Τζίρος, Κόστος, Κέρδος)
         df_unique_sales["Τζίρος (€)"] = df_unique_sales["pieces"] * df_unique_sales["sold_price"]
@@ -2004,7 +2006,7 @@ elif page == "📈 Dashboard":
             color=selected_metric,
             color_continuous_scale="Viridis", 
             labels={"cocktail_name": "Ονομασία Κοκτέιλ", selected_metric: selected_metric},
-            # ΝΕΟ: Εμφανίζει ΟΛΕΣ τις μετρικές όταν περνάς το ποντίκι!
+            # Εμφανίζει ΟΛΕΣ τις μετρικές όταν περνάς το ποντίκι
             hover_data={
                 "cocktail_name": False, 
                 "Τεμάχια (τμχ)": True,
@@ -2026,7 +2028,7 @@ elif page == "📈 Dashboard":
         # Εμφάνιση στο Streamlit
         st.plotly_chart(fig, use_container_width=True)
         
-        # (Προαιρετικό) Εμφάνιση Πίνακα
+        # Πίνακας για αναλυτική ανάγνωση
         with st.expander("📋 Προβολή Αναλυτικού Πίνακα Δεδομένων"):
             st.dataframe(
                 df_grouped_chart.style.format({
