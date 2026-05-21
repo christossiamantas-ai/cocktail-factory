@@ -2003,7 +2003,15 @@ elif page == "📈 Dashboard":
             text=selected_metric,
             color=selected_metric,
             color_continuous_scale="Viridis", 
-            labels={"cocktail_name": "Ονομασία Κοκτέιλ", selected_metric: selected_metric}
+            labels={"cocktail_name": "Ονομασία Κοκτέιλ", selected_metric: selected_metric},
+            # ΝΕΟ: Εμφανίζει ΟΛΕΣ τις μετρικές όταν περνάς το ποντίκι!
+            hover_data={
+                "cocktail_name": False, 
+                "Τεμάχια (τμχ)": True,
+                "Τζίρος (€)": ":.2f",
+                "Συνολικό Κόστος (€)": ":.2f",
+                "Καθαρό Κέρδος (€)": ":.2f"
+            }
         )
         
         # Μορφοποίηση του γραφήματος
