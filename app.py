@@ -851,7 +851,7 @@ elif page == "📊 Διαχείριση":
             else:
                 st.info("Δεν υπάρχουν ενεργές συνταγές για προβολή.")
 
-# --- 4. ΑΝΑΛΥΣΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΣΥΜΒΑΤΟΤΗΤΑ ΜΕ SUPABASE ΚΑΙ ΠΩΛΗΣΕΙΣ) ---
+# --- 4. ΑΝΑΛΥΣΗ (ΔΙΟΡΘΩΜΕΝΗ ΓΙΑ ΣΥΜΒΑΤΟΤΗΤΑ ΜΕ SUPABASE, ΠΩΛΗΣΕΙΣ ΚΑΙ ΒΑΡΟΣ) ---
 elif page == "🔍 Ανάλυση":
     st.header("🔍 Οικονομική Ανάλυση & Κερδοφορία")
     
@@ -865,6 +865,7 @@ elif page == "🔍 Ανάλυση":
             "Name": item["name"],
             "Price": item["price"],
             "Volume": item["volume"],
+            "weight_full": item.get("weight_full", 0.0), # 👈 Φορτώνουμε το συνολικό βάρος συσκευασίας
             "Αλκοόλ %": item["abv"],
             "ABV": item["abv"], # Το χρειάζεται το HTML book πιο κάτω
             "Τιμή/ml": item["price"] / item["volume"] if item["volume"] > 0 else 0
@@ -911,7 +912,7 @@ elif page == "🔍 Ανάλυση":
         p_agent = p_retail * 0.74
         p_custom = p_retail * (1 - discount/100)
         
-        raw_cost, pure_alc_ml, total_ml_cocktail = 0.0, 0.0, 0.0
+        raw_cost, pure_alc_ml, total_ml_cocktail, total_weight_cocktail = 0.0, 0.0, 0.0, 0.0
         breakdown = []
         missing_ingredients = [] # Λίστα για υλικά που δεν βρέθηκαν
         
@@ -923,7 +924,8 @@ elif page == "🔍 Ανάλυση":
             if ing_n != "ΚΕΝΟ" and ml > 0:
                 total_ml_cocktail += ml
                 if ing_n == "Νερό":
-                    breakdown.append({"Υλικό": "Νερό", "ML": ml, "Κόστος": 0.0, "Alc %": 0.0})
+                    total_weight_cocktail += ml  # 1 ml νερό = 1 γραμμάριο
+                    breakdown.append({"Υλικό": "Νερό", "ML": ml, "Βάρος (g)": ml, "Κόστος": 0.0, "Alc %": 0.0})
                 elif ing_n not in ["nan", ""]:
                     # Αναζήτηση στην Αποθήκη
                     match = df_ing[df_ing["Name"] == ing_n]
@@ -938,17 +940,31 @@ elif page == "🔍 Ανάλυση":
                         item_cost = ml * price_ml
                         raw_cost += item_cost
                         
+                        # --- ΔΥΝΑΜΙΚΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΒΑΡΟΥΣ ΑΠΟ ΤΗΝ ΑΠΟΘΗΚΗ ---
+                        pkg_weight = float(ing_row.get("weight_full", 0) or 0)
+                        pkg_volume = float(ing_row.get("Volume", 0) or 0)
+                        
+                        if pkg_volume > 0 and pkg_weight > 0:
+                            item_weight = (pkg_weight / pkg_volume) * ml
+                        else:
+                            item_weight = ml  # Ασφάλεια 1:1 αν λείπουν δεδομένα βάρους
+                        
+                        total_weight_cocktail += item_weight
+                        
                         breakdown.append({
                             "Υλικό": ing_n, 
                             "ML": ml, 
+                            "Βάρος (g)": item_weight, # 👈 Νέα στήλη ακριβώς μετά το ML
                             "Κόστος": item_cost, 
                             "Alc %": actual_alc_pct * 100
                         })
                     else:
                         missing_ingredients.append(ing_n)
+                        total_weight_cocktail += ml  # Ασφάλεια 1:1 για το σύνολο
                         breakdown.append({
                             "Υλικό": f"⚠️ {ing_n} (Μη διαθέσιμο)", 
                             "ML": ml, 
+                            "Βάρος (g)": ml,
                             "Κόστος": 0.0, 
                             "Alc %": 0.0
                         })
@@ -973,9 +989,10 @@ elif page == "🔍 Ανάλυση":
 
         # --- ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ ---
         st.subheader(f"Στατιστικά για: {choice}")
-        m_col1, m_col2 = st.columns(2)
+        m_col1, m_col2, m_col3 = st.columns(3)  # Αυξήσαμε σε 3 στήλες για να χωρέσει το βάρος
         m_col1.metric("Συνολική Ποσότητα", f"{total_ml_cocktail:.1f} ml".replace('.', ','))
-        m_col2.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %".replace('.', ','))
+        m_col2.metric("Συνολικό Βάρος", f"{total_weight_cocktail:.1f} g".replace('.', ','))  # 👈 Το νέο πεδίο δίπλα στα ml
+        m_col3.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %".replace('.', ','))
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Τιμή Λιανικής", f"{p_retail:.2f} €".replace('.', ','))
@@ -996,10 +1013,10 @@ elif page == "🔍 Ανάλυση":
         df_screen = pd.DataFrame(breakdown)
         if not df_screen.empty:
             df_render = df_screen.copy()
-            for col in ["ML", "Alc %", "Κόστος"]:
+            for col in ["ML", "Βάρος (g)", "Alc %", "Κόστος"]:  # Προσθέσαμε το "Βάρος (g)" στη μορφοποίηση
                 if col in df_render.columns:
                     df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
-            st.table(df_render[["Υλικό", "ML", "Alc %", "Κόστος"]])
+            st.table(df_render[["Υλικό", "ML", "Βάρος (g)", "Alc %", "Κόστος"]])  # Εμφάνιση της στήλης στη σωστή θέση
 
         # =====================================================================
         # ΝΕΑ ΕΝΟΤΗΤΑ: ΑΝΑΛΥΣΗ ΠΩΛΗΣΕΩΝ ΚΑΙ ΑΠΟΔΟΣΗΣ ΠΡΟΪΟΝΤΟΣ
