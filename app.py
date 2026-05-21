@@ -2908,6 +2908,76 @@ elif page == "📦 Lot Παραγωγής":
                             st.rerun()
                     except Exception as e:
                         st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
+            # =========================================================================
+        # ΚΑΡΤΕΛΑ 3: ΜΑΖΙΚΗ ΑΛΛΑΓΗ ΗΜΕΡΟΜΗΝΙΑΣ ΠΑΡΑΓΩΓΗΣ 
+        # =========================================================================
+        with tab_mass_date:
+            st.markdown("### 📅 Μαζική Αλλαγή Ημερομηνίας Παραγωγής")
+            st.info("Επιλέξτε την αρχική ημερομηνία από το κεντρικό φίλτρο 🔍, διαλέξτε όσα κοκτέιλ θέλετε και αλλάξτε την Ημερομηνία Παραγωγής τους με ένα κλικ! (Το LOT θα παραμείνει ίδιο).")
+
+            if sel_hist_date == "-- Όλες οι Ημερομηνίες --":
+                st.warning("⚠️ Παρακαλώ επιλέξτε πρώτα μια συγκεκριμένη Ημερομηνία από το φίλτρο στην κορυφή της σελίδας.")
+            else:
+                unique_cocktails_of_day = df_past["Cocktail"].dropna().unique()
+                
+                if len(unique_cocktails_of_day) == 0:
+                    st.info("Δεν βρέθηκαν κοκτέιλ για αυτή την ημερομηνία.")
+                else:
+                    selected_mass_cocktails = st.multiselect(
+                        "🍹 1. Επιλέξτε Κοκτέιλ (μπορείτε να επιλέξετε πολλά):",
+                        options=list(unique_cocktails_of_day)
+                    )
+                    
+                    new_mass_prod_date = st.text_input("📆 2. Νέα Ημερομηνία Παραγωγής (DD/MM/YYYY):", value=sel_hist_date)
+                    
+                    st.divider()
+                    if st.button("💾 Αποθήκευση Νέας Ημερομηνίας Παραγωγής", type="primary"):
+                        if not selected_mass_cocktails:
+                            st.error("Επιλέξτε τουλάχιστον ένα κοκτέιλ.")
+                        elif new_mass_prod_date.strip() == sel_hist_date:
+                            st.warning("Η νέα ημερομηνία που βάλατε είναι ίδια με την τρέχουσα.")
+                        else:
+                            try:
+                                # 1. Ενημέρωση στον πίνακα production_log (αλλάζει ΜΟΝΟ η ημερομηνία παραγωγής)
+                                supabase.table("production_log") \
+                                    .update({"prod_date": new_mass_prod_date.strip()}) \
+                                    .eq("prod_date", sel_hist_date) \
+                                    .in_("cocktail_name", selected_mass_cocktails) \
+                                    .execute()
+                                
+                                # 2. Ενημέρωση στον πίνακα b2b_orders (για να συγχρονιστούν τα οικονομικά)
+                                # Βρίσκουμε τους πελάτες που επηρεάζονται
+                                orig_rows = df_all_logs[
+                                    (df_all_logs["prod_date"] == sel_hist_date) & 
+                                    (df_all_logs["cocktail_name"].isin(selected_mass_cocktails))
+                                ]
+                                unique_customers_affected = orig_rows["customer"].unique()
+                                
+                                old_target_date_iso = datetime.strptime(sel_hist_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                new_target_date_iso = datetime.strptime(new_mass_prod_date.strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
+                                
+                                for cust in unique_customers_affected:
+                                    res_orders = supabase.table("b2b_orders").select("*") \
+                                        .eq("customer_name", cust) \
+                                        .gte("created_at", f"{old_target_date_iso}T00:00:00") \
+                                        .lte("created_at", f"{old_target_date_iso}T23:59:59") \
+                                        .execute()
+                                    
+                                    if res_orders.data:
+                                        for order in res_orders.data:
+                                            # Ελέγχουμε αν η παραγγελία περιέχει κάποιο από τα επιλεγμένα κοκτέιλ
+                                            details = str(order.get('order_details', ''))
+                                            if any(c in details for c in selected_mass_cocktails):
+                                                old_time = order["created_at"].split("T")[1]
+                                                new_created_at = f"{new_target_date_iso}T{old_time}"
+                                                supabase.table("b2b_orders").update({"created_at": new_created_at}).eq("id", order["id"]).execute()
+
+                                st.success(f"✅ Η Ημερομηνία Παραγωγής ενημερώθηκε επιτυχώς σε {new_mass_prod_date.strip()} για τα επιλεγμένα κοκτέιλ!")
+                                st.cache_data.clear()
+                                time.sleep(2)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
         st.divider()
         
