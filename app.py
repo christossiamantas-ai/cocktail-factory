@@ -1951,34 +1951,66 @@ elif page == "📈 Dashboard":
 
     # 1. Άντληση δεδομένων από την παραγωγή
     res_chart = supabase.table("production_log").select("*").execute()
+    
+    # Αντλούμε τις Συνταγές (για αρχική τιμή) και τους Πελάτες (για την πραγματική τους έκπτωση)
+    res_recipes = supabase.table("recipes").select("name, catalog_price").execute()
+    recipe_prices = {}
+    if res_recipes.data:
+        for r in res_recipes.data:
+            recipe_prices[r["name"]] = float(r.get("catalog_price") or 0.0)
+            
+    res_cust = supabase.table("customers").select("name, discount").execute()
+    cust_discounts = {}
+    if res_cust.data:
+        for c in res_cust.data:
+            cust_discounts[c["name"]] = float(c.get("discount") or 0.0)
 
     if not res_chart.data:
         st.info("Δεν υπάρχουν ακόμα δεδομένα παραγωγής για να εμφανιστεί το γράφημα.")
     else:
         df_chart = pd.DataFrame(res_chart.data)
         
-        # ΑΣΦΑΛΕΙΑ 1: Ελέγχουμε αν υπάρχουν οι στήλες (για παλιά δεδομένα). Αν όχι, τις φτιάχνουμε.
-        for col in ["pieces", "sold_price", "unit_cost"]:
-            if col not in df_chart.columns:
-                df_chart[col] = 0.0
-            # Μετατρέπουμε με ασφάλεια σε αριθμούς
-            df_chart[col] = pd.to_numeric(df_chart[col], errors='coerce').fillna(0.0)
+        # Αν η στήλη λείπει τελείως λόγω παλιάς βάσης, τη δημιουργούμε ως NaN
+        if "sold_price" not in df_chart.columns:
+            df_chart["sold_price"] = np.nan
+        if "unit_cost" not in df_chart.columns:
+            df_chart["unit_cost"] = np.nan
+
+        # ΚΡΑΤΑΜΕ ΜΑΣΚΑ: Ποια πεδία ήταν ΠΡΑΓΜΑΤΙΚΑ άδεια (παλιά ιστορικά δεδομένα)
+        # Έτσι προστατεύουμε τα νέα δεδομένα όπου το 0 σημαίνει "Δωρεάν Προϊόν"
+        missing_price_mask = df_chart["sold_price"].isna()
         
-        # 2. ΚΑΘΑΡΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ: Κρατάμε μόνο μία εγγραφή ανά παρτίδα
-        # Ομαδοποιούμε με βάση την ώρα και τον πελάτη για να πάρουμε τα σωστά τεμάχια
+        # Μετατρέπουμε σε αριθμούς με ασφάλεια
+        df_chart["pieces"] = pd.to_numeric(df_chart.get("pieces", 0), errors='coerce').fillna(0)
+        df_chart["sold_price"] = pd.to_numeric(df_chart["sold_price"], errors='coerce').fillna(0.0)
+        df_chart["unit_cost"] = pd.to_numeric(df_chart.get("unit_cost", 0.0), errors='coerce').fillna(0.0)
+        
+        # --- ΔΙΟΡΘΩΣΗ ΜΟΝΟ ΓΙΑ ΤΑ ΠΑΛΙΑ ΔΕΔΟΜΕΝΑ (NaN) ---
+        for idx in df_chart[missing_price_mask].index:
+            c_name = df_chart.loc[idx, "cocktail_name"]
+            cust = df_chart.loc[idx, "customer"]
+            
+            base_price = recipe_prices.get(c_name, 0.0)
+            # Παίρνει την πραγματική έκπτωση του πελάτη από το CRM. Αν δεν έχει, βάζει 0% (Τιμή Καταλόγου)
+            discount_perc = cust_discounts.get(cust, 0.0) 
+            
+            df_chart.loc[idx, "sold_price"] = base_price * (1 - (discount_perc / 100.0))
+            df_chart.loc[idx, "unit_cost"] = 1.50  # Ενδεικτικό κόστος για το ιστορικό κέρδος
+        
+        # 2. ΚΑΘΑΡΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ (Groupby ανά παρτίδα παραγωγής)
         df_unique_sales = df_chart.groupby(["prod_date", "prod_time", "customer", "cocktail_name"]).agg(
-            pieces=("pieces", "first"),
-            sold_price=("sold_price", "first"), 
-            unit_cost=("unit_cost", "first")    
+            pieces=("pieces", "max"),
+            sold_price=("sold_price", "max"), 
+            unit_cost=("unit_cost", "max")    
         ).reset_index()
         
-        # 3. Υπολογισμός Οικονομικών Δεικτών (Τζίρος, Κόστος, Κέρδος)
+        # 3. Υπολογισμός Οικονομικών Δεικτών
         df_unique_sales["Τζίρος (€)"] = df_unique_sales["pieces"] * df_unique_sales["sold_price"]
         df_unique_sales["Συνολικό Κόστος (€)"] = df_unique_sales["pieces"] * df_unique_sales["unit_cost"]
         df_unique_sales["Καθαρό Κέρδος (€)"] = df_unique_sales["Τζίρος (€)"] - df_unique_sales["Συνολικό Κόστος (€)"]
         df_unique_sales.rename(columns={"pieces": "Τεμάχια (τμχ)"}, inplace=True)
         
-        # 4. Ομαδοποίηση ανά Κοκτέιλ για το γράφημα
+        # 4. Ομαδοποίηση ανά Κοκτέιλ για το τελικό γράφημα
         df_grouped_chart = df_unique_sales.groupby("cocktail_name").agg(
             **{
                 "Τεμάχια (τμχ)": ("Τεμάχια (τμχ)", "sum"),
@@ -1992,14 +2024,14 @@ elif page == "📈 Dashboard":
         col_metric, col_sort = st.columns([2, 1])
         
         metrics_list = ["Τεμάχια (τμχ)", "Τζίρος (€)", "Καθαρό Κέρδος (€)", "Συνολικό Κόστος (€)"]
-        selected_metric = col_metric.selectbox("🎯 Επιλέξτε Μετρική για Ανάλυση:", metrics_list)
+        selected_metric = col_metric.selectbox("🎯 Επιλέξτε Μετρική για Ανάλυση:", metrics_list, key="unique_metric_selector_cocktails")
         
-        sort_order = col_sort.radio("↕️ Ταξινόμηση:", ["Φθίνουσα (Υψηλότερα πρώτα)", "Αύξουσα (Χαμηλότερα πρώτα)"])
+        sort_order = col_sort.radio("↕️ Ταξινόμηση:", ["Φθίνουσα (Υψηλότερα πρώτα)", "Αύξουσα (Χαμηλότερα πρώτα)"], key="unique_sort_radio_cocktails")
         ascending_bool = True if sort_order == "Αύξουσα (Χαμηλότερα πρώτα)" else False
         
         df_grouped_chart = df_grouped_chart.sort_values(by=selected_metric, ascending=ascending_bool)
         
-        # 6. Δημιουργία Γραφήματος με Plotly (Απλοποιημένο Hover για 100% συμβατότητα)
+        # 6. Δημιουργία Γραφήματος με Plotly 
         fig = px.bar(
             df_grouped_chart,
             x="cocktail_name",
@@ -2019,33 +2051,8 @@ elif page == "📈 Dashboard":
             plot_bgcolor="rgba(0,0,0,0)" 
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="unique_sales_plotly_chart_id")
         
-        with st.expander("📋 Προβολή Αναλυτικού Πίνακα Δεδομένων"):
-            st.dataframe(
-                df_grouped_chart.style.format({
-                    "Τεμάχια (τμχ)": "{:.0f}",
-                    "Τζίρος (€)": "{:.2f} €",
-                    "Συνολικό Κόστος (€)": "{:.2f} €",
-                    "Καθαρό Κέρδος (€)": "{:.2f} €"
-                }),
-                use_container_width=True,
-                hide_index=True
-            )
-        
-        # Μορφοποίηση του γραφήματος
-        fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-        fig.update_layout(
-            xaxis_tickangle=-45,
-            height=500,
-            margin=dict(t=50, b=100),
-            plot_bgcolor="rgba(0,0,0,0)" 
-        )
-        
-        # Εμφάνιση στο Streamlit
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Πίνακας για αναλυτική ανάγνωση
         with st.expander("📋 Προβολή Αναλυτικού Πίνακα Δεδομένων"):
             st.dataframe(
                 df_grouped_chart.style.format({
