@@ -1616,7 +1616,7 @@ elif page == "📊 Εμπορική Πολιτική":
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
                 )
-                )
+            
 # --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΤΕΛΙΚΗ ΕΚΔΟΣΗ ΜΕ ΟΛΑ ΤΑ ΣΤΟΙΧΕΙΑ) ---
 elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
