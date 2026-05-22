@@ -4530,35 +4530,17 @@ elif page == "📦 Παραγγελίες B2B":
                         with col_h1:
                             st.markdown(f"**Κατάσταση:** {row['status']}")
                             
-                            # --- ΝΕΟ: Διαγραφή ανά γραμμή (κοκτέιλ) ---
+                            # Προβολή των κοκτέιλ (χωρίς δυνατότητα διαγραφής)
                             items = str(row['order_details']).split('\n')
                             
                             for i, item in enumerate(items):
                                 if item.strip(): # Μόνο αν δεν είναι κενή γραμμή
-                                    c_txt, c_del = st.columns([6, 1])
-                                    c_txt.text(item)
+                                    # Εμφανίζουμε απλώς το κείμενο, χωρίς στήλες και κουμπιά
+                                    st.text(item)
                                     
-                                    # Κουμπί διαγραφής για το συγκεκριμένο κοκτέιλ
-                                    if c_del.button("🗑️", key=f"del_item_{row['id']}_{i}"):
-                                        # 1. Αφαιρούμε το στοιχείο από τη λίστα
-                                        items.pop(i)
-                                        
-                                        # 2. Φτιάχνουμε το νέο κείμενο
-                                        new_details = "\n".join(items)
-                                        
-                                        # 3. Update στη βάση
-                                        try:
-                                            supabase.table("b2b_orders").update({"order_details": new_details}).eq("id", row['id']).execute()
-                                            st.success("Το κοκτέιλ αφαιρέθηκε!")
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Σφάλμα: {e}")
                         with col_h2:
-                            if st.button("🗑️ Διαγραφή", key=f"del_hist_{row['id']}", use_container_width=True):
-                                delete_order_and_production_safely(row['id'], row['customer_name'], row['created_at'], row['order_details'])
-                                st.success("🔄 Διαγράφηκε πλήρως από οικονομικά και αποθήκη!")
-                                st.cache_data.clear() # 🌟 ΝΕΟ: Αδειάζει τη μνήμη για να εξαφανιστεί αμέσως η εγγραφή
-                                time.sleep(1)
-                                st.rerun()
+                            # Αφήνουμε τη στήλη κενή αφού βγάλαμε το κουμπί διαγραφής. 
+                            # Το 'pass' λέει στην Python να μην κάνει τίποτα και γλιτώνεις IndentationError
+                            pass 
             else:
                 st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
