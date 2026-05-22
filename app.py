@@ -2519,21 +2519,21 @@ elif page == "📦 Lot Παραγωγής":
                     if lot_entries:
                         try:
                             # 1. ΕΜΠΛΟΥΤΙΣΜΟΣ ΤΩΝ LOT_ENTRIES ΜΕ ΤΗΝ ΚΛΕΙΔΩΜΕΝΗ ΤΙΜΗ ΠΩΛΗΣΗΣ (SOLD_PRICE)
-# Φέρνουμε όλες τις τιμές και εκπτώσεις ΜΙΑ ΦΟΡΑ εκτός του loop!
-all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
-all_customers_res = supabase.table("customers").select("name, discount").execute()
-
-recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in all_recipes_res.data} if all_recipes_res.data else {}
-customer_discounts = {c['name']: float(c.get('discount') or 0.0) for c in all_customers_res.data} if all_customers_res.data else {}
-
-for entry in lot_entries:
-    c_name = entry.get("customer")
-    cocktail = entry.get("cocktail_name")
-    
-    price = recipe_prices.get(cocktail, 0.0)
-    discount = customer_discounts.get(c_name, 0.0)
-    
-    entry["sold_price"] = price * (1 - (discount / 100.0))
+                            # Φέρνουμε όλες τις τιμές και εκπτώσεις ΜΙΑ ΦΟΡΑ εκτός του loop!
+                            all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
+                            all_customers_res = supabase.table("customers").select("name, discount").execute()
+                            
+                            recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in all_recipes_res.data} if all_recipes_res.data else {}
+                            customer_discounts = {c['name']: float(c.get('discount') or 0.0) for c in all_customers_res.data} if all_customers_res.data else {}
+                            
+                            for entry in lot_entries:
+                                c_name = entry.get("customer")
+                                cocktail = entry.get("cocktail_name")
+                                
+                                price = recipe_prices.get(cocktail, 0.0)
+                                discount = customer_discounts.get(c_name, 0.0)
+                                
+                                entry["sold_price"] = price * (1 - (discount / 100.0))
                             # Αποθήκευση Πρώτων Υλών, Τεμαχίων & Κλειδωμένης Τιμής (Ιχνηλασιμότητα / Ανάλυση)
                             supabase.table("production_log").insert(lot_entries).execute()
                             st.session_state.production_batch_items = []
