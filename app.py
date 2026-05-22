@@ -1429,8 +1429,28 @@ elif page == "📊 Εμπορική Πολιτική":
         
         unit_cost = raw_cost + TOTAL_FIXED
         p_retail = float(r["Τιμή Καταλόγου"])
-        p_agent_base = p_retail * 0.74  # Κανονική τιμή προ προσφορών
-        normal_profit_per_unit = p_agent_base - unit_cost
+        p_agent_base = p_retail * 0.74  # Κανονική τιμή προ προσφορών (Αντιπροσώπου)
+        
+        st.divider()
+        
+        # --- ΝΕΟ: ΔΥΝΑΜΙΚΟ ΦΙΛΤΡΟ ΤΙΜΟΛΟΓΙΑΚΗΣ ΒΑΣΗΣ ---
+        price_target = st.radio(
+            "🏷️ Επιλογή Τιμολογιακής Βάσης για τη Σύγκριση:", 
+            options=["Τιμή Αντιπροσώπου (Χονδρική)", "Τιμή Λιανικής (Κατάλογος)"],
+            horizontal=True,
+            key="commercial_policy_price_filter"
+        )
+        
+        # Ορισμός της ενεργής τιμής με βάση το φίλτρο
+        if price_target == "Τιμή Λιανικής (Κατάλογος)":
+            active_base_price = p_retail
+            price_label_text = "Κανονική Τιμή Λιανικής"
+        else:
+            active_base_price = p_agent_base
+            price_label_text = "Κανονική Τιμή Αντιπρ."
+            
+        normal_profit_per_unit = active_base_price - unit_cost
+        # ------------------------------------------------
 
         st.divider()
 
@@ -1443,7 +1463,7 @@ elif page == "📊 Εμπορική Πολιτική":
             sA_free = st.number_input("Τεμάχια Δώρο (Free)", min_value=0, value=0, key="sa_free")
             
             sA_total_units = sA_paid + sA_free
-            sA_revenue = sA_paid * p_agent_base
+            sA_revenue = sA_paid * active_base_price # Υπολογισμός με τη δυναμική τιμή
             sA_cost = sA_total_units * unit_cost
             sA_profit = sA_revenue - sA_cost
             sA_effective = sA_revenue / sA_total_units if sA_total_units > 0 else 0
@@ -1456,7 +1476,7 @@ elif page == "📊 Εμπορική Πολιτική":
             sB_total_units = st.number_input("Συνολικά Τεμάχια (Β)", min_value=0, value=0, key="sb_total")
             sB_discount = st.number_input("Ποσοστό Έκπτωσης %", min_value=0.0, value=0.0, key="sb_disc")
             
-            sB_price_per_unit = p_agent_base * (1 - sB_discount/100)
+            sB_price_per_unit = active_base_price * (1 - sB_discount/100) # Υπολογισμός με τη δυναμική τιμή
             sB_revenue = sB_total_units * sB_price_per_unit
             sB_cost = sB_total_units * unit_cost
             sB_profit = sB_revenue - sB_cost
@@ -1485,7 +1505,7 @@ elif page == "📊 Εμπορική Πολιτική":
                         <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΟΙΚΟΝΟΜΙΚΑ ΜΕΓΕΘΗ</td>
                     </tr>
                     <tr>
-                        <td style="padding: 10px; border: 1px solid #444;">Κανονική Τιμή Αντιπρ.</td>
+                        <td style="padding: 10px; border: 1px solid #444;">{15}</td>
                         <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{0:.2f} €</td>
                         <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{0:.2f} €</td>
                     </tr>
@@ -1529,10 +1549,10 @@ elif page == "📊 Εμπορική Πολιτική":
                 </div>
             </div>
             """.format(
-                p_agent_base, sA_effective, sB_effective, 
+                active_base_price, sA_effective, sB_effective, 
                 sA_revenue, sB_revenue, sA_cost, sB_cost, 
                 sA_profit, sB_profit, sA_margin, sB_margin, 
-                sA_markup, sB_markup, winner_text, diff_val
+                sA_markup, sB_markup, winner_text, diff_val, price_label_text
             )
             
             st.markdown(html_table, unsafe_allow_html=True)
@@ -1552,8 +1572,8 @@ elif page == "📊 Εμπορική Πολιτική":
             if st.button("💾 Λήψη Πλήρους Φακέλου Ανάλυσης (Full Audit Report)"):
                 now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
                 
-                # Υπολογισμός Έμμεσης Έκπτωσης για το Σενάριο Α
-                sA_indirect_disc = ((1 - sA_effective/p_agent_base)*100) if p_agent_base > 0 else 0
+                # Υπολογισμός Έμμεσης Έκπτωσης για το Σενάριο Α βάσει της ενεργής τιμής
+                sA_indirect_disc = ((1 - sA_effective/active_base_price)*100) if active_base_price > 0 else 0
                 
                 full_audit_data = [
                     {"ΚΑΤΗΓΟΡΙΑ": "1. ΤΑΥΤΟΤΗΤΑ ΣΥΜΦΩΝΙΑΣ", "ΣΤΟΙΧΕΙΟ": "Cocktail / Προϊόν", "ΣΕΝΑΡΙΟ Α": choice, "ΣΕΝΑΡΙΟ Β": choice},
@@ -1561,8 +1581,8 @@ elif page == "📊 Εμπορική Πολιτική":
                     {"ΚΑΤΗΓΟΡΙΑ": "1. ΤΑΥΤΟΤΗΤΑ ΣΥΜΦΩΝΙΑΣ", "ΣΤΟΙΧΕΙΟ": "Υπεύθυνος Ανάλυσης", "ΣΕΝΑΡΙΟ Α": "DC CABCLUB System", "ΣΕΝΑΡΙΟ Β": ""},
                     {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
                     
-                    {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Τιμή Καταλόγου (Retail)", "ΣΕΝΑΡΙΟ Α": f"{p_retail:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{p_retail:.2f} €"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Βασική Τιμή Αντιπροσώπου (Gross)", "ΣΕΝΑΡΙΟ Α": f"{p_agent_base:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{p_agent_base:.2f} €"},
+                    {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Ενεργή Βάση Σύγκρισης", "ΣΕΝΑΡΙΟ Α": price_label_text, "ΣΕΝΑΡΙΟ Β": price_label_text},
+                    {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Κανονική Τιμή (Gross)", "ΣΕΝΑΡΙΟ Α": f"{active_base_price:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{active_base_price:.2f} €"},
                     {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Πραγματική Τιμή Μονάδας (Net)", "ΣΕΝΑΡΙΟ Α": f"{sA_effective:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_effective:.2f} €"},
                     {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
 
@@ -1595,6 +1615,7 @@ elif page == "📊 Εμπορική Πολιτική":
                     data=csv, 
                     file_name=f"Full_Audit_Report_{choice}.csv",
                     mime="text/csv"
+                )
                 )
 # --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΤΕΛΙΚΗ ΕΚΔΟΣΗ ΜΕ ΟΛΑ ΤΑ ΣΤΟΙΧΕΙΑ) ---
 elif page == "📈 Dashboard":
