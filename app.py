@@ -1625,22 +1625,22 @@ elif page == "📈 Dashboard":
 
     # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
     @st.cache_data(ttl=300) # Κρατάει τα δεδομένα πωλήσεων για 5 λεπτά
-def load_dashboard_data():
-    log = supabase.table("production_log").select("*").execute().data
-    orders = supabase.table("b2b_orders").select("*").execute().data
-    rec = supabase.table("recipes").select("id, name, catalog_price").execute().data
-    ing = supabase.table("ingredients").select("name, price, volume").execute().data
-    items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute().data
-    cust = supabase.table("customers").select("name, discount").execute().data
-    return log, orders, rec, ing, items, cust
-
-with st.spinner("Ενημέρωση στατιστικών..."):
-    log_data, orders_data, rec_data, ing_data, items_data, cust_data = load_dashboard_data()
-    # Μετατρέπουμε τα data πίσω σε format που μοιάζει με το res.data για να μην σπάσει ο υπόλοιπος κώδικάς σου
-    class DummyRes:
-        pass
-    res_log, res_orders, res_rec, res_ing, res_items, res_cust = [DummyRes() for _ in range(6)]
-    res_log.data, res_orders.data, res_rec.data, res_ing.data, res_items.data, res_cust.data = log_data, orders_data, rec_data, ing_data, items_data, cust_data
+    def load_dashboard_data():
+        log = supabase.table("production_log").select("*").execute().data
+        orders = supabase.table("b2b_orders").select("*").execute().data
+        rec = supabase.table("recipes").select("id, name, catalog_price").execute().data
+        ing = supabase.table("ingredients").select("name, price, volume").execute().data
+        items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute().data
+        cust = supabase.table("customers").select("name, discount").execute().data
+        return log, orders, rec, ing, items, cust
+    
+    with st.spinner("Ενημέρωση στατιστικών..."):
+        log_data, orders_data, rec_data, ing_data, items_data, cust_data = load_dashboard_data()
+        # Μετατρέπουμε τα data πίσω σε format που μοιάζει με το res.data για να μην σπάσει ο υπόλοιπος κώδικάς σου
+        class DummyRes:
+            pass
+        res_log, res_orders, res_rec, res_ing, res_items, res_cust = [DummyRes() for _ in range(6)]
+        res_log.data, res_orders.data, res_rec.data, res_ing.data, res_items.data, res_cust.data = log_data, orders_data, rec_data, ing_data, items_data, cust_data
         
     if res_log.data and res_rec.data:
         df_raw = pd.DataFrame(res_log.data)
