@@ -3925,6 +3925,125 @@ elif page == "👥 Πελατολόγιο":
                 
                 if res_orders.data:
                     import re
+                    from datetime import datetime
+                    import time
+                    
+                    # --- ΝΕΟ: ΕΠΑΓΓΕΛΜΑΤΙΚΗ ΕΚΤΥΠΩΣΗ/ΕΞΑΓΩΓΗ ---
+                    with st.expander("🖨️ Εξαγωγή & Εκτύπωση Ιστορικού (PDF/HTML)", expanded=False):
+                        st.write("Δημιουργήστε μια επαγγελματική αναφορά για τον πελάτη.")
+                        
+                        export_mode = st.radio("Τι θέλετε να περιλαμβάνει η αναφορά;", ["Όλο το Ιστορικό Αγορών", "Συγκεκριμένη Παραγγελία"], horizontal=True)
+                        
+                        orders_to_export = []
+                        if export_mode == "Συγκεκριμένη Παραγγελία":
+                            order_dict = {o['id']: f"{str(o['created_at'])[:10]} | Αξία: {float(o['total_amount']):.2f}€" for o in res_orders.data}
+                            sel_export_id = st.selectbox("Επιλέξτε Παραγγελία για εξαγωγή:", options=list(order_dict.keys()), format_func=lambda x: order_dict[x])
+                            orders_to_export = [o for o in res_orders.data if o['id'] == sel_export_id]
+                        else:
+                            orders_to_export = res_orders.data
+                            
+                        if st.button("📄 Δημιουργία Αναφοράς"):
+                            # Δημιουργία του HTML Report
+                            total_export_value = sum([float(o['total_amount']) for o in orders_to_export])
+                            now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+                            
+                            html_content = f"""
+                            <!DOCTYPE html>
+                            <html lang="el">
+                            <head>
+                                <meta charset="UTF-8">
+                                <title>Καρτέλα Πελάτη - {sel_name}</title>
+                                <style>
+                                    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; background-color: #fff; padding: 20px; }}
+                                    .container {{ max-width: 900px; margin: auto; border: 1px solid #ddd; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }}
+                                    .header {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1a3a5f; padding-bottom: 10px; margin-bottom: 20px; }}
+                                    .header h1 {{ color: #1a3a5f; margin: 0; font-size: 24px; }}
+                                    .header p {{ margin: 0; color: #666; font-size: 12px; }}
+                                    .cust-info {{ background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #1a3a5f; }}
+                                    .cust-info p {{ margin: 5px 0; font-size: 14px; }}
+                                    table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }}
+                                    th, td {{ border: 1px solid #eee; padding: 10px; text-align: left; vertical-align: top; }}
+                                    th {{ background-color: #1a3a5f; color: white; font-weight: normal; }}
+                                    tr:nth-child(even) {{ background-color: #fafafa; }}
+                                    .total-row {{ background-color: #e8f4f8; font-weight: bold; font-size: 16px; }}
+                                    .details-col {{ line-height: 1.5; }}
+                                    .amount-col {{ text-align: right; white-space: nowrap; font-weight: bold; color: #2e7d32; }}
+                                    .footer {{ text-align: center; margin-top: 30px; font-size: 11px; color: #999; border-top: 1px solid #ddd; padding-top: 10px; }}
+                                </style>
+                            </head>
+                            <body>
+                                <div class="container">
+                                    <div class="header">
+                                        <h1>Καρτέλα Κίνησης Πελάτη</h1>
+                                        <p>Ημ/νια Εκτύπωσης: {now_str}<br>DC CABCLUB System</p>
+                                    </div>
+                                    
+                                    <div class="cust-info">
+                                        <strong>Στοιχεία Πελάτη:</strong><br>
+                                        <p><b>Επωνυμία:</b> {sel_name} | <b>ΑΦΜ:</b> {customer_data.get('afm', '-')}</p>
+                                        <p><b>Τηλέφωνο:</b> {customer_data.get('phone', '-')} | <b>Email:</b> {customer_data.get('email', '-')}</p>
+                                        <p><b>Διεύθυνση:</b> {customer_data.get('address', '-')}</p>
+                                    </div>
+                                    
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th width="15%">Ημερομηνία</th>
+                                                <th width="70%">Ανάλυση Παραγγελίας (Είδη & Εκπτώσεις)</th>
+                                                <th width="15%" style="text-align: right;">Τελική Αξία</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                            """
+                            
+                            for o in orders_to_export:
+                                date_str = str(o['created_at'])[:10]
+                                date_formatted = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+                                
+                                # Μετατροπή των line breaks σε HTML <br>
+                                formatted_details = o['order_details'].replace('\n', '<br>')
+                                # Χρωματισμός ειδικών λέξεων
+                                formatted_details = formatted_details.replace('ΔΩΡΑ', '<strong style="color:#d32f2f;">ΔΩΡΑ</strong>')
+                                formatted_details = formatted_details.replace('ΕΚΠΤΩΣΕΙΣ', '<strong style="color:#1976d2;">ΕΚΠΤΩΣΕΙΣ</strong>')
+                                
+                                html_content += f"""
+                                            <tr>
+                                                <td>{date_formatted}</td>
+                                                <td class="details-col">{formatted_details}</td>
+                                                <td class="amount-col">{float(o['total_amount']):.2f} €</td>
+                                            </tr>
+                                """
+                            
+                            html_content += f"""
+                                            <tr class="total-row">
+                                                <td colspan="2" style="text-align: right;">Γενικό Σύνολο:</td>
+                                                <td class="amount-col" style="color: #1a3a5f;">{total_export_value:.2f} €</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                    
+                                    <div class="footer">
+                                        Αυτή η αναφορά δημιουργήθηκε αυτόματα από το σύστημα διαχείρισης παραγωγής.<br>
+                                        Δεν αποτελεί φορολογικό στοιχείο (τιμολόγιο/απόδειξη).
+                                    </div>
+                                </div>
+                            </body>
+                            </html>
+                            """
+                            
+                            st.download_button(
+                                label="📥 Λήψη Αναφοράς (HTML / Print to PDF)",
+                                data=html_content,
+                                file_name=f"Customer_Report_{sel_name.replace(' ', '_')}.html",
+                                mime="text/html",
+                                type="primary"
+                            )
+                            st.info("💡 **Οδηγία:** Ανοίξτε το αρχείο που κατέβηκε στον browser σας (Chrome/Safari) και πατήστε **Ctrl+P** (ή Cmd+P στο Mac) για να το αποθηκεύσετε ως ένα τέλειο PDF ή να το εκτυπώσετε!")
+                    
+                    st.divider()
+                    # --------------------------------------------------------
+
+                    # Εμφάνιση των παραγγελιών στο UI (Παλιός κώδικας που παραμένει)
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
