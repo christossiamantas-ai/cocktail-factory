@@ -2212,67 +2212,118 @@ elif page == "📦 Lot Παραγωγής":
                 pass
 
     # 2. ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ (ΝΕΟ ΣΥΣΤΗΜΑ "ΚΑΛΑΘΙΟΥ")
-    if not df_rec.empty:
-        st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
-        
-        st.markdown("### 🛒 1. Καταχώρηση Παραγγελιών ανά Πελάτη")
-        
-        c_col1, c_col2, c_col3, c_col4 = st.columns([2, 2, 1, 1.2])
-        
-        sel_cust = c_col1.selectbox("👤 1. Επιλέξτε Πελάτη:", customer_options, key=f"batch_cust_{reset_key}")
-        recipe_options = list(df_rec["Ονομα"].unique())
-        sel_cocktail = c_col2.selectbox("🍹 2. Επιλέξτε Κοκτέιλ:", recipe_options, key=f"batch_cocktail_{reset_key}")
-        sel_pcs = c_col3.number_input("📦 3. Τεμάχια:", min_value=1, step=1, value=1, key=f"batch_pcs_{reset_key}")
-        
-        st.write("") 
-        if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
-            if sel_cocktail:
-                found = False
-                for item in st.session_state.production_batch_items:
-                    if item["Πελάτης"] == sel_cust and item["Κοκτέιλ"] == sel_cocktail:
-                        item["Τεμάχια"] += sel_pcs
-                        found = True
-                        break
-                if not found:
-                    st.session_state.production_batch_items.append({
-                        "Πελάτης": sel_cust,
-                        "Κοκτέιλ": sel_cocktail,
-                        "Τεμάχια": sel_pcs
-                    })
-                st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} στον πελάτη {sel_cust}!")
-                st.rerun()
-
-        selected_cocktails = []
-        all_assignments = {}
-
-        if st.session_state.production_batch_items:
-            st.markdown("#### 📋 Στοιχεία Τρέχουσας Παρτίδας προς Παραγωγή")
-            df_current_batch = pd.DataFrame(st.session_state.production_batch_items)
-            st.dataframe(df_current_batch, use_container_width=True, hide_index=True)
+        if not df_rec.empty:
+            st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
             
-            if st.button("🗑️ Καθαρισμός Παρτίδας", type="secondary"):
-                st.session_state.production_batch_items = []
-                if 'active_b2b_order' in st.session_state:
-                    st.session_state['active_b2b_order'] = None
-                st.rerun()
-                
-            for item in st.session_state.production_batch_items:
-                cocktail = item["Κοκτέιλ"]
-                c_name = item["Πελάτης"]
-                pcs = item["Τεμάχια"]
-                
-                if cocktail not in all_assignments:
-                    all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια"])
-                
-                new_row = pd.DataFrame([{"Πελάτης": c_name, "Τεμάχια": int(pcs)}])
-                all_assignments[cocktail] = pd.concat([all_assignments[cocktail], new_row], ignore_index=True)
+            st.markdown("### 🛒 1. Καταχώρηση Παραγγελιών ανά Πελάτη")
+            
+            c_col1, c_col2, c_col3, c_col4 = st.columns([2, 2, 1, 1.2])
+            
+            sel_cust = c_col1.selectbox("👤 1. Επιλέξτε Πελάτη:", customer_options, key=f"batch_cust_{reset_key}")
+            recipe_options = list(df_rec["Ονομα"].unique())
+            sel_cocktail = c_col2.selectbox("🍹 2. Επιλέξτε Κοκτέιλ:", recipe_options, key=f"batch_cocktail_{reset_key}")
+            sel_pcs = c_col3.number_input("📦 3. Τεμάχια:", min_value=1, step=1, value=1, key=f"batch_pcs_{reset_key}")
+            
+            # --- ΝΕΟ: Αρχικοποίηση "αναδυόμενου" μενού ελέγχου διπλοτύπων ---
+            if 'pending_conflict' not in st.session_state:
+                st.session_state['pending_conflict'] = None
 
-            selected_cocktails = list(all_assignments.keys())
-        else:
-            st.warning("⚠️ Η παρτίδα είναι άδεια. Προσθέστε παραγγελίες παραπάνω για να εμφανιστούν τα υλικά και τα LOT.")
+            st.write("") 
+            if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
+                if sel_cocktail:
+                    # 1. Έλεγχος αν υπάρχει ΗΔΗ στο τρέχον καλάθι
+                    existing_qty = 0
+                    for item in st.session_state.production_batch_items:
+                        if item["Πελάτης"] == sel_cust and item["Κοκτέιλ"] == sel_cocktail:
+                            existing_qty = item["Τεμάχια"]
+                            break
+                    
+                    # 2. Αν βρεθεί, ενεργοποιούμε την προειδοποίηση
+                    if existing_qty > 0:
+                        st.session_state['pending_conflict'] = {
+                            "cust": sel_cust,
+                            "cocktail": sel_cocktail,
+                            "new_pcs": sel_pcs,
+                            "old_pcs": existing_qty
+                        }
+                    else:
+                        # 3. Αν δεν υπάρχει, κάνουμε κανονικά την προσθήκη
+                        st.session_state.production_batch_items.append({
+                            "Πελάτης": sel_cust,
+                            "Κοκτέιλ": sel_cocktail,
+                            "Τεμάχια": sel_pcs
+                        })
+                        st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} στον πελάτη {sel_cust}!")
+                        st.rerun()
 
-        # 🌟 Η ΓΕΦΥΡΑ: Ανοίγει το μπλοκ που ξεκλειδώνει όλο τον υπόλοιπο κώδικά σου (Βήμα 2 & Βήμα 3)
-        if selected_cocktails:
+            # --- 🛑 ΝΕΟ: ΕΜΦΑΝΙΣΗ ΑΝΑΔΥΟΜΕΝΟΥ ΜΕΝΟΥ ΟΤΑΝ ΥΠΑΡΧΕΙ ΔΙΠΛΟΤΥΠΟ ---
+            if st.session_state.get('pending_conflict'):
+                conf = st.session_state['pending_conflict']
+                
+                st.error(f"⚠️ **Προσοχή:** Το κοκτέιλ **{conf['cocktail']}** υπάρχει ήδη στο καλάθι (LOT: {date_lot_label}) για τον πελάτη **{conf['cust']}**!")
+                st.write(f"📊 Παλιά ποσότητα: **{conf['old_pcs']} τμχ** | Νέα προσθήκη: **{conf['new_pcs']} τμχ**")
+                st.write("Τι θέλετε να κάνετε;")
+                
+                col_btn1, col_btn2, col_btn3 = st.columns(3)
+                
+                # ΕΠΙΛΟΓΗ 1: ΑΘΡΟΙΣΜΑ
+                if col_btn1.button(f"➕ Άθροισμα ({conf['old_pcs'] + conf['new_pcs']} τμχ)", type="primary"):
+                    for item in st.session_state.production_batch_items:
+                        if item["Πελάτης"] == conf['cust'] and item["Κοκτέιλ"] == conf['cocktail']:
+                            item["Τεμάχια"] += conf['new_pcs']
+                    st.session_state['pending_conflict'] = None
+                    st.toast("✅ Προστέθηκε επιτυχώς!")
+                    st.rerun()
+                    
+                # ΕΠΙΛΟΓΗ 2: ΑΝΤΙΚΑΤΑΣΤΑΣΗ
+                if col_btn2.button(f"🔄 Αντικατάσταση (Σύνολο: {conf['new_pcs']} τμχ)"):
+                    for item in st.session_state.production_batch_items:
+                        if item["Πελάτης"] == conf['cust'] and item["Κοκτέιλ"] == conf['cocktail']:
+                            item["Τεμάχια"] = conf['new_pcs']
+                    st.session_state['pending_conflict'] = None
+                    st.toast("🔄 Η ποσότητα αντικαταστάθηκε!")
+                    st.rerun()
+                    
+                # ΕΠΙΛΟΓΗ 3: ΑΚΥΡΩΣΗ
+                if col_btn3.button("❌ Ακύρωση Ενέργειας"):
+                    st.session_state['pending_conflict'] = None
+                    st.rerun()
+                
+                st.divider()
+
+            # --- ΕΔΩ ΣΥΝΕΧΙΖΕΙ Ο ΠΑΛΙΟΣ ΣΟΥ ΚΩΔΙΚΑΣ ΚΑΝΟΝΙΚΑ ---
+            selected_cocktails = []
+            all_assignments = {}
+
+            if st.session_state.production_batch_items:
+                st.markdown("#### 📋 Στοιχεία Τρέχουσας Παρτίδας προς Παραγωγή")
+                df_current_batch = pd.DataFrame(st.session_state.production_batch_items)
+                st.dataframe(df_current_batch, use_container_width=True, hide_index=True)
+                
+                if st.button("🗑️ Καθαρισμός Παρτίδας", type="secondary"):
+                    st.session_state.production_batch_items = []
+                    if 'active_b2b_order' in st.session_state:
+                        st.session_state['active_b2b_order'] = None
+                    st.rerun()
+                    
+                for item in st.session_state.production_batch_items:
+                    cocktail = item["Κοκτέιλ"]
+                    c_name = item["Πελάτης"]
+                    pcs = item["Τεμάχια"]
+                    
+                    if cocktail not in all_assignments:
+                        all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια"])
+                    
+                    new_row = pd.DataFrame([{"Πελάτης": c_name, "Τεμάχια": int(pcs)}])
+                    all_assignments[cocktail] = pd.concat([all_assignments[cocktail], new_row], ignore_index=True)
+
+                selected_cocktails = list(all_assignments.keys())
+            else:
+                st.warning("⚠️ Η παρτίδα είναι άδεια. Προσθέστε παραγγελίες παραπάνω για να εμφανιστούν τα υλικά και τα LOT.")
+
+            # 🌟 Η ΓΕΦΥΡΑ: Ανοίγει το μπλοκ που ξεκλειδώνει όλο τον υπόλοιπο κώδικά σου (Βήμα 2 & Βήμα 3)
+            if selected_cocktails:
+                unique_customers_in_batch = set()
             unique_customers_in_batch = set()
             for cocktail_name, edited_df in all_assignments.items():
                 if "Πελάτης" in edited_df.columns and "Τεμάχια" in edited_df.columns:
