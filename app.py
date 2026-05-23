@@ -2096,7 +2096,7 @@ elif page == "📈 Dashboard":
                 hide_index=True
             )
        
-# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ) ---
+# --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ & SMART CART) ---
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
@@ -2177,9 +2177,11 @@ elif page == "📦 Lot Παραγωγής":
 
     st.divider()
 
-    # --- ΑΡΧΙΚΟΠΟΙΗΣΗ ΤΟΥ "ΚΑΛΑΘΙΟΥ" ΠΑΡΑΓΩΓΗΣ ---
+    # --- ΑΡΧΙΚΟΠΟΙΗΣΗ ΤΟΥ "ΚΑΛΑΘΙΟΥ" ΠΑΡΑΓΩΓΗΣ ΚΑΙ ΤΟΥ ΜΕΝΟΥ ΔΙΠΛΟΤΥΠΩΝ ---
     if "production_batch_items" not in st.session_state:
         st.session_state.production_batch_items = []
+    if 'pending_conflict' not in st.session_state:
+        st.session_state['pending_conflict'] = None
 
     # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ B2B ΚΑΤΕΥΘΕΙΑΝ ΣΤΟ ΚΑΛΑΘΙ ---
     if active_order is not None and not df_rec.empty and len(st.session_state.production_batch_items) == 0:
@@ -2203,11 +2205,19 @@ elif page == "📦 Lot Παραγωγής":
                     continue
                 
                 if c_name in df_rec["Ονομα"].unique():
-                    st.session_state.production_batch_items.append({
-                        "Πελάτης": b2b_customer,
-                        "Κοκτέιλ": c_name,
-                        "Τεμάχια": qty
-                    })
+                    # ΔΙΟΡΘΩΣΗ: Προσθέτει αντί να αντικαθιστά αν υπάρχει το ίδιο προϊόν 2 φορές στην απόδειξη
+                    found = False
+                    for item in st.session_state.production_batch_items:
+                        if item["Πελάτης"] == b2b_customer and item["Κοκτέιλ"] == c_name:
+                            item["Τεμάχια"] += qty
+                            found = True
+                            break
+                    if not found:
+                        st.session_state.production_batch_items.append({
+                            "Πελάτης": b2b_customer,
+                            "Κοκτέιλ": c_name,
+                            "Τεμάχια": qty
+                        })
             except Exception:
                 pass
 
@@ -2227,20 +2237,55 @@ elif page == "📦 Lot Παραγωγής":
         st.write("") 
         if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
             if sel_cocktail:
-                found = False
+                existing_qty = 0
                 for item in st.session_state.production_batch_items:
                     if item["Πελάτης"] == sel_cust and item["Κοκτέιλ"] == sel_cocktail:
-                        item["Τεμάχια"] += sel_pcs
-                        found = True
+                        existing_qty = item["Τεμάχια"]
                         break
-                if not found:
+                
+                # ΕΛΕΓΧΟΣ ΔΙΠΛΟΤΥΠΟΥ ΣΤΟ ΚΑΛΑΘΙ
+                if existing_qty > 0:
+                    st.session_state['pending_conflict'] = {
+                        "cust": sel_cust, "cocktail": sel_cocktail,
+                        "new_pcs": sel_pcs, "old_pcs": existing_qty
+                    }
+                else:
                     st.session_state.production_batch_items.append({
-                        "Πελάτης": sel_cust,
-                        "Κοκτέιλ": sel_cocktail,
-                        "Τεμάχια": sel_pcs
+                        "Πελάτης": sel_cust, "Κοκτέιλ": sel_cocktail, "Τεμάχια": sel_pcs
                     })
-                st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} στον πελάτη {sel_cust}!")
+                    st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} στον πελάτη {sel_cust}!")
+                    st.rerun()
+
+        # --- ΕΜΦΑΝΙΣΗ ΑΝΑΔΥΟΜΕΝΟΥ ΜΕΝΟΥ ΣΕ ΠΕΡΙΠΤΩΣΗ ΣΥΓΚΡΟΥΣΗΣ ---
+        if st.session_state.get('pending_conflict'):
+            conf = st.session_state['pending_conflict']
+            
+            st.error(f"⚠️ **Προσοχή:** Το κοκτέιλ **{conf['cocktail']}** υπάρχει ήδη στο καλάθι για τον πελάτη **{conf['cust']}**!")
+            st.write(f"📊 Παλιά ποσότητα: **{conf['old_pcs']} τμχ** | Νέα προσθήκη: **{conf['new_pcs']} τμχ**")
+            
+            col_btn1, col_btn2, col_btn3 = st.columns(3)
+            
+            if col_btn1.button(f"➕ Άθροισμα ({conf['old_pcs'] + conf['new_pcs']} τμχ)", type="primary"):
+                for item in st.session_state.production_batch_items:
+                    if item["Πελάτης"] == conf['cust'] and item["Κοκτέιλ"] == conf['cocktail']:
+                        item["Τεμάχια"] += conf['new_pcs']
+                st.session_state['pending_conflict'] = None
+                st.toast("✅ Η ποσότητα ενημερώθηκε επιτυχώς!")
                 st.rerun()
+                
+            if col_btn2.button(f"🔄 Αντικατάσταση (Σύνολο: {conf['new_pcs']} τμχ)"):
+                for item in st.session_state.production_batch_items:
+                    if item["Πελάτης"] == conf['cust'] and item["Κοκτέιλ"] == conf['cocktail']:
+                        item["Τεμάχια"] = conf['new_pcs']
+                st.session_state['pending_conflict'] = None
+                st.toast("🔄 Η ποσότητα αντικαταστάθηκε!")
+                st.rerun()
+                
+            if col_btn3.button("❌ Ακύρωση"):
+                st.session_state['pending_conflict'] = None
+                st.rerun()
+            
+            st.divider()
 
         selected_cocktails = []
         all_assignments = {}
@@ -2271,7 +2316,6 @@ elif page == "📦 Lot Παραγωγής":
         else:
             st.warning("⚠️ Η παρτίδα είναι άδεια. Προσθέστε παραγγελίες παραπάνω για να εμφανιστούν τα υλικά και τα LOT.")
 
-        # 🌟 Η ΓΕΦΥΡΑ: Ανοίγει το μπλοκ που ξεκλειδώνει όλο τον υπόλοιπο κώδικά σου (Βήμα 2 & Βήμα 3)
         if selected_cocktails:
             unique_customers_in_batch = set()
             for cocktail_name, edited_df in all_assignments.items():
@@ -2311,11 +2355,8 @@ elif page == "📦 Lot Παραγωγής":
                         "prod_date": str(row["Ημερομηνία LOT"]).strip(),
                         "lot_cocktail": f"{str(row['Ημερομηνία LOT']).strip()}-{str(row['Ημέρα Παραγωγής']).strip()}"
                     }
-            # =========================================================================
 
             # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML & ΒΑΡΟΥΣ ---
-            
-            # 💡 ΝΕΟ: Φορτώνουμε τα βάρη απευθείας από τη Supabase για σίγουρο αποτέλεσμα
             ing_weights_map = {}
             try:
                 res_ing_db = supabase.table("ingredients").select("name, weight_full, volume").execute()
@@ -2341,7 +2382,6 @@ elif page == "📦 Lot Παραγωγής":
                             ml_u = get_recipe_ml(recipe_row, i)
                             ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * total_qty_for_cocktail)
 
-            # --- ΚΕΝΤΡΙΚΗ ΦΟΡΜΑ ΗΜΕΡΗΣΙΩΝ LOT & ΓΡΗΓΟΡΗ ΕΚΤΥΠΩΣΗ ---
             st.markdown("### 🔄 2. Συνολικά Υλικά Παραγγελίας & Γρήγορη Εκτύπωση")
             
             with st.expander("📋 Πίνακας Μοναδικών Υλικών & Συνολικών Ποσοτήτων", expanded=True):
@@ -2353,16 +2393,13 @@ elif page == "📦 Lot Παραγωγής":
                 
                 for ing in sorted(ing_totals.keys()):
                     total_ml = ing_totals[ing]
-                    
-                    # --- Σωστός Υπολογισμός Βάρους ---
-                    weight_g = total_ml  # Default για το Νερό
+                    weight_g = total_ml
                     
                     if ing != "Νερό" and ing in ing_weights_map:
                         pkg_weight = ing_weights_map[ing]["weight"]
                         pkg_volume = ing_weights_map[ing]["volume"]
                         if pkg_volume > 0 and pkg_weight > 0:
                             weight_g = (pkg_weight / pkg_volume) * total_ml
-                    # ---------------------------------
 
                     mr = st.columns([2, 1.5, 1.5, 1.5])
                     mr[0].write(f"**{ing}**")
@@ -2370,9 +2407,7 @@ elif page == "📦 Lot Παραγωγής":
                     mr[2].text_input("LOT", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
                     mr[3].text_input("EXP", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
 
-            # --- ΓΡΗΓΟΡΟ ΦΥΛΛΟ ΚΑΤΑΓΡΑΦΗΣ ---
             st.divider()
-            st.info("💡 Δώστε αυτό το κενό φύλλο στον συνεργάτη σας για να καταγράψει τα LOT στην αποθήκη, όσο εσείς προχωράτε στο Βήμα 3!")
             
             quick_lot_html = f"""
             <html><head><meta charset='UTF-8'><style>
@@ -2401,7 +2436,6 @@ elif page == "📦 Lot Παραγωγής":
             
             for ing in sorted(ing_totals.keys()):
                 total_ml = ing_totals[ing]
-                
                 weight_g = total_ml 
                 if ing != "Νερό" and ing in ing_weights_map:
                     pkg_weight = ing_weights_map[ing]["weight"]
@@ -2445,7 +2479,7 @@ elif page == "📦 Lot Παραγωγής":
                     total_qty_this = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
                     if total_qty_this == 0: continue
 
-                    current_unit_cost = 0.22  # Σταθερά έξοδα
+                    current_unit_cost = 0.22 
                     for idx_ing in range(1, 14):
                         tmp_ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{idx_ing}", "ΚΕΝΟ"))
                         if tmp_ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
@@ -2550,6 +2584,7 @@ elif page == "📦 Lot Παραγωγής":
                                         cust_prod[c] = {"products": {}, "date": entry["prod_date"]}
                                     cocktail = entry["cocktail_name"]
                                     cust_prod[c]["products"][cocktail] = entry["pieces"]
+                                    
                                 for c_name, c_data in cust_prod.items():
                                     products = c_data["products"]
                                     p_date_str = c_data["date"]
@@ -2592,7 +2627,6 @@ elif page == "📦 Lot Παραγωγής":
                                     }).execute()
                             st.session_state['lot_reset_key'] += 1
                             st.success("✅ Η παρτίδα αποθηκεύτηκε και το Dashboard ενημερώθηκε αυτόματα!")
-                            # st.cache_data.clear() # 🚀 ΑΦΑΙΡΕΘΗΚΕ: Προκαλούσε τεράστια καθυστέρηση
                             time.sleep(2)
                             st.rerun()
                         except Exception as e:
@@ -2611,7 +2645,7 @@ elif page == "📦 Lot Παραγωγής":
             "total_ml": "Σύνολο_ML", "target_g": "Στόχος_Γραμμάρια", "lot_number": "Lot Number", "expiry_date": "Ημ_Λήξης"
         })
 
-        # --- ΦΙΛΤΡΑ ΣΤΗΝ ΚΟΡΥΦΗ (ΔΥΝΑΜΙΚΑ & ΑΛΛΗΛΕΝΔΕΤΑ) ---
+        # --- ΦΙΛΤΡΑ ΣΤΗΝ ΚΟΡΥΦΗ ---
         st.markdown("### 🔍 Φίλτρα Αναζήτησης")
         
         all_dates = sorted(df_all_logs_renamed["Ημερομηνία"].dropna().unique(), reverse=True)
@@ -2644,16 +2678,12 @@ elif page == "📦 Lot Παραγωγής":
 
         st.divider()
 
-        # --- ΔΗΜΙΟΥΡΓΙΑ TABS ΓΙΑ ΔΙΑΧΕΙΡΙΣΗ ---
         tab_edit_batch, tab_bulk_lots, tab_mass_date = st.tabs([
             "✏️ Τροποποίηση Ποσοτήτων", 
             "📦 Μαζική Ενημέρωση LOT Υλικών", 
             "📅 Μαζική Αλλαγή Ημερ. Παραγωγής"
         ])
 
-        # =========================================================================
-        # ΚΑΡΤΕΛΑ 1: ΤΡΟΠΟΠΟΙΗΣΗ ΣΥΓΚΕΚΡΙΜΕΝΗΣ ΠΑΡΑΓΩΓΗΣ 
-        # =========================================================================
         with tab_edit_batch:
             st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT")
             
@@ -2768,12 +2798,10 @@ elif page == "📦 Lot Παραγωγής":
                         
                     if btn_save:
                         try:
-                            # 1. Μαζική διαγραφή παλιών εγγραφών (🚀 Batch Update)
                             ids_to_del = [f["orig_id"] for f in final_updated_rows]
                             if ids_to_del:
                                 supabase.table("production_log").delete().in_("id", ids_to_del).execute()
                             
-                            # 2. Εισαγωγή νέων
                             new_batch = []
                             for fd in final_updated_rows:
                                 c_set = customer_settings[fd["orig_cust"]]
@@ -2796,7 +2824,6 @@ elif page == "📦 Lot Παραγωγής":
                             if new_batch:
                                 supabase.table("production_log").insert(new_batch).execute()
                             
-                            # 3. Ενημέρωση B2B
                             for orig_c, c_set in customer_settings.items():
                                 old_target_date = datetime.strptime(c_set["base_date_str"], "%d/%m/%Y").strftime("%Y-%m-%d")
                                 new_target_date = datetime.strptime(c_set["new_lot_date"], "%d/%m/%Y").strftime("%Y-%m-%d")
@@ -2858,8 +2885,6 @@ elif page == "📦 Lot Παραγωγής":
                                             }).eq("id", order['id']).execute()
                                             break
                             st.success("✅ Επιτυχία! Το LOT και η ημερομηνία άλλαξαν και εφαρμόστηκαν σε όλους!")
-                            # st.cache_data.clear() # 🚀 ΑΦΑΙΡΕΘΗΚΕ
-                            import time
                             time.sleep(1)
                             st.rerun()
                         except Exception as save_err:
@@ -2867,12 +2892,10 @@ elif page == "📦 Lot Παραγωγής":
 
                     if btn_del:
                         try:
-                            # 1. Μαζική διαγραφή (🚀 Batch Delete)
                             ids_to_del = df_all_logs.loc[cocktail_df.index, "id"].tolist()
                             if ids_to_del:
                                 supabase.table("production_log").delete().in_("id", ids_to_del).execute()
                             
-                            # 2. Χειρουργική αφαίρεση από τα οικονομικά (B2B)
                             for orig_c, c_set in customer_settings.items():
                                 del_cust = orig_c
                                 del_cocktail = sel_cocktail_edit
@@ -2932,16 +2955,12 @@ elif page == "📦 Lot Παραγωγής":
                                             break 
                                             
                             st.warning("🗑️ Η παραγωγή ενημερώθηκε και το κοκτέιλ αφαιρέθηκε χειρουργικά.")
-                            # st.cache_data.clear() # 🚀 ΑΦΑΙΡΕΘΗΚΕ
                             time.sleep(1)
                             st.rerun()
                             
                         except Exception as e:
                             st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
 
-        # =========================================================================
-        # ΚΑΡΤΕΛΑ 2: ΜΑΖΙΚΗ ΕΝΗΜΕΡΩΣΗ LOT ΑΝΑ ΥΛΙΚΟ
-        # =========================================================================
         with tab_bulk_lots:
             st.markdown("### 📋 Συνολικά LOT Πρώτων Υλών (Μαζική Διόρθωση)")
             st.info("💡 Αλλάξτε το Lot ή τη Λήξη σε ένα υλικό, και η αλλαγή θα περάσει αυτόματα σε ΟΛΑ τα cocktails της ημέρας!")
@@ -2966,7 +2985,6 @@ elif page == "📦 Lot Παραγωγής":
                     key="grouped_lot_editor"
                 )
                 
-                # --- ΔΗΜΙΟΥΡΓΙΑ HTML ΦΥΛΛΟΥ ΚΑΤΑΓΡΑΦΗΣ ---
                 lot_sheet_html = f"""
                 <html><head><meta charset='UTF-8'><style>
                     body {{ font-family: sans-serif; padding: 20px; }}
@@ -3028,15 +3046,11 @@ elif page == "📦 Lot Παραγωγής":
                         
                         if updates_made > 0:
                             st.success("✅ Τα νέα LOT περάστηκαν αυτόματα σε όλες τις συνταγές!")
-                            # st.cache_data.clear() # 🚀 ΑΦΑΙΡΕΘΗΚΕ
                             time.sleep(1)
                             st.rerun()
                     except Exception as e:
                         st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
-        # =========================================================================
-        # ΚΑΡΤΕΛΑ 3: ΜΑΖΙΚΗ ΑΛΛΑΓΗ ΔΙΨΗΦΙΟΥ ΑΡΙΘΜΟΥ (ΗΜΕΡΑ ΠΑΡΑΓΩΓΗΣ) 
-        # =========================================================================
         with tab_mass_date:
             st.markdown("### 🔢 Μαζική Αλλαγή Διψήφιου (Ημέρας) Παραγωγής")
             st.info("💡 Αλλάξτε ΜΟΝΟ τον διψήφιο αριθμό στο τέλος του LOT (π.χ. από -01 σε -02) για όσα κοκτέιλ θέλετε. Τα οικονομικά και τα υπόλοιπα LOT παραμένουν άθικτα!")
@@ -3085,7 +3099,6 @@ elif page == "📦 Lot Παραγωγής":
                                         updates_count += 1
                                         
                                 st.success(f"✅ Ο διψήφιος αριθμός άλλαξε σε '-{new_mass_prod_day.strip()}' για τα επιλεγμένα κοκτέιλ!")
-                                # st.cache_data.clear() # 🚀 ΑΦΑΙΡΕΘΗΚΕ
                                 time.sleep(2)
                                 st.rerun()
                             except Exception as e:
@@ -3096,7 +3109,6 @@ elif page == "📦 Lot Παραγωγής":
         cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
         file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
-        # --- 🛠️ ΕΠΑΝΑΦΟΡΑ HTML REPORTS (YELLOW, RED & BLUE THEMES) ---
         df_clean_customers = df_past.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
             "Τεμάχια": "first"
         })
@@ -3142,7 +3154,6 @@ elif page == "📦 Lot Παραγωγής":
             
         html_pro += "</body></html>"
 
-        # --- 2. ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ (RED THEME) ---
         df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
         
         grand_total_pcs = df_daily["Τεμάχια"].sum()
@@ -3212,7 +3223,6 @@ elif page == "📦 Lot Παραγωγής":
         </body></html>
         """
         
-        # --- 3. ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (BLUE THEME) ---
         df_prep = df_past.groupby("Υλικό").agg({
             "Σύνολο_ML": "sum", 
             "Στόχος_Γραμμάρια": "sum",
@@ -3264,13 +3274,12 @@ elif page == "📦 Lot Παραγωγής":
             """
         html_prep += "</tbody></table></body></html>"
 
-        # --- ΤΟΠΟΘΕΤΗΣΗ ΚΟΥΜΠΙΩΝ DOWNLOAD ---
         col_p1, col_p2, col_p3 = st.columns(3)
         col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
     
-    # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL (🚀 LAZY LOADING DB CALL) ---
+    # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL (🚀 LAZY LOADING) ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
     
@@ -3279,7 +3288,6 @@ elif page == "📦 Lot Παραγωγής":
     with tab_filter:
         with st.expander("⚙️ Ρυθμίσεις Φίλτρων (Πελάτης, Υλικά, Lot) - Πατήστε το κουμπί για φόρτωση"):
             f1, f2, f3 = st.columns(3)
-            # 🚀 Παίρνουμε από το ήδη φορτωμένο πρόσφατο ιστορικό για τα drop downs!
             search_cust = f1.multiselect("Πελάτης:", sorted(df_all_logs["customer"].unique()) if res_log.data else [], key="filter_cust")
             search_cock = f2.multiselect("Cocktail:", sorted(df_all_logs["cocktail_name"].unique()) if res_log.data else [], key="filter_cock")
             search_ing = f3.multiselect("Πρώτη Ύλη:", sorted(df_all_logs["ingredient_name"].unique()) if res_log.data else [], key="filter_ing")
@@ -3326,7 +3334,6 @@ elif page == "📦 Lot Παραγωγής":
         if recall_query:
             search_val = str(recall_query).strip()
             
-            # 🚀 LAZY LOADING: Χτυπάει τη βάση ΜΟΝΟ για το συγκεκριμένο LOT (Αστραπιαία ταχύτητα)
             with st.spinner("Σάρωση ιχνηλασιμότητας στο Cloud..."):
                 res_affected = supabase.table("production_log").select("*").or_(f"lot_number.ilike.%{search_val}%,expiry_date.ilike.%{search_val}%").execute()
             
@@ -3352,7 +3359,6 @@ elif page == "📦 Lot Παραγωγής":
                 affected_cust_list = df_display["Πελάτης"].unique().tolist()
                 st.warning(f"📞 **B2B Πελάτες που πρέπει να ειδοποιηθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
                 
-                # 🌟 ΕΜΦΑΝΙΣΗ ΠΕΡΙΠΟΙΗΜΕΝΟΥ HTML ΓΙΑ ΕΚΤΥΠΩΣΗ ΜΕ ΤΗΝ ΠΡΩΤΗ ΥΛΗ ΣΤΗΝ ΚΟΡΥΦΗ
                 html_content = f"""
                 <!DOCTYPE html>
                 <html>
@@ -3364,12 +3370,9 @@ elif page == "📦 Lot Παραγωγής":
                         .header {{ border-bottom: 4px solid #d9534f; padding-bottom: 15px; margin-bottom: 25px; }}
                         .title {{ color: #d9534f; font-size: 26px; font-weight: bold; margin: 0; }}
                         .subtitle {{ color: #666; font-size: 13px; margin-top: 5px; }}
-                        
-                        /* 🌟 ΣΤΥΛ ΓΙΑ ΤΟ ΝΕΟ ΤΙΤΛΟ ΣΤΗΝ ΑΡΧΗ ΤΗΣ ΣΕΛΙΔΑΣ */
                         .target-box {{ background-color: #f7f7f7; border: 2px solid #d9534f; border-left: 8px solid #d9534f; padding: 15px; margin-bottom: 20px; border-radius: 4px; }}
                         .target-box h2 {{ margin: 0 0 5px 0; color: #333; font-size: 20px; }}
                         .target-box p {{ margin: 0; font-size: 16px; color: #555; }}
-                        
                         .danger-box {{ background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; padding: 15px; margin-bottom: 30px; color: #721c24; }}
                         .danger-title {{ font-weight: bold; font-size: 18px; margin-bottom: 5px; }}
                         .cust-list {{ background: #fff3cd; border-left: 5px solid #ffc107; padding: 12px; font-size: 16px; font-weight: bold; color: #856404; margin-bottom: 25px; border-radius: 4px; }}
@@ -3379,34 +3382,25 @@ elif page == "📦 Lot Παραγωγής":
                         tr:nth-child(even) {{ background-color: #f9f9f9; }}
                         .badge {{ background-color: #d9534f; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; letter-spacing: 0.5px; }}
                         .footer {{ margin-top: 50px; font-size: 12px; color: #777; text-align: center; border-top: 1px solid #e9ecef; padding-top: 15px; }}
-                        @media print {{
-                            body {{ margin: 15mm 10mm; }}
-                            .no-print {{ display: none; }}
-                        }}
+                        @media print {{ body {{ margin: 15mm 10mm; }} .no-print {{ display: none; }} }}
                     </style>
                 </head>
                 <body>
                     <div class="header">
                         <div class="title">🚨 COCKTAIL FACTORY - ΕΚΘΕΣΗ ΑΝΑΚΛΗΣΗΣ ΠΡΩΤΩΝ ΥΛΩΝ</div>
-                        <div class="subtitle">Ημερομηνία & Ώρα Αναφοράς: {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+                        <div class="subtitle">Ημερομηνία & Ώρα Αναφοράς: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}</div>
                     </div>
-
                     <div class="target-box">
                         <h2>🎯 ΣΤΟΧΟΣ ΑΝΑΚΛΗΣΗΣ</h2>
                         <p><strong>Πρώτη Ύλη:</strong> {ingredient_title}</p>
                         <p><strong>LOT / Ημ. Λήξης που αναζητήθηκε:</strong> <span class="badge" style="font-size: 14px;">{search_val}</span></p>
                     </div>
-
                     <div class="danger-box">
                         <div class="danger-title">⚠️ ΣΤΟΙΧΕΙΑ ΕΛΕΓΧΟΥ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</div>
                         <div>Συνολικές εγγραφές παραγωγής που εντοπίστηκαν: <strong>{len(df_affected)}</strong></div>
                     </div>
-
                     <h3 style="color: #495057; margin-bottom: 10px;">📞 Λίστα Επείγουσας Ειδοποίησης Πελατών (B2B):</h3>
-                    <div class="cust-list">
-                        {', '.join([f'{c}' for c in affected_cust_list])}
-                    </div>
-
+                    <div class="cust-list">{', '.join([f'{c}' for c in affected_cust_list])}</div>
                     <h3 style="color: #495057; margin-bottom: 5px;">📋 Αναλυτικό Πλάνο Διανομής Μολυσμένων Παρτίδων</h3>
                     <table>
                         <thead>
@@ -3435,7 +3429,6 @@ elif page == "📦 Lot Παραγωγής":
                 html_content += """
                         </tbody>
                     </table>
-
                     <div class="footer">
                         Το έγγραφο αυτό αποτελεί επίσημο αντίγραφο ιχνηλασιμότητας από το λογισμικό Cocktail Factory.<br>
                         Υπεύθυνος Εργαστηρίου: ___________________________ &nbsp;&nbsp;&nbsp;&nbsp; Υπογραφή: ___________________________
@@ -3455,7 +3448,7 @@ elif page == "📦 Lot Παραγωγής":
             else:
                 st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot ή ημερομηνία λήξης πρώτης ύλης. Το στοκ σας είναι ασφαλές!")
     
-    # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ (🚀 LAZY LOADING DB CALL) ---
+    # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ ---
     st.divider()
     st.subheader("📊 Γενικό Αρχείο Παραγωγής")
     st.info("Εδώ μπορείτε να εκτυπώσετε ολόκληρο το ιστορικό παραγωγής από τη Supabase.")
@@ -3473,11 +3466,8 @@ elif page == "📦 Lot Παραγωγής":
                 "pieces": "Τεμάχια"
             })
             
-            # Μετατροπή ημερομηνίας για σωστή ταξινόμηση
             df_raw_hist['temp_date'] = pd.to_datetime(df_raw_hist['Ημερομηνία'], format='%d/%m/%Y')
             df_raw_hist = df_raw_hist.sort_values(by='temp_date', ascending=False)
-            
-            # 🌟 ΜΑΓΙΚΟ ΦΙΛΤΡΟ
             df_full_hist = df_raw_hist.drop_duplicates(subset=["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail"])
     
             full_html = f"""
