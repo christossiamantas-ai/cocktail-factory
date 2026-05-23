@@ -1420,21 +1420,58 @@ elif page == "📦 Lot Παραγωγής":
             selected_cocktails = st.multiselect("Επιλέξτε Προϊόντα:", options=df_rec["Ονομα"].unique())
         
         with col_c2:
-            # ΕΔΩ Η ΑΛΛΑΓΗ: Αντί για κείμενο, έχουμε selectbox με τους πελάτες της Supabase
             customer_name = st.selectbox("👤 Επιλογή Πελάτη:", options=db_customers)
 
         if selected_cocktails:
             st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
+            
+            # --- ΝΕΟ: ΕΛΕΓΧΟΣ ΣΤΗ ΒΑΣΗ ΓΙΑ ΤΑΥΤΙΣΗ ---
+            # Ψάχνει ακριβώς τη σημερινή ημερομηνία και τον επιλεγμένο πελάτη για τα κοκτέιλ
+            res_existing = supabase.table("production_log").select("cocktail_name, pieces").eq("prod_date", formatted_date).eq("customer", customer_name).in_("cocktail_name", selected_cocktails).execute()
+            
+            existing_cocktails = {}
+            if res_existing.data:
+                for r in res_existing.data:
+                    # Κρατάμε τα τεμάχια της πρώτης εγγραφής του υλικού (είναι ίδια για όλο το κοκτέιλ)
+                    if r["cocktail_name"] not in existing_cocktails:
+                        existing_cocktails[r["cocktail_name"]] = int(r["pieces"])
+
             counts = {}
+            actions = {} # Αποθηκεύει το τι επέλεξες να κάνεις με το διπλότυπο
             c_cols = st.columns(len(selected_cocktails))
+            
             for i, name in enumerate(selected_cocktails):
-                counts[name] = c_cols[i].number_input(f"Τμχ: {name}", min_value=1, value=1, key=f"cnt_{name}")
+                with c_cols[i]:
+                    counts[name] = st.number_input(f"Τμχ: {name}", min_value=1, value=1, key=f"cnt_{name}")
+                    
+                    # --- ΝΕΟ: ΕΜΦΑΝΙΣΗ ΠΡΟΕΙΔΟΠΟΙΗΣΗΣ & ΕΠΙΛΟΓΗΣ ---
+                    if name in existing_cocktails:
+                        old_pcs = existing_cocktails[name]
+                        st.error(f"⚠️ Ήδη καταχωρημένα: {old_pcs} τμχ")
+                        actions[name] = st.radio(
+                            "Επιλογή Ενημέρωσης:", 
+                            [f"➕ Προσθήκη (Νέο Σύνολο: {old_pcs + counts[name]})", "🔄 Αντικατάσταση"], 
+                            key=f"act_{name}"
+                        )
+
+            # --- ΝΕΟ: ΥΠΟΛΟΓΙΣΜΟΣ ΤΕΛΙΚΗΣ ΠΟΣΟΤΗΤΑΣ ΠΡΙΝ ΤΗ ΦΟΡΜΑ ---
+            final_counts = {}
+            for name in selected_cocktails:
+                if name in existing_cocktails:
+                    if "➕ Προσθήκη" in actions[name]:
+                        final_counts[name] = counts[name] + existing_cocktails[name]
+                    else:
+                        final_counts[name] = counts[name]
+                else:
+                    final_counts[name] = counts[name]
 
             lot_entries = []
             with st.form("detailed_lot_form"):
                 for cocktail_name in selected_cocktails:
                     recipe_row = df_rec[df_rec["Ονομα"] == cocktail_name].iloc[0]
-                    st.markdown(f"#### 🏷️ {cocktail_name}")
+                    
+                    # Δείχνουμε το τελικό σύνολο στον τίτλο της φόρμας
+                    st.markdown(f"#### 🏷️ {cocktail_name} (Τελικό Σύνολο Παραγωγής: {final_counts[cocktail_name]} τμχ)")
                     h = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
                     for col, label in zip(h, ["Υλικό", "ml", "Βάρος(g)", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
                     
@@ -1442,7 +1479,9 @@ elif page == "📦 Lot Παραγωγής":
                         ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
                         if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
                         ml_u = recipe_row.get(f"ML{i}", 0.0)
-                        tot_ml = ml_u * counts[cocktail_name]
+                        
+                        # Υπολογισμός ml με βάση το final_counts!
+                        tot_ml = ml_u * final_counts[cocktail_name]
                         tg_g = tot_ml
                         match_ing = df_ing[df_ing["Name"] == ing]
                         if not match_ing.empty:
@@ -1459,15 +1498,22 @@ elif page == "📦 Lot Παραγωγής":
 
                         lot_entries.append({
                             "prod_date": formatted_date, "prod_time": current_time, "customer": customer_name,
-                            "cocktail_name": cocktail_name, "lot_cocktail": date_lot_label, "pieces": int(counts[cocktail_name]),
+                            "cocktail_name": cocktail_name, "lot_cocktail": date_lot_label, "pieces": int(final_counts[cocktail_name]),
                             "ingredient_name": ing, "total_ml": float(tot_ml), "target_g": round(float(tg_g), 1),
                             "lot_number": l1 if not l2 else f"{l1} / {l2}", "expiry_date": e1 if not e2 else f"{e1} / {e2}"
                         })
                 
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud"):
                     if lot_entries:
+                        # --- ΝΕΟ: ΚΑΘΑΡΙΣΜΟΣ ΠΑΛΙΩΝ ΕΓΓΡΑΦΩΝ ΠΡΙΝ ΤΗΝ ΝΕΑ ΑΠΟΘΗΚΕΥΣΗ ---
+                        # Έτσι η βάση σου παραμένει καθαρή (1 εγγραφή ανά κοκτέιλ/πελάτη/μέρα) με τα ενημερωμένα νούμερα
+                        for cocktail_name in selected_cocktails:
+                            if cocktail_name in existing_cocktails:
+                                supabase.table("production_log").delete().eq("prod_date", formatted_date).eq("customer", customer_name).eq("cocktail_name", cocktail_name).execute()
+
+                        # Αποθήκευση των νέων/αθροισμένων δεδομένων
                         supabase.table("production_log").insert(lot_entries).execute()
-                        st.success("✅ Αποθηκεύτηκε!")
+                        st.success("✅ Η παραγωγή ενημερώθηκε και αποθηκεύτηκε!")
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
