@@ -2103,14 +2103,12 @@ elif page == "📦 Lot Παραγωγής":
     # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΓΙΑ ΤΟ DROP-DOWN
     try:
         res_cust = supabase.table("customers").select("name").execute()
-        # Δημιουργούμε τη λίστα και προσθέτουμε μια επιλογή για Λιανική
         customer_options = sorted([c["name"] for c in res_cust.data]) if res_cust.data else []
         if "Λιανική / Άγνωστος" not in customer_options:
             customer_options.insert(0, "Λιανική / Άγνωστος")
     except Exception:
         customer_options = ["Λιανική / Άγνωστος"]
 
-    # --- ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ: ΑΣΦΑΛΗΣ ΜΕΤΑΤΡΟΠΗ ML ---
     def get_recipe_ml(row_series, idx):
         raw_val = None
         exact_key = f"ML{idx}"
@@ -2177,13 +2175,13 @@ elif page == "📦 Lot Παραγωγής":
 
     st.divider()
 
-    # --- ΑΡΧΙΚΟΠΟΙΗΣΗ ΤΟΥ "ΚΑΛΑΘΙΟΥ" ΠΑΡΑΓΩΓΗΣ ΚΑΙ ΤΟΥ ΜΕΝΟΥ ΔΙΠΛΟΤΥΠΩΝ ---
+    # --- ΑΡΧΙΚΟΠΟΙΗΣΗ ΜΝΗΜΗΣ ---
     if "production_batch_items" not in st.session_state:
         st.session_state.production_batch_items = []
     if 'pending_conflict' not in st.session_state:
         st.session_state['pending_conflict'] = None
 
-    # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ B2B ΚΑΤΕΥΘΕΙΑΝ ΣΤΟ ΚΑΛΑΘΙ ---
+    # --- ΑΥΤΟΜΑΤΗ ΑΝΑΓΝΩΣΗ ΠΑΡΑΓΓΕΛΙΑΣ B2B ΣΤΟ ΚΑΛΑΘΙ ---
     if active_order is not None and not df_rec.empty and len(st.session_state.production_batch_items) == 0:
         details = active_order.get('order_details', '')
         b2b_customer = active_order.get('customer_name', 'Λιανική / Άγνωστος')
@@ -2205,7 +2203,6 @@ elif page == "📦 Lot Παραγωγής":
                     continue
                 
                 if c_name in df_rec["Ονομα"].unique():
-                    # ΔΙΟΡΘΩΣΗ: Προσθέτει αντί να αντικαθιστά αν υπάρχει το ίδιο προϊόν 2 φορές στην απόδειξη
                     found = False
                     for item in st.session_state.production_batch_items:
                         if item["Πελάτης"] == b2b_customer and item["Κοκτέιλ"] == c_name:
@@ -2214,19 +2211,16 @@ elif page == "📦 Lot Παραγωγής":
                             break
                     if not found:
                         st.session_state.production_batch_items.append({
-                            "Πελάτης": b2b_customer,
-                            "Κοκτέιλ": c_name,
-                            "Τεμάχια": qty
+                            "Πελάτης": b2b_customer, "Κοκτέιλ": c_name, "Τεμάχια": qty
                         })
             except Exception:
                 pass
 
-    # 2. ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ (ΝΕΟ ΣΥΣΤΗΜΑ "ΚΑΛΑΘΙΟΥ")
+    # 2. ΦΟΡΜΑ ΠΑΡΑΓΩΓΗΣ 
     if not df_rec.empty:
         st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
         
         st.markdown("### 🛒 1. Καταχώρηση Παραγγελιών ανά Πελάτη")
-        
         c_col1, c_col2, c_col3, c_col4 = st.columns([2, 2, 1, 1.2])
         
         sel_cust = c_col1.selectbox("👤 1. Επιλέξτε Πελάτη:", customer_options, key=f"batch_cust_{reset_key}")
@@ -2237,46 +2231,58 @@ elif page == "📦 Lot Παραγωγής":
         st.write("") 
         if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
             if sel_cocktail:
-                existing_qty = 0
+                cart_qty = 0
                 for item in st.session_state.production_batch_items:
                     if item["Πελάτης"] == sel_cust and item["Κοκτέιλ"] == sel_cocktail:
-                        existing_qty = item["Τεμάχια"]
+                        cart_qty = item["Τεμάχια"]
                         break
                 
-                # ΕΛΕΓΧΟΣ ΔΙΠΛΟΤΥΠΟΥ ΣΤΟ ΚΑΛΑΘΙ
+                db_qty = 0
+                if cart_qty == 0:
+                    try:
+                        res_db = supabase.table("production_log").select("pieces").eq("prod_date", formatted_date).eq("customer", sel_cust).eq("cocktail_name", sel_cocktail).execute()
+                        if res_db.data:
+                            db_qty = res_db.data[0]["pieces"]
+                    except Exception:
+                        pass
+
+                existing_qty = cart_qty + db_qty
+
                 if existing_qty > 0:
                     st.session_state['pending_conflict'] = {
                         "cust": sel_cust, "cocktail": sel_cocktail,
                         "new_pcs": sel_pcs, "old_pcs": existing_qty
                     }
+                    st.rerun() 
                 else:
                     st.session_state.production_batch_items.append({
                         "Πελάτης": sel_cust, "Κοκτέιλ": sel_cocktail, "Τεμάχια": sel_pcs
                     })
-                    st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} στον πελάτη {sel_cust}!")
+                    st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail}!")
                     st.rerun()
 
-        # --- ΕΜΦΑΝΙΣΗ ΑΝΑΔΥΟΜΕΝΟΥ ΜΕΝΟΥ ΣΕ ΠΕΡΙΠΤΩΣΗ ΣΥΓΚΡΟΥΣΗΣ ---
         if st.session_state.get('pending_conflict'):
             conf = st.session_state['pending_conflict']
             
-            st.error(f"⚠️ **Προσοχή:** Το κοκτέιλ **{conf['cocktail']}** υπάρχει ήδη στο καλάθι για τον πελάτη **{conf['cust']}**!")
-            st.write(f"📊 Παλιά ποσότητα: **{conf['old_pcs']} τμχ** | Νέα προσθήκη: **{conf['new_pcs']} τμχ**")
+            st.error(f"⚠️ **Προσοχή:** Το κοκτέιλ **{conf['cocktail']}** υπάρχει ήδη καταχωρημένο για τον πελάτη **{conf['cust']}** (Σήμερα)!")
+            st.write(f"📊 Ήδη υπάρχουσα ποσότητα: **{conf['old_pcs']} τμχ** | Νέα προσθήκη: **{conf['new_pcs']} τμχ**")
             
             col_btn1, col_btn2, col_btn3 = st.columns(3)
             
-            if col_btn1.button(f"➕ Άθροισμα ({conf['old_pcs'] + conf['new_pcs']} τμχ)", type="primary"):
-                for item in st.session_state.production_batch_items:
-                    if item["Πελάτης"] == conf['cust'] and item["Κοκτέιλ"] == conf['cocktail']:
-                        item["Τεμάχια"] += conf['new_pcs']
+            if col_btn1.button(f"➕ Άθροισμα (Σύνολο: {conf['old_pcs'] + conf['new_pcs']} τμχ)", type="primary"):
+                st.session_state.production_batch_items = [i for i in st.session_state.production_batch_items if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'])]
+                st.session_state.production_batch_items.append({
+                    "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['old_pcs'] + conf['new_pcs']
+                })
                 st.session_state['pending_conflict'] = None
                 st.toast("✅ Η ποσότητα ενημερώθηκε επιτυχώς!")
                 st.rerun()
                 
-            if col_btn2.button(f"🔄 Αντικατάσταση (Σύνολο: {conf['new_pcs']} τμχ)"):
-                for item in st.session_state.production_batch_items:
-                    if item["Πελάτης"] == conf['cust'] and item["Κοκτέιλ"] == conf['cocktail']:
-                        item["Τεμάχια"] = conf['new_pcs']
+            if col_btn2.button(f"🔄 Αντικατάσταση (Τελικό: {conf['new_pcs']} τμχ)"):
+                st.session_state.production_batch_items = [i for i in st.session_state.production_batch_items if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'])]
+                st.session_state.production_batch_items.append({
+                    "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['new_pcs']
+                })
                 st.session_state['pending_conflict'] = None
                 st.toast("🔄 Η ποσότητα αντικαταστάθηκε!")
                 st.rerun()
@@ -2297,8 +2303,7 @@ elif page == "📦 Lot Παραγωγής":
             
             if st.button("🗑️ Καθαρισμός Παρτίδας", type="secondary"):
                 st.session_state.production_batch_items = []
-                if 'active_b2b_order' in st.session_state:
-                    st.session_state['active_b2b_order'] = None
+                st.session_state['active_b2b_order'] = None
                 st.rerun()
                 
             for item in st.session_state.production_batch_items:
@@ -2556,77 +2561,71 @@ elif page == "📦 Lot Παραγωγής":
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud", type="primary"):
                     if lot_entries:
                         try:
+                            # 🚀 ΑΠΟΛΥΤΗ ΣΥΓΧΩΝΕΥΣΗ (Διαγραφή παλιών και εισαγωγή νέων)
+                            # Αντί να αθροίζουμε τυφλά, διαγράφουμε τη σημερινή εγγραφή του πελάτη/κοκτέιλ και βάζουμε τη νέα (που τα περιέχει όλα)
+                            unique_updates = set((e["customer"], e["cocktail_name"], e["prod_date"]) for e in lot_entries)
+                            for cust, cock, pdate in unique_updates:
+                                supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).execute()
+                            
+                            supabase.table("production_log").insert(lot_entries).execute()
+                            
+                            # 🚀 ΣΥΓΧΩΝΕΥΣΗ B2B ΟΙΚΟΝΟΜΙΚΩΝ (Αυτόματο Re-build)
                             all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
                             all_customers_res = supabase.table("customers").select("name, discount").execute()
                             
                             recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in all_recipes_res.data} if all_recipes_res.data else {}
                             customer_discounts = {c['name']: float(c.get('discount') or 0.0) for c in all_customers_res.data} if all_customers_res.data else {}
-                            
-                            for entry in lot_entries:
-                                c_name = entry.get("customer")
-                                cocktail = entry.get("cocktail_name")
-                                price = recipe_prices.get(cocktail, 0.0)
-                                discount = customer_discounts.get(c_name, 0.0)
-                                entry["sold_price"] = price * (1 - (discount / 100.0))
+
+                            for cust, _, pdate in unique_updates:
+                                if cust == "Λιανική / Άγνωστος": continue
                                 
-                            # Αποθήκευση Πρώτων Υλών
-                            supabase.table("production_log").insert(lot_entries).execute()
-                            st.session_state.production_batch_items = []
-                            
-                            if active_order is not None:
-                                supabase.table("b2b_orders").update({"status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"}).eq("id", active_order['id']).execute()
-                                st.session_state['active_b2b_order'] = None 
-                            else:
-                                cust_prod = {}
-                                for entry in lot_entries:
-                                    c = entry["customer"]
-                                    if c not in cust_prod:
-                                        cust_prod[c] = {"products": {}, "date": entry["prod_date"]}
-                                    cocktail = entry["cocktail_name"]
-                                    cust_prod[c]["products"][cocktail] = entry["pieces"]
-                                    
-                                for c_name, c_data in cust_prod.items():
-                                    products = c_data["products"]
-                                    p_date_str = c_data["date"]
-                                    if c_name == "Λιανική / Άγνωστος" and not products:
-                                        continue 
-                                    try:
-                                        date_iso = datetime.strptime(p_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                    except:
-                                        date_iso = selected_date.isoformat()
-                                    discount = 0.0
-                                    try:
-                                        res_c = supabase.table("customers").select("discount").eq("name", c_name).execute()
-                                        if res_c.data and res_c.data[0].get("discount"):
-                                            discount = float(res_c.data[0].get("discount"))
-                                    except Exception:
-                                        pass
+                                # Διαβάζουμε ΟΛΗ την παραγωγή του πελάτη για τη μέρα για να φτιάξουμε 1 απόδειξη
+                                today_logs = supabase.table("production_log").select("cocktail_name, pieces").eq("prod_date", pdate).eq("customer", cust).execute()
+                                
+                                if today_logs.data:
+                                    unique_cocktails = {}
+                                    for row in today_logs.data:
+                                        unique_cocktails[row["cocktail_name"]] = int(row["pieces"])
+                                        
                                     total_amount = 0.0
                                     details_lines = []
-                                    for cocktail, pcs in products.items():
-                                        price = 0.0
-                                        try:
-                                            res_p = supabase.table("recipes").select("catalog_price").eq("name", cocktail).execute()
-                                            if res_p.data and res_p.data[0].get("catalog_price"):
-                                                price = float(res_p.data[0].get("catalog_price"))
-                                        except Exception:
-                                            pass
-                                        line_total = price * pcs
-                                        total_amount += line_total
-                                        details_lines.append(f"• {pcs} τμχ {cocktail}")
+                                    for cockt, pcs in unique_cocktails.items():
+                                        price = recipe_prices.get(cockt, 0.0)
+                                        total_amount += price * pcs
+                                        details_lines.append(f"• {pcs} τμχ {cockt}")
+                                        
+                                    discount = customer_discounts.get(cust, 0.0)
                                     final_total = total_amount * (1 - (discount / 100))
+                                    
                                     details_str = "\n".join(details_lines)
                                     if discount > 0:
                                         details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
-                                    supabase.table("b2b_orders").insert({
-                                        "customer_name": c_name,
-                                        "total_amount": final_total,
-                                        "order_details": details_str,
-                                        "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
-                                        "created_at": f"{date_iso}T{current_time}:00"
-                                    }).execute()
+                                        
+                                    try:
+                                        date_iso = datetime.strptime(pdate, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                    except:
+                                        date_iso = selected_date.isoformat()
+
+                                    # Ψάχνουμε αν υπάρχει ήδη B2B παραγγελία
+                                    existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
+                                    
+                                    if existing_order.data:
+                                        supabase.table("b2b_orders").update({
+                                            "total_amount": round(final_total, 2),
+                                            "order_details": details_str
+                                        }).eq("id", existing_order.data[0]["id"]).execute()
+                                    else:
+                                        supabase.table("b2b_orders").insert({
+                                            "customer_name": cust, "total_amount": round(final_total, 2),
+                                            "order_details": details_str, "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
+                                            "created_at": f"{date_iso}T{current_time}:00"
+                                        }).execute()
+
+                            st.session_state.production_batch_items = []
+                            st.session_state['active_b2b_order'] = None 
                             st.session_state['lot_reset_key'] += 1
-                            st.success("✅ Η παρτίδα αποθηκεύτηκε και το Dashboard ενημερώθηκε αυτόματα!")
+                            st.session_state.pop('search_data_loaded', None) # 🚀 FORCES REFRESH
+                            st.success("✅ Η παραγωγή αποθηκεύτηκε και συγχωνεύτηκε άψογα!")
                             time.sleep(2)
                             st.rerun()
                         except Exception as e:
@@ -2645,9 +2644,7 @@ elif page == "📦 Lot Παραγωγής":
             "total_ml": "Σύνολο_ML", "target_g": "Στόχος_Γραμμάρια", "lot_number": "Lot Number", "expiry_date": "Ημ_Λήξης"
         })
 
-        # --- ΦΙΛΤΡΑ ΣΤΗΝ ΚΟΡΥΦΗ ---
         st.markdown("### 🔍 Φίλτρα Αναζήτησης")
-        
         all_dates = sorted(df_all_logs_renamed["Ημερομηνία"].dropna().unique(), reverse=True)
         date_options = ["-- Όλες οι Ημερομηνίες --"] + list(all_dates)
         sel_hist_date = st.selectbox("📅 Φίλτρο Ημερομηνίας:", options=date_options)
@@ -2657,7 +2654,6 @@ elif page == "📦 Lot Παραγωγής":
             df_temp_date = df_temp_date[df_temp_date["Ημερομηνία"] == sel_hist_date]
 
         col_f2, col_f3 = st.columns(2)
-
         with col_f2:
             cust_options = ["-- Όλοι οι Πελάτες --"] + sorted(list(df_temp_date["Πελάτης"].dropna().unique()))
             sel_customer = st.selectbox("👤 Φίλτρο Πελάτη:", options=cust_options)
@@ -2667,42 +2663,32 @@ elif page == "📦 Lot Παραγωγής":
             sel_cocktail = st.selectbox("🍹 Φίλτρο ανά Cocktail:", options=cocktail_options)
 
         df_filtered = df_temp_date.copy()
-
-        if sel_customer != "-- Όλοι οι Πελάτες --":
-            df_filtered = df_filtered[df_filtered["Πελάτης"] == sel_customer]
-
-        if sel_cocktail != "-- Όλα τα Cocktails --":
-            df_filtered = df_filtered[df_filtered["Cocktail"] == sel_cocktail]
+        if sel_customer != "-- Όλοι οι Πελάτες --": df_filtered = df_filtered[df_filtered["Πελάτης"] == sel_customer]
+        if sel_cocktail != "-- Όλα τα Cocktails --": df_filtered = df_filtered[df_filtered["Cocktail"] == sel_cocktail]
 
         df_past = df_filtered.copy()
-
         st.divider()
 
         tab_edit_batch, tab_bulk_lots, tab_mass_date = st.tabs([
-            "✏️ Τροποποίηση Ποσοτήτων", 
-            "📦 Μαζική Ενημέρωση LOT Υλικών", 
-            "📅 Μαζική Αλλαγή Ημερ. Παραγωγής"
+            "✏️ Τροποποίηση Ποσοτήτων", "📦 Μαζική Ενημέρωση LOT Υλικών", "📅 Μαζική Αλλαγή Ημερ. Παραγωγής"
         ])
 
         with tab_edit_batch:
             st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT")
-            
             unique_cocktails_of_day = df_past["Cocktail"].unique() if not df_past.empty else []
             options = ["-- Επιλέξτε Κοκτέιλ για Επεξεργασία --"] + list(unique_cocktails_of_day)
             sel_cocktail_edit = st.selectbox("Διαλέξτε το Κοκτέιλ που παράγεται:", options, key="batch_edit_by_cocktail_key")
             
             if sel_cocktail_edit != "-- Επιλέξτε Κοκτέιλ για Επεξεργασία --":
                 batch_id = str(hash(sel_cocktail_edit))
-                
                 cocktail_df = df_past[df_past["Cocktail"] == sel_cocktail_edit]
                 unique_customers = cocktail_df["Πελάτης"].unique()
-                
                 first_cust_df = cocktail_df[cocktail_df["Πελάτης"] == unique_customers[0]]
                 old_lot_cocktail = str(first_cust_df.iloc[0]["LOT_Cocktail"])
+                
                 if "-" in old_lot_cocktail:
                     parts_lot = old_lot_cocktail.split("-")
-                    default_lot_date = parts_lot[0].strip()
-                    default_prod_day = parts_lot[1].strip()
+                    default_lot_date, default_prod_day = parts_lot[0].strip(), parts_lot[1].strip()
                 else:
                     default_lot_date = str(first_cust_df.iloc[0]["Ημερομηνία"])
                     default_prod_day = default_lot_date.split("/")[0] if "/" in default_lot_date else "01"
@@ -2711,10 +2697,9 @@ elif page == "📦 Lot Παραγωγής":
                 c_g1, c_g2 = st.columns([2, 2])
                 new_global_lot_date = c_g1.text_input("📅 Κοινή Ημερομηνία LOT (DD/MM/YYYY)", value=default_lot_date, key=f"global_ldate_{batch_id}")
                 new_global_prod_day = c_g2.text_input("🔢 Κοινή Ημέρα Παραγωγής (Διψήφιος)", value=default_prod_day, max_chars=2, key=f"global_pday_{batch_id}")
-                
                 global_lot_c = f"{new_global_lot_date.strip()}-{new_global_prod_day.strip()}"
-                st.divider()
                 
+                st.divider()
                 st.markdown("#### 👥 Κατανόηση Ποσοτήτων ανά Πελάτη")
                 customer_settings = {}
                 
@@ -2729,38 +2714,26 @@ elif page == "📦 Lot Παραγωγής":
                     new_pcs = c2.number_input("📦 Τεμάχια Παραγωγής", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{cust}")
                     
                     customer_settings[cust] = {
-                        "new_cust_name": new_cust_name.strip(),
-                        "new_lot_date": new_global_lot_date.strip(),
-                        "new_prod_day": new_global_prod_day.strip(),
-                        "new_lot_c": global_lot_c,
-                        "new_pcs": new_pcs,
-                        "old_pcs": old_pcs,
-                        "base_date_str": base_cust["Ημερομηνία"]
+                        "new_cust_name": new_cust_name.strip(), "new_lot_date": new_global_lot_date.strip(),
+                        "new_prod_day": new_global_prod_day.strip(), "new_lot_c": global_lot_c,
+                        "new_pcs": new_pcs, "old_pcs": old_pcs, "base_date_str": base_cust["Ημερομηνία"]
                     }
                     st.caption("---")
 
                 st.markdown("#### 🧪 Έλεγχος Υλικών & LOT Πρώτων Υλών ανά Πελάτη")
                 with st.form(f"edit_form_cocktail_batch_{batch_id}"):
                     h_edit = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
-                    h_labels = ["Πελάτης", "Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]
-                    for col, label in zip(h_edit, h_labels): col.caption(label)
+                    for col, label in zip(h_edit, ["Πελάτης", "Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
                     
                     final_updated_rows = []
-                    
                     for i, idx in enumerate(cocktail_df.index):
                         r_d = df_past.loc[idx]
                         orig_row_in_all_logs = df_all_logs.loc[idx]
-                        cust_name = r_d["Πελάτης"]
-                        ing_name = r_d["Υλικό"]
-                        old_ml = float(r_d["Σύνολο_ML"])
-                        
+                        cust_name, ing_name, old_ml = r_d["Πελάτης"], r_d["Υλικό"], float(r_d["Σύνολο_ML"])
                         c_set = customer_settings[cust_name]
-                        mult = float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if c_set["old_pcs"] != 0 else 1.0
-                        new_ml = old_ml * mult
+                        new_ml = old_ml * (float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if c_set["old_pcs"] != 0 else 1.0)
                         
-                        raw_lot = str(r_d["Lot Number"])
-                        raw_exp = str(r_d["Ημ_Λήξης"])
-                        
+                        raw_lot, raw_exp = str(r_d["Lot Number"]), str(r_d["Ημ_Λήξης"])
                         lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
                         exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
                         while len(lot_parts) < 2: lot_parts.append("")
@@ -2776,114 +2749,87 @@ elif page == "📦 Lot Παραγωγής":
                         lt2 = r[5].text_input("L2", value=lot_parts[1], key=f"ed_l2_{batch_id}_{i}", label_visibility="collapsed")
                         ex2 = r[6].text_input("E2", value=exp_parts[1], key=f"ed_e2_{batch_id}_{i}", label_visibility="collapsed")
                         
-                        final_lot = lt1 if not lt2 else f"{lt1} / {lt2}"
-                        final_exp = ex1 if not ex2 else f"{ex1} / {ex2}"
-                        
                         u_cost = orig_row_in_all_logs.get("unit_cost", 0.22)
                         if pd.isna(u_cost): u_cost = 0.22
                         
                         final_updated_rows.append({
                             "orig_cust": cust_name, "ing": ing_name, "ml": new_ml,
-                            "lot": final_lot, "exp": final_exp, "u_cost": u_cost,
-                            "orig_id": orig_row_in_all_logs["id"], "orig_time": r_d["Ώρα"]
+                            "lot": lt1 if not lt2 else f"{lt1} / {lt2}", "exp": ex1 if not ex2 else f"{ex1} / {ex2}", 
+                            "u_cost": u_cost, "orig_id": orig_row_in_all_logs["id"], "orig_time": r_d["Ώρα"]
                         })
                     
                     st.divider()
-                    
                     col_save, col_del = st.columns(2)
-                    with col_save:
-                        btn_save = st.form_submit_button("💾 Αποθήκευση Αλλαγών Κοκτέιλ", type="primary")
-                    with col_del:
-                        btn_del = st.form_submit_button("🗑️ Διαγραφή Παραγωγής")
+                    with col_save: btn_save = st.form_submit_button("💾 Αποθήκευση Αλλαγών Κοκτέιλ", type="primary")
+                    with col_del: btn_del = st.form_submit_button("🗑️ Διαγραφή Παραγωγής")
                         
                     if btn_save:
                         try:
                             ids_to_del = [f["orig_id"] for f in final_updated_rows]
-                            if ids_to_del:
-                                supabase.table("production_log").delete().in_("id", ids_to_del).execute()
+                            if ids_to_del: supabase.table("production_log").delete().in_("id", ids_to_del).execute()
                             
                             new_batch = []
                             for fd in final_updated_rows:
                                 c_set = customer_settings[fd["orig_cust"]]
                                 g_calc = fd["ml"]
                                 match_i = df_ing[df_ing["Name"] == fd["ing"]]
-                                if not match_i.empty: 
-                                    g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
+                                if not match_i.empty: g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
                                 
                                 new_batch.append({
-                                    "prod_date": c_set["new_lot_date"], 
-                                    "prod_time": fd["orig_time"], 
-                                    "customer": c_set["new_cust_name"], 
-                                    "cocktail_name": sel_cocktail_edit, 
-                                    "lot_cocktail": c_set["new_lot_c"], 
-                                    "pieces": int(c_set["new_pcs"]), 
+                                    "prod_date": c_set["new_lot_date"], "prod_time": fd["orig_time"], 
+                                    "customer": c_set["new_cust_name"], "cocktail_name": sel_cocktail_edit, 
+                                    "lot_cocktail": c_set["new_lot_c"], "pieces": int(c_set["new_pcs"]), 
                                     "ingredient_name": fd["ing"], "total_ml": fd["ml"], "target_g": round(g_calc, 1), 
-                                    "lot_number": fd["lot"], "expiry_date": fd["exp"],
-                                    "unit_cost": round(float(fd["u_cost"]), 4)
+                                    "lot_number": fd["lot"], "expiry_date": fd["exp"], "unit_cost": round(float(fd["u_cost"]), 4)
                                 })
-                            if new_batch:
-                                supabase.table("production_log").insert(new_batch).execute()
+                            if new_batch: supabase.table("production_log").insert(new_batch).execute()
                             
                             for orig_c, c_set in customer_settings.items():
                                 old_target_date = datetime.strptime(c_set["base_date_str"], "%d/%m/%Y").strftime("%Y-%m-%d")
                                 new_target_date = datetime.strptime(c_set["new_lot_date"], "%d/%m/%Y").strftime("%Y-%m-%d")
-                                
                                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", orig_c).gte("created_at", f"{old_target_date}T00:00:00").lte("created_at", f"{old_target_date}T23:59:59").execute()
                                 
                                 if res_orders.data:
                                     for order in res_orders.data:
-                                        order_details = str(order.get('order_details', ''))
-                                        old_str = f"{c_set['old_pcs']} τμχ {sel_cocktail_edit}"
-                                        
-                                        if old_str in order_details:
+                                        if f"{c_set['old_pcs']} τμχ {sel_cocktail_edit}" in str(order.get('order_details', '')):
                                             new_catalog_price = 0.0
                                             res_p = supabase.table("recipes").select("catalog_price").eq("name", sel_cocktail_edit).execute()
-                                            if res_p.data and res_p.data[0].get("catalog_price"):
-                                                new_catalog_price = float(res_p.data[0].get("catalog_price"))
+                                            if res_p.data and res_p.data[0].get("catalog_price"): new_catalog_price = float(res_p.data[0].get("catalog_price"))
                                                 
                                             cust_discount = 0.0
                                             res_c = supabase.table("customers").select("discount").eq("name", c_set["new_cust_name"]).execute()
-                                            if res_c.data and res_c.data[0].get("discount"):
-                                                cust_discount = float(res_c.data[0].get("discount"))
+                                            if res_c.data and res_c.data[0].get("discount"): cust_discount = float(res_c.data[0].get("discount"))
                                             
-                                            lines = order_details.split('\n')
-                                            new_lines = []
-                                            total_amount_before_discount = 0.0
+                                            lines = str(order.get('order_details', '')).split('\n')
+                                            new_lines, total_amount_before_discount = [], 0.0
                                             
                                             for line in lines:
                                                 if line.strip().startswith("•") or "τμχ" in line:
-                                                    if old_str in line:
-                                                        line_text = f"• {c_set['new_pcs']} τμχ {sel_cocktail_edit}"
-                                                        current_pcs = c_set['new_pcs']
-                                                        current_price = new_catalog_price
+                                                    if f"{c_set['old_pcs']} τμχ {sel_cocktail_edit}" in line:
+                                                        line_text, current_pcs, current_price = f"• {c_set['new_pcs']} τμχ {sel_cocktail_edit}", c_set['new_pcs'], new_catalog_price
                                                     else:
                                                         line_text = line
                                                         try:
                                                             parts = line.replace('•', '').split(' τμχ ')
-                                                            current_pcs = int(parts[0].strip())
-                                                            current_cocktail = parts[1].split(' (')[0].strip()
+                                                            current_pcs, current_cocktail = int(parts[0].strip()), parts[1].split(' (')[0].strip()
                                                             res_other_p = supabase.table("recipes").select("catalog_price").eq("name", current_cocktail).execute()
                                                             current_price = float(res_other_p.data[0].get("catalog_price")) if (res_other_p.data and res_other_p.data[0].get("catalog_price")) else 0.0
-                                                        except:
-                                                            current_pcs = 0
-                                                            current_price = 0.0
+                                                        except: current_pcs, current_price = 0, 0.0
                                                     
                                                     total_amount_before_discount += current_pcs * current_price
                                                     new_lines.append(line_text)
                                             
                                             final_payable_amount = total_amount_before_discount * (1 - (cust_discount / 100))
-                                            
-                                            details_str = "\n".join(new_lines)
-                                            details_str += f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
+                                            details_str = "\n".join(new_lines) + f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
                                             if cust_discount > 0: details_str += f"\n[Έκπτωση: {cust_discount}% εφαρμόστηκε]"
                                             
                                             supabase.table("b2b_orders").update({
-                                                "customer_name": c_set["new_cust_name"],
-                                                "total_amount": round(final_payable_amount, 2),
-                                                "order_details": details_str,
-                                                "created_at": f"{new_target_date}T{fd['orig_time']}"
+                                                "customer_name": c_set["new_cust_name"], "total_amount": round(final_payable_amount, 2),
+                                                "order_details": details_str, "created_at": f"{new_target_date}T{fd['orig_time']}"
                                             }).eq("id", order['id']).execute()
                                             break
+                            st.session_state['lot_reset_key'] += 1
+                            st.session_state.pop('search_data_loaded', None)
                             st.success("✅ Επιτυχία! Το LOT και η ημερομηνία άλλαξαν και εφαρμόστηκαν σε όλους!")
                             time.sleep(1)
                             st.rerun()
@@ -2893,71 +2839,49 @@ elif page == "📦 Lot Παραγωγής":
                     if btn_del:
                         try:
                             ids_to_del = df_all_logs.loc[cocktail_df.index, "id"].tolist()
-                            if ids_to_del:
-                                supabase.table("production_log").delete().in_("id", ids_to_del).execute()
+                            if ids_to_del: supabase.table("production_log").delete().in_("id", ids_to_del).execute()
                             
                             for orig_c, c_set in customer_settings.items():
-                                del_cust = orig_c
-                                del_cocktail = sel_cocktail_edit
-                                del_pieces = c_set["old_pcs"]
-                                del_date_str = c_set["base_date_str"]
-                                
-                                target_date = datetime.strptime(del_date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", del_cust).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
+                                target_date = datetime.strptime(c_set["base_date_str"], "%d/%m/%Y").strftime("%Y-%m-%d")
+                                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", orig_c).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
                                 
                                 if res_orders.data:
                                     for order in res_orders.data:
-                                        order_details = str(order.get('order_details', ''))
-                                        old_str = f"{del_pieces} τμχ {del_cocktail}"
-                                        
-                                        if old_str in order_details:
-                                            lines = order_details.split('\n')
-                                            new_lines = []
-                                            total_amount_before_discount = 0.0
+                                        if f"{c_set['old_pcs']} τμχ {sel_cocktail_edit}" in str(order.get('order_details', '')):
+                                            lines = str(order.get('order_details', '')).split('\n')
+                                            new_lines, total_amount_before_discount = [], 0.0
                                             
                                             cust_discount = 0.0
-                                            res_c = supabase.table("customers").select("discount").eq("name", del_cust).execute()
-                                            if res_c.data and res_c.data[0].get("discount"):
-                                                cust_discount = float(res_c.data[0].get("discount"))
+                                            res_c = supabase.table("customers").select("discount").eq("name", orig_c).execute()
+                                            if res_c.data and res_c.data[0].get("discount"): cust_discount = float(res_c.data[0].get("discount"))
                                                 
                                             for line in lines:
-                                                if not line.strip() or "[Αρχική Αξία:" in line or "Έκπτωση:" in line:
-                                                    continue
-                                                
+                                                if not line.strip() or "[Αρχική Αξία:" in line or "Έκπτωση:" in line: continue
                                                 if line.strip().startswith("•") or "τμχ" in line:
-                                                    if old_str in line:
-                                                        continue
+                                                    if f"{c_set['old_pcs']} τμχ {sel_cocktail_edit}" in line: continue
                                                     else:
                                                         new_lines.append(line)
                                                         try:
                                                             parts = line.replace('•', '').split(' τμχ ')
-                                                            current_pcs = int(parts[0].strip())
-                                                            current_cocktail = parts[1].split(' (')[0].strip()
+                                                            current_pcs, current_cocktail = int(parts[0].strip()), parts[1].split(' (')[0].strip()
                                                             res_other_p = supabase.table("recipes").select("catalog_price").eq("name", current_cocktail).execute()
                                                             current_price = float(res_other_p.data[0].get("catalog_price")) if (res_other_p.data and res_other_p.data[0].get("catalog_price")) else 0.0
                                                             total_amount_before_discount += current_pcs * current_price
-                                                        except:
-                                                            pass
+                                                        except: pass
                                             
                                             if not new_lines:
                                                 supabase.table("b2b_orders").delete().eq("id", order['id']).execute()
                                             else:
                                                 final_payable_amount = total_amount_before_discount * (1 - (cust_discount / 100))
-                                                details_str = "\n".join(new_lines)
-                                                details_str += f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
-                                                if cust_discount > 0: 
-                                                    details_str += f"\n[Έκπτωση: {cust_discount}% εφαρμόστηκε]"
-                                                
-                                                supabase.table("b2b_orders").update({
-                                                    "total_amount": round(final_payable_amount, 2),
-                                                    "order_details": details_str
-                                                }).eq("id", order['id']).execute()
+                                                details_str = "\n".join(new_lines) + f"\n\n[Αρχική Αξία: {total_amount_before_discount:.2f}€]"
+                                                if cust_discount > 0: details_str += f"\n[Έκπτωση: {cust_discount}% εφαρμόστηκε]"
+                                                supabase.table("b2b_orders").update({"total_amount": round(final_payable_amount, 2), "order_details": details_str}).eq("id", order['id']).execute()
                                             break 
-                                            
+                            st.session_state['lot_reset_key'] += 1
+                            st.session_state.pop('search_data_loaded', None)
                             st.warning("🗑️ Η παραγωγή ενημερώθηκε και το κοκτέιλ αφαιρέθηκε χειρουργικά.")
                             time.sleep(1)
                             st.rerun()
-                            
                         except Exception as e:
                             st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
 
@@ -2968,10 +2892,9 @@ elif page == "📦 Lot Παραγωγής":
             if df_filtered.empty:
                 st.warning("Δεν βρέθηκαν εγγραφές με τα συγκεκριμένα φίλτρα.")
             else:
-                df_grouped = df_filtered.groupby("Υλικό").agg({
-                    "Σύνολο_ML": "sum", "Lot Number": "first", "Ημ_Λήξης": "first"
-                }).reset_index()
-
+                df_grouped = df_filtered.groupby("Υλικό").agg({"Σύνολο_ML": "sum", "Lot Number": "first", "Ημ_Λήξης": "first"}).reset_index()
+                
+                # 🚀 FORCES REFRESH KEY
                 edited_summary = st.data_editor(
                     df_grouped,
                     column_config={
@@ -2980,9 +2903,7 @@ elif page == "📦 Lot Παραγωγής":
                         "Lot Number": st.column_config.TextColumn("LOT ΗΜΕΡΑΣ (Αλλαγή)"),
                         "Ημ_Λήξης": st.column_config.TextColumn("ΛΗΞΗ ΗΜΕΡΑΣ (Αλλαγή)")
                     },
-                    hide_index=True,
-                    use_container_width=True,
-                    key="grouped_lot_editor"
+                    hide_index=True, use_container_width=True, key=f"grouped_lot_editor_{reset_key}"
                 )
                 
                 lot_sheet_html = f"""
@@ -3001,36 +2922,26 @@ elif page == "📦 Lot Παραγωγής":
                     <table>
                         <thead>
                             <tr>
-                                <th style="width: 40%;">Πρώτη Ύλη</th>
-                                <th style="width: 15%;">Σύνολο (ml)</th>
-                                <th style="width: 25%;">LOT Number (Γράψτε εδώ)</th>
-                                <th style="width: 20%;">Ημ. Λήξης (Γράψτε εδώ)</th>
+                                <th style="width: 40%;">Πρώτη Ύλη</th><th style="width: 15%;">Σύνολο (ml)</th><th style="width: 25%;">LOT Number (Γράψτε εδώ)</th><th style="width: 20%;">Ημ. Λήξης (Γράψτε εδώ)</th>
                             </tr>
                         </thead>
                         <tbody>
                 """
-                for _, row in df_grouped.iterrows():
-                    lot_sheet_html += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']} ml</td><td></td><td></td></tr>"
+                for _, row in df_grouped.iterrows(): lot_sheet_html += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']} ml</td><td></td><td></td></tr>"
                 lot_sheet_html += "</tbody></table></body></html>"
 
                 col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
-                    save_grouped = st.button("💾 Ενημέρωση LOT σε όλα τα Cocktail", type="primary", use_container_width=True, key="save_grouped_lots_btn")
+                with col_btn1: save_grouped = st.button("💾 Ενημέρωση LOT σε όλα τα Cocktail", type="primary", use_container_width=True, key="save_grouped_lots_btn")
                 with col_btn2:
                     safe_date = sel_hist_date.replace("/", "_") if sel_hist_date != "-- Όλες οι Ημερομηνίες --" else "ALL"
-                    st.download_button(
-                        label="🖨️ Εκτύπωση Κενού Φύλλου Καταγραφής LOT", data=lot_sheet_html,
-                        file_name=f"Blank_LOT_Sheet_{safe_date}.html", mime="text/html", use_container_width=True
-                    )
+                    st.download_button(label="🖨️ Εκτύπωση Κενού Φύλλου Καταγραφής LOT", data=lot_sheet_html, file_name=f"Blank_LOT_Sheet_{safe_date}.html", mime="text/html", use_container_width=True)
                     
                 if save_grouped:
                     updates_made = 0
                     try:
                         for idx, row in edited_summary.iterrows():
-                            orig_lot = str(df_grouped.loc[idx, "Lot Number"])
-                            orig_exp = str(df_grouped.loc[idx, "Ημ_Λήξης"])
-                            new_lot = str(row["Lot Number"])
-                            new_exp = str(row["Ημ_Λήξης"])
+                            orig_lot, orig_exp = str(df_grouped.loc[idx, "Lot Number"]), str(df_grouped.loc[idx, "Ημ_Λήξης"])
+                            new_lot, new_exp = str(row["Lot Number"]), str(row["Ημ_Λήξης"])
                             
                             if new_lot != orig_lot or new_exp != orig_exp:
                                 clean_lot = "" if pd.isna(row["Lot Number"]) or new_lot == "nan" else new_lot.strip()
@@ -3040,11 +2951,12 @@ elif page == "📦 Lot Παραγωγής":
                                 if sel_hist_date != "-- Όλες οι Ημερομηνίες --": query = query.eq("prod_date", sel_hist_date)
                                 if sel_customer != "-- Όλοι οι Πελάτες --": query = query.eq("customer", sel_customer)
                                 if sel_cocktail != "-- Όλα τα Cocktails --": query = query.eq("cocktail_name", sel_cocktail)
-                                    
                                 query.execute()
                                 updates_made += 1
                         
                         if updates_made > 0:
+                            st.session_state['lot_reset_key'] += 1
+                            st.session_state.pop('search_data_loaded', None) # 🚀 FORCES REFRESH IN DB CACHE
                             st.success("✅ Τα νέα LOT περάστηκαν αυτόματα σε όλες τις συνταγές!")
                             time.sleep(1)
                             st.rerun()
@@ -3059,63 +2971,38 @@ elif page == "📦 Lot Παραγωγής":
                 st.warning("⚠️ Παρακαλώ επιλέξτε πρώτα μια συγκεκριμένη Ημερομηνία από το φίλτρο στην κορυφή της σελίδας.")
             else:
                 unique_cocktails_of_day = df_past["Cocktail"].dropna().unique()
-                
                 if len(unique_cocktails_of_day) == 0:
                     st.info("Δεν βρέθηκαν κοκτέιλ για αυτή την ημερομηνία.")
                 else:
-                    selected_mass_cocktails = st.multiselect(
-                        "🍹 1. Επιλέξτε Κοκτέιλ (μπορείτε να επιλέξετε πολλά):",
-                        options=list(unique_cocktails_of_day)
-                    )
-                    
+                    selected_mass_cocktails = st.multiselect("🍹 1. Επιλέξτε Κοκτέιλ (μπορείτε να επιλέξετε πολλά):", options=list(unique_cocktails_of_day))
                     new_mass_prod_day = st.text_input("🔢 2. Νέος Διψήφιος Αριθμός (π.χ. 02):", max_chars=2)
-                    
                     st.divider()
+                    
                     if st.button("💾 Αποθήκευση Νέου Διψήφιου", type="primary"):
-                        if not selected_mass_cocktails:
-                            st.error("Επιλέξτε τουλάχιστον ένα κοκτέιλ.")
-                        elif not new_mass_prod_day.strip():
-                            st.error("Παρακαλώ συμπληρώστε τον νέο διψήφιο αριθμό.")
+                        if not selected_mass_cocktails: st.error("Επιλέξτε τουλάχιστον ένα κοκτέιλ.")
+                        elif not new_mass_prod_day.strip(): st.error("Παρακαλώ συμπληρώστε τον νέο διψήφιο αριθμό.")
                         else:
                             try:
-                                rows_to_update = df_all_logs[
-                                    (df_all_logs["prod_date"] == sel_hist_date) & 
-                                    (df_all_logs["cocktail_name"].isin(selected_mass_cocktails))
-                                ]
-                                
-                                updates_count = 0
+                                rows_to_update = df_all_logs[(df_all_logs["prod_date"] == sel_hist_date) & (df_all_logs["cocktail_name"].isin(selected_mass_cocktails))]
                                 for idx, row in rows_to_update.iterrows():
-                                    old_lot_c = str(row["lot_cocktail"])
-                                    row_id = row["id"]
-                                    
-                                    if "-" in old_lot_c:
-                                        base_date = old_lot_c.split("-")[0].strip()
-                                        new_lot_c = f"{base_date}-{new_mass_prod_day.strip()}"
-                                    else:
-                                        new_lot_c = f"{old_lot_c}-{new_mass_prod_day.strip()}"
+                                    old_lot_c, row_id = str(row["lot_cocktail"]), row["id"]
+                                    new_lot_c = f"{old_lot_c.split('-')[0].strip()}-{new_mass_prod_day.strip()}" if "-" in old_lot_c else f"{old_lot_c}-{new_mass_prod_day.strip()}"
+                                    if new_lot_c != old_lot_c: supabase.table("production_log").update({"lot_cocktail": new_lot_c}).eq("id", row_id).execute()
                                         
-                                    if new_lot_c != old_lot_c:
-                                        supabase.table("production_log").update({"lot_cocktail": new_lot_c}).eq("id", row_id).execute()
-                                        updates_count += 1
-                                        
+                                st.session_state['lot_reset_key'] += 1
+                                st.session_state.pop('search_data_loaded', None)
                                 st.success(f"✅ Ο διψήφιος αριθμός άλλαξε σε '-{new_mass_prod_day.strip()}' για τα επιλεγμένα κοκτέιλ!")
-                                time.sleep(2)
+                                time.sleep(1)
                                 st.rerun()
-                            except Exception as e:
-                                st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
+                            except Exception as e: st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
         st.divider()
-        
         cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
         file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
-        df_clean_customers = df_past.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
-            "Τεμάχια": "first"
-        })
+        df_clean_customers = df_past.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({"Τεμάχια": "first"})
 
-        html_pro = f"""
-        <html>
-        <head><meta charset='UTF-8'><style>
+        html_pro = f"""<html><head><meta charset='UTF-8'><style>
             body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 20px; line-height: 1.5; }}
             .document-header {{ text-align: center; border-bottom: 3px solid #0275d8; padding-bottom: 15px; margin-bottom: 25px; }}
             .document-header h1 {{ color: #0275d8; font-size: 24px; margin: 0; }}
@@ -3126,152 +3013,63 @@ elif page == "📦 Lot Παραγωγής":
             td {{ border: 1px solid #dee2e6; padding: 10px; }}
             tr:nth-child(even) {{ background-color: #fdfdfd; }}
             .badge {{ background-color: #e9ecef; color: #495057; padding: 3px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; }}
-        </style></head>
-        <body>
-            <div class='document-header'>
-                <h1>CABCLUB COCKTAILS</h1>
-                <h2>📋 ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ</h2>
-                <p>Ημερομηνία Φιλτραρίσματος: <b>{sel_hist_date}</b>{cust_label}</p>
-            </div>
+        </style></head><body>
+            <div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>📋 ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ</h2><p>Ημερομηνία Φιλτραρίσματος: <b>{sel_hist_date}</b>{cust_label}</p></div>
         """
-        
         for p in df_clean_customers["Πελάτης"].unique():
             p_df = df_clean_customers[df_clean_customers["Πελάτης"] == p]
             actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
-            
-            html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div>"
-            html_pro += "<table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα</th></tr></thead><tbody>"
-            
-            for _, row in p_df.iterrows():
-                html_pro += f"""
-                <tr>
-                    <td><strong>{row['Cocktail']}</strong></td>
-                    <td><span class='badge'>{row['LOT_Cocktail']}</span></td>
-                    <td>{int(row['Τεμάχια'])} τμχ</td>
-                </tr>
-                """
+            html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div><table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα</th></tr></thead><tbody>"
+            for _, row in p_df.iterrows(): html_pro += f"<tr><td><strong>{row['Cocktail']}</strong></td><td><span class='badge'>{row['LOT_Cocktail']}</span></td><td>{int(row['Τεμάχια'])} τμχ</td></tr>"
             html_pro += "</tbody></table>"
-            
         html_pro += "</body></html>"
 
         df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
-        
-        grand_total_pcs = df_daily["Τεμάχια"].sum()
-        total_different_cocktails = df_daily["Cocktail"].nunique() if not df_daily.empty else 0
-        
+        grand_total_pcs, total_different_cocktails = df_daily["Τεμάχια"].sum(), df_daily["Cocktail"].nunique() if not df_daily.empty else 0
         total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
-        html_daily = f"""
-        <html><head><meta charset='UTF-8'><style>
+        html_daily = f"""<html><head><meta charset='UTF-8'><style>
             body {{ font-family: sans-serif; padding: 20px; }}
             .header {{ text-align: center; border-bottom: 3px solid #d32f2f; margin-bottom: 30px; }}
             .cocktail-header {{ background-color: #d32f2f; color: white; padding: 10px; margin-top: 20px; border-radius: 5px 5px 0 0; }}
             table {{ width: 100%; border-collapse: collapse; margin-bottom: 10px; }}
             th {{ background-color: #444; color: white; padding: 10px; text-align: left; }}
             td {{ padding: 10px; border: 1px solid #ddd; }}
-            .grand-total {{ 
-                margin-top: 30px; 
-                padding: 20px; 
-                background-color: #f8f9fa; 
-                border: 2px solid #d32f2f; 
-                text-align: center; 
-                font-size: 1.4em; 
-                border-radius: 10px;
-                line-height: 1.8;
-            }}
+            .grand-total {{ margin-top: 30px; padding: 20px; background-color: #f8f9fa; border: 2px solid #d32f2f; text-align: center; font-size: 1.4em; border-radius: 10px; line-height: 1.8; }}
             .grand-total b {{ color: #d32f2f; font-size: 1.6em; }}
             .cocktail-count {{ color: #444; font-size: 1.1em; font-weight: bold; margin-top: 5px; display: block; }}
-        </style></head>
-        <body>
-            <div class='header'>
-                <h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1>
-                <p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p>
-            </div>
+        </style></head><body>
+            <div class='header'><h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
         """
-        
         for cock in df_daily["Cocktail"].unique():
             c_data = df_daily[df_daily["Cocktail"] == cock]
-            html_daily += f"""
-            <h2 class='cocktail-header'>🍹 {cock}</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>LOT Number</th>
-                        <th>Πελάτης</th>
-                        <th>Ποσότητα (τμχ)</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
-            for _, row in c_data.iterrows():
-                html_daily += f"<tr><td>{row['LOT_Cocktail']}</td><td>{row['Πελάτης']}</td><td>{row['Τεμάχια']}</td></tr>"
-            
-            html_daily += f"""
-                <tr style='background:#f9f9f9; font-weight:bold;'>
-                    <td colspan='2' style='text-align: right;'>ΜΕΡΙΚΟ ΣΥΝΟΛΟ {cock}:</td>
-                    <td>{c_data['Τεμάχια'].sum()} τμχ</td>
-                </tr>
-            </tbody></table>
-            """
+            html_daily += f"<h2 class='cocktail-header'>🍹 {cock}</h2><table><thead><tr><th>LOT Number</th><th>Πελάτης</th><th>Ποσότητα (τμχ)</th></tr></thead><tbody>"
+            for _, row in c_data.iterrows(): html_daily += f"<tr><td>{row['LOT_Cocktail']}</td><td>{row['Πελάτης']}</td><td>{row['Τεμάχια']}</td></tr>"
+            html_daily += f"<tr style='background:#f9f9f9; font-weight:bold;'><td colspan='2' style='text-align: right;'>ΜΕΡΙΚΟ ΣΥΝΟΛΟ {cock}:</td><td>{c_data['Τεμάχια'].sum()} τμχ</td></tr></tbody></table>"
 
-        html_daily += f"""
-            <div class='grand-total'>
-                {total_label_text}<br>
-                <b>{grand_total_pcs} Τεμάχια</b>
-                <span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span>
-            </div>
-        </body></html>
-        """
+        html_daily += f"<div class='grand-total'>{total_label_text}<br><b>{grand_total_pcs} Τεμάχια</b><span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span></div></body></html>"
         
         df_prep = df_past.groupby("Υλικό").agg({
-            "Σύνολο_ML": "sum", 
-            "Στόχος_Γραμμάρια": "sum",
+            "Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum",
             "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan']))),
             "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan'])))
         }).reset_index()
 
-        html_prep = f"""
-        <html><head><meta charset='UTF-8'><style>
+        html_prep = f"""<html><head><meta charset='UTF-8'><style>
             body {{ font-family: sans-serif; padding: 30px; }}
             .header {{ text-align: center; border-bottom: 4px solid #2980b9; margin-bottom: 30px; }}
             table {{ width: 100%; border-collapse: collapse; }}
             th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
             td {{ border: 1px solid #bdc3c7; padding: 10px; }}
             .lot-info {{ font-size: 0.9em; color: #555; }}
-        </style></head>
-        <body>
-            <div class='header'>
-                <h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1>
-                <p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Πρώτη Ύλη</th>
-                        <th>Συνολική Ποσότητα (ml)</th>
-                        <th>Συνολικό Βάρος (g)</th>
-                        <th>Lot & Λήξη Πρ. Ύλης</th>
-                    </tr>
-                </thead>
-                <tbody>
+        </style></head><body>
+            <div class='header'><h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
+            <table><thead><tr><th>Πρώτη Ύλη</th><th>Συνολική Ποσότητα (ml)</th><th>Συνολικό Βάρος (g)</th><th>Lot & Λήξη Πρ. Ύλης</th></tr></thead><tbody>
         """
         for _, row in df_prep.iterrows():
-            display_parts = []
-            if row['Lot Number']: 
-                display_parts.append(row['Lot Number'])
-            if row['Ημ_Λήξης']: 
-                display_parts.append(row['Ημ_Λήξης'])
-            
+            display_parts = [p for p in [row['Lot Number'], row['Ημ_Λήξης']] if p]
             lot_text = " | ".join(display_parts) if display_parts else "-"
-            
-            html_prep += f"""
-                <tr>
-                    <td><b>{row['Υλικό']}</b></td>
-                    <td>{row['Σύνολο_ML']:.0f} ml</td>
-                    <td>{row['Στόχος_Γραμμάρια']:.1f} g</td>
-                    <td class='lot-info'>{lot_text}</td>
-                </tr>
-            """
+            html_prep += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f} ml</td><td>{row['Στόχος_Γραμμάρια']:.1f} g</td><td class='lot-info'>{lot_text}</td></tr>"
         html_prep += "</tbody></table></body></html>"
 
         col_p1, col_p2, col_p3 = st.columns(3)
@@ -3279,10 +3077,9 @@ elif page == "📦 Lot Παραγωγής":
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
     
-    # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL (🚀 LAZY LOADING) ---
+    # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
-    
     tab_filter, tab_recall_tool = st.tabs(["📋 Αναζήτηση & Φίλτρα", "🚨 Recall Tool (Ανάκληση)"])
 
     with tab_filter:
@@ -3292,7 +3089,6 @@ elif page == "📦 Lot Παραγωγής":
             search_cock = f2.multiselect("Cocktail:", sorted(df_all_logs["cocktail_name"].unique()) if res_log.data else [], key="filter_cock")
             search_ing = f3.multiselect("Πρώτη Ύλη:", sorted(df_all_logs["ingredient_name"].unique()) if res_log.data else [], key="filter_ing")
             search_lot = st.text_input("🔢 Αναζήτηση βάσει οποιουδήποτε LOT:", placeholder="π.χ. 040526 ή L123...", key="filter_lot_txt")
-
             load_search = st.button("🔄 Φόρτωση Πλήρων Δεδομένων Αναζήτησης")
 
         if load_search or 'search_data_loaded' in st.session_state:
@@ -3302,21 +3098,14 @@ elif page == "📦 Lot Παραγωγής":
                 
             if res_all.data:
                 df_all = pd.DataFrame(res_all.data).rename(columns={
-                    "prod_date": "Ημερομηνία",
-                    "customer": "Πελάτης",
-                    "cocktail_name": "Cocktail",
-                    "lot_cocktail": "LOT_Cocktail",
-                    "ingredient_name": "Υλικό",
-                    "lot_number": "Lot Number",
-                    "pieces": "Τεμάχια"
+                    "prod_date": "Ημερομηνία", "customer": "Πελάτης", "cocktail_name": "Cocktail",
+                    "lot_cocktail": "LOT_Cocktail", "ingredient_name": "Υλικό", "lot_number": "Lot Number", "pieces": "Τεμάχια"
                 })
-
                 dff = df_all.copy()
                 if search_cust: dff = dff[dff["Πελάτης"].isin(search_cust)]
                 if search_cock: dff = dff[dff["Cocktail"].isin(search_cock)]
                 if search_ing: dff = dff[dff["Υλικό"].isin(search_ing)]
-                if search_lot:
-                    dff = dff[dff.apply(lambda x: search_lot.lower() in str(x).lower(), axis=1)]
+                if search_lot: dff = dff[dff.apply(lambda x: search_lot.lower() in str(x).lower(), axis=1)]
 
                 st.write(f"Αποτελέσματα: **{len(dff)}** εγγραφές")
                 st.dataframe(dff, use_container_width=True, hide_index=True)
@@ -3324,208 +3113,85 @@ elif page == "📦 Lot Παραγωγής":
     with tab_recall_tool:
         st.markdown("#### 🚨 Εργαλείο Άμεσης Ανάκλησης Πρώτων Υλών")
         st.write("Αν ένας προμηθευτής αναφέρει πρόβλημα, εισάγετε το **Lot Number** ή την **Ημερομηνία Λήξης** της πρώτης ύλης παρακάτω.")
-        
-        recall_query = st.text_input(
-            "Εισάγετε το Lot Number ή την Ημερομηνία Λήξης προς αναζήτηση:", 
-            placeholder="π.χ. LOT-GIN-2024 ή 15/12/2026", 
-            key="recall_input_final"
-        )
+        recall_query = st.text_input("Εισάγετε το Lot Number ή την Ημερομηνία Λήξης προς αναζήτηση:", placeholder="π.χ. LOT-GIN-2024 ή 15/12/2026", key="recall_input_final")
         
         if recall_query:
             search_val = str(recall_query).strip()
-            
             with st.spinner("Σάρωση ιχνηλασιμότητας στο Cloud..."):
                 res_affected = supabase.table("production_log").select("*").or_(f"lot_number.ilike.%{search_val}%,expiry_date.ilike.%{search_val}%").execute()
             
             if res_affected.data:
                 df_affected = pd.DataFrame(res_affected.data).rename(columns={
-                    "prod_date": "Ημερομηνία",
-                    "customer": "Πελάτης",
-                    "cocktail_name": "Cocktail",
-                    "lot_cocktail": "LOT_Cocktail",
-                    "ingredient_name": "Υλικό",
-                    "lot_number": "Lot Number",
-                    "pieces": "Τεμάχια"
+                    "prod_date": "Ημερομηνία", "customer": "Πελάτης", "cocktail_name": "Cocktail",
+                    "lot_cocktail": "LOT_Cocktail", "ingredient_name": "Υλικό", "lot_number": "Lot Number", "pieces": "Τεμάχια"
                 })
                 
                 st.error(f"⚠️ **Βρέθηκαν {len(df_affected)} εγγραφές υλικών** στην παραγωγή που σχετίζονται με αυτό το στοιχείο!")
-                
                 detected_ingredients = df_affected["Υλικό"].dropna().unique().tolist()
                 ingredient_title = ", ".join([f"{ing}" for ing in detected_ingredients]) if detected_ingredients else "Άγνωστο Υλικό"
-                
                 df_display = df_affected[["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
                 
                 affected_cust_list = df_display["Πελάτης"].unique().tolist()
                 st.warning(f"📞 **B2B Πελάτες που πρέπει να ειδοποιηθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
                 
-                html_content = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <title>Αναφορά Άμεσης Ανάκλησης - Cocktail Factory</title>
-                    <style>
+                html_content = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Αναφορά Άμεσης Ανάκλησης - Cocktail Factory</title><style>
                         body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 30px; line-height: 1.6; }}
                         .header {{ border-bottom: 4px solid #d9534f; padding-bottom: 15px; margin-bottom: 25px; }}
                         .title {{ color: #d9534f; font-size: 26px; font-weight: bold; margin: 0; }}
                         .subtitle {{ color: #666; font-size: 13px; margin-top: 5px; }}
                         .target-box {{ background-color: #f7f7f7; border: 2px solid #d9534f; border-left: 8px solid #d9534f; padding: 15px; margin-bottom: 20px; border-radius: 4px; }}
-                        .target-box h2 {{ margin: 0 0 5px 0; color: #333; font-size: 20px; }}
-                        .target-box p {{ margin: 0; font-size: 16px; color: #555; }}
                         .danger-box {{ background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; padding: 15px; margin-bottom: 30px; color: #721c24; }}
-                        .danger-title {{ font-weight: bold; font-size: 18px; margin-bottom: 5px; }}
                         .cust-list {{ background: #fff3cd; border-left: 5px solid #ffc107; padding: 12px; font-size: 16px; font-weight: bold; color: #856404; margin-bottom: 25px; border-radius: 4px; }}
                         table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
                         th {{ background-color: #f1f1f1; border: 1px solid #dee2e6; text-align: left; padding: 12px; font-weight: bold; color: #495057; font-size: 14px; }}
                         td {{ border: 1px solid #dee2e6; text-align: left; padding: 12px; font-size: 14px; }}
-                        tr:nth-child(even) {{ background-color: #f9f9f9; }}
-                        .badge {{ background-color: #d9534f; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; letter-spacing: 0.5px; }}
-                        .footer {{ margin-top: 50px; font-size: 12px; color: #777; text-align: center; border-top: 1px solid #e9ecef; padding-top: 15px; }}
-                        @media print {{ body {{ margin: 15mm 10mm; }} .no-print {{ display: none; }} }}
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <div class="title">🚨 COCKTAIL FACTORY - ΕΚΘΕΣΗ ΑΝΑΚΛΗΣΗΣ ΠΡΩΤΩΝ ΥΛΩΝ</div>
-                        <div class="subtitle">Ημερομηνία & Ώρα Αναφοράς: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}</div>
-                    </div>
-                    <div class="target-box">
-                        <h2>🎯 ΣΤΟΧΟΣ ΑΝΑΚΛΗΣΗΣ</h2>
-                        <p><strong>Πρώτη Ύλη:</strong> {ingredient_title}</p>
-                        <p><strong>LOT / Ημ. Λήξης που αναζητήθηκε:</strong> <span class="badge" style="font-size: 14px;">{search_val}</span></p>
-                    </div>
-                    <div class="danger-box">
-                        <div class="danger-title">⚠️ ΣΤΟΙΧΕΙΑ ΕΛΕΓΧΟΥ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</div>
-                        <div>Συνολικές εγγραφές παραγωγής που εντοπίστηκαν: <strong>{len(df_affected)}</strong></div>
-                    </div>
-                    <h3 style="color: #495057; margin-bottom: 10px;">📞 Λίστα Επείγουσας Ειδοποίησης Πελατών (B2B):</h3>
-                    <div class="cust-list">{', '.join([f'{c}' for c in affected_cust_list])}</div>
+                        .badge {{ background-color: #d9534f; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }}
+                    </style></head><body>
+                    <div class="header"><div class="title">🚨 COCKTAIL FACTORY - ΕΚΘΕΣΗ ΑΝΑΚΛΗΣΗΣ ΠΡΩΤΩΝ ΥΛΩΝ</div><div class="subtitle">Ημερομηνία & Ώρα Αναφοράς: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}</div></div>
+                    <div class="target-box"><h2>🎯 ΣΤΟΧΟΣ ΑΝΑΚΛΗΣΗΣ</h2><p><strong>Πρώτη Ύλη:</strong> {ingredient_title}</p><p><strong>LOT / Ημ. Λήξης που αναζητήθηκε:</strong> <span class="badge" style="font-size: 14px;">{search_val}</span></p></div>
+                    <div class="danger-box"><div>⚠️ ΣΤΟΙΧΕΙΑ ΕΛΕΓΧΟΥ & ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ</div><div>Συνολικές εγγραφές παραγωγής που εντοπίστηκαν: <strong>{len(df_affected)}</strong></div></div>
+                    <h3 style="color: #495057; margin-bottom: 10px;">📞 Λίστα Επείγουσας Ειδοποίησης Πελατών (B2B):</h3><div class="cust-list">{', '.join([f'{c}' for c in affected_cust_list])}</div>
                     <h3 style="color: #495057; margin-bottom: 5px;">📋 Αναλυτικό Πλάνο Διανομής Μολυσμένων Παρτίδων</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Ημερομηνία</th>
-                                <th>Πελάτης B2B</th>
-                                <th>Έτοιμο Προϊόν (Cocktail)</th>
-                                <th>LOT Τελικού Προϊόντος</th>
-                                <th>Ποσότητα (Τεμάχια)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                    <table><thead><tr><th>Ημερομηνία</th><th>Πελάτης B2B</th><th>Έτοιμο Προϊόν (Cocktail)</th><th>LOT Τελικού Προϊόντος</th><th>Ποσότητα (Τεμάχια)</th></tr></thead><tbody>
                 """
-                
-                for _, row in df_display.iterrows():
-                    html_content += f"""
-                            <tr>
-                                <td>{row['Ημερομηνία']}</td>
-                                <td><strong>{row['Πελάτης']}</strong></td>
-                                <td>{row['Cocktail']}</td>
-                                <td><span class="badge">{row['LOT_Cocktail']}</span></td>
-                                <td>{int(row['Τεμάχια'])} τμχ</td>
-                            </tr>
-                    """
-                    
-                html_content += """
-                        </tbody>
-                    </table>
-                    <div class="footer">
-                        Το έγγραφο αυτό αποτελεί επίσημο αντίγραφο ιχνηλασιμότητας από το λογισμικό Cocktail Factory.<br>
-                        Υπεύθυνος Εργαστηρίου: ___________________________ &nbsp;&nbsp;&nbsp;&nbsp; Υπογραφή: ___________________________
-                    </div>
-                </body>
-                </html>
-                """
+                for _, row in df_display.iterrows(): html_content += f"<tr><td>{row['Ημερομηνία']}</td><td><strong>{row['Πελάτης']}</strong></td><td>{row['Cocktail']}</td><td><span class='badge'>{row['LOT_Cocktail']}</span></td><td>{int(row['Τεμάχια'])} τμχ</td></tr>"
+                html_content += """</tbody></table><div class="footer">Το έγγραφο αυτό αποτελεί επίσημο αντίγραφο ιχνηλασιμότητας από το λογισμικό Cocktail Factory.<br>Υπεύθυνος Εργαστηρίου: ___________________________ &nbsp;&nbsp;&nbsp;&nbsp; Υπογραφή: ___________________________</div></body></html>"""
                 
                 safe_file_name = search_val.replace("/", "_")
-                st.download_button(
-                    label="📄 Λήψη Έκθεσης Ανάκλησης (Έτοιμο HTML για Εκτύπωση)", 
-                    data=html_content, 
-                    file_name=f"RECALL_REPORT_{safe_file_name}.html", 
-                    mime="text/html",
-                    use_container_width=True
-                )
+                st.download_button(label="📄 Λήψη Έκθεσης Ανάκλησης (Έτοιμο HTML)", data=html_content, file_name=f"RECALL_REPORT_{safe_file_name}.html", mime="text/html", use_container_width=True)
             else:
-                st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot ή ημερομηνία λήξης πρώτης ύλης. Το στοκ σας είναι ασφαλές!")
+                st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot. Το στοκ σας είναι ασφαλές!")
     
     # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ ---
     st.divider()
     st.subheader("📊 Γενικό Αρχείο Παραγωγής")
-    st.info("Εδώ μπορείτε να εκτυπώσετε ολόκληρο το ιστορικό παραγωγής από τη Supabase.")
     
     if st.button("📑 Προετοιμασία Πλήρους Ιστορικού για Εκτύπωση"):
-        with st.spinner("Λήψη όλων των δεδομένων από το Cloud... Παρακαλώ περιμένετε."):
+        with st.spinner("Λήψη όλων των δεδομένων από το Cloud..."):
             res_full_hist = supabase.table("production_log").select("*").execute()
             
         if res_full_hist.data:
-            df_raw_hist = pd.DataFrame(res_full_hist.data).rename(columns={
-                "prod_date": "Ημερομηνία",
-                "customer": "Πελάτης",
-                "cocktail_name": "Cocktail",
-                "lot_cocktail": "LOT_Cocktail",
-                "pieces": "Τεμάχια"
-            })
-            
+            df_raw_hist = pd.DataFrame(res_full_hist.data).rename(columns={"prod_date": "Ημερομηνία", "customer": "Πελάτης", "cocktail_name": "Cocktail", "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια"})
             df_raw_hist['temp_date'] = pd.to_datetime(df_raw_hist['Ημερομηνία'], format='%d/%m/%Y')
-            df_raw_hist = df_raw_hist.sort_values(by='temp_date', ascending=False)
-            df_full_hist = df_raw_hist.drop_duplicates(subset=["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail"])
+            df_full_hist = df_raw_hist.sort_values(by='temp_date', ascending=False).drop_duplicates(subset=["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail"])
     
-            full_html = f"""
-            <html>
-            <head>
-                <meta charset='UTF-8'>
-                <style>
+            full_html = f"""<html><head><meta charset='UTF-8'><style>
                     body {{ font-family: 'Helvetica', sans-serif; padding: 20px; }}
                     h1 {{ text-align: center; color: #2c3e50; border-bottom: 3px solid #2c3e50; }}
                     .summary {{ background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6; }}
                     table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
                     th {{ background-color: #2c3e50; color: white; padding: 10px; font-size: 12px; text-transform: uppercase; }}
                     td {{ border: 1px solid #ddd; padding: 8px; font-size: 11px; }}
-                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
                     .badge-lot {{ background: #d32f2f; color: white; padding: 2px 5px; border-radius: 3px; font-weight: bold; }}
-                </style>
-            </head>
-            <body>
-                <h1>ΚΑΤΑΣΤΑΣΗ ΟΛΙΚΗΣ ΠΑΡΑΓΩΓΗΣ - CABCLUB</h1>
-                <div class='summary'>
-                    Συνολικά Cocktail / Παρτίδες: <b>{len(df_full_hist)}</b><br>
-                    Ημερομηνία Εξαγωγής: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Ημ/νία</th>
-                            <th>Πελάτης</th>
-                            <th>Cocktail</th>
-                            <th>LOT</th>
-                            <th>Τμχ</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                </style></head><body>
+                <h1>ΚΑΤΑΣΤΑΣΗ ΟΛΙΚΗΣ ΠΑΡΑΓΩΓΗΣ - CABCLUB</h1><div class='summary'>Συνολικά Cocktail: <b>{len(df_full_hist)}</b><br>Ημερομηνία: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}</div>
+                <table><thead><tr><th>Ημ/νία</th><th>Πελάτης</th><th>Cocktail</th><th>LOT</th><th>Τμχ</th></tr></thead><tbody>
             """
-    
-            for _, row in df_full_hist.iterrows():
-                full_html += f"""
-                    <tr>
-                        <td>{row['Ημερομηνία']}</td>
-                        <td>{row['Πελάτης']}</td>
-                        <td><b>{row['Cocktail']}</b></td>
-                        <td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td>
-                        <td>{row['Τεμάχια']}</td>
-                    </tr>
-                """
-    
+            for _, row in df_full_hist.iterrows(): full_html += f"<tr><td>{row['Ημερομηνία']}</td><td>{row['Πελάτης']}</td><td><b>{row['Cocktail']}</b></td><td><span class='badge-lot'>{row['LOT_Cocktail']}</span></td><td>{row['Τεμάχια']}</td></tr>"
             full_html += "</tbody></table></body></html>"
     
-            st.download_button(
-                label="📥 Λήψη Πλήρους Ιστορικού (HTML)",
-                data=full_html,
-                file_name=f"Full_Production_History_{datetime.now(greece_tz).strftime('%d_%m_%y')}.html",
-                mime="text/html"
-            )
-        else:
-            st.warning("Δεν βρέθηκαν δεδομένα στη βάση.")
-
+            st.download_button(label="📥 Λήψη Πλήρους Ιστορικού (HTML)", data=full_html, file_name=f"Full_Production_History_{datetime.now(greece_tz).strftime('%d_%m_%y')}.html", mime="text/html")
 # --- 1.6 ΣΥΝΤΗΡΗΣΗ & HACCP (ULΤΙΜΑΤΕ VERSION) ---
 elif page == "🧼 Συντήρηση & HACCP":
     st.header("🧼 Ψηφιακό Μητρώο HACCP & Καθαρισμού")
