@@ -2889,12 +2889,23 @@ elif page == "📦 Lot Παραγωγής":
             st.markdown("### 📋 Συνολικά LOT Πρώτων Υλών (Μαζική Διόρθωση)")
             st.info("💡 Αλλάξτε το Lot ή τη Λήξη σε ένα υλικό, και η αλλαγή θα περάσει αυτόματα σε ΟΛΑ τα cocktails της ημέρας!")
 
-            if df_filtered.empty:
+            # 🚀 ΚΛΕΙΣΙΜΟ ΤΡΥΠΑΣ 1: Απαγόρευση μαζικής αλλαγής αν δεν έχει επιλεγεί ημέρα!
+            if sel_hist_date == "-- Όλες οι Ημερομηνίες --":
+                st.warning("⚠️ Παρακαλώ επιλέξτε πρώτα μια συγκεκριμένη **Ημερομηνία** από το φίλτρο στην κορυφή της σελίδας για να κάνετε μαζική ενημέρωση. Διαφορετικά θα αλλάζατε τα LOT όλων των ετών!")
+            elif df_filtered.empty:
                 st.warning("Δεν βρέθηκαν εγγραφές με τα συγκεκριμένα φίλτρα.")
             else:
-                df_grouped = df_filtered.groupby("Υλικό").agg({"Σύνολο_ML": "sum", "Lot Number": "first", "Ημ_Λήξης": "first"}).reset_index()
+                # 🚀 ΚΛΕΙΣΙΜΟ ΤΡΥΠΑΣ 2: Ασφαλής συνένωση αν υπάρχουν πολλαπλά διαφορετικά LOT
+                def safe_join(x):
+                    vals = sorted(set(str(v).strip() for v in x if pd.notna(v) and str(v).lower() not in ['none', '', 'nan']))
+                    return " / ".join(vals) if vals else ""
                 
-                # 🚀 FORCES REFRESH KEY
+                df_grouped = df_filtered.groupby("Υλικό").agg({
+                    "Σύνολο_ML": "sum", 
+                    "Lot Number": safe_join,  # Πλέον δεν κρύβει τα διαφορετικά LOT
+                    "Ημ_Λήξης": safe_join
+                }).reset_index()
+                
                 edited_summary = st.data_editor(
                     df_grouped,
                     column_config={
@@ -2933,7 +2944,7 @@ elif page == "📦 Lot Παραγωγής":
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1: save_grouped = st.button("💾 Ενημέρωση LOT σε όλα τα Cocktail", type="primary", use_container_width=True, key="save_grouped_lots_btn")
                 with col_btn2:
-                    safe_date = sel_hist_date.replace("/", "_") if sel_hist_date != "-- Όλες οι Ημερομηνίες --" else "ALL"
+                    safe_date = sel_hist_date.replace("/", "_")
                     st.download_button(label="🖨️ Εκτύπωση Κενού Φύλλου Καταγραφής LOT", data=lot_sheet_html, file_name=f"Blank_LOT_Sheet_{safe_date}.html", mime="text/html", use_container_width=True)
                     
                 if save_grouped:
@@ -2943,12 +2954,12 @@ elif page == "📦 Lot Παραγωγής":
                             orig_lot, orig_exp = str(df_grouped.loc[idx, "Lot Number"]), str(df_grouped.loc[idx, "Ημ_Λήξης"])
                             new_lot, new_exp = str(row["Lot Number"]), str(row["Ημ_Λήξης"])
                             
+                            # Ελέγχουμε αν ο χρήστης έκανε αλλαγή σε σχέση με την προβολή
                             if new_lot != orig_lot or new_exp != orig_exp:
                                 clean_lot = "" if pd.isna(row["Lot Number"]) or new_lot == "nan" else new_lot.strip()
                                 clean_exp = "" if pd.isna(row["Ημ_Λήξης"]) or new_exp == "nan" else new_exp.strip()
                                 
-                                query = supabase.table("production_log").update({"lot_number": clean_lot, "expiry_date": clean_exp}).eq("ingredient_name", row["Υλικό"])
-                                if sel_hist_date != "-- Όλες οι Ημερομηνίες --": query = query.eq("prod_date", sel_hist_date)
+                                query = supabase.table("production_log").update({"lot_number": clean_lot, "expiry_date": clean_exp}).eq("ingredient_name", row["Υλικό"]).eq("prod_date", sel_hist_date)
                                 if sel_customer != "-- Όλοι οι Πελάτες --": query = query.eq("customer", sel_customer)
                                 if sel_cocktail != "-- Όλα τα Cocktails --": query = query.eq("cocktail_name", sel_cocktail)
                                 query.execute()
@@ -2956,10 +2967,12 @@ elif page == "📦 Lot Παραγωγής":
                         
                         if updates_made > 0:
                             st.session_state['lot_reset_key'] += 1
-                            st.session_state.pop('search_data_loaded', None) # 🚀 FORCES REFRESH IN DB CACHE
+                            st.session_state.pop('search_data_loaded', None) 
                             st.success("✅ Τα νέα LOT περάστηκαν αυτόματα σε όλες τις συνταγές!")
                             time.sleep(1)
                             st.rerun()
+                        else:
+                            st.info("Δεν εντοπίστηκαν αλλαγές για να αποθηκευτούν.")
                     except Exception as e:
                         st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
