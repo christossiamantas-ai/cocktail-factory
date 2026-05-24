@@ -2984,30 +2984,61 @@ elif page == "📦 Lot Παραγωγής":
                 st.warning("⚠️ Παρακαλώ επιλέξτε πρώτα μια συγκεκριμένη Ημερομηνία από το φίλτρο στην κορυφή της σελίδας.")
             else:
                 unique_cocktails_of_day = df_past["Cocktail"].dropna().unique()
+                
                 if len(unique_cocktails_of_day) == 0:
-                    st.info("Δεν βρέθηκαν κοκτέιλ για αυτή την ημερομηνία.")
+                    st.info("Δεν βρέθηκαν κοκτέιλ για αυτή την ημερομηνία (ή για τον επιλεγμένο πελάτη).")
                 else:
-                    selected_mass_cocktails = st.multiselect("🍹 1. Επιλέξτε Κοκτέιλ (μπορείτε να επιλέξετε πολλά):", options=list(unique_cocktails_of_day))
-                    new_mass_prod_day = st.text_input("🔢 2. Νέος Διψήφιος Αριθμός (π.χ. 02):", max_chars=2)
-                    st.divider()
+                    selected_mass_cocktails = st.multiselect(
+                        "🍹 1. Επιλέξτε Κοκτέιλ (μπορείτε να επιλέξετε πολλά):",
+                        options=list(unique_cocktails_of_day)
+                    )
                     
+                    new_mass_prod_day = st.text_input("🔢 2. Νέος Διψήφιος Αριθμός (π.χ. 02):", max_chars=2)
+                    
+                    st.divider()
                     if st.button("💾 Αποθήκευση Νέου Διψήφιου", type="primary"):
-                        if not selected_mass_cocktails: st.error("Επιλέξτε τουλάχιστον ένα κοκτέιλ.")
-                        elif not new_mass_prod_day.strip(): st.error("Παρακαλώ συμπληρώστε τον νέο διψήφιο αριθμό.")
+                        if not selected_mass_cocktails:
+                            st.error("Επιλέξτε τουλάχιστον ένα κοκτέιλ.")
+                        elif not new_mass_prod_day.strip():
+                            st.error("Παρακαλώ συμπληρώστε τον νέο διψήφιο αριθμό.")
+                        elif not new_mass_prod_day.strip().isdigit():
+                            st.error("⚠️ Σφάλμα: Ο διψήφιος πρέπει να περιέχει ΜΟΝΟ αριθμούς (π.χ. 01, 02).")
                         else:
                             try:
-                                rows_to_update = df_all_logs[(df_all_logs["prod_date"] == sel_hist_date) & (df_all_logs["cocktail_name"].isin(selected_mass_cocktails))]
+                                # 🚀 ΔΙΟΡΘΩΣΗ 2 & 3: Σωστό padding με μηδενικό
+                                safe_prod_day = new_mass_prod_day.strip().zfill(2)
+                                
+                                # 🚀 ΔΙΟΡΘΩΣΗ 1: Σεβόμαστε το φίλτρο του πελάτη!
+                                mask = (df_all_logs["prod_date"] == sel_hist_date) & (df_all_logs["cocktail_name"].isin(selected_mass_cocktails))
+                                if sel_customer != "-- Όλοι οι Πελάτες --":
+                                    mask = mask & (df_all_logs["customer"] == sel_customer)
+                                    
+                                rows_to_update = df_all_logs[mask]
+                                
+                                updates_count = 0
                                 for idx, row in rows_to_update.iterrows():
-                                    old_lot_c, row_id = str(row["lot_cocktail"]), row["id"]
-                                    new_lot_c = f"{old_lot_c.split('-')[0].strip()}-{new_mass_prod_day.strip()}" if "-" in old_lot_c else f"{old_lot_c}-{new_mass_prod_day.strip()}"
-                                    if new_lot_c != old_lot_c: supabase.table("production_log").update({"lot_cocktail": new_lot_c}).eq("id", row_id).execute()
+                                    old_lot_c = str(row["lot_cocktail"])
+                                    row_id = row["id"]
+                                    
+                                    if "-" in old_lot_c:
+                                        new_lot_c = f"{old_lot_c.split('-')[0].strip()}-{safe_prod_day}"
+                                    else:
+                                        new_lot_c = f"{old_lot_c}-{safe_prod_day}"
                                         
-                                st.session_state['lot_reset_key'] += 1
-                                st.session_state.pop('search_data_loaded', None)
-                                st.success(f"✅ Ο διψήφιος αριθμός άλλαξε σε '-{new_mass_prod_day.strip()}' για τα επιλεγμένα κοκτέιλ!")
-                                time.sleep(1)
-                                st.rerun()
-                            except Exception as e: st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
+                                    if new_lot_c != old_lot_c:
+                                        supabase.table("production_log").update({"lot_cocktail": new_lot_c}).eq("id", row_id).execute()
+                                        updates_count += 1
+                                        
+                                if updates_count > 0:
+                                    st.session_state['lot_reset_key'] += 1
+                                    st.session_state.pop('search_data_loaded', None) # Καθαρισμός μνήμης για ανανέωση
+                                    st.success(f"✅ Ο διψήφιος αριθμός άλλαξε επιτυχώς σε '-{safe_prod_day}' για {updates_count} εγγραφές!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.info("Όλες οι επιλεγμένες εγγραφές έχουν ήδη αυτόν τον διψήφιο αριθμό.")
+                            except Exception as e:
+                                st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
         st.divider()
         cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
