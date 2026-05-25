@@ -1796,6 +1796,46 @@ elif page == "📈 Dashboard":
         m5.metric("📦 Παραγγελίες", format_gr(total_orders_count, decimals=0))
         m6.metric("⚖️ Μέση Αξία", f"{format_gr(aov)} €")
 
+        # --- 🕵️‍♂️ ΕΡΓΑΛΕΙΟ ΕΛΕΓΧΟΥ (AUDIT TOOL) ---
+        with st.expander("🕵️‍♂️ ΕΡΓΑΛΕΙΟ ΕΛΕΓΧΟΥ: Ακτινογραφία Υπολογισμών (Κάντε κλικ)"):
+            st.info("💡 Πάρτε ένα κομπιουτεράκι και επιβεβαιώστε τα παρακάτω νούμερα της τελευταίας παραγγελίας.")
+            if not df_filtered.empty:
+                # Παίρνουμε την πρώτη γραμμή (τελευταία παραγγελία)
+                s = df_filtered.iloc[0]
+                
+                col_aud1, col_aud2, col_aud3 = st.columns(3)
+                
+                with col_aud1:
+                    st.markdown("### 1️⃣ Υπολογισμός Εσόδων")
+                    st.write(f"- **Τιμή Καταλόγου:** {s['catalog_price']:.2f}€")
+                    st.write(f"- **Βασική Έκπτωση:** {s['discount']}%")
+                    st.write(f"- **Έξτρα Έκπτωση:** {s['extra_discount']}%")
+                    st.markdown(f"- **Τελική Τιμή (Dealer): {s['dealer_price']:.2f}€**")
+                    st.caption("---")
+                    st.write(f"- Συνολικά Τεμάχια: {s['pieces']}")
+                    st.write(f"- Δωρεάν Τεμάχια: {s['free_pieces']}")
+                    st.write(f"- Πληρωμένα Τεμάχια: {s['pieces'] - s['free_pieces']}")
+                    st.success(f"💰 Έσοδα = {(s['pieces'] - s['free_pieces'])} x {s['dealer_price']:.2f}€ = **{s['Theoretical_Revenue']:.2f}€**")
+
+                with col_aud2:
+                    st.markdown("### 2️⃣ Υπολογισμός Κόστους")
+                    st.write(f"- **Κόστος ανά τμχ:** {s['Final_Unit_Cost']:.4f}€")
+                    st.caption("(Το κόστος περιλαμβάνει τα υλικά της συνταγής + 0.22€ πάγια/συσκευασία)")
+                    st.caption("---")
+                    st.write(f"- Παράχθηκαν: {s['pieces']} τμχ (πληρώνονται και τα δωρεάν)")
+                    st.error(f"📉 Κόστος = {s['pieces']} x {s['Final_Unit_Cost']:.4f}€ = **{s['Total_Cost']:.2f}€**")
+
+                with col_aud3:
+                    st.markdown("### 3️⃣ Υπολογισμός Κέρδους")
+                    st.write(f"**Έσοδα:** {s['Theoretical_Revenue']:.2f}€")
+                    st.write(f"**Μείον Κόστος:** -{s['Total_Cost']:.2f}€")
+                    st.caption("---")
+                    st.info(f"📈 Καθαρό Κέρδος: **{s['Profit']:.2f}€**")
+                    margin_perc = (s['Profit'] / s['Theoretical_Revenue'] * 100) if s['Theoretical_Revenue'] > 0 else 0
+                    st.markdown(f"### Margin: {margin_perc:.1f}%")
+            else:
+                st.write("Δεν υπάρχουν δεδομένα.")
+
         # --- ΓΡΑΦΗΜΑ MoM GROWTH ---
         st.write("### 📅 Μηνιαία Εξέλιξη Τζίρου")
         df_mom = pd.DataFrame(hybrid_revenue_data)
