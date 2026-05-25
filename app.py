@@ -1622,9 +1622,10 @@ elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
     
     import plotly.express as px
+    import numpy as np
 
     # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
-    @st.cache_data(ttl=300) # Κρατάει τα δεδομένα πωλήσεων για 5 λεπτά
+    @st.cache_data(ttl=300) 
     def load_dashboard_data():
         log = supabase.table("production_log").select("*").execute().data
         orders = supabase.table("b2b_orders").select("*").execute().data
@@ -1636,7 +1637,7 @@ elif page == "📈 Dashboard":
     
     with st.spinner("Ενημέρωση στατιστικών..."):
         log_data, orders_data, rec_data, ing_data, items_data, cust_data = load_dashboard_data()
-        # Μετατρέπουμε τα data πίσω σε format που μοιάζει με το res.data για να μην σπάσει ο υπόλοιπος κώδικάς σου
+        
         class DummyRes:
             pass
         res_log, res_orders, res_rec, res_ing, res_items, res_cust = [DummyRes() for _ in range(6)]
@@ -1697,7 +1698,7 @@ elif page == "📈 Dashboard":
         recipe_costs_by_id = {}
         for rid in df_items['recipe_id'].unique():
             sub = df_items[df_items['recipe_id'] == rid]
-            cost = 0.22  # Σταθερά έξοδα
+            cost = 0.22  # Σταθερά έξοδα (συσκευασία)
             for _, item in sub.iterrows():
                 cost += item['ml_per_unit'] * ing_cost_dict.get(item['ingredient_name'], 0)
             recipe_costs_by_id[rid] = cost
@@ -1716,16 +1717,13 @@ elif page == "📈 Dashboard":
         else:
             df_filtered['free_pieces'] = 0.0
             
-        # Ο τζίρος υπολογίζεται ΜΟΝΟ για τα κομμάτια που πληρώθηκαν
         df_filtered['Theoretical_Revenue'] = (df_filtered['pieces'] - df_filtered['free_pieces']) * df_filtered['dealer_price']
         
-        # Έλεγχος αν υπάρχει η νέα στήλη unit_cost στη βάση
         if 'unit_cost' in df_filtered.columns:
             df_filtered['unit_cost'] = pd.to_numeric(df_filtered['unit_cost'], errors='coerce').fillna(0)
         else:
             df_filtered['unit_cost'] = 0.0
 
-        # Η ΜΑΓΕΙΑ: Αν υπάρχει κλειδωμένο κόστος (>0) πάρε αυτό. Αλλιώς, υπολόγισέ το on-the-fly (για τις παλιές εγγραφές)
         df_filtered['Final_Unit_Cost'] = df_filtered.apply(
             lambda row: row['unit_cost'] if row['unit_cost'] > 0 else name_to_cost.get(row['cocktail_name'], 0), 
             axis=1
@@ -1760,13 +1758,12 @@ elif page == "📈 Dashboard":
                     "Month": row['Month_Year']
                 })
 
-        # Καταμέτρηση Μοναδικών Παραγγελιών (1 ανά πελάτη/ημέρα)
         total_orders_count = df_filtered.groupby(['prod_date', 'customer']).ngroups
         total_cost = df_filtered['Total_Cost'].sum()
         total_profit = total_rev - total_cost
         total_units = df_filtered['pieces'].sum()
 
-        # --- METRICS (ΤΩΡΑ ΜΕ ΧΙΛΙΑΔΕΣ ΑΠΟ ΤΗ ΣΥΝΑΡΤΗΣΗ format_gr) ---
+        # --- METRICS ---
         st.divider()
         st.subheader(f"📊 Σύνοψη & Απόδοση: {sel_customer if sel_customer != 'ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ' else 'Όλοι οι Πελάτες'}")
         
@@ -1838,20 +1835,18 @@ elif page == "📈 Dashboard":
             st.plotly_chart(fig_hm, use_container_width=True)
 
         # =====================================================================
-        # 🎁 ΝΕΟ: ΔΥΝΑΜΙΚΗ ΑΝΑΛΥΣΗ ΠΡΟΣΦΟΡΩΝ 240+24 ΣΤΟ DASHBOARD
+        # 🎁 ΔΥΝΑΜΙΚΗ ΑΝΑΛΥΣΗ ΠΡΟΣΦΟΡΩΝ 240+24
         # =====================================================================
         if not df_orders.empty and 'order_details' in df_orders.columns:
             import re
             
-            # Φιλτράρουμε τις προσφορές με βάση τα ήδη επιλεγμένα φίλτρα του Dashboard
             df_dash_promos = df_orders[df_orders['order_details'].str.contains("ΠΡΟΣΦΟΡΑ 240", na=False)].copy()
             
             if not df_dash_promos.empty:
                 st.divider()
                 st.subheader("🎁 Ανάλυση Προωθητικών Ενεργειών (240+24)")
-                st.write("Οι παρακάτω προσφορές δώρου δόθηκαν με βάση τα φίλτρα (Πελάτης / Μήνας) που έχετε επιλέξει στην κορυφή:")
+                st.write("Οι παρακάτω προσφορές δώρου δόθηκαν με βάση τα φίλτρα που έχετε επιλέξει στην κορυφή:")
                 
-                # Έξυπνη εξαγωγή του κοκτέιλ
                 def get_promo_cocktail_dash(detail_str):
                     match = re.search(r"ΠΡΟΣΦΟΡΑ 240\+24 ΔΩΡΟ στο ([^\]\n]+)", str(detail_str))
                     if match:
@@ -1861,7 +1856,6 @@ elif page == "📈 Dashboard":
                 df_dash_promos['Ημερομηνία'] = pd.to_datetime(df_dash_promos['created_at']).dt.strftime('%d/%m/%Y')
                 df_dash_promos['Κοκτέιλ Προσφοράς'] = df_dash_promos['order_details'].apply(get_promo_cocktail_dash)
                 
-                # Εμφάνιση σε ωραία διάταξη (Metric αριστερά, Πίνακας δεξιά)
                 col_dash_p1, col_dash_p2 = st.columns([1, 3])
                 
                 with col_dash_p1:
@@ -1880,7 +1874,6 @@ elif page == "📈 Dashboard":
                         use_container_width=True,
                         hide_index=True
                     )
-        # =====================================================================
 
         # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
         with st.expander("📄 Αναλυτικό Αρχείο (LOT & Profit)"):
@@ -1890,7 +1883,7 @@ elif page == "📈 Dashboard":
 
 
         # =====================================================================
-        # --- ΝΕΟ: ΑΝΑΛΥΤΙΚΟ REPORT ΠΕΛΑΤΗ ΕΝΣΩΜΑΤΩΜΕΝΟ ΣΤΟ DASHBOARD ---
+        # 👤 ΑΝΑΛΥΤΙΚΟ REPORT ΠΕΛΑΤΗ 
         # =====================================================================
         st.divider()
         st.header("👤 Αναλυτικό Report ανά Πελάτη")
@@ -1900,7 +1893,6 @@ elif page == "📈 Dashboard":
         if all_customers_rep:
             sel_cust_rep = st.selectbox("Επιλέξτε Πελάτη για Ανάλυση:", options=all_customers_rep, key="dash_cust_rep")
             
-            # Φιλτράρισμα δεδομένων παραγωγής
             cust_prod = df_sales[df_sales['customer'] == sel_cust_rep].copy()
             
             if not df_mom.empty:
@@ -1912,16 +1904,13 @@ elif page == "📈 Dashboard":
             avg_val_cust = display_revenue / total_pcs_cust if total_pcs_cust > 0 else 0
             unique_cocktails = cust_prod['cocktail_name'].nunique()
 
-            # --- ΣΤΑΤΙΣΤΙΚΑ (METRICS ΜΕ format_gr) ---
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Συνολικά Τεμάχια", f"{format_gr(int(total_pcs_cust), decimals=0)} τμχ")
             c2.metric("Συνολικός Τζίρος", f"{format_gr(display_revenue)} €")
             c3.metric("Μέση Τιμή / Τμχ", f"{format_gr(avg_val_cust)} €")
             c4.metric("Ποικιλία Cocktail", f"{unique_cocktails}")
 
-            # --- ΕΚΤΥΠΩΣΗ PDF (Με ενσωμάτωση του σωστού τζίρου) ---
             cust_orders = df_orders_raw[df_orders_raw['customer_name'] == sel_cust_rep] if not df_orders_raw.empty else pd.DataFrame()
-            
             pdf_fin_data = cust_orders.to_dict('records')
             if not pdf_fin_data and display_revenue > 0:
                 pdf_fin_data = [{'created_at': 'Αυτόματος Υπολογισμός', 'order_details': 'Τζίρος βάσει ιστορικού παραγωγής', 'total_amount': display_revenue}]
@@ -1938,7 +1927,6 @@ elif page == "📈 Dashboard":
             except Exception as e:
                 st.error(f"Σφάλμα προετοιμασίας PDF: Βεβαιωθείτε ότι η συνάρτηση generate_hybrid_report είναι στην αρχή του αρχείου. ({e})")
 
-            # --- ΓΡΑΦΗΜΑΤΑ ΠΕΛΑΤΗ ---
             col_chart1, col_chart2 = st.columns(2)
 
             with col_chart1:
@@ -1959,142 +1947,84 @@ elif page == "📈 Dashboard":
                     fig_fav = px.pie(df_fav, values='pieces', names='cocktail_name', hole=0.4)
                     st.plotly_chart(fig_fav, use_container_width=True)
 
-            # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ΠΕΛΑΤΗ ---
             with st.expander(f"📋 Δείτε όλες τις κινήσεις του {sel_cust_rep}"):
                 st.dataframe(cust_prod[['prod_date', 'cocktail_name', 'pieces', 'lot_cocktail']].sort_values(by='prod_date', ascending=False), 
                              use_container_width=True, hide_index=True)
         else:
             st.info("Δεν υπάρχουν ακόμα δεδομένα πελατών για ανάλυση.")
-        # =====================================================================
+
+        # =========================================================================
+        # 📊 ΔΥΝΑΜΙΚΟ ΓΡΑΦΗΜΑ ΠΩΛΗΣΕΩΝ & ΚΕΡΔΟΦΟΡΙΑΣ ΚΟΚΤΕΙΛ (ΠΛΗΡΩΣ ΣΥΓΧΡΟΝΙΣΜΕΝΟ)
+        # =========================================================================
+        st.divider()
+        st.markdown("### 📈 Δυναμική Ανάλυση Πωλήσεων Cocktails")
+
+        if df_filtered.empty:
+            st.info("Δεν υπάρχουν δεδομένα παραγωγής για το επιλεγμένο φίλτρο.")
+        else:
+            # 1. Ομαδοποίηση απευθείας από το ΗΔΗ υπολογισμένο df_filtered
+            df_grouped_chart = df_filtered.groupby("cocktail_name").agg(
+                Τεμάχια_τμχ=("pieces", "sum"),
+                Τζίρος_ευρώ=("Theoretical_Revenue", "sum"),
+                Συνολικό_Κόστος_ευρώ=("Total_Cost", "sum"),
+                Καθαρό_Κέρδος_ευρώ=("Profit", "sum")
+            ).reset_index()
+
+            # Μετονομασία για ωραία εμφάνιση στο UI
+            df_grouped_chart.rename(columns={
+                "Τεμάχια_τμχ": "Τεμάχια (τμχ)",
+                "Τζίρος_ευρώ": "Τζίρος (€)",
+                "Συνολικό_Κόστος_ευρώ": "Συνολικό Κόστος (€)",
+                "Καθαρό_Κέρδος_ευρώ": "Καθαρό Κέρδος (€)"
+            }, inplace=True)
+            
+            # 2. UI: Φίλτρα ελέγχου γραφήματος
+            col_metric, col_sort = st.columns([2, 1])
+            
+            metrics_list = ["Τεμάχια (τμχ)", "Τζίρος (€)", "Καθαρό Κέρδος (€)", "Συνολικό Κόστος (€)"]
+            selected_metric = col_metric.selectbox("🎯 Επιλέξτε Μετρική για Ανάλυση:", metrics_list, key="unique_metric_selector_cocktails")
+            
+            sort_order = col_sort.radio("↕️ Ταξινόμηση:", ["Φθίνουσα (Υψηλότερα πρώτα)", "Αύξουσα (Χαμηλότερα πρώτα)"], key="unique_sort_radio_cocktails")
+            ascending_bool = True if sort_order == "Αύξουσα (Χαμηλότερα πρώτα)" else False
+            
+            df_grouped_chart = df_grouped_chart.sort_values(by=selected_metric, ascending=ascending_bool)
+            
+            # 3. Δημιουργία Γραφήματος με Plotly 
+            fig = px.bar(
+                df_grouped_chart,
+                x="cocktail_name",
+                y=selected_metric,
+                text=selected_metric,
+                color=selected_metric,
+                color_continuous_scale="Viridis", 
+                labels={"cocktail_name": "Ονομασία Κοκτέιλ", selected_metric: selected_metric},
+                hover_data=["Τεμάχια (τμχ)", "Τζίρος (€)", "Συνολικό Κόστος (€)", "Καθαρό Κέρδος (€)"]
+            )
+            
+            fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+            fig.update_layout(
+                xaxis_tickangle=-45,
+                height=500,
+                margin=dict(t=50, b=100),
+                plot_bgcolor="rgba(0,0,0,0)" 
+            )
+            
+            st.plotly_chart(fig, use_container_width=True, key="unique_sales_plotly_chart_id")
+            
+            with st.expander("📋 Προβολή Αναλυτικού Πίνακα Δεδομένων"):
+                st.dataframe(
+                    df_grouped_chart.style.format({
+                        "Τεμάχια (τμχ)": "{:.0f}",
+                        "Τζίρος (€)": "{:.2f} €",
+                        "Συνολικό Κόστος (€)": "{:.2f} €",
+                        "Καθαρό Κέρδος (€)": "{:.2f} €"
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
     else:
         st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
-
-# --- ΒΑΛΕ ΤΟΝ ΝΕΟ ΚΩΔΙΚΑ ΑΚΡΙΒΩΣ ΕΔΩ (στο ίδιο επίπεδο με το παραπάνω else) ---
-    st.divider()
-
-    import plotly.express as px
-    
-    # =========================================================================
-    # 📊 ΔΥΝΑΜΙΚΟ ΓΡΑΦΗΜΑ ΠΩΛΗΣΕΩΝ & ΚΕΡΔΟΦΟΡΙΑΣ ΚΟΚΤΕΙΛ
-    # =========================================================================
-    st.markdown("### 📈 Δυναμική Ανάλυση Πωλήσεων Cocktails")
-
-    # 1. Άντληση δεδομένων από την παραγωγή
-    res_chart = supabase.table("production_log").select("*").execute()
-    
-    # Αντλούμε τις Συνταγές (για αρχική τιμή) και τους Πελάτες (για την πραγματική τους έκπτωση)
-    res_recipes = supabase.table("recipes").select("name, catalog_price").execute()
-    recipe_prices = {}
-    if res_recipes.data:
-        for r in res_recipes.data:
-            recipe_prices[r["name"]] = float(r.get("catalog_price") or 0.0)
-            
-    res_cust = supabase.table("customers").select("name, discount").execute()
-    cust_discounts = {}
-    if res_cust.data:
-        for c in res_cust.data:
-            cust_discounts[c["name"]] = float(c.get("discount") or 0.0)
-
-    if not res_chart.data:
-        st.info("Δεν υπάρχουν ακόμα δεδομένα παραγωγής για να εμφανιστεί το γράφημα.")
-    else:
-        df_chart = pd.DataFrame(res_chart.data)
-        
-        # Αν η στήλη λείπει τελείως λόγω παλιάς βάσης, τη δημιουργούμε ως NaN
-        if "sold_price" not in df_chart.columns:
-            df_chart["sold_price"] = np.nan
-        if "unit_cost" not in df_chart.columns:
-            df_chart["unit_cost"] = np.nan
-
-        # ΚΡΑΤΑΜΕ ΜΑΣΚΑ: Ποια πεδία ήταν ΠΡΑΓΜΑΤΙΚΑ άδεια (παλιά ιστορικά δεδομένα)
-        # Έτσι προστατεύουμε τα νέα δεδομένα όπου το 0 σημαίνει "Δωρεάν Προϊόν"
-        missing_price_mask = df_chart["sold_price"].isna()
-        
-        # Μετατρέπουμε σε αριθμούς με ασφάλεια
-        df_chart["pieces"] = pd.to_numeric(df_chart.get("pieces", 0), errors='coerce').fillna(0)
-        df_chart["sold_price"] = pd.to_numeric(df_chart["sold_price"], errors='coerce').fillna(0.0)
-        df_chart["unit_cost"] = pd.to_numeric(df_chart.get("unit_cost", 0.0), errors='coerce').fillna(0.0)
-        
-        # --- ΔΙΟΡΘΩΣΗ ΜΟΝΟ ΓΙΑ ΤΑ ΠΑΛΙΑ ΔΕΔΟΜΕΝΑ (NaN) ---
-        for idx in df_chart[missing_price_mask].index:
-            c_name = df_chart.loc[idx, "cocktail_name"]
-            cust = df_chart.loc[idx, "customer"]
-            
-            base_price = recipe_prices.get(c_name, 0.0)
-            # Παίρνει την πραγματική έκπτωση του πελάτη από το CRM. Αν δεν έχει, βάζει 0% (Τιμή Καταλόγου)
-            discount_perc = cust_discounts.get(cust, 0.0) 
-            
-            df_chart.loc[idx, "sold_price"] = base_price * (1 - (discount_perc / 100.0))
-            df_chart.loc[idx, "unit_cost"] = 1.50  # Ενδεικτικό κόστος για το ιστορικό κέρδος
-        
-        # 2. ΚΑΘΑΡΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ (Groupby ανά παρτίδα παραγωγής)
-        df_unique_sales = df_chart.groupby(["prod_date", "prod_time", "customer", "cocktail_name"]).agg(
-            pieces=("pieces", "max"),
-            sold_price=("sold_price", "max"), 
-            unit_cost=("unit_cost", "max")    
-        ).reset_index()
-        
-        # 3. Υπολογισμός Οικονομικών Δεικτών
-        df_unique_sales["Τζίρος (€)"] = df_unique_sales["pieces"] * df_unique_sales["sold_price"]
-        df_unique_sales["Συνολικό Κόστος (€)"] = df_unique_sales["pieces"] * df_unique_sales["unit_cost"]
-        df_unique_sales["Καθαρό Κέρδος (€)"] = df_unique_sales["Τζίρος (€)"] - df_unique_sales["Συνολικό Κόστος (€)"]
-        df_unique_sales.rename(columns={"pieces": "Τεμάχια (τμχ)"}, inplace=True)
-        
-        # 4. Ομαδοποίηση ανά Κοκτέιλ για το τελικό γράφημα
-        df_grouped_chart = df_unique_sales.groupby("cocktail_name").agg(
-            **{
-                "Τεμάχια (τμχ)": ("Τεμάχια (τμχ)", "sum"),
-                "Τζίρος (€)": ("Τζίρος (€)", "sum"),
-                "Συνολικό Κόστος (€)": ("Συνολικό Κόστος (€)", "sum"),
-                "Καθαρό Κέρδος (€)": ("Καθαρό Κέρδος (€)", "sum")
-            }
-        ).reset_index()
-        
-        # 5. UI: Φίλτρα ελέγχου γραφήματος
-        col_metric, col_sort = st.columns([2, 1])
-        
-        metrics_list = ["Τεμάχια (τμχ)", "Τζίρος (€)", "Καθαρό Κέρδος (€)", "Συνολικό Κόστος (€)"]
-        selected_metric = col_metric.selectbox("🎯 Επιλέξτε Μετρική για Ανάλυση:", metrics_list, key="unique_metric_selector_cocktails")
-        
-        sort_order = col_sort.radio("↕️ Ταξινόμηση:", ["Φθίνουσα (Υψηλότερα πρώτα)", "Αύξουσα (Χαμηλότερα πρώτα)"], key="unique_sort_radio_cocktails")
-        ascending_bool = True if sort_order == "Αύξουσα (Χαμηλότερα πρώτα)" else False
-        
-        df_grouped_chart = df_grouped_chart.sort_values(by=selected_metric, ascending=ascending_bool)
-        
-        # 6. Δημιουργία Γραφήματος με Plotly 
-        fig = px.bar(
-            df_grouped_chart,
-            x="cocktail_name",
-            y=selected_metric,
-            text=selected_metric,
-            color=selected_metric,
-            color_continuous_scale="Viridis", 
-            labels={"cocktail_name": "Ονομασία Κοκτέιλ", selected_metric: selected_metric},
-            hover_data=["Τεμάχια (τμχ)", "Τζίρος (€)", "Συνολικό Κόστος (€)", "Καθαρό Κέρδος (€)"]
-        )
-        
-        fig.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-        fig.update_layout(
-            xaxis_tickangle=-45,
-            height=500,
-            margin=dict(t=50, b=100),
-            plot_bgcolor="rgba(0,0,0,0)" 
-        )
-        
-        st.plotly_chart(fig, use_container_width=True, key="unique_sales_plotly_chart_id")
-        
-        with st.expander("📋 Προβολή Αναλυτικού Πίνακα Δεδομένων"):
-            st.dataframe(
-                df_grouped_chart.style.format({
-                    "Τεμάχια (τμχ)": "{:.0f}",
-                    "Τζίρος (€)": "{:.2f} €",
-                    "Συνολικό Κόστος (€)": "{:.2f} €",
-                    "Καθαρό Κέρδος (€)": "{:.2f} €"
-                }),
-                use_container_width=True,
-                hide_index=True
-            )
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ & SMART CART) ---
 elif page == "📦 Lot Παραγωγής":
