@@ -1822,16 +1822,51 @@ elif page == "📈 Dashboard":
         for name in df_filtered['cocktail_name'].unique():
             temp = df_filtered[df_filtered['cocktail_name'] == name]
             sold = temp['pieces'].sum()
-            rev = temp['Theoretical_Revenue'].sum()
-            cost = temp['Total_Cost'].sum()
-            prof = rev - cost
+            
+            # --- ΣΩΣΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΚΕΡΔΟΥΣ ΑΝΑ ΤΕΜΑΧΙΟ ---
+            if sel_customer != "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ":
+                # Αν βλέπεις συγκεκριμένο πελάτη, παίρνει την τιμή με την έκπτωσή του
+                unit_price = temp['dealer_price'].iloc[0] if not temp.empty else 0
+            else:
+                # Αν βλέπεις όλη την εικόνα, παίρνει την καθαρή Τιμή Καταλόγου
+                unit_price = temp['catalog_price'].iloc[0] if not temp.empty else 0
+                
+            unit_cost = temp['Final_Unit_Cost'].iloc[0] if not temp.empty else 0
+            
+            # Κέρδος ανά Τεμάχιο = Τιμή - Κόστος (Ακριβώς η ζητούμενη λογική)
+            unit_profit = unit_price - unit_cost 
+            
+            # Το συνολικό κέρδος παραμένει το πραγματικό (αφαιρώντας τα δωρεάν)
+            total_prof = temp['Profit'].sum()
+            
             if sold > 0:
-                heatmap_list.append({"Cocktail": name, "Πωλήσεις": sold, "Κέρδος/Τμχ": round(prof/sold, 2), "Συνολικό Κέρδος": round(prof, 2)})
+                heatmap_list.append({
+                    "Cocktail": name, 
+                    "Πωλήσεις": sold, 
+                    "Κέρδος/Τμχ": round(unit_profit, 2), 
+                    "Συνολικό Κέρδος": round(total_prof, 2)
+                })
         
         if heatmap_list:
             df_hm = pd.DataFrame(heatmap_list)
-            fig_hm = px.scatter(df_hm, x="Πωλήσεις", y="Κέρδος/Τμχ", size="Συνολικό Κέρδος", color="Cocktail", hover_name="Cocktail", text="Cocktail", size_max=50, template="plotly_dark")
+            fig_hm = px.scatter(
+                df_hm, 
+                x="Πωλήσεις", 
+                y="Κέρδος/Τμχ", 
+                size="Συνολικό Κέρδος", 
+                color="Cocktail", 
+                hover_name="Cocktail", 
+                text="Cocktail", 
+                size_max=50, 
+                template="plotly_dark",
+                labels={"Κέρδος/Τμχ": "Καθαρό Κέρδος 1 Τεμαχίου (€)", "Πωλήσεις": "Συνολικός Όγκος Πωλήσεων (τμχ)"}
+            )
             fig_hm.update_traces(textposition='top center')
+            
+            # Δυναμική προσαρμογή του άξονα Y για να φαίνονται όμορφα οι διαφορές
+            min_margin = df_hm["Κέρδος/Τμχ"].min()
+            fig_hm.update_layout(yaxis=dict(range=[min_margin - 0.5, df_hm["Κέρδος/Τμχ"].max() + 1.0]))
+            
             st.plotly_chart(fig_hm, use_container_width=True)
 
         # =====================================================================
