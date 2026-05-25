@@ -1705,19 +1705,39 @@ elif page == "📈 Dashboard":
             
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], 0) for _, r in df_recipes.iterrows()}
         
-        # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ & ΚΟΣΤΟΣ (ΜΕ ΙΣΤΟΡΙΚΟΤΗΤΑ) ---
+        # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ & ΚΟΣΤΟΣ (ΜΕ ΙΣΤΟΡΙΚΟΤΗΤΑ ΚΑΙ ΟΛΕΣ ΤΙΣ ΕΚΠΤΩΣΕΙΣ) ---
+        # Ενώνουμε την παραγωγή με τις τιμές καταλόγου
         df_filtered = df_filtered.merge(df_recipes[['name', 'catalog_price']], left_on="cocktail_name", right_on="name", how="left")
+        
+        # Ενώνουμε την παραγωγή με ΟΛΑ τα δεδομένα των πελατών (για να πάρουμε εκπτώσεις και δωρεάν)
+        df_filtered = df_filtered.merge(df_customers, left_on="customer", right_on="name", how="left")
+        
         df_filtered['catalog_price'] = pd.to_numeric(df_filtered['catalog_price'], errors='coerce').fillna(0)
         df_filtered['pieces'] = pd.to_numeric(df_filtered['pieces'], errors='coerce').fillna(0)
-        df_filtered['customer_discount'] = df_filtered['customer'].map(cust_discount_dict).fillna(0)
         
-        df_filtered['dealer_price'] = df_filtered['catalog_price'] * (1 - (df_filtered['customer_discount'] / 100))
+        # 1. Βασική Έκπτωση (%)
+        df_filtered['discount'] = pd.to_numeric(df_filtered['discount'], errors='coerce').fillna(0)
+        
+        # 2. Έξτρα Έκπτωση (%) αν υπάρχει στήλη "extra_discount" στο πελατολόγιο
+        if 'extra_discount' in df_filtered.columns:
+            df_filtered['extra_discount'] = pd.to_numeric(df_filtered['extra_discount'], errors='coerce').fillna(0)
+        else:
+            df_filtered['extra_discount'] = 0.0
+            
+        # 3. Δωρεάν Τεμάχια αν υπάρχει στήλη "free_pieces" στο πελατολόγιο
         if 'free_pieces' in df_filtered.columns:
             df_filtered['free_pieces'] = pd.to_numeric(df_filtered['free_pieces'], errors='coerce').fillna(0)
         else:
             df_filtered['free_pieces'] = 0.0
             
+        # Υπολογισμός Τελικής Τιμής Πώλησης (Dealer Price) αφαιρώντας και τις 2 εκπτώσεις
+        df_filtered['dealer_price'] = df_filtered['catalog_price'] * (1 - (df_filtered['discount'] / 100)) * (1 - (df_filtered['extra_discount'] / 100))
+            
+        # Ο τζίρος είναι αυστηρά (Συνολικά Τεμάχια - Δωρεάν Τεμάχια) * Τελική Τιμή Πελάτη
         df_filtered['Theoretical_Revenue'] = (df_filtered['pieces'] - df_filtered['free_pieces']) * df_filtered['dealer_price']
+        
+        # Προστασία: Αν τα δωρεάν τεμάχια είναι περισσότερα από την παραγγελία, ο τζίρος δεν μπορεί να είναι αρνητικός
+        df_filtered['Theoretical_Revenue'] = df_filtered['Theoretical_Revenue'].clip(lower=0)
         
         if 'unit_cost' in df_filtered.columns:
             df_filtered['unit_cost'] = pd.to_numeric(df_filtered['unit_cost'], errors='coerce').fillna(0)
@@ -1729,9 +1749,9 @@ elif page == "📈 Dashboard":
             axis=1
         )
         
+        # Το συνολικό κόστος υπολογίζεται ΠΑΝΤΑ σε όλα τα τεμάχια (ακόμα και στα δωρεάν, αφού τα έφτιαξες!)
         df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['Final_Unit_Cost']
         df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
-
         # --- ΥΒΡΙΔΙΚΟΣ ΤΖΙΡΟΣ ΚΑΙ MoM ΔΕΔΟΜΕΝΑ ---
         total_rev = 0.0
         hybrid_revenue_data = []
@@ -1819,30 +1839,25 @@ elif page == "📈 Dashboard":
         st.divider()
         st.subheader("🎯 Χάρτης Απόδοσης Cocktail")
         heatmap_list = []
+        
         for name in df_filtered['cocktail_name'].unique():
             temp = df_filtered[df_filtered['cocktail_name'] == name]
-            sold = temp['pieces'].sum()
             
-            # --- ΣΩΣΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΚΕΡΔΟΥΣ ΑΝΑ ΤΕΜΑΧΙΟ ---
-            if sel_customer != "ΟΛΟΙ ΟΙ ΠΕΛΑΤΕΣ":
-                # Αν βλέπεις συγκεκριμένο πελάτη, παίρνει την τιμή με την έκπτωσή του
-                unit_price = temp['dealer_price'].iloc[0] if not temp.empty else 0
-            else:
-                # Αν βλέπεις όλη την εικόνα, παίρνει την καθαρή Τιμή Καταλόγου
-                unit_price = temp['catalog_price'].iloc[0] if not temp.empty else 0
-                
-            unit_cost = temp['Final_Unit_Cost'].iloc[0] if not temp.empty else 0
+            total_pieces = temp['pieces'].sum()
+            total_free_pieces = temp['free_pieces'].sum()
+            paid_pieces = total_pieces - total_free_pieces
             
-            # Κέρδος ανά Τεμάχιο = Τιμή - Κόστος (Ακριβώς η ζητούμενη λογική)
-            unit_profit = unit_price - unit_cost 
-            
-            # Το συνολικό κέρδος παραμένει το πραγματικό (αφαιρώντας τα δωρεάν)
+            # Έχουμε ήδη υπολογίσει το ακριβές κέρδος γραμμή-γραμμή με τις εκπτώσεις
             total_prof = temp['Profit'].sum()
             
-            if sold > 0:
+            # Πραγματικό Μεσοσταθμικό Κέρδος ανά Μονάδα
+            unit_profit = total_prof / paid_pieces if paid_pieces > 0 else 0
+            
+            if total_pieces > 0:
                 heatmap_list.append({
                     "Cocktail": name, 
-                    "Πωλήσεις": sold, 
+                    "Πωλήσεις (Σύνολο)": total_pieces,
+                    "Πωλήσεις (Πληρωμένα)": paid_pieces,
                     "Κέρδος/Τμχ": round(unit_profit, 2), 
                     "Συνολικό Κέρδος": round(total_prof, 2)
                 })
@@ -1851,7 +1866,7 @@ elif page == "📈 Dashboard":
             df_hm = pd.DataFrame(heatmap_list)
             fig_hm = px.scatter(
                 df_hm, 
-                x="Πωλήσεις", 
+                x="Πωλήσεις (Σύνολο)", 
                 y="Κέρδος/Τμχ", 
                 size="Συνολικό Κέρδος", 
                 color="Cocktail", 
@@ -1859,11 +1874,11 @@ elif page == "📈 Dashboard":
                 text="Cocktail", 
                 size_max=50, 
                 template="plotly_dark",
-                labels={"Κέρδος/Τμχ": "Καθαρό Κέρδος 1 Τεμαχίου (€)", "Πωλήσεις": "Συνολικός Όγκος Πωλήσεων (τμχ)"}
+                labels={"Κέρδος/Τμχ": "Καθαρό Κέρδος 1 Τεμαχίου (€)", "Πωλήσεις (Σύνολο)": "Συνολικός Όγκος (τμχ)"}
             )
             fig_hm.update_traces(textposition='top center')
             
-            # Δυναμική προσαρμογή του άξονα Y για να φαίνονται όμορφα οι διαφορές
+            # Δυναμική προσαρμογή του άξονα Y
             min_margin = df_hm["Κέρδος/Τμχ"].min()
             fig_hm.update_layout(yaxis=dict(range=[min_margin - 0.5, df_hm["Κέρδος/Τμχ"].max() + 1.0]))
             
