@@ -1706,25 +1706,35 @@ elif page == "📈 Dashboard":
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], 0) for _, r in df_recipes.iterrows()}
         
         # --- ΘΕΩΡΗΤΙΚΟΣ ΤΖΙΡΟΣ & ΚΟΣΤΟΣ (ΜΕ ΙΣΤΟΡΙΚΟΤΗΤΑ ΚΑΙ ΟΛΕΣ ΤΙΣ ΕΚΠΤΩΣΕΙΣ) ---
-        # Ενώνουμε την παραγωγή με τις τιμές καταλόγου
-        df_filtered = df_filtered.merge(df_recipes[['name', 'catalog_price']], left_on="cocktail_name", right_on="name", how="left")
+        # Ενώνουμε την παραγωγή με τις τιμές καταλόγου (Ασφαλής Έλεγχος)
+        if not df_recipes.empty and 'name' in df_recipes.columns:
+            df_filtered = df_filtered.merge(df_recipes[['name', 'catalog_price']], left_on="cocktail_name", right_on="name", how="left")
         
-        # Ενώνουμε την παραγωγή με ΟΛΑ τα δεδομένα των πελατών (για να πάρουμε εκπτώσεις και δωρεάν)
-        df_filtered = df_filtered.merge(df_customers, left_on="customer", right_on="name", how="left")
-        
-        df_filtered['catalog_price'] = pd.to_numeric(df_filtered['catalog_price'], errors='coerce').fillna(0)
+        # Ενώνουμε την παραγωγή με ΟΛΑ τα δεδομένα των πελατών (Ασφαλής Έλεγχος)
+        if not df_customers.empty and 'name' in df_customers.columns:
+            df_filtered = df_filtered.merge(df_customers, left_on="customer", right_on="name", how="left")
+            
+        # Ασφαλής μετατροπή Catalog Price
+        if 'catalog_price' in df_filtered.columns:
+            df_filtered['catalog_price'] = pd.to_numeric(df_filtered['catalog_price'], errors='coerce').fillna(0)
+        else:
+            df_filtered['catalog_price'] = 0.0
+            
         df_filtered['pieces'] = pd.to_numeric(df_filtered['pieces'], errors='coerce').fillna(0)
         
-        # 1. Βασική Έκπτωση (%)
-        df_filtered['discount'] = pd.to_numeric(df_filtered['discount'], errors='coerce').fillna(0)
+        # 1. Βασική Έκπτωση (%) - ΑΣΦΑΛΗΣ ΕΛΕΓΧΟΣ
+        if 'discount' in df_filtered.columns:
+            df_filtered['discount'] = pd.to_numeric(df_filtered['discount'], errors='coerce').fillna(0)
+        else:
+            df_filtered['discount'] = 0.0
         
-        # 2. Έξτρα Έκπτωση (%) αν υπάρχει στήλη "extra_discount" στο πελατολόγιο
+        # 2. Έξτρα Έκπτωση (%) 
         if 'extra_discount' in df_filtered.columns:
             df_filtered['extra_discount'] = pd.to_numeric(df_filtered['extra_discount'], errors='coerce').fillna(0)
         else:
             df_filtered['extra_discount'] = 0.0
             
-        # 3. Δωρεάν Τεμάχια αν υπάρχει στήλη "free_pieces" στο πελατολόγιο
+        # 3. Δωρεάν Τεμάχια 
         if 'free_pieces' in df_filtered.columns:
             df_filtered['free_pieces'] = pd.to_numeric(df_filtered['free_pieces'], errors='coerce').fillna(0)
         else:
@@ -1752,6 +1762,8 @@ elif page == "📈 Dashboard":
         # Το συνολικό κόστος υπολογίζεται ΠΑΝΤΑ σε όλα τα τεμάχια (ακόμα και στα δωρεάν, αφού τα έφτιαξες!)
         df_filtered['Total_Cost'] = df_filtered['pieces'] * df_filtered['Final_Unit_Cost']
         df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
+
+        
         # --- ΥΒΡΙΔΙΚΟΣ ΤΖΙΡΟΣ ΚΑΙ MoM ΔΕΔΟΜΕΝΑ ---
         total_rev = 0.0
         hybrid_revenue_data = []
