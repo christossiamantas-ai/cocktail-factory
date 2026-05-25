@@ -1764,36 +1764,22 @@ elif page == "📈 Dashboard":
         df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
 
         
-        # --- ΥΒΡΙΔΙΚΟΣ ΤΖΙΡΟΣ ΚΑΙ MoM ΔΕΔΟΜΕΝΑ ---
-        total_rev = 0.0
-        hybrid_revenue_data = []
-        processed_orders = set()
+        # --- ΑΠΟΛΥΤΟΣ ΣΥΓΧΡΟΝΙΣΜΟΣ ΤΖΙΡΟΥ ΚΑΙ ΚΕΡΔΟΥΣ (BOTTOM-UP) ---
+        # Πλέον ΟΛΟ το dashboard διαβάζει τα νούμερα ΜΟΝΟ από την παραγωγή γραμμή-γραμμή.
+        # Αυτό εγγυάται 100% ταύτιση της Σύνοψης με τους Χάρτες και τη Δυναμική Ανάλυση.
         
-        if not df_orders.empty:
-            for _, order in df_orders.iterrows():
-                amt = float(order['total_amount'])
-                total_rev += amt
-                hybrid_revenue_data.append({
-                    "customer": order['customer_name'], 
-                    "Revenue": amt, 
-                    "Month": order['Month_Year']
-                })
-                processed_orders.add((order['Date_Str'], order['customer_name']))
-                
-        prod_grouped = df_filtered.groupby(['prod_date', 'customer', 'Month_Year'])['Theoretical_Revenue'].sum().reset_index()
-        for _, row in prod_grouped.iterrows():
-            if (row['prod_date'], row['customer']) not in processed_orders:
-                total_rev += row['Theoretical_Revenue']
-                hybrid_revenue_data.append({
-                    "customer": row['customer'], 
-                    "Revenue": row['Theoretical_Revenue'],
-                    "Month": row['Month_Year']
-                })
-
-        total_orders_count = df_filtered.groupby(['prod_date', 'customer']).ngroups
+        total_rev = df_filtered['Theoretical_Revenue'].sum()
         total_cost = df_filtered['Total_Cost'].sum()
-        total_profit = total_rev - total_cost
+        total_profit = df_filtered['Profit'].sum()
+        
         total_units = df_filtered['pieces'].sum()
+        total_orders_count = df_filtered.groupby(['prod_date', 'customer']).ngroups
+
+        # Προετοιμασία δεδομένων για τα γραφήματα MoM (Μηνιαία) και ABC
+        # Χρησιμοποιούμε ακριβώς την ίδια πηγή (Theoretical_Revenue) για να μην χάσουμε ούτε λεπτό του ευρώ!
+        df_mom = df_filtered.groupby(['customer', 'Month_Year'])['Theoretical_Revenue'].sum().reset_index()
+        df_mom.rename(columns={'Theoretical_Revenue': 'Revenue', 'Month_Year': 'Month'}, inplace=True)
+        hybrid_revenue_data = df_mom.to_dict('records')
 
         # --- METRICS ---
         st.divider()
