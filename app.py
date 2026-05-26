@@ -3367,6 +3367,11 @@ elif page == "🧼 Συντήρηση & HACCP":
 elif page == "👥 Πελατολόγιο":
     st.header("👥 Διαχείριση Πελατολογίου")
     
+    import pandas as pd
+    import time
+    import re
+    from datetime import datetime
+
     # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ & ΣΥΝΤΑΓΩΝ
     res_cust = supabase.table("customers").select("*").order("name").execute()
     df_cust = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
@@ -3453,11 +3458,6 @@ elif page == "👥 Πελατολόγιο":
                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
                 
                 if res_orders.data:
-                    import re
-                    from datetime import datetime
-                    import time
-                    
-                    # --- ΝΕΟ: ΕΠΑΓΓΕΛΜΑΤΙΚΗ ΕΚΤΥΠΩΣΗ/ΕΞΑΓΩΓΗ ---
                     with st.expander("🖨️ Εξαγωγή & Εκτύπωση Ιστορικού (PDF/HTML)", expanded=False):
                         st.write("Δημιουργήστε μια επαγγελματική αναφορά για τον πελάτη.")
                         
@@ -3472,7 +3472,6 @@ elif page == "👥 Πελατολόγιο":
                             orders_to_export = res_orders.data
                             
                         if st.button("📄 Δημιουργία Αναφοράς"):
-                            # Δημιουργία του HTML Report
                             total_export_value = sum([float(o['total_amount']) for o in orders_to_export])
                             now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
                             
@@ -3529,9 +3528,7 @@ elif page == "👥 Πελατολόγιο":
                                 date_str = str(o['created_at'])[:10]
                                 date_formatted = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
                                 
-                                # Μετατροπή των line breaks σε HTML <br>
-                                formatted_details = o['order_details'].replace('\n', '<br>')
-                                # Χρωματισμός ειδικών λέξεων
+                                formatted_details = str(o['order_details']).replace('\n', '<br>')
                                 formatted_details = formatted_details.replace('ΔΩΡΑ', '<strong style="color:#d32f2f;">ΔΩΡΑ</strong>')
                                 formatted_details = formatted_details.replace('ΕΚΠΤΩΣΕΙΣ', '<strong style="color:#1976d2;">ΕΚΠΤΩΣΕΙΣ</strong>')
                                 
@@ -3570,9 +3567,8 @@ elif page == "👥 Πελατολόγιο":
                             st.info("💡 **Οδηγία:** Ανοίξτε το αρχείο που κατέβηκε στον browser σας (Chrome/Safari) και πατήστε **Ctrl+P** (ή Cmd+P στο Mac) για να το αποθηκεύσετε ως ένα τέλειο PDF ή να το εκτυπώσετε!")
                     
                     st.divider()
-                    # --------------------------------------------------------
 
-                    # Εμφάνιση των παραγγελιών στο UI (Παλιός κώδικας που παραμένει)
+                    # Εμφάνιση των παραγγελιών στο UI
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
@@ -3624,7 +3620,7 @@ elif page == "👥 Πελατολόγιο":
                     st.error("Το όνομα είναι υποχρεωτικό!")
 
     # =========================================================================
-    # 🌟 ΝΕΟ TAB 3: ΤΟ ΣΤΡΑΤΗΓΕΙΟ ΤΩΝ ΕΚΠΤΩΣΕΩΝ & ΠΡΟΣΦΟΡΩΝ
+    # 🌟 TAB 3: ΤΟ ΣΤΡΑΤΗΓΕΙΟ ΤΩΝ ΕΚΠΤΩΣΕΩΝ & ΠΡΟΣΦΟΡΩΝ
     # =========================================================================
     with tab_crm3:
         st.subheader("🏷️ Κεντρική Διαχείριση Προσφορών & Εκπτώσεων")
@@ -3637,7 +3633,7 @@ elif page == "👥 Πελατολόγιο":
             # --- ΕΝΟΤΗΤΑ 1: ΓΕΝΙΚΗ ΕΚΠΤΩΣΗ ---
             st.markdown("### 📉 1. Γενική Έκπτωση Πελάτη")
             current_discount = df_cust[df_cust["name"] == sel_cust_offers].iloc[0].get('discount', 0)
-            if not current_discount: current_discount = 0.0
+            if pd.isna(current_discount) or not current_discount: current_discount = 0.0
             
             col_d1, col_d2 = st.columns([1, 2])
             new_global_discount = col_d1.number_input("Σταθερή Έκπτωση (%) στο σύνολο των αγορών του:", min_value=0.0, max_value=100.0, value=float(current_discount), step=0.5)
@@ -3651,9 +3647,9 @@ elif page == "👥 Πελατολόγιο":
             
             st.divider()
 
-            # --- ΕΝΟΤΗΤΑ 2: ΕΜΠΟΡΙΚΗ ΠΑΡΕΜΒΑΣΗ ΣΕ ΠΑΡΑΓΓΕΛΙΑ (ΔΩΡΑ & ΕΚΠΤΩΣΕΙΣ) ---
+            # --- ΕΝΟΤΗΤΑ 2: ΕΜΠΟΡΙΚΗ ΠΑΡΕΜΒΑΣΗ ΣΕ ΠΑΡΑΓΓΕΛΙΑ ---
             st.markdown("### 🎁 2. Εφαρμογή Δώρων & Ειδικών Εκπτώσεων σε Παραγγελία")
-            st.write("Επιλέξτε μια παραγγελία. Για κάθε κοκτέιλ της, μπορείτε να ορίσετε δωρεάν τεμάχια ή/και ειδική έκπτωση σε συγκεκριμένο αριθμό τεμαχίων (π.χ. 15% στα πρώτα 24).")
+            st.write("Επιλέξτε μια παραγγελία. Για κάθε κοκτέιλ της, μπορείτε να ορίσετε δωρεάν τεμάχια ή/και ειδική έκπτωση σε συγκεκριμένο αριθμό τεμαχίων (π.χ. 10% στο Negroni).")
 
             res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_cust_offers).order("created_at", desc=True).limit(50).execute()
             if res_orders.data:
@@ -3670,14 +3666,14 @@ elif page == "👥 Πελατολόγιο":
                     selected_order = df_orders[df_orders['id'] == sel_order_id].iloc[0]
                     current_details = selected_order['order_details']
                     
-                    # Προβολή καθαρών λεπτομερειών (κρύβουμε τις παλιές σημειώσεις δώρων για να μην μπερδεύουν)
-                    clean_display_details = current_details.split("\n\n--- ΔΩΡΑ")[0].split("\n\n--- ΕΙΔΙΚΕΣ")[0]
+                    # Προβολή καθαρών λεπτομερειών (κρύβουμε τις παλιές σημειώσεις δώρων)
+                    clean_display_details = str(current_details).split("\n\n--- ΔΩΡΑ")[0].split("\n\n--- ΕΙΔΙΚΕΣ")[0]
                     st.info(f"**Περιεχόμενο Παραγγελίας:**\n{clean_display_details}")
                     
                     order_dt = pd.to_datetime(selected_order['created_at'])
                     prod_date_str = order_dt.strftime('%d/%m/%Y')
                     
-                    # Διαβάζουμε και τις νέες στήλες έκπτωσης (discounted_pieces, discount_pct) από τη Supabase
+                    # Διαβάζουμε και τις νέες στήλες έκπτωσης από τη Supabase
                     res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, prod_time").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
                     
                     if res_prod.data:
@@ -3687,7 +3683,6 @@ elif page == "👥 Πελατολόγιο":
                             inputs = {}
                             st.markdown("##### ⚙️ Ρυθμίσεις ανά Κωδικό Παραγγελίας")
                             
-                            # Επικεφαλίδες Στηλών
                             h1, h2, h3, h4 = st.columns([2.5, 1, 1.2, 1])
                             h1.caption("Κοκτέιλ (Σύνολο Τμχ)")
                             h2.caption("Δωρεάν Τμχ")
@@ -3697,19 +3692,14 @@ elif page == "👥 Πελατολόγιο":
                             for _, prow in df_prod.iterrows():
                                 c_name = prow['cocktail_name']
                                 t_pcs = int(prow['pieces'])
-                                curr_free = int(prow['free_pieces']) if 'free_pieces' in prow and pd.notnull(prow['free_pieces']) else 0
-                                
-                                # Τραβάμε τις αποθηκευμένες τιμές έκπτωσης, αν δεν υπάρχουν βάζουμε 0
+                                curr_free = int(prow.get('free_pieces', 0)) if pd.notnull(prow.get('free_pieces', 0)) else 0
                                 curr_s_pcs = int(prow.get('discounted_pieces', 0)) if pd.notnull(prow.get('discounted_pieces', 0)) else 0
                                 curr_s_pct = float(prow.get('discount_pct', 0.0)) if pd.notnull(prow.get('discount_pct', 0.0)) else 0.0
                                 
                                 c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1])
                                 c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ)")
                                 
-                                # Δώρα
                                 f_pcs = c2.number_input("Δώρο", min_value=0, max_value=t_pcs, value=curr_free, step=1, key=f"f_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
-                                
-                                # Ειδική Έκπτωση (Τραβάει τις αποθηκευμένες τιμές ως value)
                                 s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
                                 s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
                                 
@@ -3721,7 +3711,6 @@ elif page == "👥 Πελατολόγιο":
                                 disc_text = ""
                                 
                                 cust_discount = float(current_discount)
-                                rec_prices = recipe_prices
                                 
                                 with st.spinner("Επανυπολογισμός αξιών..."):
                                     for key, vals in inputs.items():
@@ -3731,26 +3720,33 @@ elif page == "👥 Πελατολόγιο":
                                         s_pcs = vals["s_pcs"]
                                         s_pct = vals["s_pct"]
                                         
-                                        # Ασφάλεια: Τα δώρα + τα εκπτωτικά τεμάχια δεν μπορούν να ξεπερνούν το σύνολο
+                                        # Ασφάλεια
                                         if f_pcs + s_pcs > t_pcs:
-                                            s_pcs = t_pcs - f_pcs # Περιορίζουμε τα εκπτωτικά για να μη βγει αρνητικό
-                                        
+                                            s_pcs = t_pcs - f_pcs 
+                                            
                                         normal_pcs = t_pcs - f_pcs - s_pcs
                                         
-                                        # ΚΑΝΟΥΜΕ UPDATE ΣΕ ΟΛΑ ΤΑ ΠΕΔΙΑ ΣΤΟ production_log
+                                        # Update παραγωγής
                                         supabase.table("production_log").update({
                                             "free_pieces": f_pcs,
                                             "discounted_pieces": s_pcs,
                                             "discount_pct": s_pct
                                         }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("prod_time", p_time).eq("cocktail_name", c_name).execute()
                                         
-                                        catalog_p = rec_prices.get(c_name, 0.0)
+                                        catalog_p = float(recipe_prices.get(c_name, 0.0))
                                         
-                                        # Υπολογισμός Κανονικών Τεμαχίων (με τη γενική έκπτωση πελάτη)
-                                        cost_spec = s_pcs * catalog_p * (1 - cust_discount / 100) * (1 - s_pct / 100)
+                                        # -------------------------------------------------------------
+                                        # 🚀 ΑΣΦΑΛΗΣ & ΣΩΣΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΕΚΠΤΩΣΕΩΝ
+                                        # -------------------------------------------------------------
                                         
-                                        # Υπολογισμός Εκπτωτικών Τεμαχίων (Αγνοεί τη γενική έκπτωση και εφαρμόζει την Ειδική)
-                                        cost_spec = s_pcs * catalog_p * (1 - s_pct / 100)
+                                        # 1. Βρίσκουμε την τιμή μετά τη γενική έκπτωση του πελάτη (π.χ. 26%)
+                                        price_after_global = catalog_p * (1 - (cust_discount / 100))
+                                        
+                                        # 2. Αξία κανονικών τεμαχίων (χρεώνονται μόνο με το 26%)
+                                        cost_normal = normal_pcs * price_after_global
+                                        
+                                        # 3. Αξία εκπτωτικών τεμαχίων (πάνω στο 26% αφαιρείται έξτρα η ειδική π.χ. 10%)
+                                        cost_spec = s_pcs * price_after_global * (1 - (s_pct / 100))
                                         
                                         new_total += (cost_normal + cost_spec)
                                         
@@ -3759,9 +3755,8 @@ elif page == "👥 Πελατολόγιο":
                                         if s_pcs > 0:
                                             disc_text += f"📉 {s_pcs}x {c_name} (Έκπτωση {s_pct}%)\n"
                                             
-                                    # Καθαρισμός και επανασύνθεση του κειμένου της παραγγελίας
-                                    final_details = current_details.split("\n\n--- ΔΩΡΑ")[0].split("\n\n--- ΕΙΔΙΚΕΣ")[0]
-                                    
+                                    # Ενημέρωση Παραγγελίας
+                                    final_details = clean_display_details
                                     if gift_text:
                                         final_details += f"\n\n--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---\n{gift_text}"
                                     if disc_text:
@@ -3769,10 +3764,10 @@ elif page == "👥 Πελατολόγιο":
                                         
                                     supabase.table("b2b_orders").update({"total_amount": new_total, "order_details": final_details}).eq("id", sel_order_id).execute()
                                     
-                                st.success(f"✅ Επιτυχία! Η νέα αξία της παραγγελίας διαμορφώθηκε στα {new_total:.2f} €")
-                                st.cache_data.clear()
-                                time.sleep(1.5)
-                                st.rerun()
+                                    st.success(f"✅ Επιτυχία! Η νέα αξία της παραγγελίας διαμορφώθηκε στα {new_total:.2f} €")
+                                    st.cache_data.clear()
+                                    time.sleep(1.5)
+                                    st.rerun()
                     else:
                         st.warning("Δεν βρέθηκε γραμμή παραγωγής (υλικά) για τη συγκεκριμένη παραγγελία.")
             else:
