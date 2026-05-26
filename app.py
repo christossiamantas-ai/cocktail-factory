@@ -4318,3 +4318,42 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                                 <td style="text-align: right; font-weight: bold;">{row['Τελική Χρέωση']:.2f} €</td>
                             </tr>
                 """
+                
+            html_proposal += f"""
+                        </tbody>
+                    </table>
+                    
+                    <div class="totals">
+                        <table>
+                            <tr>
+                                <th>Αρχική Αξία Καταλόγου:</th>
+                                <td style="text-align: right; text-decoration: line-through; color: #777;">{total_list_value:.2f} €</td>
+                            </tr>
+                            <tr class="savings-row">
+                                <th>Συνολικό Όφελος / Έκπτωση:</th>
+                                <td style="text-align: right;">- {customer_savings:.2f} €</td>
+                            </tr>
+                            <tr class="final-row">
+                                <th style="color: white;">ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ ΣΥΝΟΛΟ:</th>
+                                <td style="text-align: right; color: white;">{total_sim_rev:.2f} €</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="clear"></div>
+                    
+                    <div class="footer">
+                        <p>Σας ευχαριστούμε για την προτίμηση. Η προσφορά ισχύει για 30 ημέρες.</p>
+                        <p>Οι τιμές δεν περιλαμβάνουν Φ.Π.Α.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            st.download_button(
+                label="📥 Κατέβασμα Εμπορικής Πρότασης (Ανοίξτε το & τυπώστε σε PDF)",
+                data=html_proposal,
+                file_name=f"Quotation_{st.session_state.sim_customer}_{now_str.replace('/','-')}.html",
+                mime="text/html",
+                type="primary"
+            )
