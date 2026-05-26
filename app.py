@@ -4313,4 +4313,8 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 html_proposal += f"""
                             <tr>
                                 <td><strong>{row['Cocktail']}</strong></td>
-                                <td>
+                                <td>{row['Τεμάχια']} τμχ</td>
+                                <td style="color: #d32f2f; font-size: 0.9em;">{row['Δώρα/Εκπτώσεις']}</td>
+                                <td style="text-align: right; font-weight: bold;">{row['Τελική Χρέωση']:.2f} €</td>
+                            </tr>
+                """
