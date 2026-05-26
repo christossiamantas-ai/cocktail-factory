@@ -1726,7 +1726,7 @@ elif page == "📈 Dashboard":
         df_filtered['normal_pcs'] = df_filtered['t_pcs'] - df_filtered['f_pcs'] - df_filtered['s_pcs']
 
         # Έσοδα από τα Κανονικά Τεμάχια (παίρνουν τη Γενική Έκπτωση Πελάτη π.χ. 26%)
-        df_filtered['rev_normal'] = df_filtered['normal_pcs'] * df_filtered['catalog_price'] * (1 - (df_filtered['global_discount'] / 100))
+        df_filtered['rev_special'] = df_filtered['s_pcs'] * df_filtered['catalog_price'] * (1 - (df_filtered['global_discount'] / 100)) * (1 - (df_filtered['s_pct'] / 100))
         
         # Έσοδα από τα Εκπτωτικά Τεμάχια (παίρνουν την Ειδική Έκπτωση Κοκτέιλ π.χ. 10%)
         df_filtered['rev_special'] = df_filtered['s_pcs'] * df_filtered['catalog_price'] * (1 - (df_filtered['s_pct'] / 100))
@@ -3747,7 +3747,7 @@ elif page == "👥 Πελατολόγιο":
                                         catalog_p = rec_prices.get(c_name, 0.0)
                                         
                                         # Υπολογισμός Κανονικών Τεμαχίων (με τη γενική έκπτωση πελάτη)
-                                        cost_normal = normal_pcs * catalog_p * (1 - cust_discount / 100)
+                                        cost_spec = s_pcs * catalog_p * (1 - cust_discount / 100) * (1 - s_pct / 100))
                                         
                                         # Υπολογισμός Εκπτωτικών Τεμαχίων (Αγνοεί τη γενική έκπτωση και εφαρμόζει την Ειδική)
                                         cost_spec = s_pcs * catalog_p * (1 - s_pct / 100)
