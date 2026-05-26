@@ -1052,7 +1052,13 @@ elif page == "🔍 Ανάλυση":
             df_sales['normal_pcs'] = df_sales['t_pcs'] - df_sales['f_pcs'] - df_sales['s_pcs']
 
             # Τιμή Καταλόγου
-            catalog_price = recipe_prices.get(choice, 0.0)
+            catalog_price = 0.0
+            try:
+                res_rec_price = supabase.table("recipes").select("catalog_price").eq("name", choice).execute()
+                if res_rec_price.data:
+                    catalog_price = float(res_rec_price.data[0].get("catalog_price", 0.0) or 0.0)
+            except Exception:
+                pass
             
             # Γενική Έκπτωση Πελάτη
             df_sales['customer'] = df_sales.get('customer', '').astype(str).str.strip()
