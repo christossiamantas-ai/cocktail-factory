@@ -3747,7 +3747,7 @@ elif page == "👥 Πελατολόγιο":
                                         catalog_p = rec_prices.get(c_name, 0.0)
                                         
                                         # Υπολογισμός Κανονικών Τεμαχίων (με τη γενική έκπτωση πελάτη)
-                                        cost_spec = s_pcs * catalog_p * (1 - cust_discount / 100) * (1 - s_pct / 100))
+                                        cost_spec = s_pcs * catalog_p * (1 - cust_discount / 100) * (1 - s_pct / 100)
                                         
                                         # Υπολογισμός Εκπτωτικών Τεμαχίων (Αγνοεί τη γενική έκπτωση και εφαρμόζει την Ειδική)
                                         cost_spec = s_pcs * catalog_p * (1 - s_pct / 100)
