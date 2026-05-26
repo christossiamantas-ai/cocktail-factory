@@ -1024,12 +1024,12 @@ elif page == "🔍 Ανάλυση":
         st.markdown("---")
         st.write(f"### 📈 Οικονομική Απόδοση & Πωλήσεις ({choice})")
         
-        # 🔴 ΔΙΟΡΘΩΣΗ: Τραβάμε σωστά τη στήλη "discount" αντί για "general_discount"
+        # Τραβάμε σωστά τη στήλη "discount" των πελατών
         cust_discount_map = {}
         try:
             res_cust = supabase.table("customers").select("name, discount").execute()
             if res_cust.data:
-                cust_discount_map = {c["name"]: float(c.get("discount", 0.0) or 0.0) for c in res_cust.data}
+                cust_discount_map = {str(c.get("name", "")).strip(): float(c.get("discount", 0.0) or 0.0) for c in res_cust.data}
         except Exception as e:
             pass
         
@@ -1037,57 +1037,42 @@ elif page == "🔍 Ανάλυση":
         if res_sales.data:
             df_sales = pd.DataFrame(res_sales.data)
             
-            # 1. Καθαρίζουμε τις διπλοεγγραφές των υλικών
-            if "prod_time" in df_sales.columns:
-                df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_time", "customer"])
+            # 1. 🚀 ΔΙΟΡΘΩΣΗ: Καθαρίζουμε τις διπλοεγγραφές προσθέτοντας το "prod_date" για να μην χάνονται σπασμένες παραγγελίες!
+            if "prod_time" in df_sales.columns and "prod_date" in df_sales.columns:
+                df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_date", "prod_time", "customer"])
             
-            total_produced_pcs = 0
-            total_free_pcs = 0
-            total_real_revenue = 0.0
+            # 2. ΑΣΦΑΛΗΣ ΜΕΤΑΤΡΟΠΗ ΔΕΔΟΜΕΝΩΝ (Τέλος στα NaN!)
+            df_sales['t_pcs'] = pd.to_numeric(df_sales.get('pieces', 0), errors='coerce').fillna(0)
+            df_sales['f_pcs'] = pd.to_numeric(df_sales.get('free_pieces', 0), errors='coerce').fillna(0)
+            df_sales['s_pcs'] = pd.to_numeric(df_sales.get('discounted_pieces', 0), errors='coerce').fillna(0)
+            df_sales['s_pct'] = pd.to_numeric(df_sales.get('discount_pct', 0), errors='coerce').fillna(0)
+
+            # Ασφαλής διαχωρισμός τεμαχίων
+            df_sales['s_pcs'] = df_sales.apply(lambda r: min(r['s_pcs'], max(0, r['t_pcs'] - r['f_pcs'])), axis=1)
+            df_sales['normal_pcs'] = df_sales['t_pcs'] - df_sales['f_pcs'] - df_sales['s_pcs']
+
+            # Τιμή Καταλόγου
+            catalog_price = recipe_prices.get(choice, 0.0)
             
-            for _, row in df_sales.iterrows():
-                cust = row.get("customer", "")
-                
-                try: pcs = int(float(row.get("pieces", 0)))
-                except: pcs = 0
-                try: fr = int(float(row.get("free_pieces", 0)))
-                except: fr = 0
-                try: disc_pcs = int(float(row.get("discounted_pieces", 0)))
-                except: disc_pcs = 0
-                try: disc_pct = float(row.get("discount_pct", 0.0))
-                except: disc_pct = 0.0
-                
-                # -----------------------------------------------------------------
-                # Η ΜΑΓΕΙΑ ΕΔΩ: Σύνολο Φιαλών = Πληρωμένα (pcs) + Δώρα (fr)
-                # Έτσι το 516 + 24 γίνεται 540 για να βγει σωστά το κόστος!
-                # -----------------------------------------------------------------
-                total_produced_pcs += (pcs + fr)
-                total_free_pcs += fr
-                
-                cust_discount = cust_discount_map.get(cust, 0.0)
-                
-                try: sold_price = float(row.get("sold_price", 0.0))
-                except: sold_price = 0.0
-                
-                # -----------------------------------------------------------------
-                # ΤΖΙΡΟΣ: Υπολογίζεται ΑΥΣΤΗΡΑ μόνο στα Πληρωμένα (pcs = 516)
-                # -----------------------------------------------------------------
-                if pd.notnull(sold_price) and sold_price > 0:
-                    if disc_pcs > pcs:
-                        disc_pcs = pcs
-                    norm_pcs = pcs - disc_pcs 
-                    
-                    rev_norm = norm_pcs * sold_price
-                    rev_spec = disc_pcs * p_retail * (1 - (disc_pct / 100.0))
-                    revenue_for_this_order = rev_norm + rev_spec
-                else:
-                    revenue_for_this_order = pcs * p_retail * (1 - (cust_discount / 100.0))
-                
-                total_real_revenue += revenue_for_this_order
+            # Γενική Έκπτωση Πελάτη
+            df_sales['customer'] = df_sales.get('customer', '').astype(str).str.strip()
+            df_sales['global_discount'] = df_sales['customer'].map(cust_discount_map).fillna(0)
+
+            # 3. ΑΣΦΑΛΗΣ ΥΠΟΛΟΓΙΣΜΟΣ ΕΣΟΔΩΝ (Διαδοχικές Εκπτώσεις)
+            df_sales['price_after_global'] = catalog_price * (1 - (df_sales['global_discount'] / 100))
             
-            # -----------------------------------------------------------------
-            # ΚΟΣΤΟΣ: Υπολογίζεται στο Σύνολο των Φιαλών (540 * 2.90€)
-            # -----------------------------------------------------------------
+            df_sales['rev_normal'] = df_sales['normal_pcs'] * df_sales['price_after_global']
+            df_sales['rev_special'] = df_sales['s_pcs'] * df_sales['price_after_global'] * (1 - (df_sales['s_pct'] / 100))
+            
+            df_sales['Theoretical_Revenue'] = df_sales['rev_normal'] + df_sales['rev_special']
+            df_sales['Theoretical_Revenue'] = df_sales['Theoretical_Revenue'].clip(lower=0)
+
+            # 4. ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΑΠΟΤΕΛΕΣΜΑΤΑ
+            total_produced_pcs = int(df_sales['t_pcs'].sum())
+            total_free_pcs = int(df_sales['f_pcs'].sum())
+            total_real_revenue = df_sales['Theoretical_Revenue'].sum()
+            
+            # Υπολογισμός Κόστους (Χρησιμοποιεί το total_production = κόστος 1 τμχ, που έχεις υπολογίσει πιο πάνω)
             total_production_cost = total_produced_pcs * total_production
             total_net_profit = total_real_revenue - total_production_cost
             
@@ -1119,8 +1104,8 @@ elif page == "🔍 Ανάλυση":
                 st.plotly_chart(fig_pie, use_container_width=True)
             with g2:
                 st.markdown("**🏆 Top 5 Αγοραστές (Τεμάχια)**")
-                # Εδώ δείχνουμε τα πληρωμένα τεμάχια (pcs) στο γράφημα
-                df_sales['paid_pieces'] = df_sales['pieces'].astype(float).fillna(0)
+                # Δείχνουμε τα "πληρωμένα" τεμάχια (Σύνολο - Δώρα) στο γράφημα
+                df_sales['paid_pieces'] = df_sales['t_pcs'] - df_sales['f_pcs']
                 df_cust = df_sales.groupby("customer")["paid_pieces"].sum().reset_index()
                 df_cust = df_cust.sort_values(by="paid_pieces", ascending=True).tail(5)
                 fig_bar = px.bar(
