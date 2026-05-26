@@ -4054,3 +4054,184 @@ elif page == "📦 Παραγγελίες B2B":
                             pass 
             else:
                 st.warning("Δεν βρέθηκαν παραγγελίες με αυτά τα κριτήρια.")
+
+# --- 11. ΠΡΟΣΟΜΟΙΩΤΗΣ ΠΩΛΗΣΕΩΝ & ΠΡΟΣΦΟΡΩΝ (WHAT-IF ANALYSIS) ---
+elif page == "🧪 Προσομοίωση Πωλήσεων":
+    st.header("🧪 Προσομοιωτής Εμπορικής Πολιτικής & Προσφορών")
+    st.write("Στήσε εικονικά σενάρια πωλήσεων για να υπολογίσεις το ακριβές περιθώριο κέρδους (Margin) πριν δώσεις μια προσφορά.")
+
+    import pandas as pd
+    import plotly.express as px
+
+    # --- 1. ΦΟΡΤΩΣΗ ΒΑΣΙΚΩΝ ΔΕΔΟΜΕΝΩΝ (Κόστη & Τιμές) ---
+    @st.cache_data(ttl=300)
+    def load_simulation_data():
+        rec = supabase.table("recipes").select("id, name, catalog_price").execute().data
+        ing = supabase.table("ingredients").select("name, price, volume").execute().data
+        items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute().data
+        cust = supabase.table("customers").select("name, discount").execute().data
+        return rec, ing, items, cust
+
+    with st.spinner("Φόρτωση δεδομένων κόστους..."):
+        rec_data, ing_data, items_data, cust_data = load_simulation_data()
+
+    if rec_data:
+        df_recipes = pd.DataFrame(rec_data)
+        recipe_prices = dict(zip(df_recipes['name'], pd.to_numeric(df_recipes['catalog_price'], errors='coerce').fillna(0)))
+        
+        # Υπολογισμός Κόστους (Ακριβώς όπως στο Dashboard)
+        FIXED_COST = 0.22 
+        df_ing = pd.DataFrame(ing_data)
+        df_ing['cost_per_ml'] = pd.to_numeric(df_ing.get('price', 0), errors='coerce') / pd.to_numeric(df_ing.get('volume', 1), errors='coerce')
+        ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
+        
+        df_items = pd.DataFrame(items_data)
+        recipe_costs_by_id = {}
+        for rid in df_items['recipe_id'].unique():
+            sub = df_items[df_items['recipe_id'] == rid]
+            mat_cost = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
+            recipe_costs_by_id[rid] = mat_cost + FIXED_COST
+            
+        name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], FIXED_COST) for _, r in df_recipes.iterrows()}
+
+        # Πελάτες
+        df_customers = pd.DataFrame(cust_data) if cust_data else pd.DataFrame(columns=['name', 'discount'])
+        customer_list = ["-- Νέος Πελάτης (Χειροκίνητα) --"] + sorted(df_customers['name'].dropna().tolist())
+        cust_discount_map = dict(zip(df_customers['name'], pd.to_numeric(df_customers.get('discount', 0), errors='coerce').fillna(0)))
+
+        # --- 2. INITIALIZE SESSION STATE (Το εικονικό καλάθι) ---
+        if 'sim_cart' not in st.session_state:
+            st.session_state.sim_cart = []
+
+        # --- 3. ΡΥΘΜΙΣΕΙΣ ΣΕΝΑΡΙΟΥ ---
+        st.divider()
+        col_c1, col_c2 = st.columns(2)
+        
+        with col_c1:
+            st.markdown("### 👤 Προφίλ Πελάτη")
+            sim_customer = st.selectbox("Πελάτης:", customer_list)
+            
+            # Αν επιλέξει υπάρχοντα πελάτη, τραβάμε την έκπτωσή του
+            default_disc = 0.0
+            if sim_customer != "-- Νέος Πελάτης (Χειροκίνητα) --":
+                default_disc = float(cust_discount_map.get(sim_customer, 0.0))
+                
+            sim_global_disc = st.number_input("Γενική Έκπτωση (%) Στο Σενάριο:", min_value=0.0, max_value=100.0, value=default_disc, step=1.0)
+
+        with col_c2:
+            st.markdown("### 🍹 Προσθήκη Προϊόντος")
+            with st.form("sim_add_item", clear_on_submit=True):
+                sim_cocktail = st.selectbox("Κοκτέιλ:", options=sorted(df_recipes['name'].tolist()))
+                
+                c_qty, c_free, c_spcs, c_spct = st.columns(4)
+                t_pcs = c_qty.number_input("Συνολικά Τμχ", min_value=1, value=24, step=1)
+                f_pcs = c_free.number_input("Δωρεάν Τμχ", min_value=0, value=0, step=1)
+                s_pcs = c_spcs.number_input("Τμχ σε Έκπτωση", min_value=0, value=0, step=1)
+                s_pct = c_spct.number_input("% Ειδική Έκπτ.", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+                
+                add_btn = st.form_submit_button("➕ Προσθήκη στην Προσφορά")
+                
+                if add_btn:
+                    # Έλεγχος λογικής
+                    if f_pcs + s_pcs > t_pcs:
+                        st.error("Τα δώρα και τα εκπτωτικά τεμάχια δεν μπορούν να ξεπερνούν το σύνολο!")
+                    else:
+                        st.session_state.sim_cart.append({
+                            "id": len(st.session_state.sim_cart) + 1,
+                            "cocktail": sim_cocktail,
+                            "t_pcs": t_pcs,
+                            "f_pcs": f_pcs,
+                            "s_pcs": s_pcs,
+                            "s_pct": s_pct
+                        })
+                        st.rerun()
+
+        # --- 4. ΑΝΑΛΥΣΗ ΤΟΥ ΕΙΚΟΝΙΚΟΥ ΚΑΛΑΘΙΟΥ ---
+        st.divider()
+        st.markdown("### 🛒 Ανάλυση Τρέχουσας Προσφοράς")
+        
+        if st.session_state.sim_cart:
+            if st.button("🗑️ Καθαρισμός Σεναρίου"):
+                st.session_state.sim_cart = []
+                st.rerun()
+                
+            # Υπολογισμοί Σεναρίου
+            sim_results = []
+            total_sim_rev = 0.0
+            total_sim_cost = 0.0
+            
+            for item in st.session_state.sim_cart:
+                c_name = item["cocktail"]
+                t_pcs = item["t_pcs"]
+                f_pcs = item["f_pcs"]
+                s_pcs = item["s_pcs"]
+                s_pct = item["s_pct"]
+                normal_pcs = t_pcs - f_pcs - s_pcs
+                
+                cat_price = recipe_prices.get(c_name, 0.0)
+                unit_cost = name_to_cost.get(c_name, FIXED_COST)
+                
+                # Διαδοχικές εκπτώσεις (Μαθηματικά Dashboard)
+                price_after_global = cat_price * (1 - (sim_global_disc / 100))
+                rev_norm = normal_pcs * price_after_global
+                rev_spec = s_pcs * price_after_global * (1 - (s_pct / 100))
+                
+                item_rev = rev_norm + rev_spec
+                item_cost = t_pcs * unit_cost
+                item_profit = item_rev - item_cost
+                
+                total_sim_rev += item_rev
+                total_sim_cost += item_cost
+                
+                sim_results.append({
+                    "Cocktail": c_name,
+                    "Σύνολο (τμχ)": t_pcs,
+                    "Δώρα (τμχ)": f_pcs,
+                    "Εκπτωτικά (τμχ)": s_pcs,
+                    "Extra Έκπτ. (%)": s_pct,
+                    "Έσοδα (€)": round(item_rev, 2),
+                    "Κόστος (€)": round(item_cost, 2),
+                    "Κέρδος (€)": round(item_profit, 2)
+                })
+                
+            df_sim = pd.DataFrame(sim_results)
+            st.dataframe(df_sim, use_container_width=True, hide_index=True)
+            
+            # --- 5. ΤΕΛΙΚΑ ΜΑΘΗΜΑΤΙΚΑ & METRICS ---
+            st.markdown("### 📊 Τελική Απόδοση Προσφοράς")
+            
+            total_sim_profit = total_sim_rev - total_sim_cost
+            sim_margin = (total_sim_profit / total_sim_rev * 100) if total_sim_rev > 0 else 0
+            
+            sm1, sm2, sm3, sm4 = st.columns(4)
+            sm1.metric("Εκτιμώμενος Τζίρος", f"{total_sim_rev:,.2f} €")
+            sm2.metric("Συνολικό Κόστος", f"{total_sim_cost:,.2f} €")
+            
+            # Χρωματισμός Margin (Αν πέσει κάτω από 30% βγάζει προειδοποίηση)
+            if sim_margin >= 40:
+                delta_color = "normal"
+                status_icon = "🟢"
+            elif sim_margin >= 25:
+                delta_color = "off"
+                status_icon = "🟡"
+            else:
+                delta_color = "inverse"
+                status_icon = "🔴"
+                
+            sm3.metric("Καθαρό Κέρδος", f"{total_sim_profit:,.2f} €")
+            sm4.metric("Profit Margin (%)", f"{sim_margin:.1f}%", delta=f"{status_icon} Ιδανικό >40%", delta_color=delta_color)
+            
+            # Γράφημα Break-down
+            fig_sim = px.pie(
+                names=["Καθαρό Κέρδος στην τσέπη", "Κόστος Παραγωγής (Υλικά & Πάγια)"],
+                values=[max(0, total_sim_profit), total_sim_cost],
+                hole=0.5,
+                color_discrete_sequence=["#00cc96", "#ef553b"],
+                title="Ανάλυση Εσόδων Προσφοράς"
+            )
+            st.plotly_chart(fig_sim, use_container_width=True)
+            
+        else:
+            st.info("Το σενάριο είναι άδειο. Πρόσθεσε κοκτέιλ από πάνω για να ξεκινήσεις την προσομοίωση.")
+    else:
+        st.warning("Δεν βρέθηκαν συνταγές στη βάση δεδομένων.")
