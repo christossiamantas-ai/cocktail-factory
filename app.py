@@ -1725,7 +1725,7 @@ elif page == "📈 Dashboard":
         df_filtered['free_pieces'] = pd.to_numeric(df_filtered.get('free_pieces', 0), errors='coerce').fillna(0)
         
         # Τελική Τιμή Dealer (Βασική + Extra Έκπτωση)
-        df_filtered['dealer_price
+        df_filtered['dealer_price'] = df_filtered['catalog_price'] * (1 - (df_filtered['discount'] / 100)) * (1 - (df_filtered['extra_discount'] / 100))
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ & SMART CART) ---
 elif page == "📦 Lot Παραγωγής":
