@@ -1617,7 +1617,7 @@ elif page == "📊 Εμπορική Πολιτική":
                     mime="text/csv"
                 )
             
-# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΤΕΛΙΚΗ ΕΚΔΟΣΗ ΜΕ ΕΙΔΙΚΕΣ ΕΚΠΤΩΣΕΙΣ) ---
+# --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΤΕΛΙΚΗ ΕΚΔΟΣΗ ΜΕ ΔΙΑΔΟΧΙΚΕΣ ΕΚΠΤΩΣΕΙΣ) ---
 elif page == "📈 Dashboard":
     st.header("📈 Business Analytics & Πωλήσεις")
     
@@ -1706,43 +1706,46 @@ elif page == "📈 Dashboard":
             
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], FIXED_COST) for _, r in df_recipes.iterrows()}
 
-        # 🚀 ΝΕΑ, ΑΚΡΙΒΗΣ ΛΟΓΙΚΗ ΕΣΟΔΩΝ (ΒΑΣΙΣΜΕΝΗ ΣΤΟ ΠΕΛΑΤΟΛΟΓΙΟ)
+        # =========================================================================
+        # 🚀 ΑΠΟΛΥΤΑ ΑΣΦΑΛΗΣ ΥΠΟΛΟΓΙΣΜΟΣ ΕΣΟΔΩΝ (ΔΙΑΔΟΧΙΚΕΣ ΕΚΠΤΩΣΕΙΣ)
+        # =========================================================================
         recipe_price_dict = dict(zip(df_recipes['name'], pd.to_numeric(df_recipes.get('catalog_price', 0), errors='coerce')))
         cust_discount_dict = dict(zip(df_customers['name'], df_customers['discount']))
 
-        # Τιμή Καταλόγου και Γενική Έκπτωση Πελάτη
+        # 1. Ανάγνωση βασικών τιμών
         df_filtered['catalog_price'] = df_filtered['cocktail_name'].map(recipe_price_dict).fillna(0)
         df_filtered['global_discount'] = df_filtered['customer'].map(cust_discount_dict).fillna(0)
         
-        # Ανάγνωση Ποσοτήτων (Όλων των ειδών)
+        # 2. Ανάγνωση ποσοτήτων (Όλων των ειδών)
         df_filtered['t_pcs'] = pd.to_numeric(df_filtered.get('pieces', 0), errors='coerce').fillna(0)
         df_filtered['f_pcs'] = pd.to_numeric(df_filtered.get('free_pieces', 0), errors='coerce').fillna(0)
         df_filtered['s_pcs'] = pd.to_numeric(df_filtered.get('discounted_pieces', 0), errors='coerce').fillna(0)
         df_filtered['s_pct'] = pd.to_numeric(df_filtered.get('discount_pct', 0), errors='coerce').fillna(0)
 
-        # Ασφάλεια: Τα εκπτωτικά + τα δωρεάν δεν μπορούν να υπερβαίνουν το σύνολο
+        # 3. Ασφαλής διαχωρισμός τεμαχίων
         df_filtered['s_pcs'] = df_filtered.apply(lambda r: min(r['s_pcs'], max(0, r['t_pcs'] - r['f_pcs'])), axis=1)
-        # Τα "κανονικά" τεμάχια είναι όσα περισσεύουν
         df_filtered['normal_pcs'] = df_filtered['t_pcs'] - df_filtered['f_pcs'] - df_filtered['s_pcs']
 
-        # Έσοδα από τα Κανονικά Τεμάχια (παίρνουν τη Γενική Έκπτωση Πελάτη π.χ. 26%)
-        df_filtered['rev_special'] = df_filtered['s_pcs'] * df_filtered['catalog_price'] * (1 - (df_filtered['global_discount'] / 100)) * (1 - (df_filtered['s_pct'] / 100))
+        # 4. Υπολογισμός Εσόδων (Ακριβώς όπως στο Πελατολόγιο)
+        # -> Τιμή ΜΕΤΑ τη Γενική Έκπτωση του Πελάτη (π.χ. τα 4.50€)
+        df_filtered['price_after_global'] = df_filtered['catalog_price'] * (1 - (df_filtered['global_discount'] / 100))
         
-        # Έσοδα από τα Εκπτωτικά Τεμάχια (παίρνουν την Ειδική Έκπτωση Κοκτέιλ π.χ. 10%)
-        df_filtered['rev_special'] = df_filtered['s_pcs'] * df_filtered['catalog_price'] * (1 - (df_filtered['s_pct'] / 100))
+        # -> Έσοδα Κανονικών Τεμαχίων (Απλά πολλαπλασιάζουμε με την price_after_global)
+        df_filtered['rev_normal'] = df_filtered['normal_pcs'] * df_filtered['price_after_global']
+        
+        # -> Έσοδα Ειδικών Τεμαχίων (Αφαιρούμε διαδοχικά ΚΑΙ την ειδική έκπτωση πάνω στην price_after_global)
+        df_filtered['rev_special'] = df_filtered['s_pcs'] * df_filtered['price_after_global'] * (1 - (df_filtered['s_pct'] / 100))
 
         # Συνολικά Έσοδα Γραμμής
         df_filtered['Theoretical_Revenue'] = df_filtered['rev_normal'] + df_filtered['rev_special']
         df_filtered['Theoretical_Revenue'] = df_filtered['Theoretical_Revenue'].clip(lower=0)
         
-        # Συνολικό Κόστος (Υπολογίζεται πάνω σε όλα τα τεμάχια, t_pcs)
+        # Συνολικό Κόστος & Κέρδος
         df_filtered['Final_Unit_Cost'] = df_filtered['cocktail_name'].map(name_to_cost).fillna(FIXED_COST)
         df_filtered['Total_Cost'] = df_filtered['t_pcs'] * df_filtered['Final_Unit_Cost']
-        
-        # Καθαρό Κέρδος
         df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
 
-        # --- ΑΠΟΛΥΤΟΣ ΣΥΓΧΡΟΝΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ (BOTTOM-UP) ---
+        # --- ΣΥΓΧΡΟΝΙΣΜΟΣ ΔΕΔΟΜΕΝΩΝ ΓΙΑ METRICS & ΓΡΑΦΗΜΑΤΑ ---
         total_rev = df_filtered['Theoretical_Revenue'].sum()
         total_cost = df_filtered['Total_Cost'].sum()
         total_profit = df_filtered['Profit'].sum()
@@ -1767,21 +1770,20 @@ elif page == "📈 Dashboard":
         m5.metric("📦 Παραγγελίες", format_gr(total_orders_count, decimals=0))
         m6.metric("⚖️ Μέση Αξία", f"{format_gr(aov)} €")
 
-        # --- 🕵️‍♂️ ΕΡΓΑΛΕΙΟ ΕΛΕΓΧΟΥ (ΝΕΟ ΑΝΑΛΥΤΙΚΟ AUDIT TOOL) ---
+        # --- 🕵️‍♂️ ΕΡΓΑΛΕΙΟ ΕΛΕΓΧΟΥ (ΝΕΟ AUDIT TOOL) ---
         with st.expander("🕵️‍♂️ ΕΡΓΑΛΕΙΟ ΕΛΕΓΧΟΥ: Ακτινογραφία Υπολογισμών (Κάντε κλικ)"):
-            st.info("💡 Ελέγξτε πώς εφαρμόζονται οι πολλαπλές εκπτώσεις σας στην τελευταία παραγωγή.")
+            st.info("💡 Ελέγξτε πώς εφαρμόζονται οι διαδοχικές εκπτώσεις σας στην τελευταία παραγωγή.")
             if not df_filtered.empty:
                 s = df_filtered.iloc[0]
                 col_aud1, col_aud2, col_aud3 = st.columns(3)
                 
                 with col_aud1:
                     st.markdown("### 1️⃣ Υπολογισμός Εσόδων")
-                    st.write(f"**Σύνολο Τεμαχίων:** {s['t_pcs']} τμχ")
+                    st.write(f"**Σύνολο:** {s['t_pcs']} τμχ | **Τιμή Καταλόγου:** {s['catalog_price']:.2f}€")
+                    st.write(f"**Τιμή (μετά τη Γενική Έκπτωση {s['global_discount']}%):** {s['price_after_global']:.2f}€")
                     st.caption("---")
-                    st.write(f"**Κανονικά:** {s['normal_pcs']} τμχ *(Έκπτωση Πελάτη {s['global_discount']}%)*")
-                    st.write(f"↪ Αξία: {s['rev_normal']:.2f}€")
-                    st.write(f"**Ειδικά:** {s['s_pcs']} τμχ *(Έκπτωση Προϊόντος {s['s_pct']}%)*")
-                    st.write(f"↪ Αξία: {s['rev_special']:.2f}€")
+                    st.write(f"**Κανονικά:** {s['normal_pcs']} τμχ  (↪ Αξία: {s['rev_normal']:.2f}€)")
+                    st.write(f"**Ειδικά:** {s['s_pcs']} τμχ *(Extra {s['s_pct']}% -> Τιμή: {s['price_after_global'] * (1 - s['s_pct']/100):.2f}€)* (↪ Αξία: {s['rev_special']:.2f}€)")
                     st.write(f"**Δωρεάν:** {s['f_pcs']} τμχ")
                     st.success(f"💰 Συνολικά Έσοδα = **{s['Theoretical_Revenue']:.2f}€**")
 
@@ -1970,7 +1972,7 @@ elif page == "📈 Dashboard":
             st.info("Δεν υπάρχουν ακόμα δεδομένα πελατών για ανάλυση.")
 
         # =========================================================================
-        # 📊 ΔΥΝΑΜΙΚΟ ΓΡΑΦΗΜΑ ΠΩΛΗΣΕΩΝ & ΚΕΡΔΟΦΟΡΙΑΣ ΚΟΚΤΕΙΛ (ΠΛΗΡΩΣ ΣΥΓΧΡΟΝΙΣΜΕΝΟ)
+        # 📊 ΔΥΝΑΜΙΚΟ ΓΡΑΦΗΜΑ ΠΩΛΗΣΕΩΝ & ΚΕΡΔΟΦΟΡΙΑΣ ΚΟΚΤΕΙΛ
         # =========================================================================
         st.divider()
         st.markdown("### 📈 Δυναμική Ανάλυση Πωλήσεων Cocktails")
