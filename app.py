@@ -1899,11 +1899,25 @@ elif page == "📈 Dashboard":
         
         if heatmap_list:
             df_hm = pd.DataFrame(heatmap_list)
+            
+            # Δημιουργούμε μια "ασφαλή" στήλη για το μέγεθος της φούσκας (όχι αρνητικά/μηδενικά νούμερα)
+            df_hm["Μέγεθος Φούσκας"] = df_hm["Συνολικό Κέρδος"].apply(lambda x: x if x > 0 else 0.5)
+            
             fig_hm = px.scatter(
-                df_hm, x="Πωλήσεις (Σύνολο)", y="Κέρδος/Τμχ", size="Συνολικό Κέρδος", 
-                color="Cocktail", hover_name="Cocktail", text="Cocktail", size_max=50, 
+                df_hm, 
+                x="Πωλήσεις (Σύνολο)", 
+                y="Κέρδος/Τμχ", 
+                size="Μέγεθος Φούσκας", # 🚀 Παίρνει το ασφαλές μέγεθος για να μην κρασάρει
+                color="Cocktail", 
+                hover_name="Cocktail", 
+                text="Cocktail", 
+                hover_data={"Μέγεθος Φούσκας": False, "Συνολικό Κέρδος": True}, # 🚀 Δείχνει το πραγματικό κέρδος/χασούρα στο ποντίκι
+                size_max=50, 
                 template="plotly_dark",
-                labels={"Κέρδος/Τμχ": "Καθαρό Κέρδος 1 Τεμαχίου (€)", "Πωλήσεις (Σύνολο)": "Συνολικός Όγκος (τμχ)"}
+                labels={
+                    "Κέρδος/Τμχ": "Καθαρό Κέρδος 1 Τεμαχίου (€)", 
+                    "Πωλήσεις (Σύνολο)": "Συνολικός Όγκος (τμχ)"
+                }
             )
             fig_hm.update_traces(textposition='top center')
             min_margin = df_hm["Κέρδος/Τμχ"].min()
