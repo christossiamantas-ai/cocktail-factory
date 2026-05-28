@@ -587,6 +587,7 @@ if page == "📦 Αποθήκη":
                     <td>{row['Τιμή/ml']:.4f} €</td>
                     <td>{row['Αλκοόλ %']:.1f}%</td>
                     <td>{row['Weight_Full']:.1f} g</td>
+                    <td>{row.get('Απόθεμα (ml)', 0.0):.1f} ml</td> </tr>
                 </tr>
             """
 
