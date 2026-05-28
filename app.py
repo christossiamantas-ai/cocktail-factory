@@ -2520,9 +2520,26 @@ elif page == "📦 Lot Παραγωγής":
                     if lot_entries:
                         try:
                             # 🚀 ΑΠΟΛΥΤΗ ΣΥΓΧΩΝΕΥΣΗ (Διαγραφή παλιών και εισαγωγή νέων)
-                            # Αντί να αθροίζουμε τυφλά, διαγράφουμε τη σημερινή εγγραφή του πελάτη/κοκτέιλ και βάζουμε τη νέα (που τα περιέχει όλα)
                             unique_updates = set((e["customer"], e["cocktail_name"], e["prod_date"]) for e in lot_entries)
                             for cust, cock, pdate in unique_updates:
+                                # 1. ΔΙΑΒΑΖΟΥΜΕ ΤΑ ΠΑΛΙΑ ΔΩΡΑ/ΕΚΠΤΩΣΕΙΣ ΠΡΙΝ ΤΑ ΣΒΗΣΟΥΜΕ!
+                                try:
+                                    old_data = supabase.table("production_log").select("free_pieces, discount").eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).execute()
+                                    saved_free = 0
+                                    saved_disc = 0.0
+                                    if old_data.data:
+                                        saved_free = int(old_data.data[0].get("free_pieces") or 0)
+                                        saved_disc = float(old_data.data[0].get("discount") or 0.0)
+                                        
+                                    # 2. ΤΑ ΕΝΣΩΜΑΤΩΝΟΥΜΕ ΣΤΙΣ ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΠΟΥ ΘΑ ΜΠΟΥΝ
+                                    for entry in lot_entries:
+                                        if entry["customer"] == cust and entry["cocktail_name"] == cock and entry["prod_date"] == pdate:
+                                            entry["free_pieces"] = saved_free
+                                            entry["discount"] = saved_disc
+                                except Exception:
+                                    pass
+
+                                # 3. ΤΩΡΑ ΔΙΑΓΡΑΦΟΥΜΕ ΜΕ ΑΣΦΑΛΕΙΑ!
                                 supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).execute()
                             
                             supabase.table("production_log").insert(lot_entries).execute()
@@ -2553,20 +2570,37 @@ elif page == "📦 Lot Παραγωγής":
                             for cust, _, pdate in unique_updates:
                                 if cust == "Λιανική / Άγνωστος": continue
                                 
-                                # Διαβάζουμε ΟΛΗ την παραγωγή του πελάτη για τη μέρα για να φτιάξουμε 1 απόδειξη
-                                today_logs = supabase.table("production_log").select("cocktail_name, pieces").eq("prod_date", pdate).eq("customer", cust).execute()
+                                # Διαβάζουμε ΟΛΗ την παραγωγή του πελάτη, ΜΑΖΙ με ΔΩΡΑ και ΕΚΠΤΩΣΕΙΣ
+                                today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discount").eq("prod_date", pdate).eq("customer", cust).execute()
                                 
                                 if today_logs.data:
                                     unique_cocktails = {}
                                     for row in today_logs.data:
-                                        unique_cocktails[row["cocktail_name"]] = int(row["pieces"])
+                                        # Κρατάμε τεμάχια, δώρα και έκπτωση ανά κοκτέιλ
+                                        unique_cocktails[row["cocktail_name"]] = {
+                                            "pcs": int(row["pieces"]),
+                                            "free": int(row.get("free_pieces") or 0),
+                                            "disc": float(row.get("discount") or 0.0)
+                                        }
                                         
                                     total_amount = 0.0
                                     details_lines = []
-                                    for cockt, pcs in unique_cocktails.items():
+                                    for cockt, data in unique_cocktails.items():
                                         price = recipe_prices.get(cockt, 0.0)
-                                        total_amount += price * pcs
-                                        details_lines.append(f"• {pcs} τμχ {cockt}")
+                                        
+                                        # Αφαιρούμε τα δώρα πριν πολλαπλασιάσουμε με την τιμή!
+                                        payable_pcs = max(0, data["pcs"] - data["free"])
+                                        cockt_cost = payable_pcs * price * (1 - (data["disc"]/100.0))
+                                        total_amount += cockt_cost
+                                        
+                                        # Φτιάχνουμε το κείμενο με τις λεπτομέρειες
+                                        line = f"• {data['pcs']} τμχ {cockt}"
+                                        if data["free"] > 0:
+                                            line += f" (τα {data['free']} Δώρο)"
+                                        if data["disc"] > 0:
+                                            line += f" [-{data['disc']}%]"
+                                            
+                                        details_lines.append(line)
                                         
                                     discount = customer_discounts.get(cust, 0.0)
                                     final_total = total_amount * (1 - (discount / 100))
