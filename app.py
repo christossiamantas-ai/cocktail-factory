@@ -268,7 +268,13 @@ def load_all_ingredients():
             "abv": "Αλκοόλ %", "weight_full": "Weight_Full"
         })
         df["Τιμή/ml"] = df["Price"] / df["Volume"]
-        df["Απόθεμα (ml)"] = 0.0
+        
+        # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε το πραγματικό απόθεμα από τη βάση δεδομένων
+        if 'current_stock_ml' in df.columns:
+            df["Απόθεμα (ml)"] = df["current_stock_ml"]
+        else:
+            df["Απόθεμα (ml)"] = 0.0
+            
         return df
     else:
         return pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full", "Απόθεμα (ml)"])
