@@ -263,18 +263,18 @@ def load_all_ingredients():
     res = supabase.table("ingredients").select("*").order("name").execute()
     if res.data:
         df = pd.DataFrame(res.data)
+        
+        # Μετονομασία στηλών για να είναι ωραίος ο πίνακας
         df = df.rename(columns={
             "id": "ID", "name": "Name", "price": "Price", "volume": "Volume", 
-            "abv": "Αλκοόλ %", "weight_full": "Weight_Full"
+            "abv": "Αλκοόλ %", "weight_full": "Weight_Full", "current_stock_ml": "Απόθεμα (ml)"
         })
-        df["Τιμή/ml"] = df["Price"] / df["Volume"]
         
-        # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε το πραγματικό απόθεμα από τη βάση δεδομένων
-        if 'current_stock_ml' in df.columns:
-            df["Απόθεμα (ml)"] = df["current_stock_ml"]
-        else:
+        # Αν η στήλη "Απόθεμα (ml)" δεν υπάρχει καν στη βάση, την δημιουργούμε εδώ για να μην κρασάρει
+        if "Απόθεμα (ml)" not in df.columns:
             df["Απόθεμα (ml)"] = 0.0
             
+        df["Τιμή/ml"] = df["Price"] / df["Volume"]
         return df
     else:
         return pd.DataFrame(columns=["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full", "Απόθεμα (ml)"])
