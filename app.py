@@ -4477,8 +4477,11 @@ elif page == "🛒 Λίστα Αγορών":
                                     ing_name = str(r_data.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
                                     if ing_name in ["ΚΕΝΟ", "nan", "", "-", "0", "Νερό"]: continue
                                     
-                                    ml_col = f"ml{i}" if f"ml{i}" in r_data else f"ML{i}"
-                                    ml_u = float(r_data.get(ml_col, 0) or 0)
+                                    # 🚀 ΕΔΩ ΕΙΝΑΙ Η ΔΙΟΡΘΩΣΗ: Καλούμε τη δική σου συνάρτηση
+                                    try:
+                                        ml_u = get_recipe_ml(r_data, i)
+                                    except:
+                                        ml_u = 0.0
                                     
                                     if ml_u > 0:
                                         materials_needed[ing_name] = materials_needed.get(ing_name, 0.0) + (ml_u * c_qty)
@@ -4494,7 +4497,6 @@ elif page == "🛒 Λίστα Αγορών":
                                 vol = float(ing_db.iloc[0].get('volume', 1000.0))
                                 if vol > 0: bottle_vol = vol
                             
-                            # 🚀 ΔΙΟΡΘΩΣΗ ΛΟΓΙΚΗΣ: Ανάγκες - Τρέχον Απόθεμα
                             missing_ml = required_ml - stock_ml
                             
                             if missing_ml > 0:
@@ -4572,8 +4574,11 @@ elif page == "🛒 Λίστα Αγορών":
                         ing_name = str(rec_row.iloc[0].get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
                         if ing_name in ["ΚΕΝΟ", "nan", "", "-", "0", "Νερό"]: continue
                         
-                        ml_col = f"ml{i}" if f"ml{i}" in rec_row.columns else f"ML{i}"
-                        ml_u = float(rec_row.iloc[0].get(ml_col, 0) or 0)
+                        # 🚀 ΕΔΩ ΕΙΝΑΙ Η ΔΙΟΡΘΩΣΗ: Καλούμε τη δική σου συνάρτηση
+                        try:
+                            ml_u = get_recipe_ml(rec_row.iloc[0], i)
+                        except:
+                            ml_u = 0.0
                             
                         if ml_u > 0:
                             ing_db = df_ing[df_ing['name'] == ing_name]
@@ -4584,15 +4589,4 @@ elif page == "🛒 Λίστα Αγορών":
                                 
                                 missing_ml = (ml_u * target_pcs) - stock_ml
                                 
-                                if missing_ml > 0:
-                                    bottles_to_buy = math.ceil(missing_ml / bottle_vol)
-                                    shopping_list.append({"Υλικό": ing_name, "Απαιτείται": f"{(ml_u * target_pcs):.1f} ml", "Λείπουν": f"{missing_ml:.1f} ml", "Αγορά": f"🛒 {bottles_to_buy} φιάλες"})
-                                else:
-                                    shopping_list.append({"Υλικό": ing_name, "Απαιτείται": f"{(ml_u * target_pcs):.1f} ml", "Λείπουν": "0.0 ml", "Αγορά": "✅ Επαρκές"})
-                    
-                    if shopping_list:
-                        st.dataframe(pd.DataFrame(shopping_list), use_container_width=True, hide_index=True)
-            else:
-                st.warning("Δεν βρέθηκαν συνταγές.")
-    else:
-        st.error("Δεν βρέθηκαν δεδομένα υλικών στη βάση.")
+                                if missing
