@@ -2524,18 +2524,21 @@ elif page == "📦 Lot Παραγωγής":
                             for cust, cock, pdate in unique_updates:
                                 # 1. ΔΙΑΒΑΖΟΥΜΕ ΤΑ ΠΑΛΙΑ ΔΩΡΑ/ΕΚΠΤΩΣΕΙΣ ΠΡΙΝ ΤΑ ΣΒΗΣΟΥΜΕ!
                                 try:
-                                    old_data = supabase.table("production_log").select("free_pieces, discount").eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).execute()
+                                    old_data = supabase.table("production_log").select("free_pieces, discounted_pieces, discount_pct").eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).execute()
                                     saved_free = 0
-                                    saved_disc = 0.0
+                                    saved_spcs = 0
+                                    saved_spct = 0.0
                                     if old_data.data:
                                         saved_free = int(old_data.data[0].get("free_pieces") or 0)
-                                        saved_disc = float(old_data.data[0].get("discount") or 0.0)
+                                        saved_spcs = int(old_data.data[0].get("discounted_pieces") or 0)
+                                        saved_spct = float(old_data.data[0].get("discount_pct") or 0.0)
                                         
                                     # 2. ΤΑ ΕΝΣΩΜΑΤΩΝΟΥΜΕ ΣΤΙΣ ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΠΟΥ ΘΑ ΜΠΟΥΝ
                                     for entry in lot_entries:
                                         if entry["customer"] == cust and entry["cocktail_name"] == cock and entry["prod_date"] == pdate:
                                             entry["free_pieces"] = saved_free
-                                            entry["discount"] = saved_disc
+                                            entry["discounted_pieces"] = saved_spcs
+                                            entry["discount_pct"] = saved_spct
                                 except Exception:
                                     pass
 
