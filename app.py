@@ -4621,3 +4621,122 @@ elif page == "🛒 Λίστα Αγορών":
                 st.warning("Δεν βρέθηκαν συνταγές.")
     else:
         st.error("Δεν βρέθηκαν δεδομένα υλικών στη βάση.")
+
+# --- 14. ΠΑΡΑΛΑΒΕΣ (RECEIVING) ---
+elif page == "🚚 Παραλαβές":
+    st.header("🚚 Διαχείριση Παραγγελιών & Παραλαβές")
+    st.write("Δείτε τις εκκρεμείς παραγγελίες, διορθώστε τις ποσότητες αν χρειάζεται, και παραλάβετε τα υλικά για να μπουν αυτόματα στην αποθήκη.")
+
+    # Τραβάμε τις εκκρεμείς παραγγελίες
+    res_orders = supabase.table("orders_to_receive").select("*").eq("status", "PENDING").execute()
+    
+    tab1, tab2 = st.tabs(["📦 Εκκρεμείς Παραλαβές", "📜 Ιστορικό Παραλαβών"])
+    
+    # === TAB 1: ΕΚΚΡΕΜΕΙΣ ΠΑΡΑΛΑΒΕΣ ===
+    with tab1:
+        if res_orders.data:
+            df_orders = pd.DataFrame(res_orders.data)
+            
+            st.markdown("### 📋 Λίστα Αναμονής")
+            st.info("Επιλέξτε ✔️ ποια υλικά παραλάβατε. Αν ο προμηθευτής έφερε άλλη ποσότητα, διορθώστε το νούμερο στη στήλη 'Ήρθαν (Φιάλες)'.")
+            
+            # Προετοιμασία πίνακα: Αντιγράφουμε τα παραγγελθέντα στη στήλη "Προς Παραλαβή"
+            df_orders["Ήρθαν (Φιάλες)"] = df_orders["bottles_ordered"]
+            df_orders["Επιλογή"] = True # Προεπιλογή: όλα τσεκαρισμένα
+            
+            # Φτιάχνουμε μια ωραία ημερομηνία αν υπάρχει
+            if 'created_at' in df_orders.columns:
+                df_orders['Ημ/νια'] = pd.to_datetime(df_orders['created_at']).dt.strftime('%d/%m/%Y')
+            else:
+                df_orders['Ημ/νια'] = "-"
+
+            display_cols = ["Επιλογή", "ingredient_name", "bottles_ordered", "Ήρθαν (Φιάλες)", "Ημ/νια", "id"]
+            df_display = df_orders[display_cols].copy()
+            
+            edited_df = st.data_editor(
+                df_display,
+                column_config={
+                    "Επιλογή": st.column_config.CheckboxColumn("Παραλαβή;", default=True),
+                    "ingredient_name": st.column_config.TextColumn("Υλικό", disabled=True),
+                    "bottles_ordered": st.column_config.NumberColumn("Παραγγέλθηκαν", disabled=True),
+                    "Ήρθαν (Φιάλες)": st.column_config.NumberColumn(
+                        "Ήρθαν (Φιάλες) ✏️", 
+                        min_value=0, 
+                        step=1,
+                        help="Αλλάξτε αυτό το νούμερο αν η πραγματική παραλαβή διαφέρει από την παραγγελία."
+                    ),
+                    "Ημ/νια": st.column_config.TextColumn("Ημ/νια", disabled=True),
+                    "id": None # Κρύβουμε το ID από τον χρήστη
+                },
+                hide_index=True,
+                use_container_width=True,
+                key="receive_editor"
+            )
+            
+            st.divider()
+            if st.button("📥 Οριστική Παραλαβή Επιλεγμένων", type="primary"):
+                with st.spinner("Ενημέρωση αποθήκης..."):
+                    # Κατεβάζουμε τα υλικά για να ξέρουμε πόσα ml έχει το κάθε μπουκάλι
+                    res_ing = supabase.table("ingredients").select("id, name, volume, current_stock_ml").execute()
+                    ing_dict = {item['name']: item for item in res_ing.data} if res_ing.data else {}
+                    
+                    processed_count = 0
+                    
+                    for _, row in edited_df.iterrows():
+                        if row["Επιλογή"]:
+                            ing_name = row["ingredient_name"]
+                            received_bottles = int(row["Ήρθαν (Φιάλες)"])
+                            order_id = int(row["id"])
+                            
+                            if received_bottles > 0:
+                                # Ενημέρωση Αποθήκης
+                                if ing_name in ing_dict:
+                                    ing_info = ing_dict[ing_name]
+                                    bottle_vol = float(ing_info.get("volume", 1000) or 1000)
+                                    current_stock = float(ing_info.get("current_stock_ml", 0) or 0)
+                                    
+                                    # Προσθέτουμε τα νέα ml στο υπάρχον απόθεμα
+                                    added_ml = received_bottles * bottle_vol
+                                    new_stock = current_stock + added_ml
+                                    
+                                    # 1. Ενημέρωση του πίνακα ingredients (το απόθεμα ανεβαίνει)
+                                    supabase.table("ingredients").update({"current_stock_ml": new_stock}).eq("id", ing_info["id"]).execute()
+                                    
+                                    # 2. Ενημέρωση της παραγγελίας (κλείνει)
+                                    supabase.table("orders_to_receive").update({
+                                        "status": "RECEIVED",
+                                        "bottles_received": received_bottles
+                                    }).eq("id", order_id).execute()
+                                    
+                                    processed_count += 1
+                                    
+                    if processed_count > 0:
+                        st.success(f"✅ Ολοκληρώθηκε η παραλαβή! Ενημερώθηκαν {processed_count} κωδικοί στην αποθήκη.")
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.warning("Δεν επιλέξατε παραλαβή ή βγάλατε ποσότητα 0.")
+        else:
+            st.success("🎉 Δεν υπάρχουν εκκρεμείς παραγγελίες!")
+            
+    # === TAB 2: ΙΣΤΟΡΙΚΟ ===
+    with tab2:
+        st.markdown("### 📜 Ιστορικό Ολοκληρωμένων Παραλαβών")
+        res_hist = supabase.table("orders_to_receive").select("*").eq("status", "RECEIVED").order("created_at", desc=True).limit(50).execute()
+        if res_hist.data:
+            df_hist = pd.DataFrame(res_hist.data)
+            
+            if 'created_at' in df_hist.columns:
+                df_hist['Ημερομηνία'] = pd.to_datetime(df_hist['created_at']).dt.strftime('%d/%m/%Y %H:%M')
+            else:
+                df_hist['Ημερομηνία'] = "-"
+                
+            df_hist = df_hist.rename(columns={
+                "ingredient_name": "Υλικό",
+                "bottles_ordered": "Παραγγέλθηκαν (Φιάλες)",
+                "bottles_received": "Παρελήφθησαν (Φιάλες)"
+            })
+            
+            st.dataframe(df_hist[["Ημερομηνία", "Υλικό", "Παραγγέλθηκαν (Φιάλες)", "Παρελήφθησαν (Φιάλες)"]], use_container_width=True, hide_index=True)
+        else:
+            st.info("Δεν υπάρχει ιστορικό παραλαβών.")
