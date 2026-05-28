@@ -96,6 +96,33 @@ def delete_order_and_production_safely(order_id, customer_name, created_at_times
     except Exception as e:
         st.error(f"Σφάλμα κατά την ασφαλή διαγραφή: {e}")
         return False
+
+# --- 🤖 ΡΟΜΠΟΤΑΚΙ ΑΥΤΟΜΑΤΗΣ ΑΦΑΙΡΕΣΗΣ ΑΠΟΘΕΜΑΤΟΣ ---
+def deduct_inventory_for_production(cocktail_name, total_pieces_made):
+    """Αφαιρεί αυτόματα τα ml των υλικών από το current_stock_ml της αποθήκης"""
+    try:
+        # 1. Βρίσκουμε το ID της συνταγής
+        res_rec = supabase.table("recipes").select("id").eq("name", cocktail_name).execute()
+        if not res_rec.data: return
+        rec_id = res_rec.data[0]['id']
+        
+        # 2. Τραβάμε τα υλικά
+        res_items = supabase.table("recipe_items").select("ingredient_name, ml_per_unit").eq("recipe_id", rec_id).execute()
+        
+        # 3. Αφαιρούμε τα ml για κάθε υλικό
+        for item in res_items.data:
+            ing_name = item['ingredient_name']
+            ml_used = float(item['ml_per_unit']) * total_pieces_made
+            
+            res_ing = supabase.table("ingredients").select("id, current_stock_ml").eq("name", ing_name).execute()
+            if res_ing.data:
+                ing_id = res_ing.data[0]['id']
+                old_stock = float(res_ing.data[0].get('current_stock_ml') or 0.0)
+                new_stock = old_stock - ml_used
+                supabase.table("ingredients").update({"current_stock_ml": new_stock}).eq("id", ing_id).execute()
+    except Exception as e:
+        pass # Αθόρυβη λειτουργία για να μην διακοπεί ποτέ η αποθήκευση της παραγγελίας
+# --------------------------------------------------
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
@@ -310,7 +337,7 @@ with st.sidebar:
         [
             "📦 Αποθήκη", "🔄 Αντικατάσταση", "📝 Νέα Συνταγή", "📊 Διαχείριση", 
             "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📦 Παραγγελίες B2B", 
-            "📦 Lot Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP","🧪 Προσομοίωση Πωλήσεων"
+            "📦 Lot Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP","🧪 Προσομοίωση Πωλήσεων", "🛒 Λίστα Αγορών"
         ],
         key="main_page"
     )
@@ -2485,6 +2512,22 @@ elif page == "📦 Lot Παραγωγής":
                                 supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).execute()
                             
                             supabase.table("production_log").insert(lot_entries).execute()
+                            # ΝΕΟ: Αφαίρεση υλικών για την απλή παραγωγή (Κανονικά + Δώρα)
+                            for entry in lot_entries:
+                                # Το ρομποτάκι αφαιρεί υλικά ανά κοκτέιλ. Χρησιμοποιούμε dictionary για να μην αφαιρέσει διπλές φορές
+                                # αν το ίδιο κοκτέιλ έχει πολλά υλικά (γιατί το lot_entries έχει 1 γραμμή ανά υλικό).
+                                pass # (Το κάνουμε πιο έξυπνα παρακάτω για να μην υπάρξει διπλοεγγραφή)
+                            
+                            unique_production_tasks = {}
+                            for entry in lot_entries:
+                                key = f"{entry['customer']}_{entry['cocktail_name']}"
+                                unique_production_tasks[key] = {
+                                    "name": entry['cocktail_name'],
+                                    "pieces": entry['pieces']
+                                }
+                            
+                            for task in unique_production_tasks.values():
+                                deduct_inventory_for_production(task["name"], task["pieces"])
                             
                             # 🚀 ΣΥΓΧΩΝΕΥΣΗ B2B ΟΙΚΟΝΟΜΙΚΩΝ (Αυτόματο Re-build)
                             all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
@@ -3933,6 +3976,11 @@ elif page == "📦 Παραγγελίες B2B":
                                 "created_at": o['date_created']
                             }
                             supabase.table("b2b_orders").insert(data).execute()
+                            
+                            # ΝΕΟ: Αφαίρεση υλικών για τις παραγγελίες από E-shop
+                            for item in o['line_items']:
+                                deduct_inventory_for_production(item['name'], item['quantity'])
+
                             new_entries += 1
                     
                     if new_entries > 0:
@@ -4357,3 +4405,130 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 mime="text/html",
                 type="primary"
             )
+
+# --- 13. ΔΙΑΧΕΙΡΙΣΗ ΑΠΟΘΗΚΗΣ & ΛΙΣΤΑ ΑΓΟΡΩΝ ---
+elif page == "🛒 Λίστα Αγορών":
+    st.header("🛒 Διαχείριση Αποθέματος & Λίστα Αγορών")
+    st.write("Ενημερώστε το απόθεμά σας και υπολογίστε τι υλικά χρειάζεστε για τις επόμενες παραγωγές.")
+
+    @st.cache_data(ttl=60)
+    def load_inventory_data():
+        ing = supabase.table("ingredients").select("*").order("name").execute().data
+        rec = supabase.table("recipes").select("*").execute().data
+        return ing, rec
+
+    with st.spinner("Φόρτωση αποθήκης..."):
+        ing_data, rec_data = load_inventory_data()
+
+    if ing_data:
+        df_ing = pd.DataFrame(ing_data)
+        
+        # Κανονικοποίηση ονομάτων στηλών (για ασφάλεια)
+        col_map = {c: c.lower() for c in df_ing.columns}
+        df_ing = df_ing.rename(columns=col_map)
+        
+        if 'current_stock_ml' not in df_ing.columns:
+            df_ing['current_stock_ml'] = 0.0
+
+        tab_inv1, tab_inv2 = st.tabs(["📝 Απογραφή (Χειροκίνητη Διόρθωση)", "🛒 Πρόβλεψη Επόμενης Παραγωγής"])
+
+        # --- TAB 1: ΕΝΗΜΕΡΩΣΗ ΑΠΟΘΕΜΑΤΟΣ ---
+        with tab_inv1:
+            st.markdown("### Καταχώρηση Υπολοίπων")
+            st.write("Το σύστημα αφαιρεί αυτόματα τα υλικά κατά την παραγωγή. Εδώ μπορείτε να διορθώσετε χειροκίνητα τυχόν αποκλίσεις (π.χ. φύρα, σπάσιμο).")
+            
+            sel_ingredient = st.selectbox("Επιλέξτε Υλικό:", options=df_ing['name'].tolist())
+            
+            if sel_ingredient:
+                ing_row = df_ing[df_ing['name'] == sel_ingredient].iloc[0]
+                current_ml = float(ing_row.get('current_stock_ml', 0.0))
+                bottle_vol = float(ing_row.get('volume', 1000))
+                if pd.isna(bottle_vol) or bottle_vol <= 0: bottle_vol = 1000
+                
+                st.info(f"Τρέχον Απόθεμα: **{current_ml:.1f} ml** (Περίπου {current_ml / bottle_vol:.1f} φιάλες των {bottle_vol}ml)")
+                
+                new_stock = st.number_input("Νέο Πραγματικό Υπόλοιπο (σε ml):", min_value=-50000.0, value=current_ml, step=50.0)
+                
+                if st.button("💾 Αποθήκευση Υπολοίπου", type="primary"):
+                    supabase.table("ingredients").update({"current_stock_ml": new_stock}).eq("id", ing_row['id']).execute()
+                    st.success(f"Το απόθεμα για το {sel_ingredient} ενημερώθηκε στα {new_stock} ml!")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+
+        # --- TAB 2: ΥΠΟΛΟΓΙΣΜΟΣ ΛΙΣΤΑΣ ΑΓΟΡΩΝ ---
+        with tab_inv2:
+            st.markdown("### 🎯 Υπολογιστής Παραγγελίας Υλικών")
+            st.write("Επιλέξτε το κοκτέιλ και τα τεμάχια που σκοπεύετε να φτιάξετε, και δείτε τι πρέπει να αγοράσετε.")
+            
+            if rec_data:
+                df_recipes = pd.DataFrame(rec_data)
+                recipe_names = df_recipes['name'].tolist() if 'name' in df_recipes.columns else df_recipes.get('Ονομα', df_recipes.iloc[:, 1]).tolist()
+                
+                with st.form("calc_order_form"):
+                    col_p1, col_p2 = st.columns([2, 1])
+                    target_cocktail = col_p1.selectbox("Κοκτέιλ προς παραγωγή:", options=recipe_names)
+                    target_pcs = col_p2.number_input("Συνολικά Τεμάχια:", min_value=1, value=50, step=1)
+                    calc_btn = st.form_submit_button("🧮 Υπολογισμός Απαιτήσεων")
+                
+                if calc_btn:
+                    # Βρίσκουμε τη συνταγή
+                    if 'name' in df_recipes.columns:
+                        recipe_row = df_recipes[df_recipes['name'] == target_cocktail].iloc[0]
+                    else:
+                        recipe_row = df_recipes[df_recipes['Ονομα'] == target_cocktail].iloc[0]
+                    
+                    shopping_list = []
+                    
+                    import math
+                    for i in range(1, 14):
+                        ing_name = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                        if ing_name in ["ΚΕΝΟ", "nan", "", "-", "0", "Νερό"]: continue
+                        
+                        ml_u = 0.0
+                        ml_col = f"ml{i}" if f"ml{i}" in recipe_row else f"ML{i}"
+                        try:
+                            ml_u = float(recipe_row.get(ml_col, 0))
+                        except:
+                            pass
+                            
+                        if ml_u > 0:
+                            ing_db = df_ing[df_ing['name'] == ing_name]
+                            if not ing_db.empty:
+                                ing_row = ing_db.iloc[0]
+                                stock_ml = float(ing_row.get('current_stock_ml', 0.0))
+                                bottle_vol = float(ing_row.get('volume', 1000))
+                                if pd.isna(bottle_vol) or bottle_vol <= 0: bottle_vol = 1000
+                                
+                                total_needed_ml = ml_u * target_pcs
+                                missing_ml = total_needed_ml - stock_ml
+                                
+                                if missing_ml > 0:
+                                    bottles_to_buy = math.ceil(missing_ml / bottle_vol)
+                                    shopping_list.append({
+                                        "Υλικό": ing_name,
+                                        "Απαιτείται (ml)": f"{total_needed_ml:.1f}",
+                                        "Απόθεμα (ml)": f"{stock_ml:.1f}",
+                                        "Λείπουν (ml)": f"{missing_ml:.1f}",
+                                        "Φιάλες για Αγορά": f"🛒 {bottles_to_buy} φιάλες"
+                                    })
+                                else:
+                                    shopping_list.append({
+                                        "Υλικό": ing_name,
+                                        "Απαιτείται (ml)": f"{total_needed_ml:.1f}",
+                                        "Απόθεμα (ml)": f"{stock_ml:.1f}",
+                                        "Λείπουν (ml)": "0.0",
+                                        "Φιάλες για Αγορά": "✅ Επαρκές Απόθεμα"
+                                    })
+                    
+                    st.divider()
+                    st.markdown(f"#### 🛒 Λίστα Αγορών για {target_pcs}x {target_cocktail}")
+                    if shopping_list:
+                        df_shop = pd.DataFrame(shopping_list)
+                        st.dataframe(df_shop, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Δεν βρέθηκαν υλικά/απαιτήσεις για αυτή τη συνταγή.")
+            else:
+                st.warning("Δεν βρέθηκαν συνταγές.")
+    else:
+        st.error("Δεν βρέθηκαν δεδομένα υλικών στη βάση.")
