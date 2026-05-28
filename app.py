@@ -2580,34 +2580,20 @@ elif page == "📦 Lot Παραγωγής":
                                     except:
                                         date_iso = selected_date.isoformat()
 
-                                    # Ψάχνουμε αν υπάρχει ήδη B2B παραγγελία (Ζητάμε ΟΛΑ τα δεδομένα με το *)
-                                    existing_order = supabase.table("b2b_orders").select("*").eq("customer_name", cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
+                                    # Ψάχνουμε αν υπάρχει ήδη B2B παραγγελία
+                                    existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
                                     
                                     if existing_order.data:
-                                        old_row = existing_order.data[0]
-                                        
-                                        # Διαβάζουμε και ΚΡΑΤΑΜΕ τα δώρα και τις εκπτώσεις από τη βάση σου
-                                        saved_discount = float(old_row.get("discount", 0.0) or 0.0)
-                                        saved_free_pieces = int(old_row.get("free_pieces", 0) or 0)
-                                        
-                                        # Αν είχες βάλει έκπτωση, την εφαρμόζουμε ξανά στο νέο συνολικό ποσό!
-                                        if saved_discount > 0:
-                                            final_total = final_total * (1 - (saved_discount / 100.0))
-                                            
-                                        # Κάνουμε το Update κρατώντας τα πάντα άθικτα
                                         supabase.table("b2b_orders").update({
                                             "total_amount": round(final_total, 2),
-                                            "order_details": details_str,
-                                            "discount": saved_discount,       # ✅ Επιστρέφουμε την έκπτωση
-                                            "free_pieces": saved_free_pieces  # ✅ Επιστρέφουμε τα δώρα
-                                        }).eq("id", old_row["id"]).execute()
+                                            "order_details": details_str
+                                        }).eq("id", existing_order.data[0]["id"]).execute()
                                     else:
                                         supabase.table("b2b_orders").insert({
                                             "customer_name": cust, "total_amount": round(final_total, 2),
                                             "order_details": details_str, "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
                                             "created_at": f"{date_iso}T{current_time}:00"
                                         }).execute()
-
                             st.session_state.production_batch_items = []
                             st.session_state['active_b2b_order'] = None 
                             st.session_state['lot_reset_key'] += 1
