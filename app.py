@@ -4588,6 +4588,32 @@ elif page == "🛒 Λίστα Αγορών":
                         time.sleep(1)
                         st.rerun()
 
+        # --- ⚠️ ΚΟΥΜΠΙ DEVELOPER / TESTING ---
+        with st.expander("⚠️ Εργαλεία Developer (Για Δοκιμές)"):
+            st.warning("ΠΡΟΣΟΧΗ: Το παρακάτω κουμπί θα κάνει το απόθεμα (current_stock_ml) ΜΗΔΕΝ σε όλα τα υλικά της βάσης!")
+            
+            if st.button("🚨 ΜΗΔΕΝΙΣΜΟΣ ΟΛΩΝ ΤΩΝ ΑΠΟΘΕΜΑΤΩΝ 🚨", type="primary"):
+                with st.spinner("Μηδενισμός αποθηκών..."):
+                    try:
+                        # Τραβάμε όλα τα ID των υλικών
+                        res_ids = supabase.table("ingredients").select("id").execute()
+                        
+                        if res_ids.data:
+                            # Κάνουμε update το καθένα ξεχωριστά (είναι ο πιο ασφαλής τρόπος 
+                            # για να μην μας κόψει το Supabase λόγω ασφαλείας στα μαζικά updates)
+                            for item in res_ids.data:
+                                supabase.table("ingredients").update({"current_stock_ml": 0.0}).eq("id", item["id"]).execute()
+                            
+                            st.success("✅ Όλα τα αποθέματα μηδενίστηκαν επιτυχώς! Μπορείτε να ξεκινήσετε τις δοκιμές.")
+                            st.cache_data.clear() # Καθαρίζουμε τη μνήμη
+                            import time
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.info("Δεν βρέθηκαν υλικά για μηδενισμό.")
+                    except Exception as e:
+                        st.error(f"Προέκυψε σφάλμα κατά τον μηδενισμό: {e}")
+
         # ==========================================
         # TAB 3: ΥΠΟΛΟΓΙΣΤΗΣ WHAT-IF
         # ==========================================
