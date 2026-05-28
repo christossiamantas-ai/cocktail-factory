@@ -570,6 +570,7 @@ if page == "📦 Αποθήκη":
                             <th>Τιμή/ml</th>
                             <th>Alc %</th>
                             <th>Βάρος (g)</th>
+                            <th>Απόθεμα (ml)</th> </tr>
                         </tr>
                     </thead>
                     <tbody>
