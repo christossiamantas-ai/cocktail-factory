@@ -2574,16 +2574,17 @@ elif page == "📦 Lot Παραγωγής":
                                 if cust == "Λιανική / Άγνωστος": continue
                                 
                                 # Διαβάζουμε ΟΛΗ την παραγωγή του πελάτη, ΜΑΖΙ με ΔΩΡΑ και ΕΚΠΤΩΣΕΙΣ
-                                today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discount").eq("prod_date", pdate).eq("customer", cust).execute()
+                                today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct").eq("prod_date", pdate).eq("customer", cust).execute()
                                 
                                 if today_logs.data:
                                     unique_cocktails = {}
                                     for row in today_logs.data:
-                                        # Κρατάμε τεμάχια, δώρα και έκπτωση ανά κοκτέιλ
+                                        # Κρατάμε τεμάχια, δώρα και εκπτώσεις ανά κοκτέιλ
                                         unique_cocktails[row["cocktail_name"]] = {
-                                            "pcs": int(row["pieces"]),
+                                            "pcs": int(row.get("pieces") or 0),
                                             "free": int(row.get("free_pieces") or 0),
-                                            "disc": float(row.get("discount") or 0.0)
+                                            "s_pcs": int(row.get("discounted_pieces") or 0),
+                                            "s_pct": float(row.get("discount_pct") or 0.0)
                                         }
                                         
                                     total_amount = 0.0
@@ -2591,17 +2592,26 @@ elif page == "📦 Lot Παραγωγής":
                                     for cockt, data in unique_cocktails.items():
                                         price = recipe_prices.get(cockt, 0.0)
                                         
-                                        # Αφαιρούμε τα δώρα πριν πολλαπλασιάσουμε με την τιμή!
-                                        payable_pcs = max(0, data["pcs"] - data["free"])
-                                        cockt_cost = payable_pcs * price * (1 - (data["disc"]/100.0))
-                                        total_amount += cockt_cost
+                                        # Διαχωρισμός τεμαχίων για τον σωστό υπολογισμό
+                                        t_pcs = data["pcs"]
+                                        f_pcs = data["free"]
+                                        s_pcs = min(data["s_pcs"], max(0, t_pcs - f_pcs))
+                                        normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
                                         
-                                        # Φτιάχνουμε το κείμενο με τις λεπτομέρειες
-                                        line = f"• {data['pcs']} τμχ {cockt}"
-                                        if data["free"] > 0:
-                                            line += f" (τα {data['free']} Δώρο)"
-                                        if data["disc"] > 0:
-                                            line += f" [-{data['disc']}%]"
+                                        # 1. Κόστος Κανονικών: Τεμάχια x Λιανική
+                                        cost_normal = normal_pcs * price
+                                        # 2. Κόστος Εκπτωτικών: Τεμάχια x Λιανική x (μείον το ειδικό ποσοστό)
+                                        cost_special = s_pcs * price * (1 - (data["s_pct"] / 100.0))
+                                        
+                                        total_amount += (cost_normal + cost_special)
+                                        
+                                        # Φτιάχνουμε την έξυπνη περιγραφή
+                                        line = f"• {t_pcs} τμχ {cockt}"
+                                        if f_pcs > 0 or s_pcs > 0:
+                                            extras = []
+                                            if f_pcs > 0: extras.append(f"{f_pcs} Δώρο")
+                                            if s_pcs > 0: extras.append(f"{s_pcs} με -{data['s_pct']}%")
+                                            line += f" (Εκ των οποίων: {', '.join(extras)})"
                                             
                                         details_lines.append(line)
                                         
