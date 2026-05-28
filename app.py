@@ -4415,8 +4415,8 @@ elif page == "🛒 Λίστα Αγορών":
     def load_inventory_data():
         ing = supabase.table("ingredients").select("*").order("name").execute().data
         rec = supabase.table("recipes").select("*").execute().data
-        # Τραβάμε και το ιστορικό παραγωγής/παραγγελιών
-        plog = supabase.table("production_log").select("prod_date, cocktail_name, pieces").execute().data
+        # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε και πελάτη/ώρα για να ενώσουμε σωστά τα υλικά σε ΜΙΑ παραγγελία
+        plog = supabase.table("production_log").select("prod_date, prod_time, customer, cocktail_name, pieces").execute().data
         return ing, rec, plog
 
     with st.spinner("Ανάγνωση δεδομένων αποθήκης & παραγγελιών..."):
@@ -4435,7 +4435,7 @@ elif page == "🛒 Λίστα Αγορών":
         tab_inv1, tab_inv2, tab_inv3 = st.tabs(["📋 Λίστα Αγορών από Παραγγελίες", "📝 Απογραφή (Διόρθωση Αποθέματος)", "🧮 Ελεύθερος Υπολογισμός (What-If)"])
 
         # ==========================================
-        # TAB 1: ΑΥΤΟΜΑΤΗ ΛΙΣΤΑ ΑΠΟ ΠΑΡΑΓΓΕΛΙΕΣ (ΝΕΟ)
+        # TAB 1: ΑΥΤΟΜΑΤΗ ΛΙΣΤΑ ΑΠΟ ΠΑΡΑΓΓΕΛΙΕΣ
         # ==========================================
         with tab_inv1:
             st.markdown("### 🛒 Δημιουργία Λίστας βάσει Καταχωρημένων Παραγγελιών")
@@ -4444,15 +4444,17 @@ elif page == "🛒 Λίστα Αγορών":
             if not df_plog.empty and not df_rec.empty:
                 available_dates = sorted(df_plog['prod_date'].dropna().unique().tolist(), reverse=True)
                 
-                # Πολλαπλή επιλογή (Multi-select) για να ενώνεις παραγγελίες 3 ημερών!
                 sel_dates = st.multiselect("📅 Επιλέξτε Ημερομηνίες Παραγγελιών:", options=available_dates, default=[available_dates[0]] if available_dates else None)
                 
                 if sel_dates:
-                    # 1. Βρίσκουμε τις παραγγελίες των επιλεγμένων ημερών
-                    batch_orders = df_plog[df_plog['prod_date'].isin(sel_dates)]
+                    batch_orders = df_plog[df_plog['prod_date'].isin(sel_dates)].copy()
                     batch_orders['pieces'] = pd.to_numeric(batch_orders['pieces'], errors='coerce').fillna(0)
                     
-                    # Αθροίζουμε τα τεμάχια ανά κοκτέιλ
+                    # 🚀 ΔΙΟΡΘΩΣΗ: Σβήνουμε τις διπλοεγγραφές των υλικών για να μείνει ΜΟΝΟ ο αριθμός παραγγελίας!
+                    if 'prod_time' in batch_orders.columns and 'customer' in batch_orders.columns:
+                        batch_orders = batch_orders.drop_duplicates(subset=['prod_date', 'prod_time', 'customer', 'cocktail_name'])
+                    
+                    # Αθροίζουμε τα τεμάχια ανά κοκτέιλ (Τώρα θα βγάλει 1 τμχ Zombie!)
                     cocktail_sums = batch_orders.groupby('cocktail_name')['pieces'].sum().reset_index()
                     
                     c1, c2 = st.columns([1, 2])
@@ -4466,7 +4468,6 @@ elif page == "🛒 Λίστα Αγορών":
                         materials_needed = {}
                         import math
                         
-                        # Υπολογίζουμε πόσα ml χρειάζονται
                         for _, row in cocktail_sums.iterrows():
                             c_name = row['cocktail_name']
                             c_qty = row['pieces']
@@ -4487,7 +4488,6 @@ elif page == "🛒 Λίστα Αγορών":
                                     if ml_u > 0:
                                         materials_needed[ing_name] = materials_needed.get(ing_name, 0.0) + (ml_u * c_qty)
                         
-                        # Φτιάχνουμε τη λίστα ελέγχοντας το απόθεμα
                         shopping_list = []
                         for ing, required_ml in materials_needed.items():
                             ing_db = df_ing[df_ing['name'] == ing]
@@ -4499,8 +4499,6 @@ elif page == "🛒 Λίστα Αγορών":
                                 vol = float(ing_db.iloc[0].get('volume', 1000.0))
                                 if vol > 0: bottle_vol = vol
                             
-                            # Εφόσον το ρομποτάκι αφαιρεί το στοκ στην καταχώρηση, το stock_ml έχει ήδη μειωθεί.
-                            # Αν το στοκ πήγε κάτω από το μηδέν (<0), τότε πρέπει να αγοράσουμε φιάλες για να το καλύψουμε!
                             if stock_ml < 0:
                                 missing_ml = abs(stock_ml)
                                 bottles_to_buy = math.ceil(missing_ml / bottle_vol)
@@ -4560,7 +4558,7 @@ elif page == "🛒 Λίστα Αγορών":
             if not df_rec.empty:
                 recipe_names = df_rec['name'].tolist() if 'name' in df_rec.columns else df_rec.get('Ονομα', df_rec.iloc[:, 1]).tolist()
                 
-                with st.form("calc_order_form"):
+                with st.form("calc_order_form_2"):
                     col_p1, col_p2 = st.columns([2, 1])
                     target_cocktail = col_p1.selectbox("Κοκτέιλ προς παραγωγή:", options=recipe_names)
                     target_pcs = col_p2.number_input("Τεμάχια:", min_value=1, value=50, step=1)
