@@ -4502,7 +4502,9 @@ elif page == "🛒 Λίστα Αγορών":
                                 vol = float(ing_db.iloc[0].get('volume', 1000.0))
                                 if vol > 0: bottle_vol = vol
                             
-                            missing_ml = required_ml - stock_ml
+                            real_stock = max(0, stock_ml)
+                            missing_ml = required_ml - real_stock
+                            
                             bottles_to_buy = math.ceil(missing_ml / bottle_vol) if missing_ml > 0 else 0
                                 
                             shopping_list.append({
