@@ -4419,7 +4419,6 @@ elif page == "🛒 Λίστα Αγορών":
 
     @st.cache_data(ttl=10)
     def load_live_data():
-        # Διαβάζουμε φρέσκα δεδομένα αποθήκης και παραγγελιών
         ing = supabase.table("ingredients").select("*").execute().data
         plog = supabase.table("production_log").select("prod_date, prod_time, customer, cocktail_name, pieces").execute().data
         return ing, plog
@@ -4435,17 +4434,15 @@ elif page == "🛒 Λίστα Αγορών":
             df_ing_live['current_stock_ml'] = 0.0
 
         df_plog = pd.DataFrame(plog_data) if plog_data else pd.DataFrame()
-
-        tab_inv1, tab_inv2, tab_inv3 = st.tabs(["📋 Λίστα Αγορών από Παραγγελίες", "📝 Απογραφή (Διόρθωση Αποθέματος)", "🧮 Ελεύθερος Υπολογισμός"])
-
-        # 🚀 Η ΛΥΣΗ: Χρησιμοποιούμε τη συνολική df_rec του συστήματός σου που έχει ΉΔΗ "χτιστεί" με τα υλικά!
         global_recipes = df_rec.copy() if not df_rec.empty else pd.DataFrame()
 
+        tab_inv1, tab_inv2, tab_inv3 = st.tabs(["📋 Λίστα Αγορών & Παραγγελία", "📝 Απογραφή (Διόρθωση)", "🧮 What-If"])
+
         # ==========================================
-        # TAB 1: ΑΥΤΟΜΑΤΗ ΛΙΣΤΑ ΑΠΟ ΠΑΡΑΓΓΕΛΙΕΣ
+        # TAB 1: ΑΥΤΟΜΑΤΗ ΛΙΣΤΑ & ΠΑΡΑΓΓΕΛΙΑ (ΝΕΟ)
         # ==========================================
         with tab_inv1:
-            st.markdown("### 🛒 Δημιουργία Λίστας βάσει Καταχωρημένων Παραγγελιών")
+            st.markdown("### 🛒 Δημιουργία Λίστας & Καταχώρηση Παραγγελίας")
             
             if not df_plog.empty and not global_recipes.empty:
                 available_dates = sorted(df_plog['prod_date'].dropna().unique().tolist(), reverse=True)
@@ -4460,13 +4457,13 @@ elif page == "🛒 Λίστα Αγορών":
                     
                     cocktail_sums = batch_orders.groupby('cocktail_name')['pieces'].sum().reset_index()
                     
-                    c1, c2 = st.columns([1, 2])
+                    c1, c2 = st.columns([1, 2.5])
                     with c1:
                         st.markdown("**Σύνοψη προς Παραγωγή:**")
                         st.dataframe(cocktail_sums.rename(columns={"cocktail_name": "Κοκτέιλ", "pieces": "Τεμάχια"}), hide_index=True)
                     
                     with c2:
-                        st.markdown("**🛍️ Λίστα Αγορών Σούπερ Μάρκετ / Προμηθευτή**")
+                        st.markdown("**🛍️ Πίνακας Προμηθειών (Διορθώστε την Παραγγελία και Καταχωρήστε)**")
                         materials_needed = {}
                         import math
                         
@@ -4474,7 +4471,6 @@ elif page == "🛒 Λίστα Αγορών":
                             c_name = row['cocktail_name']
                             c_qty = row['pieces']
                             
-                            # Βρίσκουμε τη συνταγή από τη global λίστα
                             rec_row = global_recipes[global_recipes['Ονομα'] == c_name]
                                 
                             if not rec_row.empty:
@@ -4483,9 +4479,7 @@ elif page == "🛒 Λίστα Αγορών":
                                     ing_name = str(r_data.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
                                     if ing_name in ["ΚΕΝΟ", "nan", "", "-", "0", "Νερό"]: continue
                                     
-                                    # Τώρα βρίσκει με ασφάλεια τα ML!
                                     ml_u = float(r_data.get(f"ML{i}", 0) or 0)
-                                    
                                     if ml_u > 0:
                                         materials_needed[ing_name] = materials_needed.get(ing_name, 0.0) + (ml_u * c_qty)
                         
@@ -4501,52 +4495,88 @@ elif page == "🛒 Λίστα Αγορών":
                                 if vol > 0: bottle_vol = vol
                             
                             missing_ml = required_ml - stock_ml
-                            
-                            if missing_ml > 0:
-                                bottles_to_buy = math.ceil(missing_ml / bottle_vol)
-                                status_text = f"🛒 ΠΑΡΑΓΓΕΛΙΑ: {bottles_to_buy} φιάλες"
-                            else:
-                                status_text = "✅ Επαρκές Απόθεμα"
+                            bottles_to_buy = math.ceil(missing_ml / bottle_vol) if missing_ml > 0 else 0
                                 
                             shopping_list.append({
                                 "Υλικό": ing,
                                 "Απαιτούμενα": f"{required_ml:.1f} ml",
                                 "Απόθεμα": f"{stock_ml:.1f} ml",
-                                "Λείπουν": f"{missing_ml:.1f} ml",
-                                "Κατάσταση": status_text
+                                "Πρόταση Συστήματος": bottles_to_buy,
+                                "Παραγγελία (Φιάλες)": bottles_to_buy # Εδώ θα γράφει ο χρήστης
                             })
                         
                         if shopping_list:
                             df_shop = pd.DataFrame(shopping_list)
-                            st.dataframe(df_shop.style.apply(lambda x: ['background-color: #ffcccc; color: black' if 'ΠΑΡΑΓΓΕΛΙΑ' in str(v) else '' for v in x], axis=1), use_container_width=True, hide_index=True)
+                            
+                            # Το data_editor επιτρέπει επεξεργασία ΜΟΝΟ στη στήλη της παραγγελίας
+                            edited_df = st.data_editor(
+                                df_shop,
+                                column_config={
+                                    "Παραγγελία (Φιάλες)": st.column_config.NumberColumn(
+                                        "Παραγγελία (Φιάλες) ✏️",
+                                        min_value=0,
+                                        step=1,
+                                        help="Διορθώστε εδώ τον αριθμό φιαλών που θέλετε πραγματικά να παραγγείλετε."
+                                    ),
+                                    "Υλικό": st.column_config.TextColumn(disabled=True),
+                                    "Απαιτούμενα": st.column_config.TextColumn(disabled=True),
+                                    "Απόθεμα": st.column_config.TextColumn(disabled=True),
+                                    "Πρόταση Συστήματος": st.column_config.NumberColumn(disabled=True)
+                                },
+                                hide_index=True,
+                                use_container_width=True
+                            )
+                            
+                            if st.button("🚀 Καταχώρηση Παραγγελίας σε Εκκρεμότητα", type="primary"):
+                                orders_to_insert = []
+                                for _, row in edited_df.iterrows():
+                                    order_qty = int(row["Παραγγελία (Φιάλες)"])
+                                    if order_qty > 0:
+                                        orders_to_insert.append({
+                                            "ingredient_name": row["Υλικό"],
+                                            "bottles_ordered": order_qty,
+                                            "status": "PENDING"
+                                        })
+                                
+                                if orders_to_insert:
+                                    try:
+                                        supabase.table("orders_to_receive").insert(orders_to_insert).execute()
+                                        st.success("✅ Η παραγγελία καταχωρήθηκε επιτυχώς! Εκκρεμεί η παραλαβή της.")
+                                    except Exception as e:
+                                        st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
+                                else:
+                                    st.warning("Δεν έχετε συμπληρώσει φιάλες για παραγγελία.")
                         else:
-                            st.success("Δεν απαιτούνται αγορές.")
+                            st.success("Δεν απαιτούνται υλικά.")
             else:
-                st.info("Δεν βρέθηκαν καταχωρημένες παραγγελίες ή συνταγές.")
+                st.info("Δεν βρέθηκαν καταχωρημένες παραγγελίες.")
 
         # ==========================================
         # TAB 2: ΕΝΗΜΕΡΩΣΗ ΑΠΟΘΕΜΑΤΟΣ (Χειροκίνητα)
         # ==========================================
         with tab_inv2:
-            st.markdown("### Καταχώρηση Υπολοίπων (Απογραφή)")
-            sel_ingredient = st.selectbox("Επιλέξτε Υλικό:", options=df_ing_live['name'].tolist())
+            st.markdown("### 📝 Χειροκίνητη Διόρθωση Αποθέματος")
+            st.write("Αν παρατηρήσετε διαφορά ανάμεσα στο σύστημα και το ράφι, διορθώστε το απόθεμα εδώ.")
+            
+            sel_ingredient = st.selectbox("Επιλέξτε Υλικό για διόρθωση:", options=df_ing_live['name'].tolist())
             
             if sel_ingredient:
                 ing_row = df_ing_live[df_ing_live['name'] == sel_ingredient].iloc[0]
                 current_ml = float(ing_row.get('current_stock_ml', 0.0))
-                bottle_vol = float(ing_row.get('volume', 1000))
-                if pd.isna(bottle_vol) or bottle_vol <= 0: bottle_vol = 1000
                 
-                st.info(f"Τρέχον Απόθεμα Βάσης: **{current_ml:.1f} ml** (Περίπου {current_ml / bottle_vol:.1f} φιάλες)")
+                st.metric("Τρέχον Απόθεμα (Συστήματος)", f"{current_ml:.1f} ml")
                 
-                new_stock = st.number_input("Νέο Πραγματικό Υπόλοιπο (σε ml):", min_value=-50000.0, value=current_ml, step=50.0)
-                
-                if st.button("💾 Αποθήκευση Υπολοίπου", type="primary"):
-                    supabase.table("ingredients").update({"current_stock_ml": new_stock}).eq("id", ing_row['id']).execute()
-                    st.success(f"Το απόθεμα για το {sel_ingredient} ενημερώθηκε στα {new_stock} ml!")
-                    st.cache_data.clear()
-                    time.sleep(1)
-                    st.rerun()
+                with st.form("manual_correction_form"):
+                    new_val = st.number_input("Ορίστε τη ΣΩΣΤΗ ποσότητα σε ml:", value=current_ml, step=10.0)
+                    reason = st.text_input("Αιτιολογία (προαιρετικά, π.χ. 'Σπάσιμο μπουκαλιού')")
+                    
+                    if st.form_submit_button("💾 Οριστικοποίηση Διόρθωσης"):
+                        supabase.table("ingredients").update({"current_stock_ml": new_val}).eq("id", ing_row['id']).execute()
+                        if reason: st.toast(f"Αιτιολογία: {reason}")
+                        st.success(f"Το απόθεμα για το {sel_ingredient} διορθώθηκε σε {new_val} ml!")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
 
         # ==========================================
         # TAB 3: ΥΠΟΛΟΓΙΣΤΗΣ WHAT-IF
@@ -4565,7 +4595,6 @@ elif page == "🛒 Λίστα Αγορών":
                 
                 if calc_btn:
                     rec_row = global_recipes[global_recipes['Ονομα'] == target_cocktail]
-                    
                     shopping_list = []
                     import math
                     for i in range(1, 14):
@@ -4573,7 +4602,6 @@ elif page == "🛒 Λίστα Αγορών":
                         if ing_name in ["ΚΕΝΟ", "nan", "", "-", "0", "Νερό"]: continue
                         
                         ml_u = float(rec_row.iloc[0].get(f"ML{i}", 0) or 0)
-                            
                         if ml_u > 0:
                             ing_db = df_ing_live[df_ing_live['name'] == ing_name]
                             if not ing_db.empty:
@@ -4582,15 +4610,13 @@ elif page == "🛒 Λίστα Αγορών":
                                 if bottle_vol <= 0: bottle_vol = 1000
                                 
                                 missing_ml = (ml_u * target_pcs) - stock_ml
-                                
                                 if missing_ml > 0:
                                     bottles_to_buy = math.ceil(missing_ml / bottle_vol)
                                     shopping_list.append({"Υλικό": ing_name, "Απαιτείται": f"{(ml_u * target_pcs):.1f} ml", "Λείπουν": f"{missing_ml:.1f} ml", "Αγορά": f"🛒 {bottles_to_buy} φιάλες"})
                                 else:
                                     shopping_list.append({"Υλικό": ing_name, "Απαιτείται": f"{(ml_u * target_pcs):.1f} ml", "Λείπουν": "0.0 ml", "Αγορά": "✅ Επαρκές"})
                     
-                    if shopping_list:
-                        st.dataframe(pd.DataFrame(shopping_list), use_container_width=True, hide_index=True)
+                    if shopping_list: st.dataframe(pd.DataFrame(shopping_list), use_container_width=True, hide_index=True)
             else:
                 st.warning("Δεν βρέθηκαν συνταγές.")
     else:
