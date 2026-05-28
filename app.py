@@ -4415,7 +4415,6 @@ elif page == "🛒 Λίστα Αγορών":
     def load_inventory_data():
         ing = supabase.table("ingredients").select("*").order("name").execute().data
         rec = supabase.table("recipes").select("*").execute().data
-        # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε και πελάτη/ώρα για να ενώσουμε σωστά τα υλικά σε ΜΙΑ παραγγελία
         plog = supabase.table("production_log").select("prod_date, prod_time, customer, cocktail_name, pieces").execute().data
         return ing, rec, plog
 
@@ -4443,18 +4442,15 @@ elif page == "🛒 Λίστα Αγορών":
             
             if not df_plog.empty and not df_rec.empty:
                 available_dates = sorted(df_plog['prod_date'].dropna().unique().tolist(), reverse=True)
-                
                 sel_dates = st.multiselect("📅 Επιλέξτε Ημερομηνίες Παραγγελιών:", options=available_dates, default=[available_dates[0]] if available_dates else None)
                 
                 if sel_dates:
                     batch_orders = df_plog[df_plog['prod_date'].isin(sel_dates)].copy()
                     batch_orders['pieces'] = pd.to_numeric(batch_orders['pieces'], errors='coerce').fillna(0)
                     
-                    # 🚀 ΔΙΟΡΘΩΣΗ: Σβήνουμε τις διπλοεγγραφές των υλικών για να μείνει ΜΟΝΟ ο αριθμός παραγγελίας!
                     if 'prod_time' in batch_orders.columns and 'customer' in batch_orders.columns:
                         batch_orders = batch_orders.drop_duplicates(subset=['prod_date', 'prod_time', 'customer', 'cocktail_name'])
                     
-                    # Αθροίζουμε τα τεμάχια ανά κοκτέιλ (Τώρα θα βγάλει 1 τμχ Zombie!)
                     cocktail_sums = batch_orders.groupby('cocktail_name')['pieces'].sum().reset_index()
                     
                     c1, c2 = st.columns([1, 2])
@@ -4464,7 +4460,6 @@ elif page == "🛒 Λίστα Αγορών":
                     
                     with c2:
                         st.markdown("**🛍️ Λίστα Αγορών Σούπερ Μάρκετ / Προμηθευτή**")
-                        
                         materials_needed = {}
                         import math
                         
@@ -4499,8 +4494,10 @@ elif page == "🛒 Λίστα Αγορών":
                                 vol = float(ing_db.iloc[0].get('volume', 1000.0))
                                 if vol > 0: bottle_vol = vol
                             
-                            if stock_ml < 0:
-                                missing_ml = abs(stock_ml)
+                            # 🚀 ΔΙΟΡΘΩΣΗ ΛΟΓΙΚΗΣ: Ανάγκες - Τρέχον Απόθεμα
+                            missing_ml = required_ml - stock_ml
+                            
+                            if missing_ml > 0:
                                 bottles_to_buy = math.ceil(missing_ml / bottle_vol)
                                 status_text = f"🛒 ΠΑΡΑΓΓΕΛΙΑ: {bottles_to_buy} φιάλες"
                             else:
@@ -4508,7 +4505,9 @@ elif page == "🛒 Λίστα Αγορών":
                                 
                             shopping_list.append({
                                 "Υλικό": ing,
-                                "Απαιτούμενα (ml)": f"{required_ml:.1f}",
+                                "Απαιτούμενα": f"{required_ml:.1f} ml",
+                                "Απόθεμα": f"{stock_ml:.1f} ml",
+                                "Λείπουν": f"{missing_ml:.1f} ml",
                                 "Κατάσταση": status_text
                             })
                         
@@ -4525,7 +4524,7 @@ elif page == "🛒 Λίστα Αγορών":
         # ==========================================
         with tab_inv2:
             st.markdown("### Καταχώρηση Υπολοίπων (Απογραφή)")
-            st.write("Το σύστημα αφαιρεί αυτόματα τα υλικά κατά την καταχώρηση μιας παραγγελίας. Αν σπάσει κάποιο μπουκάλι ή γίνει λάθος, διορθώστε το εδώ.")
+            st.write("Εδώ μπορείτε να διορθώσετε χειροκίνητα τυχόν αποκλίσεις (π.χ. φύρα, σπάσιμο).")
             
             sel_ingredient = st.selectbox("Επιλέξτε Υλικό:", options=df_ing['name'].tolist())
             
@@ -4536,8 +4535,6 @@ elif page == "🛒 Λίστα Αγορών":
                 if pd.isna(bottle_vol) or bottle_vol <= 0: bottle_vol = 1000
                 
                 st.info(f"Τρέχον Απόθεμα Βάσης: **{current_ml:.1f} ml** (Περίπου {current_ml / bottle_vol:.1f} φιάλες)")
-                if current_ml < 0:
-                    st.warning("⚠️ Το απόθεμα είναι αρνητικό διότι καταχωρήσατε παραγγελίες χωρίς να έχετε δηλώσει επαρκή υλικά. Μόλις παραλάβετε εμπόρευμα, προσθέστε τα ml εδώ.")
                 
                 new_stock = st.number_input("Νέο Πραγματικό Υπόλοιπο (σε ml):", min_value=-50000.0, value=current_ml, step=50.0)
                 
@@ -4582,21 +4579,3 @@ elif page == "🛒 Λίστα Αγορών":
                             ing_db = df_ing[df_ing['name'] == ing_name]
                             if not ing_db.empty:
                                 stock_ml = float(ing_db.iloc[0].get('current_stock_ml', 0.0))
-                                bottle_vol = float(ing_db.iloc[0].get('volume', 1000.0))
-                                if bottle_vol <= 0: bottle_vol = 1000
-                                
-                                total_needed_ml = ml_u * target_pcs
-                                missing_ml = total_needed_ml - stock_ml
-                                
-                                if missing_ml > 0:
-                                    bottles_to_buy = math.ceil(missing_ml / bottle_vol)
-                                    shopping_list.append({"Υλικό": ing_name, "Απαιτείται (ml)": f"{total_needed_ml:.1f}", "Λείπουν (ml)": f"{missing_ml:.1f}", "Αγορά": f"🛒 {bottles_to_buy} φιάλες"})
-                                else:
-                                    shopping_list.append({"Υλικό": ing_name, "Απαιτείται (ml)": f"{total_needed_ml:.1f}", "Λείπουν (ml)": "0.0", "Αγορά": "✅ Επαρκές"})
-                    
-                    if shopping_list:
-                        st.dataframe(pd.DataFrame(shopping_list), use_container_width=True, hide_index=True)
-            else:
-                st.warning("Δεν βρέθηκαν συνταγές.")
-    else:
-        st.error("Δεν βρέθηκαν δεδομένα υλικών στη βάση.")
