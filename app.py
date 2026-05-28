@@ -511,7 +511,13 @@ if page == "📦 Αποθήκη":
     # --- TAB 3: ΠΡΟΒΟΛΗ ΠΙΝΑΚΑ & HTML ---
     with tab3:
         st.subheader("Συνολική Εικόνα Αποθήκης")
-        st.dataframe(df_ing[["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]], use_container_width=True)
+        
+        # 🚀 ΔΙΟΡΘΩΣΗ: Προστέθηκε το 'Απόθεμα (ml)' στη λίστα των στηλών
+        display_columns = ["ID", "Name", "Price", "Volume", "Τιμή/ml", "Αλκοόλ %", "Weight_Full"]
+        if "Απόθεμα (ml)" in df_ing.columns:
+            display_columns.append("Απόθεμα (ml)")
+            
+        st.dataframe(df_ing[display_columns], use_container_width=True)
         
         st.divider()
         
