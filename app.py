@@ -4579,3 +4579,20 @@ elif page == "🛒 Λίστα Αγορών":
                             ing_db = df_ing[df_ing['name'] == ing_name]
                             if not ing_db.empty:
                                 stock_ml = float(ing_db.iloc[0].get('current_stock_ml', 0.0))
+                                bottle_vol = float(ing_db.iloc[0].get('volume', 1000.0))
+                                if bottle_vol <= 0: bottle_vol = 1000
+                                
+                                missing_ml = (ml_u * target_pcs) - stock_ml
+                                
+                                if missing_ml > 0:
+                                    bottles_to_buy = math.ceil(missing_ml / bottle_vol)
+                                    shopping_list.append({"Υλικό": ing_name, "Απαιτείται": f"{(ml_u * target_pcs):.1f} ml", "Λείπουν": f"{missing_ml:.1f} ml", "Αγορά": f"🛒 {bottles_to_buy} φιάλες"})
+                                else:
+                                    shopping_list.append({"Υλικό": ing_name, "Απαιτείται": f"{(ml_u * target_pcs):.1f} ml", "Λείπουν": "0.0 ml", "Αγορά": "✅ Επαρκές"})
+                    
+                    if shopping_list:
+                        st.dataframe(pd.DataFrame(shopping_list), use_container_width=True, hide_index=True)
+            else:
+                st.warning("Δεν βρέθηκαν συνταγές.")
+    else:
+        st.error("Δεν βρέθηκαν δεδομένα υλικών στη βάση.")
