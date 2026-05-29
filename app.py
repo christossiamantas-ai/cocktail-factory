@@ -4488,7 +4488,8 @@ elif page == "🛒 Λίστα Αγορών":
     @st.cache_data(ttl=10)
     def load_live_data():
         ing = supabase.table("ingredients").select("*").execute().data
-        plog = supabase.table("production_log").select("prod_date, prod_time, customer, cocktail_name, pieces").execute().data
+        # 🚀 ΣΠΑΜΕ ΤΟ ΟΡΙΟ: Αντί για 1000, ζητάμε 10.000 γραμμές και τις πιο πρόσφατες πρώτα!
+        plog = supabase.table("production_log").select("prod_date, prod_time, customer, cocktail_name, pieces").order("id", desc=True).limit(10000).execute().data
         return ing, plog
 
     with st.spinner("Ανάγνωση δεδομένων..."):
