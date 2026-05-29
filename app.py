@@ -4520,29 +4520,12 @@ elif page == "🛒 Λίστα Αγορών":
                 # 🚀 Ο ΑΠΟΛΥΤΟΣ ΚΑΝΟΝΑΣ: Διαβάζει μόνο νούμερα, αγνοώντας τα πάντα!
                 def sort_date_key(d_str):
                     try:
-                        # Βρίσκουμε ΜΟΝΟ τους αριθμούς μέσα στο κείμενο (αγνοεί / , - , κενά, ώρες κτλ)
-                        nums = re.findall(r'\d+', str(d_str))
-                        
-                        if len(nums) >= 3:
-                            n1, n2, n3 = int(nums[0]), int(nums[1]), int(nums[2])
-                            
-                            # Ελέγχουμε μήπως γράφτηκε ανάποδα (π.χ. 2026-05-01)
-                            if n1 > 1000:
-                                y, m, d = n1, n2, n3
-                            else:
-                                # Κανονική μορφή (π.χ. 01 05 26)
-                                d, m, y = n1, n2, n3
-                                
-                            # Μετατροπή του 26 σε 2026
-                            if y < 100: 
-                                y += 2000
-                                
-                            return datetime.datetime(y, m, d)
+                        # Διαβάζει ημερομηνία μορφής DD/MM/YYYY
+                        # Παράδειγμα: "01/06/2026"
+                        return datetime.datetime.strptime(str(d_str).strip(), "%d/%m/%Y")
                     except:
-                        pass
-                    
-                    # Αν δεν υπάρχει καν ημερομηνία, πάει στον πάτο
-                    return datetime.datetime(1900, 1, 1)
+                        # Αν για κάποιο λόγο αποτύχει (π.χ. κενό), πάει στο 1900
+                        return datetime.datetime(1900, 1, 1)
 
                 # 1. Παίρνουμε όλες τις ημερομηνίες (ακριβώς όπως είναι γραμμένες στη βάση)
                 raw_dates = df_plog['prod_date'].dropna().unique().tolist()
