@@ -2679,7 +2679,19 @@ elif page == "📦 Lot Παραγωγής":
         })
 
         st.markdown("### 🔍 Φίλτρα Αναζήτησης")
-        all_dates = sorted(df_all_logs_renamed["Ημερομηνία"].dropna().unique(), reverse=True)
+        
+        # 🚀 ΣΩΣΤΗ ΧΡΟΝΟΛΟΓΙΚΗ ΤΑΞΙΝΟΜΗΣΗ
+        raw_dates = df_all_logs_renamed["Ημερομηνία"].dropna().unique().tolist()
+        
+        def safe_date_sort(d):
+            try:
+                # Μετατρέπει προσωρινά το κείμενο σε πραγματικό ημερολόγιο για να το συγκρίνει
+                return pd.to_datetime(str(d).strip(), dayfirst=True)
+            except:
+                return pd.to_datetime("1900-01-01")
+                
+        all_dates = sorted(raw_dates, key=safe_date_sort, reverse=True)
+        
         date_options = ["-- Όλες οι Ημερομηνίες --"] + list(all_dates)
         sel_hist_date = st.selectbox("📅 Φίλτρο Ημερομηνίας:", options=date_options)
 
