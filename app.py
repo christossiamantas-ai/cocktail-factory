@@ -4514,9 +4514,29 @@ elif page == "🛒 Λίστα Αγορών":
             st.markdown("### 🛒 Δημιουργία Λίστας & Καταχώρηση Παραγγελίας")
             
             if not df_plog.empty and not global_recipes.empty:
-                # 🚀 Έξυπνη αναγνώριση: Πιάνει και το 1/5/26 και το 01/05/2026 χωρίς σφάλματα
-                df_plog['real_date'] = pd.to_datetime(df_plog['prod_date'], dayfirst=True, errors='coerce')
+                # 🚀 ΑΠΟΛΥΤΗ ΔΙΟΡΘΩΣΗ: Αλεξίσφαιρη ανάγνωση ημερομηνιών
+                def make_real_date(d):
+                    if pd.isna(d): return pd.NaT
+                    # Καθαρίζουμε κενά και αλλάζουμε τυχόν τελείες ή παύλες σε κάθετες
+                    d_str = str(d).strip().replace(".", "/").replace("-", "/")
+                    parts = d_str.split("/")
+                    
+                    if len(parts) == 3:
+                        # Μετατροπή διψήφιας χρονιάς σε τετραψήφια (π.χ. 26 -> 2026)
+                        if len(parts[2]) == 2: 
+                            parts[2] = "20" + parts[2]
+                        # Προσθήκη μηδενικών σε μονοψήφιες μέρες/μήνες (π.χ. 1 -> 01)
+                        parts[0] = parts[0].zfill(2)
+                        parts[1] = parts[1].zfill(2)
+                        d_str = f"{parts[0]}/{parts[1]}/{parts[2]}"
+                        
+                    # Τώρα το μετατρέπουμε με απόλυτη ασφάλεια σε ημερολόγιο
+                    return pd.to_datetime(d_str, format="%d/%m/%Y", errors="coerce")
+
+                # Φτιάχνουμε μια κρυφή στήλη με τη σωστή ημερομηνία
+                df_plog['real_date'] = df_plog['prod_date'].apply(make_real_date)
                 
+                # Ταξινομούμε με βάση την καθαρή ημερομηνία
                 available_dates = df_plog.sort_values('real_date', ascending=False)['prod_date'].dropna().unique().tolist()
                 
                 sel_dates = st.multiselect("📅 Επιλέξτε Ημερομηνίες Παραγγελιών:", options=available_dates, default=[available_dates[0]] if available_dates else None)
