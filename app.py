@@ -4808,6 +4808,10 @@ elif page == "🚚 Παραλαβές":
                                     
                     if processed_count > 0:
                         st.success(f"✅ Ολοκληρώθηκε η παραλαβή! Ενημερώθηκαν {processed_count} κωδικοί στην αποθήκη.")
+                        
+                        # 🚀 ΝΕΑ ΓΡΑΜΜΗ: Καθαρίζουμε τη μνήμη για να εμφανιστούν αμέσως τα νέα ml στην Αποθήκη!
+                        st.cache_data.clear() 
+                        
                         time.sleep(1.5)
                         st.rerun()
                     else:
