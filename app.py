@@ -4514,22 +4514,20 @@ elif page == "🛒 Λίστα Αγορών":
             st.markdown("### 🛒 Δημιουργία Λίστας & Καταχώρηση Παραγγελίας")
             
             if not df_plog.empty and not global_recipes.empty:
-                # Δημιουργία αντιγράφου για να μην πειράξουμε τα αρχικά δεδομένα
-                df_temp = df_plog.copy()
                 
-                # 1. Καθαρίζουμε τυχόν κενά γύρω από τις ημερομηνίες (π.χ. " 01/06/2026 ")
-                df_temp['prod_date_clean'] = df_temp['prod_date'].astype(str).str.strip()
+                # 1. Καθαρίζουμε κενά γύρω από τις ημερομηνίες (π.χ. " 01/05/26 ")
+                df_plog['prod_date'] = df_plog['prod_date'].astype(str).str.strip()
                 
-                # 2. Φτιάχνουμε μια "κρυφή" στήλη πραγματικής ημερομηνίας
-                # Το dayfirst=True εγγυάται ότι το 01/06 διαβάζεται ως 1 Ιουνίου και όχι 6 Ιανουαρίου
-                df_temp['real_date'] = pd.to_datetime(df_temp['prod_date_clean'], dayfirst=True, errors='coerce')
+                # 2. Φτιάχνουμε μια αόρατη στήλη. Το dayfirst=True καταλαβαίνει άψογα το 01/05/26 και το 01/05/2026!
+                df_plog['Αληθινός_Χρόνος'] = pd.to_datetime(df_plog['prod_date'], dayfirst=True, errors='coerce')
                 
-                # 3. Ταξινομούμε ΟΛΟ τον πίνακα φθίνουσα με βάση την κρυφή ημερομηνία
-                df_temp = df_temp.sort_values(by='real_date', ascending=False)
+                # 3. Ταξινομούμε ΟΛΟ το αρχείο με βάση τον Αληθινό Χρόνο (Φθίνουσα). 
+                # Ό,τι άκυρο (π.χ. γράμματα) πάει αυτόματα τέρμα κάτω.
+                df_plog = df_plog.sort_values(by='Αληθινός_Χρόνος', ascending=False)
                 
-                # 4. Τραβάμε τα μοναδικά στοιχεία. Επειδή ο πίνακας είναι πλέον ταξινομημένος, 
-                # η σειρά τους θα είναι 100% αυστηρά χρονολογική (από το πιο νέο στο πιο παλιό).
-                available_dates = df_temp['prod_date_clean'].dropna().unique().tolist()
+                # 4. Εφόσον πλέον ο πίνακας είναι ταξινομημένος τέλεια, τραβάμε τις ημερομηνίες μία-μία.
+                # Η drop_duplicates() κρατάει ΜΟΝΟ την πρώτη εμφάνιση και ΔΙΑΤΗΡΕΙ ΑΥΣΤΗΡΑ τη χρονολογική σειρά!
+                available_dates = df_plog['prod_date'].drop_duplicates().tolist()
                 
                 sel_dates = st.multiselect(
                     "📅 Επιλέξτε Ημερομηνίες Παραγγελιών:", 
@@ -4538,12 +4536,11 @@ elif page == "🛒 Λίστα Αγορών":
                 )
                 
                 if sel_dates:
-                    # Προσοχή: Επειδή καθαρίσαμε τα κενά, ψάχνουμε με βάση τη νέα καθαρή στήλη!
-                    batch_orders = df_temp[df_temp['prod_date_clean'].isin(sel_dates)].copy()
+                    batch_orders = df_plog[df_plog['prod_date'].isin(sel_dates)].copy()
                     batch_orders['pieces'] = pd.to_numeric(batch_orders['pieces'], errors='coerce').fillna(0)
                     
                     if 'prod_time' in batch_orders.columns and 'customer' in batch_orders.columns:
-                        batch_orders = batch_orders.drop_duplicates(subset=['prod_date_clean', 'prod_time', 'customer', 'cocktail_name'])
+                        batch_orders = batch_orders.drop_duplicates(subset=['prod_date', 'prod_time', 'customer', 'cocktail_name'])
                     
                     cocktail_sums = batch_orders.groupby('cocktail_name')['pieces'].sum().reset_index()
                     
