@@ -3581,7 +3581,7 @@ elif page == "👥 Πελατολόγιο":
                 
                 if res_orders.data:
                     with st.expander("🖨️ Εξαγωγή & Εκτύπωση Ιστορικού (PDF/HTML)", expanded=False):
-                        st.write("Δημιουργήστε μια επαγγελματική αναφορά για τον πελάτη.")
+                        st.write("Δημιουργήστε μια επαγγελματική αναλυτική αναφορά για τον πελάτη.")
                         
                         export_mode = st.radio("Τι θέλετε να περιλαμβάνει η αναφορά;", ["Όλο το Ιστορικό Αγορών", "Συγκεκριμένη Παραγγελία"], horizontal=True)
                         
@@ -3593,7 +3593,7 @@ elif page == "👥 Πελατολόγιο":
                         else:
                             orders_to_export = res_orders.data
                             
-                        if st.button("📄 Δημιουργία Αναφοράς"):
+                        if st.button("📄 Δημιουργία Αναλυτικής Αναφοράς"):
                             total_export_value = sum([float(o['total_amount']) for o in orders_to_export])
                             now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
                             
@@ -3605,73 +3605,141 @@ elif page == "👥 Πελατολόγιο":
                                 <title>Καρτέλα Πελάτη - {sel_name}</title>
                                 <style>
                                     body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; background-color: #fff; padding: 20px; }}
-                                    .container {{ max-width: 900px; margin: auto; border: 1px solid #ddd; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }}
+                                    .container {{ max-width: 1000px; margin: auto; border: 1px solid #ddd; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }}
                                     .header {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1a3a5f; padding-bottom: 10px; margin-bottom: 20px; }}
                                     .header h1 {{ color: #1a3a5f; margin: 0; font-size: 24px; }}
-                                    .header p {{ margin: 0; color: #666; font-size: 12px; }}
-                                    .cust-info {{ background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #1a3a5f; }}
-                                    .cust-info p {{ margin: 5px 0; font-size: 14px; }}
-                                    table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }}
-                                    th, td {{ border: 1px solid #eee; padding: 10px; text-align: left; vertical-align: top; }}
-                                    th {{ background-color: #1a3a5f; color: white; font-weight: normal; }}
-                                    tr:nth-child(even) {{ background-color: #fafafa; }}
-                                    .total-row {{ background-color: #e8f4f8; font-weight: bold; font-size: 16px; }}
-                                    .details-col {{ line-height: 1.5; }}
-                                    .amount-col {{ text-align: right; white-space: nowrap; font-weight: bold; color: #2e7d32; }}
+                                    .header p {{ margin: 0; color: #666; font-size: 12px; text-align: right; }}
+                                    .cust-info {{ background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #1a3a5f; display: flex; justify-content: space-between;}}
+                                    .cust-info div {{ width: 48%; }}
+                                    .cust-info p {{ margin: 5px 0; font-size: 13px; }}
+                                    table {{ width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 12px; }}
+                                    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: middle; }}
+                                    th {{ background-color: #1a3a5f; color: white; font-weight: bold; text-align: center; }}
+                                    .order-date-row {{ background-color: #e8f4f8; font-weight: bold; font-size: 14px; color: #1a3a5f; }}
+                                    .amount-col {{ text-align: right; font-weight: bold; }}
+                                    .center-col {{ text-align: center; }}
+                                    .free-badge {{ color: #d32f2f; font-weight: bold; }}
+                                    .total-row {{ background-color: #1a3a5f; color: white; font-weight: bold; font-size: 16px; }}
                                     .footer {{ text-align: center; margin-top: 30px; font-size: 11px; color: #999; border-top: 1px solid #ddd; padding-top: 10px; }}
                                 </style>
                             </head>
                             <body>
                                 <div class="container">
                                     <div class="header">
-                                        <h1>Καρτέλα Κίνησης Πελάτη</h1>
+                                        <h1>Αναλυτική Καρτέλα Πελάτη</h1>
                                         <p>Ημ/νια Εκτύπωσης: {now_str}<br>DC CABCLUB System</p>
                                     </div>
                                     
                                     <div class="cust-info">
-                                        <strong>Στοιχεία Πελάτη:</strong><br>
-                                        <p><b>Επωνυμία:</b> {sel_name} | <b>ΑΦΜ:</b> {customer_data.get('afm', '-')}</p>
-                                        <p><b>Τηλέφωνο:</b> {customer_data.get('phone', '-')} | <b>Email:</b> {customer_data.get('email', '-')}</p>
-                                        <p><b>Διεύθυνση:</b> {customer_data.get('address', '-')}</p>
+                                        <div>
+                                            <strong>Στοιχεία Πελάτη:</strong><br>
+                                            <p><b>Επωνυμία:</b> {sel_name}</p>
+                                            <p><b>Διεύθυνση:</b> {customer_data.get('address', '-')}</p>
+                                        </div>
+                                        <div>
+                                            <br>
+                                            <p><b>ΑΦΜ:</b> {customer_data.get('afm', '-')}</p>
+                                            <p><b>Τηλέφωνο:</b> {customer_data.get('phone', '-')} | <b>Email:</b> {customer_data.get('email', '-')}</p>
+                                        </div>
                                     </div>
                                     
                                     <table>
                                         <thead>
                                             <tr>
-                                                <th width="15%">Ημερομηνία</th>
-                                                <th width="70%">Ανάλυση Παραγγελίας (Είδη & Εκπτώσεις)</th>
-                                                <th width="15%" style="text-align: right;">Τελική Αξία</th>
+                                                <th width="30%">Προϊόν (Cocktail)</th>
+                                                <th width="10%">Τιμή / τμχ</th>
+                                                <th width="15%">Χρεώσιμα Τμχ</th>
+                                                <th width="15%">Δώρα / Έκπτωση</th>
+                                                <th width="15%">Σύνολο Τμχ</th>
+                                                <th width="15%">Αξία</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                             """
                             
+                            import re
                             for o in orders_to_export:
                                 date_str = str(o['created_at'])[:10]
                                 date_formatted = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+                                order_total = float(o['total_amount'])
                                 
-                                formatted_details = str(o['order_details']).replace('\n', '<br>')
-                                formatted_details = formatted_details.replace('ΔΩΡΑ', '<strong style="color:#d32f2f;">ΔΩΡΑ</strong>')
-                                formatted_details = formatted_details.replace('ΕΚΠΤΩΣΕΙΣ', '<strong style="color:#1976d2;">ΕΚΠΤΩΣΕΙΣ</strong>')
-                                
+                                # Επικεφαλίδα για την κάθε παραγγελία
                                 html_content += f"""
-                                            <tr>
-                                                <td>{date_formatted}</td>
-                                                <td class="details-col">{formatted_details}</td>
-                                                <td class="amount-col">{float(o['total_amount']):.2f} €</td>
-                                            </tr>
+                                    <tr class="order-date-row">
+                                        <td colspan="6">📅 Παραγγελία: {date_formatted}</td>
+                                    </tr>
+                                """
+                                
+                                details = str(o['order_details'])
+                                
+                                # Προσπαθούμε να βρούμε τα προϊόντα μέσα στο κείμενο (πχ "- Zombie: 10 τμχ x 5.0€ = 50.0€")
+                                product_lines = details.split('\n')
+                                for line in product_lines:
+                                    line = line.strip()
+                                    if line.startswith("-") and "τμχ" in line:
+                                        try:
+                                            # Μαγικό Regex για να κόψει τη γραμμή σε κομμάτια
+                                            match = re.search(r"-\s*(.*?):\s*(\d+)\s*τμχ\s*x\s*([\d\.]+)€\s*=\s*([\d\.]+)€", line)
+                                            if match:
+                                                prod_name = match.group(1).strip()
+                                                total_pcs = int(match.group(2))
+                                                price_per_pc = float(match.group(3))
+                                                line_total = float(match.group(4))
+                                                
+                                                # Ψάχνουμε αν σε αυτή τη γραμμή υπάρχει αναφορά σε δώρα
+                                                gifts = 0
+                                                gift_match = re.search(r"\(περιλαμβάνει (\d+) ΔΩΡΑ\)", line)
+                                                if gift_match:
+                                                    gifts = int(gift_match.group(1))
+                                                
+                                                billable_pcs = total_pcs - gifts
+                                                
+                                                gift_html = f"<span class='free-badge'>{gifts} Δώρα</span>" if gifts > 0 else "-"
+                                                
+                                                html_content += f"""
+                                                <tr>
+                                                    <td>{prod_name}</td>
+                                                    <td class="center-col">{price_per_pc:.2f} €</td>
+                                                    <td class="center-col">{billable_pcs}</td>
+                                                    <td class="center-col">{gift_html}</td>
+                                                    <td class="center-col"><b>{total_pcs}</b></td>
+                                                    <td class="amount-col">{line_total:.2f} €</td>
+                                                </tr>
+                                                """
+                                        except:
+                                            pass
+                                
+                                # Ελέγχουμε αν υπάρχει γενική έκπτωση σε όλη την παραγγελία
+                                disc_match = re.search(r"ΕΚΠΤΩΣΕΙΣ:\s*-([\d\.]+)€", details)
+                                if disc_match:
+                                    disc_val = float(disc_match.group(1))
+                                    html_content += f"""
+                                    <tr>
+                                        <td colspan="5" style="text-align: right; color: #1976d2;"><b>Γενική Έκπτωση Παραγγελίας:</b></td>
+                                        <td class="amount-col" style="color: #1976d2;">-{disc_val:.2f} €</td>
+                                    </tr>
+                                    """
+                                
+                                # Υποσύνολο Παραγγελίας
+                                html_content += f"""
+                                    <tr>
+                                        <td colspan="5" style="text-align: right; border-bottom: 2px solid #1a3a5f;"><b>Τελική Αξία Παραγγελίας:</b></td>
+                                        <td class="amount-col" style="border-bottom: 2px solid #1a3a5f;"><b>{order_total:.2f} €</b></td>
+                                    </tr>
                                 """
                             
                             html_content += f"""
-                                            <tr class="total-row">
-                                                <td colspan="2" style="text-align: right;">Γενικό Σύνολο:</td>
-                                                <td class="amount-col" style="color: #1a3a5f;">{total_export_value:.2f} €</td>
-                                            </tr>
                                         </tbody>
+                                        <tfoot>
+                                            <tr class="total-row">
+                                                <td colspan="5" style="text-align: right;">ΓΕΝΙΚΟ ΣΥΝΟΛΟ ΙΣΤΟΡΙΚΟΥ:</td>
+                                                <td class="amount-col">{total_export_value:.2f} €</td>
+                                            </tr>
+                                        </tfoot>
                                     </table>
                                     
                                     <div class="footer">
-                                        Αυτή η αναφορά δημιουργήθηκε αυτόματα από το σύστημα διαχείρισης παραγωγής.<br>
+                                        Αυτή η αναλυτική αναφορά δημιουργήθηκε αυτόματα από το σύστημα διαχείρισης παραγωγής.<br>
                                         Δεν αποτελεί φορολογικό στοιχείο (τιμολόγιο/απόδειξη).
                                     </div>
                                 </div>
@@ -3680,13 +3748,13 @@ elif page == "👥 Πελατολόγιο":
                             """
                             
                             st.download_button(
-                                label="📥 Λήψη Αναφοράς (HTML / Print to PDF)",
+                                label="📥 Λήψη Αναλυτικής Αναφοράς (HTML / Print to PDF)",
                                 data=html_content,
-                                file_name=f"Customer_Report_{sel_name.replace(' ', '_')}.html",
+                                file_name=f"Detailed_Customer_Report_{sel_name.replace(' ', '_')}.html",
                                 mime="text/html",
                                 type="primary"
                             )
-                            st.info("💡 **Οδηγία:** Ανοίξτε το αρχείο που κατέβηκε στον browser σας (Chrome/Safari) και πατήστε **Ctrl+P** (ή Cmd+P στο Mac) για να το αποθηκεύσετε ως ένα τέλειο PDF ή να το εκτυπώσετε!")
+                            st.info("💡 **Οδηγία:** Ανοίξτε το αρχείο που κατέβηκε στον browser σας και πατήστε **Ctrl+P** για να το αποθηκεύσετε ως ένα τέλειο PDF ή να το εκτυπώσετε!")
                     
                     st.divider()
 
