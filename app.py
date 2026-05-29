@@ -4515,22 +4515,33 @@ elif page == "🛒 Λίστα Αγορών":
             
             if not df_plog.empty and not global_recipes.empty:
                 import datetime
+                import re
                 
-                # 🚀 Απόλυτος κανόνας ταξινόμησης (Καθαρή Python)
+                # 🚀 Ο ΑΠΟΛΥΤΟΣ ΚΑΝΟΝΑΣ: Διαβάζει μόνο νούμερα, αγνοώντας τα πάντα!
                 def sort_date_key(d_str):
                     try:
-                        # Καθαρίζουμε κενά και φτιάχνουμε τα διαχωριστικά
-                        d_clean = str(d_str).strip().replace(".", "/").replace("-", "/")
-                        parts = d_clean.split("/")
-                        if len(parts) == 3:
-                            y = int(parts[2])
-                            if y < 100: y += 2000  # Αν είναι 26, το κάνει 2026
-                            m = int(parts[1])
-                            d = int(parts[0])
+                        # Βρίσκουμε ΜΟΝΟ τους αριθμούς μέσα στο κείμενο (αγνοεί / , - , κενά, ώρες κτλ)
+                        nums = re.findall(r'\d+', str(d_str))
+                        
+                        if len(nums) >= 3:
+                            n1, n2, n3 = int(nums[0]), int(nums[1]), int(nums[2])
+                            
+                            # Ελέγχουμε μήπως γράφτηκε ανάποδα (π.χ. 2026-05-01)
+                            if n1 > 1000:
+                                y, m, d = n1, n2, n3
+                            else:
+                                # Κανονική μορφή (π.χ. 01 05 26)
+                                d, m, y = n1, n2, n3
+                                
+                            # Μετατροπή του 26 σε 2026
+                            if y < 100: 
+                                y += 2000
+                                
                             return datetime.datetime(y, m, d)
                     except:
                         pass
-                    # Αν η ημερομηνία είναι τελείως άκυρη (π.χ. κενό), πάει στον πάτο
+                    
+                    # Αν δεν υπάρχει καν ημερομηνία, πάει στον πάτο
                     return datetime.datetime(1900, 1, 1)
 
                 # 1. Παίρνουμε όλες τις ημερομηνίες (ακριβώς όπως είναι γραμμένες στη βάση)
