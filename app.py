@@ -4514,30 +4514,30 @@ elif page == "🛒 Λίστα Αγορών":
             st.markdown("### 🛒 Δημιουργία Λίστας & Καταχώρηση Παραγγελίας")
             
             if not df_plog.empty and not global_recipes.empty:
-                # 🚀 ΑΠΟΛΥΤΗ ΔΙΟΡΘΩΣΗ: Αλεξίσφαιρη ανάγνωση ημερομηνιών
-                def make_real_date(d):
-                    if pd.isna(d): return pd.NaT
-                    # Καθαρίζουμε κενά και αλλάζουμε τυχόν τελείες ή παύλες σε κάθετες
-                    d_str = str(d).strip().replace(".", "/").replace("-", "/")
-                    parts = d_str.split("/")
-                    
-                    if len(parts) == 3:
-                        # Μετατροπή διψήφιας χρονιάς σε τετραψήφια (π.χ. 26 -> 2026)
-                        if len(parts[2]) == 2: 
-                            parts[2] = "20" + parts[2]
-                        # Προσθήκη μηδενικών σε μονοψήφιες μέρες/μήνες (π.χ. 1 -> 01)
-                        parts[0] = parts[0].zfill(2)
-                        parts[1] = parts[1].zfill(2)
-                        d_str = f"{parts[0]}/{parts[1]}/{parts[2]}"
-                        
-                    # Τώρα το μετατρέπουμε με απόλυτη ασφάλεια σε ημερολόγιο
-                    return pd.to_datetime(d_str, format="%d/%m/%Y", errors="coerce")
-
-                # Φτιάχνουμε μια κρυφή στήλη με τη σωστή ημερομηνία
-                df_plog['real_date'] = df_plog['prod_date'].apply(make_real_date)
+                import datetime
                 
-                # Ταξινομούμε με βάση την καθαρή ημερομηνία
-                available_dates = df_plog.sort_values('real_date', ascending=False)['prod_date'].dropna().unique().tolist()
+                # 🚀 Απόλυτος κανόνας ταξινόμησης (Καθαρή Python)
+                def sort_date_key(d_str):
+                    try:
+                        # Καθαρίζουμε κενά και φτιάχνουμε τα διαχωριστικά
+                        d_clean = str(d_str).strip().replace(".", "/").replace("-", "/")
+                        parts = d_clean.split("/")
+                        if len(parts) == 3:
+                            y = int(parts[2])
+                            if y < 100: y += 2000  # Αν είναι 26, το κάνει 2026
+                            m = int(parts[1])
+                            d = int(parts[0])
+                            return datetime.datetime(y, m, d)
+                    except:
+                        pass
+                    # Αν η ημερομηνία είναι τελείως άκυρη (π.χ. κενό), πάει στον πάτο
+                    return datetime.datetime(1900, 1, 1)
+
+                # 1. Παίρνουμε όλες τις ημερομηνίες (ακριβώς όπως είναι γραμμένες στη βάση)
+                raw_dates = df_plog['prod_date'].dropna().unique().tolist()
+                
+                # 2. Τις ταξινομούμε φθίνουσα με τον "αλεξίσφαιρο" κανόνα
+                available_dates = sorted(raw_dates, key=sort_date_key, reverse=True)
                 
                 sel_dates = st.multiselect("📅 Επιλέξτε Ημερομηνίες Παραγγελιών:", options=available_dates, default=[available_dates[0]] if available_dates else None)
                 
