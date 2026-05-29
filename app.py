@@ -3646,10 +3646,10 @@ elif page == "👥 Πελατολόγιο":
                                     <table>
                                         <thead>
                                             <tr>
-                                                <th width="30%">Προϊόν (Cocktail)</th>
+                                                <th width="35%">Προϊόν (Cocktail)</th>
                                                 <th width="10%">Τιμή / τμχ</th>
-                                                <th width="15%">Χρεώσιμα Τμχ</th>
-                                                <th width="15%">Δώρα / Έκπτωση</th>
+                                                <th width="10%">Χρεώσιμα</th>
+                                                <th width="15%">Δώρα</th>
                                                 <th width="15%">Σύνολο Τμχ</th>
                                                 <th width="15%">Αξία</th>
                                             </tr>
@@ -3675,54 +3675,75 @@ elif page == "👥 Πελατολόγιο":
                                 for line in product_lines:
                                     line = line.strip()
                                     
-                                    # Αγνοούμε κενές γραμμές και συγκεντρωτικά που τα δείχνουμε αλλού
-                                    if not line or "Αρχική Αξία" in line or "ΕΚΠΤΩΣΕΙΣ" in line:
+                                    # Αγνοούμε κενές γραμμές και τα συγκεντρωτικά (τα δείχνουμε στο τέλος)
+                                    if not line or "Αρχική Αξία" in line or "ΕΚΠΤΩΣΕΙΣ" in line or "Τελική" in line:
                                         continue
                                         
-                                    if "τμχ" in line:
-                                        try:
-                                            # 🚀 Πιο "έξυπνο" Regex: Πιάνει κόμματα, τελείες, κενά, και αγνοεί αν λείπει το σύμβολο €
-                                            match = re.search(r"-\s*(.*?):\s*(\d+)\s*τμχ.*?([\d\.,]+).*?=\s*([\d\.,]+)", line)
+                                    try:
+                                        # 1. Προσπάθεια εύρεσης τεμαχίων (π.χ. "72 τμχ")
+                                        pcs_match = re.search(r'(\d+)\s*(?:τμχ|τεμ|τεμάχια)', line, re.IGNORECASE)
+                                        
+                                        if pcs_match:
+                                            total_pcs = int(pcs_match.group(1))
                                             
-                                            if match:
-                                                prod_name = match.group(1).strip()
-                                                total_pcs = int(match.group(2))
-                                                price_per_pc = float(match.group(3).replace(',', '.'))
-                                                line_total = float(match.group(4).replace(',', '.'))
-                                                
-                                                gifts = 0
-                                                gift_match = re.search(r"\(περιλαμβάνει\s+(\d+)\s+ΔΩΡΑ\)", line)
-                                                if gift_match:
-                                                    gifts = int(gift_match.group(1))
-                                                
-                                                billable_pcs = total_pcs - gifts
-                                                gift_html = f"<span class='free-badge'>{gifts} Δώρα</span>" if gifts > 0 else "-"
-                                                
-                                                html_content += f"""
-                                                <tr>
-                                                    <td>{prod_name}</td>
-                                                    <td class="center-col">{price_per_pc:.2f} €</td>
-                                                    <td class="center-col">{billable_pcs}</td>
-                                                    <td class="center-col">{gift_html}</td>
-                                                    <td class="center-col"><b>{total_pcs}</b></td>
-                                                    <td class="amount-col">{line_total:.2f} €</td>
-                                                </tr>
-                                                """
-                                            else:
-                                                # 🛟 ΔΙΧΤΥ ΑΣΦΑΛΕΙΑΣ: Αν δεν μπορέσει να το κόψει, απλά το τυπώνει ολόκληρο
-                                                html_content += f"""
-                                                <tr>
-                                                    <td colspan="5">{line}</td>
-                                                    <td class="amount-col">-</td>
-                                                </tr>
-                                                """
-                                        except:
+                                            # 2. Ψάχνουμε για τιμή (π.χ. "x 5.0 = 50.0")
+                                            price_per_pc = None
+                                            line_total = None
+                                            pat_a = re.search(r'x\s*([\d\.,]+)\s*€?\s*(?:=|-)\s*([\d\.,]+)\s*€?', line)
+                                            if pat_a:
+                                                price_per_pc = float(pat_a.group(1).replace(',', '.'))
+                                                line_total = float(pat_a.group(2).replace(',', '.'))
+                                            
+                                            # 3. Ψάχνουμε για δώρα (π.χ. "2 ΔΩΡΑ" ή "περιλαμβάνει 2")
+                                            gifts = 0
+                                            gift_pat = re.search(r'(\d+)\s*ΔΩΡ', line, re.IGNORECASE)
+                                            if not gift_pat: 
+                                                gift_pat = re.search(r'περιλαμβάνει\s+(\d+)', line, re.IGNORECASE)
+                                            if gift_pat: 
+                                                gifts = int(gift_pat.group(1))
+                                            
+                                            # 4. Καθαρισμός Ονόματος
+                                            prod_name = line
+                                            prod_name = re.sub(r'^[•\-\*]\s*', '', prod_name) # Αφαιρεί κουκκίδες
+                                            prod_name = re.sub(r'\b\d+\s*(?:τμχ|τεμ|τεμάχια)\b', '', prod_name, flags=re.IGNORECASE) # Αφαιρεί το "72 τμχ"
+                                            prod_name = re.sub(r'x\s*[\d\.,]+\s*€?\s*(?:=|-)\s*[\d\.,]+\s*€?', '', prod_name) # Αφαιρεί την τιμή
+                                            prod_name = re.sub(r'\(.*?\)', '', prod_name) # Αφαιρεί παρενθέσεις
+                                            prod_name = prod_name.replace(':', '').strip()
+                                            if not prod_name: prod_name = "Cocktail"
+                                            
+                                            # Υπολογισμοί
+                                            billable_pcs = total_pcs - gifts
+                                            gift_html = f"<span class='free-badge'>{gifts} Δώρα</span>" if gifts > 0 else "-"
+                                            
+                                            p_str = f"{price_per_pc:.2f} €" if price_per_pc is not None else "-"
+                                            t_str = f"{line_total:.2f} €" if line_total is not None else "-"
+                                            
+                                            html_content += f"""
+                                            <tr>
+                                                <td>{prod_name}</td>
+                                                <td class="center-col">{p_str}</td>
+                                                <td class="center-col">{billable_pcs}</td>
+                                                <td class="center-col">{gift_html}</td>
+                                                <td class="center-col"><b>{total_pcs}</b></td>
+                                                <td class="amount-col">{t_str}</td>
+                                            </tr>
+                                            """
+                                        else:
+                                            # Αν η γραμμή ΔΕΝ έχει τεμάχια (π.χ. κάποια σημείωση), την τυπώνει ολόκληρη!
                                             html_content += f"""
                                             <tr>
                                                 <td colspan="5">{line}</td>
                                                 <td class="amount-col">-</td>
                                             </tr>
                                             """
+                                    except Exception:
+                                        # Το απόλυτο δίχτυ ασφαλείας: Αν "σκάσει" κάτι, τυπώνει τη γραμμή.
+                                        html_content += f"""
+                                        <tr>
+                                            <td colspan="5">{line}</td>
+                                            <td class="amount-col">-</td>
+                                        </tr>
+                                        """
                                 
                                 # Ελέγχουμε αν υπάρχει γενική έκπτωση σε όλη την παραγγελία
                                 disc_match = re.search(r"ΕΚΠΤΩΣΕΙΣ:\s*-([\d\.,]+)", details)
@@ -3769,11 +3790,11 @@ elif page == "👥 Πελατολόγιο":
                                 mime="text/html",
                                 type="primary"
                             )
-                            st.info("💡 **Οδηγία:** Ανοίξτε το αρχείο που κατέβηκε στον browser σας (Chrome/Safari) και πατήστε **Ctrl+P** για να το αποθηκεύσετε ως ένα τέλειο PDF ή να το εκτυπώσετε!")
+                            st.info("💡 **Οδηγία:** Ανοίξτε το αρχείο που κατέβηκε στον browser σας και πατήστε **Ctrl+P** για να το αποθηκεύσετε ως ένα τέλειο PDF ή να το εκτυπώσετε!")
                     
                     st.divider()
 
-                    # Εμφάνιση των παραγγελιών στο UI (το δικό σου αρχικό κομμάτι)
+                    # Εμφάνιση των παραγγελιών στο UI
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
@@ -3788,7 +3809,6 @@ elif page == "👥 Πελατολόγιο":
                             st.info(f"**Αρχική Αξία:** {base_amt:.2f} €\n\n**Τελική Χρέωση:** {current_amt:.2f} €")
                             st.caption(f"Λεπτομέρειες Παραγγελίας:\n{details}")
                             
-                            # Κουμπί διαγραφής παραγγελίας
                             if st.button("🗑️ Διαγραφή Παραγγελίας", key=f"del_o_{order_id}"):
                                 delete_order_and_production_safely(order_id, sel_name, order['created_at'], order['order_details'])
                                 st.warning("🔄 Η παραγγελία και τα υλικά παραγωγής διαγράφηκαν επιτυχώς!")
