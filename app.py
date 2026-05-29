@@ -4514,8 +4514,9 @@ elif page == "🛒 Λίστα Αγορών":
             st.markdown("### 🛒 Δημιουργία Λίστας & Καταχώρηση Παραγγελίας")
             
             if not df_plog.empty and not global_recipes.empty:
-                # 🚀 ΔΙΟΡΘΩΣΗ: Πραγματική χρονολογική ταξινόμηση ημερομηνιών!
-                df_plog['real_date'] = pd.to_datetime(df_plog['prod_date'], format='%d/%m/%Y', errors='coerce')
+                # 🚀 Έξυπνη αναγνώριση: Πιάνει και το 1/5/26 και το 01/05/2026 χωρίς σφάλματα
+                df_plog['real_date'] = pd.to_datetime(df_plog['prod_date'], dayfirst=True, errors='coerce')
+                
                 available_dates = df_plog.sort_values('real_date', ascending=False)['prod_date'].dropna().unique().tolist()
                 
                 sel_dates = st.multiselect("📅 Επιλέξτε Ημερομηνίες Παραγγελιών:", options=available_dates, default=[available_dates[0]] if available_dates else None)
