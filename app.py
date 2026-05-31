@@ -2139,9 +2139,36 @@ elif page == "📦 Lot Παραγωγής":
     with col_date1:
         selected_date = st.date_input("📅 Ημερομηνία LOT", value=datetime.now(greece_tz), format="DD/MM/YYYY")
     with col_date2:
-        prod_day = st.text_input("Ημερομηνία Παραγωγής", value=datetime.now(greece_tz).strftime('%d'), max_chars=2)
+        # 🚀 Αλλάξαμε το max_chars σε 8 για να δέχεται "15" ή "15/06" ή "15/06/26"
+        prod_day = st.text_input("Ημερ. Παραγωγής", value=datetime.now(greece_tz).strftime('%d'), max_chars=8)
 
     formatted_date = selected_date.strftime('%d/%m/%Y')
+    
+    # 🚀 Ο ΕΞΥΠΝΟΣ ΜΕΤΑΦΡΑΣΤΗΣ ΗΜΕΡΟΜΗΝΙΑΣ 🚀
+    def get_smart_prod_date(val, base_date):
+        val = str(val).strip().replace('-', '/').replace('.', '/')
+        parts = val.split('/')
+        y, m, d = base_date.year, base_date.month, base_date.day
+        try:
+            if len(parts) == 1 and parts[0]:
+                d = int(parts[0])
+            elif len(parts) == 2:
+                d = int(parts[0])
+                m = int(parts[1])
+            elif len(parts) >= 3:
+                d = int(parts[0])
+                m = int(parts[1])
+                y = int(parts[2])
+                if y < 100: y += 2000
+            
+            from datetime import date
+            return date(y, m, d).strftime('%d/%m/%Y')
+        except:
+            return base_date.strftime('%d/%m/%Y')
+
+    # ΑΥΤΗ ΕΙΝΑΙ Η ΤΕΛΙΚΗ ΗΜΕΡΟΜΗΝΙΑ ΠΟΥ ΘΑ ΠΑΕΙ ΣΤΗ ΒΑΣΗ ΔΕΔΟΜΕΝΩΝ (π.χ. "02/06/2026")
+    final_prod_date = get_smart_prod_date(prod_day, selected_date)
+
     date_lot_label = f"{formatted_date}-{prod_day}" 
     current_time = datetime.now(greece_tz).strftime('%H:%M')
 
