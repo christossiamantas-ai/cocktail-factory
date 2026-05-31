@@ -2909,38 +2909,72 @@ elif page == "📦 Lot Παραγωγής":
                     for col, label in zip(h_edit, ["Πελάτης", "Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
                     
                     final_updated_rows = []
-                    for i, idx in enumerate(cocktail_df.index):
-                        r_d = df_past.loc[idx]
-                        orig_row_in_all_logs = df_all_logs.loc[idx]
-                        cust_name, ing_name, old_ml = r_d["Πελάτης"], r_d["Υλικό"], float(r_d["Σύνολο_ML"])
-                        c_set = customer_settings[cust_name]
-                        new_ml = old_ml * (float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if c_set["old_pcs"] != 0 else 1.0)
-                        
-                        raw_lot, raw_exp = str(r_d["Lot Number"]), str(r_d["Ημ_Λήξης"])
-                        lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
-                        exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
-                        while len(lot_parts) < 2: lot_parts.append("")
-                        while len(exp_parts) < 2: exp_parts.append("")
-                        
-                        r = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
-                        r[0].write(f"{cust_name}")
-                        r[1].write(f"**{ing_name}**")
-                        r[2].write(f"{new_ml:.0f}")
-                        
-                        lt1 = r[3].text_input("L1", value=lot_parts[0], key=f"ed_l1_{batch_id}_{i}", label_visibility="collapsed")
-                        ex1 = r[4].text_input("E1", value=exp_parts[0], key=f"ed_e1_{batch_id}_{i}", label_visibility="collapsed")
-                        lt2 = r[5].text_input("L2", value=lot_parts[1], key=f"ed_l2_{batch_id}_{i}", label_visibility="collapsed")
-                        ex2 = r[6].text_input("E2", value=exp_parts[1], key=f"ed_e2_{batch_id}_{i}", label_visibility="collapsed")
-                        
-                        u_cost = orig_row_in_all_logs.get("unit_cost", 0.22)
-                        if pd.isna(u_cost): u_cost = 0.22
-                        
-                        final_updated_rows.append({
-                            "orig_cust": cust_name, "ing": ing_name, "ml": new_ml,
-                            "lot": lt1 if not lt2 else f"{lt1} / {lt2}", "exp": ex1 if not ex2 else f"{ex1} / {ex2}", 
-                            "u_cost": u_cost, "orig_id": orig_row_in_all_logs["id"], "orig_time": r_d["Ώρα"]
-                        })
                     
+                    # 🚀 Τραβάμε τη συνταγή
+                    res_recipe = supabase.table("recipes").select("*").eq("name", sel_cocktail_edit).execute()
+                    recipe_row = res_recipe.data[0] if res_recipe.data else {}
+                    
+                    # 🚀 Φτιάχνουμε μια καθαρή λίστα με ΟΛΑ τα υλικά της συνταγής (πάντα 1-14)
+                    valid_ingredients = []
+                    for i in range(1, 15):
+                        ing_val = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "")).strip()
+                        # Μετατρέπουμε σε κεφαλαία για απόλυτη σιγουριά στους ελέγχους
+                        if ing_val and ing_val.upper() not in ["ΚΕΝΟ", "NAN", "NONE", "ΝΕΡΌ", "ΝΕΡΟ"]:
+                            valid_ingredients.append(ing_val)
+
+                    # Σε περίπτωση που δεν βρέθηκε συνταγή, παίρνουμε τα υλικά από το log
+                    if not valid_ingredients:
+                        valid_ingredients = [x for x in cocktail_df["Υλικό"].unique() if x != "📦 Έτοιμο Προϊόν (Στοκ)"]
+
+                    row_counter = 0
+                    for cust in unique_customers:
+                        for ing_name in valid_ingredients:
+                            # Ψάχνουμε αν το υλικό υπάρχει ήδη στο log (για να αντλήσουμε παλιά LOT)
+                            current_ing_row = cocktail_df[(cocktail_df["Υλικό"] == ing_name) & (cocktail_df["Πελάτης"] == cust)]
+                            
+                            raw_lot, raw_exp = "", ""
+                            old_ml = 0.0
+                            orig_id = None
+                            u_cost = 0.22
+                            
+                            # Παίρνουμε την ώρα παραγωγής από τη γραμμή του πελάτη
+                            cust_df = cocktail_df[cocktail_df["Πελάτης"] == cust]
+                            orig_time = cust_df["Ώρα"].iloc[0] if not cust_df.empty else "12:00:00"
+
+                            if not current_ing_row.empty:
+                                raw_lot = str(current_ing_row["Lot Number"].iloc[0])
+                                raw_exp = str(current_ing_row["Ημ_Λήξης"].iloc[0])
+                                old_ml = float(current_ing_row["Σύνολο_ML"].iloc[0])
+                                orig_id = current_ing_row["id"].iloc[0]
+                                if "unit_cost" in current_ing_row.columns and pd.notna(current_ing_row["unit_cost"].iloc[0]):
+                                    u_cost = float(current_ing_row["unit_cost"].iloc[0])
+
+                            # Υπολογισμός νέων ml
+                            c_set = customer_settings[cust]
+                            new_ml = old_ml * (float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if c_set["old_pcs"] != 0 else 1.0)
+                            
+                            lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
+                            exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
+                            while len(lot_parts) < 2: lot_parts.append("")
+                            while len(exp_parts) < 2: exp_parts.append("")
+                            
+                            r = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
+                            r[0].write(f"{cust}")
+                            r[1].write(f"**{ing_name}**")
+                            r[2].write(f"{new_ml:.0f}" if new_ml > 0 else "-")
+                            
+                            lt1 = r[3].text_input("L1", value=lot_parts[0], key=f"ed_l1_{batch_id}_{row_counter}", label_visibility="collapsed")
+                            ex1 = r[4].text_input("E1", value=exp_parts[0], key=f"ed_e1_{batch_id}_{row_counter}", label_visibility="collapsed")
+                            lt2 = r[5].text_input("L2", value=lot_parts[1], key=f"ed_l2_{batch_id}_{row_counter}", label_visibility="collapsed")
+                            ex2 = r[6].text_input("E2", value=exp_parts[1], key=f"ed_e2_{batch_id}_{row_counter}", label_visibility="collapsed")
+                            
+                            final_updated_rows.append({
+                                "orig_cust": cust, "ing": ing_name, "ml": new_ml,
+                                "lot": lt1 if not lt2 else f"{lt1} / {lt2}", "exp": ex1 if not ex2 else f"{ex1} / {ex2}", 
+                                "u_cost": u_cost, "orig_id": orig_id, "orig_time": orig_time
+                            })
+                            row_counter += 1
+                            
                     st.divider()
                     col_save, col_del = st.columns(2)
                     with col_save: btn_save = st.form_submit_button("💾 Αποθήκευση Αλλαγών Κοκτέιλ", type="primary")
