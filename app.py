@@ -2535,8 +2535,16 @@ elif page == "📦 Lot Παραγωγής":
                         m_lot = st.session_state.get(f"mlot_{ing}_{reset_key}", "")
                         m_exp = st.session_state.get(f"mexp_{ing}_{reset_key}", "")
                         
-                        l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}_{reset_key}", placeholder=m_lot, label_visibility="collapsed")
-                        e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}_{reset_key}", placeholder=m_exp, label_visibility="collapsed")
+                        # 🧠 ΑΝΑΚΛΗΣΗ ΜΝΗΜΗΣ & ΙΣΤΟΡΙΚΟΥ
+                        mem = st.session_state.daily_lots_memory.get(ing, {})
+                        hist = historical_lots_db.get(ing, {})
+                        
+                        # Σειρά προτεραιότητας: Μνήμη Συνεδρίας -> Ιστορικό Βάσης -> Γρήγορο Κουτάκι (πάνω)
+                        def_lot = mem.get("lot") if mem.get("lot") else (hist.get("lot") if hist.get("lot") else m_lot)
+                        def_exp = mem.get("exp") if mem.get("exp") else (hist.get("exp") if hist.get("exp") else m_exp)
+                        
+                        l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}_{reset_key}", value=def_lot, label_visibility="collapsed")
+                        e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}_{reset_key}", value=def_exp, label_visibility="collapsed")
                         l2 = r[5].text_input("L2", key=f"l2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
                         e2 = r[6].text_input("E2", key=f"e2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
 
@@ -2547,6 +2555,10 @@ elif page == "📦 Lot Παραγωγής":
 
                         final_lot = val_l1 if not val_l2 else f"{val_l1} / {val_l2}"
                         final_exp = val_e1 if not val_e2 else f"{val_e1} / {val_e2}"
+
+                        # 🧠 ΑΠΟΘΗΚΕΥΣΗ ΣΤΗ ΜΝΗΜΗ
+                        if val_l1 or val_e1:
+                            st.session_state.daily_lots_memory[ing] = {"lot": val_l1, "exp": val_e1}
 
                         for _, row_assign in df_assign.iterrows():
                             c_name = str(row_assign.get("Πελάτης", "Λιανική / Άγνωστος")).strip()
