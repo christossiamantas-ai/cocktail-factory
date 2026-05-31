@@ -2937,19 +2937,25 @@ elif page == "📦 Lot Παραγωγής":
                     h_edit = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
                     for col, label in zip(h_edit, ["Πελάτης", "Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
                     
-                    final_updated_rows = []
-                    for i, idx in enumerate(cocktail_df.index):
-                        r_d = df_past.loc[idx]
-                        orig_row_in_all_logs = df_all_logs.loc[idx]
-                        cust_name, ing_name, old_ml = r_d["Πελάτης"], r_d["Υλικό"], float(r_d["Σύνολο_ML"])
-                        c_set = customer_settings[cust_name]
-                        new_ml = old_ml * (float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if c_set["old_pcs"] != 0 else 1.0)
-                        
-                        raw_lot, raw_exp = str(r_d["Lot Number"]), str(r_d["Ημ_Λήξης"])
-                        lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
-                        exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
-                        while len(lot_parts) < 2: lot_parts.append("")
-                        while len(exp_parts) < 2: exp_parts.append("")
+                    # 🧪 Έλεγχος Υλικών - Εδώ προσθέτουμε τη λογική "Log ή Συνταγή"
+    final_updated_rows = []
+    
+    # Πρώτα μαζεύουμε τα υλικά (είτε από το Log της ημέρας, είτε από τη Συνταγή)
+    # Αν είναι Στοκ, το cocktail_df δεν έχει τις γραμμές των υλικών
+    # Άρα τραβάμε τα υλικά απευθείας από τη βάση recipes
+    res_recipe = supabase.table("recipes").select("*").eq("name", sel_cocktail_edit).execute()
+    recipe_row = res_recipe.data[0] if res_recipe.data else {}
+    
+    all_recipe_ingredients = [recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}") for i in range(1, 15) if recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}") not in ["ΚΕΝΟ", "nan", "Νερό", None, ""]]
+
+    for ing in all_recipe_ingredients:
+        for cust in unique_customers:
+            # Ψάχνουμε αν το υλικό υπάρχει στο log (για να πάρουμε το υπάρχον LOT)
+            current_ing_row = cocktail_df[(cocktail_df["Υλικό"] == ing) & (cocktail_df["Πελάτης"] == cust)]
+            
+            # Αν υπάρχει log, παίρνουμε το LOT, αλλιώς αφήνουμε κενό για να συμπληρωθεί
+            raw_lot = str(current_ing_row["Lot Number"].iloc[0]) if not current_ing_row.empty else ""
+            raw_exp = str(current_ing_row["Ημ_Λήξης"].iloc[0]) if not current_ing_row.empty else ""
                         
                         r = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
                         r[0].write(f"{cust_name}")
