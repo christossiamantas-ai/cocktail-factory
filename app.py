@@ -2807,8 +2807,43 @@ elif page == "📦 Lot Παραγωγής":
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
     
     res_log = supabase.table("production_log").select("*").order("prod_date", desc=True).execute()
+    
     if res_log.data:
-        df_all_logs = pd.DataFrame(res_log.data)
+        raw_data = res_log.data
+        
+        # 🚀 VIRTUAL JOIN: "Ανοίγουμε" το Στοκ για να φαίνονται τα υλικά του στην οθόνη
+        original_productions = {}
+        
+        # Πέρασμα 1: Αποθηκεύουμε τα αυθεντικά υλικά των κανονικών παραγωγών
+        for row in raw_data:
+            if row.get("ingredient_name") and "Έτοιμο Προϊόν" not in str(row.get("ingredient_name")):
+                key = (row.get("cocktail_name"), str(row.get("lot_cocktail")).strip())
+                if key not in original_productions:
+                    original_productions[key] = []
+                original_productions[key].append(row)
+                
+        # Πέρασμα 2: Αντικαθιστούμε το 1 "Στοκ" με τα πραγματικά του υλικά για την προβολή
+        display_data = []
+        for row in raw_data:
+            if row.get("ingredient_name") == "📦 Έτοιμο Προϊόν (Στοκ)":
+                key = (row.get("cocktail_name"), str(row.get("lot_cocktail")).strip())
+                if key in original_productions and len(original_productions[key]) > 0:
+                    for orig_ing in original_productions[key]:
+                        new_row = row.copy()
+                        new_row["ingredient_name"] = orig_ing.get("ingredient_name")
+                        new_row["lot_number"] = orig_ing.get("lot_number")
+                        new_row["expiry_date"] = orig_ing.get("expiry_date")
+                        # Κρατάμε τα ml στο 0 για να μην διπλο-προστεθούν στις Λίστες Προετοιμασίας
+                        new_row["total_ml"] = 0.0 
+                        new_row["target_g"] = 0.0
+                        display_data.append(new_row)
+                else:
+                    # Αν η αρχική παραγωγή δεν βρεθεί, δείχνει τη βασική εγγραφή
+                    display_data.append(row)
+            else:
+                display_data.append(row)
+
+        df_all_logs = pd.DataFrame(display_data)
         df_all_logs_renamed = df_all_logs.rename(columns={
             "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
             "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια", "ingredient_name": "Υλικό",
