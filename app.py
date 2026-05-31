@@ -2177,6 +2177,8 @@ elif page == "📦 Lot Παραγωγής":
     # --- ΑΡΧΙΚΟΠΟΙΗΣΗ ΜΝΗΜΗΣ ---
     if "production_batch_items" not in st.session_state:
         st.session_state.production_batch_items = []
+    if "daily_lots_memory" not in st.session_state:
+        st.session_state.daily_lots_memory = {}
     if 'pending_conflict' not in st.session_state:
         st.session_state['pending_conflict'] = None
 
