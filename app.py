@@ -2638,8 +2638,8 @@ elif page == "📦 Lot Παραγωγής":
                         })
                         
                         if c_qty > 0:
+                            # 🚀 Έλεγχος αν είναι από Στοκ ή Παραγωγή
                             if is_stock == "ΝΑΙ":
-                                # 🚀 ΜΟΝΟ 1 ΓΡΑΜΜΗ ΓΙΑ ΤΟ ΣΤΟΚ (Χωρίς περιττές πρώτες ύλες)
                                 lot_entries.append({
                                     "prod_date": c_config["prod_date"], 
                                     "prod_time": current_time, 
@@ -2655,10 +2655,11 @@ elif page == "📦 Lot Παραγωγής":
                                     "unit_cost": round(current_unit_cost, 4)
                                 })
                             else:
-                                # 🚀 ΚΑΝΟΝΙΚΗ ΠΑΡΑΓΩΓΗ: Αναλυτικά όλα τα υλικά
+                                # 🚀 Κανονική Παραγωγή - Loop συστατικών
                                 for i in range(1, 14):
                                     ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                                    if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
+                                    if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: 
+                                        continue
                                     
                                     ml_u = get_recipe_ml(recipe_row, i)
                                     match_ing = df_ing[df_ing["Name"] == ing]
@@ -2675,7 +2676,7 @@ elif page == "📦 Lot Παραγωγής":
                                         "pieces": c_qty,
                                         "ingredient_name": ing, 
                                         "total_ml": float(ml_u * c_qty), 
-                                        "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"] * match_ing.iloc[0]["Weight_Full"]), 1) if not match_ing.empty else float(ml_u * c_qty),
+                                        "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"]) * match_ing.iloc[0]["Weight_Full"], 1) if not match_ing.empty else float(ml_u * c_qty),
                                         "lot_number": actual_ing_lot, 
                                         "expiry_date": actual_ing_exp,
                                         "unit_cost": round(current_unit_cost, 4)
