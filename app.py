@@ -2806,34 +2806,39 @@ elif page == "📦 Lot Παραγωγής":
     st.divider()
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
     
+    # ΑΥΤΗ ΕΙΝΑΙ Η ΓΡΑΜΜΗ ΠΟΥ ΕΛΕΙΠΕ!
     res_log = supabase.table("production_log").select("*").order("prod_date", desc=True).execute()
     
     if res_log.data:
+        # 🚀 ΕΞΥΠΝΟΣ ΜΕΤΑΦΡΑΣΤΗΣ ΣΤΟΚ: Βρίσκει τα πραγματικά LOT πίσω από το "- (Στοκ)"
         raw_data = res_log.data
-        # 🚀 ΜΗΧΑΝΙΣΜΟΣ ΑΝΑΚΤΗΣΗΣ LOT ΠΡΩΤΩΝ ΥΛΩΝ (Virtual Join)
-        # Φτιάχνουμε ένα "λεξικό" που αντιστοιχίζει το LOT της παρτίδας με τα υλικά της
-        lot_lookup = {}
-        for row in raw_data:
-            c_name = row.get("cocktail_name")
-            l_cock = row.get("lot_cocktail")
-            if c_name and l_cock and row.get("ingredient_name") != "📦 Έτοιμο Προϊόν (Στοκ)":
-                key = (c_name, l_cock, row.get("ingredient_name"))
-                lot_lookup[key] = {"lot": row.get("lot_number"), "exp": row.get("expiry_date")}
+        real_lots_map = {}
         
-        # Ενημερώνουμε τα δεδομένα ώστε το "Στοκ" να δείχνει τα πραγματικά LOT της παρτίδας
+        # Πέρασμα 1: Μαζεύουμε όλα τα πραγματικά LOT από τις κανονικές παραγωγές
         for row in raw_data:
-            if row.get("ingredient_name") == "📦 Έτοιμο Προϊόν (Στοκ)":
-                c_name = row.get("cocktail_name")
-                l_cock = row.get("lot_cocktail")
-                # Ψάχνουμε αν υπάρχουν υλικά για αυτό το LOT
-                # (Απλοποιημένη προσέγγιση: παίρνουμε τα LOT από την αρχική παραγωγή)
-                for key, val in lot_lookup.items():
-                    if key[0] == c_name and key[1] == l_cock:
-                        row["ingredient_name"] = key[2] # Εμφανίζουμε το υλικό
-                        row["lot_number"] = val["lot"]  # Εμφανίζουμε το πραγματικό LOT
-                        row["expiry_date"] = val["exp"] # Εμφανίζουμε τη λήξη
-                        break
+            lot_n = str(row.get("lot_number", ""))
+            if lot_n and "- (Στοκ)" not in lot_n:
+                key = (row.get("cocktail_name"), row.get("lot_cocktail"), row.get("ingredient_name"))
+                if key not in real_lots_map:
+                    real_lots_map[key] = {
+                        "lot": row.get("lot_number", ""),
+                        "exp": row.get("expiry_date", "")
+                    }
+                    
+        # Πέρασμα 2: Αντικαθιστούμε τα "- (Στοκ)" με τα πραγματικά LOT που βρήκαμε!
+        for row in raw_data:
+            lot_n = str(row.get("lot_number", ""))
+            if lot_n and "- (Στοκ)" in lot_n:
+                key = (row.get("cocktail_name"), row.get("lot_cocktail"), row.get("ingredient_name"))
+                if key in real_lots_map:
+                    row["lot_number"] = real_lots_map[key]["lot"]
+                    row["expiry_date"] = real_lots_map[key]["exp"]
+                else:
+                    # Αν για κάποιο λόγο έχει διαγραφεί η παλιά παραγωγή από τη βάση
+                    row["lot_number"] = "- (Παλιό Στοκ/Άγνωστο)"
+                    row["expiry_date"] = "-"
 
+        # Τώρα το DataFrame και όλες οι εκτυπώσεις θα έχουν τα ΣΩΣΤΑ LOT!
         df_all_logs = pd.DataFrame(raw_data)
         df_all_logs_renamed = df_all_logs.rename(columns={
             "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
