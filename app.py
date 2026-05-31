@@ -2233,8 +2233,25 @@ elif page == "📦 Lot Παραγωγής":
         st_col1, st_col2 = st.columns([2, 2])
         is_from_stock = st_col1.checkbox("📦 Άντληση από έτοιμο Στοκ (Δεν αφαιρεί υλικά)", key=f"stock_check_{reset_key}")
         manual_old_lot = ""
+        
         if is_from_stock:
-            manual_old_lot = st_col2.text_input("🔢 Γράψτε το Παλιό LOT του κοκτέιλ (π.χ. 20/05/2026-01):", key=f"old_lot_{reset_key}")
+            available_lots = []
+            if sel_cocktail:
+                try:
+                    # 🚀 Φορτώνει ΚΑΙ ελέγχει αν υπάρχει πραγματικά παραγωγή!
+                    res_lots = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", sel_cocktail).execute()
+                    if res_lots.data:
+                        lots_set = set(r["lot_cocktail"] for r in res_lots.data if r.get("lot_cocktail"))
+                        available_lots = sorted(list(lots_set), reverse=True)
+                except Exception:
+                    pass
+            
+            if available_lots:
+                # Αντί για text_input, τώρα επιλέγεις από τα υπαρκτά!
+                manual_old_lot = st_col2.selectbox("🔢 Επιλέξτε Παλιό LOT:", options=available_lots, key=f"old_lot_{reset_key}")
+            else:
+                st_col2.error(f"❌ Δεν βρέθηκε παλαιότερη παραγωγή για {sel_cocktail}!")
+                manual_old_lot = ""
         
         st.write("") 
         if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
@@ -2536,54 +2553,76 @@ elif page == "📦 Lot Παραγωγής":
                     
                     ui_lots = {} # Αποθήκευση LOT που εισάγει ο χρήστης
                     
-                    if qty_to_produce > 0:
-                        h = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
-                        for col, label in zip(h, ["Υλικό", "ml", "Βάρος(g)", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
+                    # 🚀 ΝΕΟ: Αντλούμε τα LOT υλικών από το Στοκ αν υπάρχει!
+                    stock_historical_lots = {}
+                    if qty_from_stock > 0:
+                        old_lots_for_cocktail = df_assign[df_assign["Στοκ"] == "ΝΑΙ"]["Παλιό_LOT"].unique()
+                        if len(old_lots_for_cocktail) > 0:
+                            target_old_lot = old_lots_for_cocktail[0]
+                            try:
+                                res_stock_hist = supabase.table("production_log").select("ingredient_name, lot_number, expiry_date").eq("cocktail_name", cocktail_name).eq("lot_cocktail", target_old_lot).execute()
+                                if res_stock_hist.data:
+                                    for r_sh in res_stock_hist.data:
+                                        sh_ing = r_sh.get("ingredient_name")
+                                        if sh_ing:
+                                            stock_historical_lots[sh_ing] = {
+                                                "lot": str(r_sh.get("lot_number") or "").split(" / ")[0].strip(),
+                                                "exp": str(r_sh.get("expiry_date") or "").split(" / ")[0].strip()
+                                            }
+                            except Exception:
+                                pass
+                                
+                    # 🚀 Πλέον εμφανίζει ΠΑΝΤΑ τα υλικά και τα LOT (ακόμα και αν είναι από στοκ)
+                    h = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
+                    for col, label in zip(h, ["Υλικό", "ml", "Βάρος(g)", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
+                    
+                    for i in range(1, 14):
+                        ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                        if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
                         
-                        for i in range(1, 14):
-                            ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                            if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
-                            
-                            ml_u = get_recipe_ml(recipe_row, i)
-                            tot_ml = ml_u * qty_to_produce # Μόνο για όσα ΠΑΡΑΓΟΝΤΑΙ
-                            tg_g = tot_ml
-                            match_ing = df_ing[df_ing["Name"] == ing]
-                            if not match_ing.empty:
-                                tg_g = (tot_ml / match_ing.iloc[0]["Volume"]) * match_ing.iloc[0]["Weight_Full"]
+                        ml_u = get_recipe_ml(recipe_row, i)
+                        tot_ml = ml_u * total_qty_this
+                        tg_g = tot_ml
+                        match_ing = df_ing[df_ing["Name"] == ing]
+                        if not match_ing.empty:
+                            tg_g = (tot_ml / match_ing.iloc[0]["Volume"]) * match_ing.iloc[0]["Weight_Full"]
 
-                            r = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
-                            r[0].write(f"**{ing}**")
-                            r[1].write(f"{tot_ml:.0f}")
-                            r[2].markdown(f"**{tg_g:.1f}g**")
-                            
-                            m_lot = st.session_state.get(f"mlot_{ing}_{reset_key}", "")
-                            m_exp = st.session_state.get(f"mexp_{ing}_{reset_key}", "")
-                            
-                            mem = st.session_state.daily_lots_memory.get(ing, {})
-                            hist = historical_lots_db.get(ing, {})
-                            
+                        r = st.columns([2, 1, 1, 1.2, 1.2, 1.2, 1.2])
+                        r[0].write(f"**{ing}**")
+                        r[1].write(f"{tot_ml:.0f}")
+                        r[2].markdown(f"**{tg_g:.1f}g**")
+                        
+                        m_lot = st.session_state.get(f"mlot_{ing}_{reset_key}", "")
+                        m_exp = st.session_state.get(f"mexp_{ing}_{reset_key}", "")
+                        
+                        mem = st.session_state.daily_lots_memory.get(ing, {})
+                        hist = historical_lots_db.get(ing, {})
+                        
+                        # Σειρά προτεραιότητας: Στοκ -> Μνήμη -> Ιστορικό ημέρας -> Γρήγορο
+                        if qty_to_produce == 0 and stock_historical_lots:
+                            def_lot = stock_historical_lots.get(ing, {}).get("lot", "")
+                            def_exp = stock_historical_lots.get(ing, {}).get("exp", "")
+                        else:
                             def_lot = mem.get("lot") if mem.get("lot") else (hist.get("lot") if hist.get("lot") else m_lot)
                             def_exp = mem.get("exp") if mem.get("exp") else (hist.get("exp") if hist.get("exp") else m_exp)
-                            
-                            l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}_{reset_key}", value=def_lot, label_visibility="collapsed")
-                            e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}_{reset_key}", value=def_exp, label_visibility="collapsed")
-                            l2 = r[5].text_input("L2", key=f"l2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
-                            e2 = r[6].text_input("E2", key=f"e2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
+                        
+                        l1 = r[3].text_input("L1", key=f"l1_{cocktail_name}_{i}_{reset_key}", value=def_lot, label_visibility="collapsed")
+                        e1 = r[4].text_input("E1", key=f"e1_{cocktail_name}_{i}_{reset_key}", value=def_exp, label_visibility="collapsed")
+                        l2 = r[5].text_input("L2", key=f"l2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
+                        e2 = r[6].text_input("E2", key=f"e2_{cocktail_name}_{i}_{reset_key}", label_visibility="collapsed")
 
-                            val_l1 = l1.strip() if l1.strip() else m_lot.strip()
-                            val_e1 = e1.strip() if e1.strip() else m_exp.strip()
-                            val_l2 = l2.strip()
-                            val_e2 = e2.strip()
+                        val_l1 = l1.strip() if l1.strip() else m_lot.strip()
+                        val_e1 = e1.strip() if e1.strip() else m_exp.strip()
+                        val_l2 = l2.strip()
+                        val_e2 = e2.strip()
 
-                            final_lot = val_l1 if not val_l2 else f"{val_l1} / {val_l2}"
-                            final_exp = val_e1 if not val_e2 else f"{val_e1} / {val_e2}"
-                            
-                            ui_lots[ing] = (final_lot, final_exp)
+                        final_lot = val_l1 if not val_l2 else f"{val_l1} / {val_l2}"
+                        final_exp = val_e1 if not val_e2 else f"{val_e1} / {val_e2}"
+                        
+                        ui_lots[ing] = (final_lot, final_exp)
 
-                            if val_l1 or val_e1:
-                                st.session_state.daily_lots_memory[ing] = {"lot": val_l1, "exp": val_e1}
-                    else:
-                        st.info("📦 Το προϊόν αντλείται πλήρως από έτοιμο Στοκ. Δεν απαιτούνται LOT πρώτων υλών.")
+                        if val_l1 or val_e1:
+                            st.session_state.daily_lots_memory[ing] = {"lot": val_l1, "exp": val_e1}
 
                     # --- ΔΗΜΙΟΥΡΓΙΑ ΕΓΓΡΑΦΩΝ ΓΙΑ ΒΑΣΗ ΔΕΔΟΜΕΝΩΝ ---
                     for i in range(1, 14):
@@ -2606,10 +2645,10 @@ elif page == "📦 Lot Παραγωγής":
                             })
                             
                             if c_qty > 0:
-                                # 🚀 Επιλογή σωστών LOT ανάλογα αν είναι από Στοκ ή Παραγωγή
                                 actual_lot_cocktail = old_lot if is_stock == "ΝΑΙ" else c_config["lot_cocktail"]
-                                actual_ing_lot = "- (Στοκ)" if is_stock == "ΝΑΙ" else ui_lots.get(ing, ("-", "-"))[0]
-                                actual_ing_exp = "-" if is_stock == "ΝΑΙ" else ui_lots.get(ing, ("-", "-"))[1]
+                                # 🚀 Τώρα αποθηκεύει τα ΠΡΑΓΜΑΤΙΚΑ LOT των υλικών (ακόμα και αν είναι από Στοκ)
+                                actual_ing_lot = ui_lots.get(ing, ("-", "-"))[0]
+                                actual_ing_exp = ui_lots.get(ing, ("-", "-"))[1]
 
                                 lot_entries.append({
                                     "prod_date": c_config["prod_date"], 
