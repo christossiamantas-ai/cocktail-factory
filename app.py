@@ -2823,9 +2823,17 @@ elif page == "📦 Lot Παραγωγής":
         # Τώρα το DataFrame και όλες οι εκτυπώσεις θα έχουν τα ΣΩΣΤΑ LOT!
         df_all_logs = pd.DataFrame(raw_data)
         df_all_logs_renamed = df_all_logs.rename(columns={
-            "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
-            "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια", "ingredient_name": "Υλικό",
-            "total_ml": "Σύνολο_ML", "target_g": "Στόχος_Γραμμάρια", "lot_number": "Lot Number", "expiry_date": "Ημ_Λήξης"
+            "prod_date": "Ημερομηνία", 
+            "prod_time": "Ώρα", 
+            "customer": "Πελάτης", 
+            "cocktail_name": "Cocktail",
+            "lot_cocktail": "LOT_Cocktail", 
+            "pieces": "Τεμάχια", 
+            "ingredient_name": "Υλικό",
+            "total_ml": "Σύνολο_ML", 
+            "target_g": "Στόχος_Γραμμάρια", 
+            "lot_number": "Lot Number", 
+            "expiry_date": "Ημ_Λήξης"
         })
             "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
             "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια", "ingredient_name": "Υλικό",
