@@ -2910,48 +2910,29 @@ elif page == "📦 Lot Παραγωγής":
                     
                     final_updated_rows = []
                     
-                    # 🚀 Τραβάμε τη συνταγή
-                    res_recipe = supabase.table("recipes").select("*").eq("name", sel_cocktail_edit).execute()
-                    recipe_row = res_recipe.data[0] if res_recipe.data else {}
+                    # 🚀 ΑΠΛΗ ΚΑΙ ΣΙΓΟΥΡΗ ΛΥΣΗ: Διαβάζουμε ΑΚΡΙΒΩΣ τα υλικά που έχει το Ιστορικό (cocktail_df)
+                    # Αν είναι Στοκ θα βρει 1 γραμμή. Αν είναι Κανονικό θα βρει όλα τα υλικά του!
+                    existing_ingredients = cocktail_df["Υλικό"].unique()
                     
-                    # 🚀 Φτιάχνουμε μια καθαρή λίστα με ΟΛΑ τα υλικά της συνταγής (πάντα 1-14)
-                    valid_ingredients = []
-                    for i in range(1, 15):
-                        ing_val = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "")).strip()
-                        # Μετατρέπουμε σε κεφαλαία για απόλυτη σιγουριά στους ελέγχους
-                        if ing_val and ing_val.upper() not in ["ΚΕΝΟ", "NAN", "NONE", "ΝΕΡΌ", "ΝΕΡΟ"]:
-                            valid_ingredients.append(ing_val)
-
-                    # Σε περίπτωση που δεν βρέθηκε συνταγή, παίρνουμε τα υλικά από το log
-                    if not valid_ingredients:
-                        valid_ingredients = [x for x in cocktail_df["Υλικό"].unique() if x != "📦 Έτοιμο Προϊόν (Στοκ)"]
-
                     row_counter = 0
                     for cust in unique_customers:
-                        for ing_name in valid_ingredients:
-                            # Ψάχνουμε αν το υλικό υπάρχει ήδη στο log (για να αντλήσουμε παλιά LOT)
+                        for ing_name in existing_ingredients:
+                            # Απομονώνουμε τη γραμμή για το συγκεκριμένο υλικό και πελάτη
                             current_ing_row = cocktail_df[(cocktail_df["Υλικό"] == ing_name) & (cocktail_df["Πελάτης"] == cust)]
                             
-                            raw_lot, raw_exp = "", ""
-                            old_ml = 0.0
-                            orig_id = None
-                            u_cost = 0.22
-                            
-                            # Παίρνουμε την ώρα παραγωγής από τη γραμμή του πελάτη
-                            cust_df = cocktail_df[cocktail_df["Πελάτης"] == cust]
-                            orig_time = cust_df["Ώρα"].iloc[0] if not cust_df.empty else "12:00:00"
+                            if current_ing_row.empty:
+                                continue # Προσπέραση αν λείπει το υλικό για αυτόν τον πελάτη
+                                
+                            raw_lot = str(current_ing_row["Lot Number"].iloc[0]) if pd.notna(current_ing_row["Lot Number"].iloc[0]) else ""
+                            raw_exp = str(current_ing_row["Ημ_Λήξης"].iloc[0]) if pd.notna(current_ing_row["Ημ_Λήξης"].iloc[0]) else ""
+                            old_ml = float(current_ing_row["Σύνολο_ML"].iloc[0]) if pd.notna(current_ing_row["Σύνολο_ML"].iloc[0]) else 0.0
+                            orig_id = current_ing_row["id"].iloc[0]
+                            orig_time = str(current_ing_row["Ώρα"].iloc[0])
+                            u_cost = float(current_ing_row["unit_cost"].iloc[0]) if "unit_cost" in current_ing_row.columns and pd.notna(current_ing_row["unit_cost"].iloc[0]) else 0.22
 
-                            if not current_ing_row.empty:
-                                raw_lot = str(current_ing_row["Lot Number"].iloc[0])
-                                raw_exp = str(current_ing_row["Ημ_Λήξης"].iloc[0])
-                                old_ml = float(current_ing_row["Σύνολο_ML"].iloc[0])
-                                orig_id = current_ing_row["id"].iloc[0]
-                                if "unit_cost" in current_ing_row.columns and pd.notna(current_ing_row["unit_cost"].iloc[0]):
-                                    u_cost = float(current_ing_row["unit_cost"].iloc[0])
-
-                            # Υπολογισμός νέων ml
+                            # Υπολογισμός νέων ml σε περίπτωση που αλλάξεις τα Τεμάχια Παραγωγής
                             c_set = customer_settings[cust]
-                            new_ml = old_ml * (float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if c_set["old_pcs"] != 0 else 1.0)
+                            new_ml = old_ml * (float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if float(c_set["old_pcs"]) != 0 else 1.0)
                             
                             lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
                             exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
