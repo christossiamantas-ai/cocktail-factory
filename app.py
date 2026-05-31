@@ -3710,9 +3710,13 @@ elif page == "👥 Πελατολόγιο":
                                             for _, row in day_sales.iterrows():
                                                 c_name = row['cocktail_name']
                                                 p_price = row['price_after_global']
+                                                
+                                                # Τραβάμε ΟΛΕΣ τις κατηγορίες τεμαχίων
                                                 t_pcs = int(row['t_pcs'])
                                                 f_pcs = int(row['f_pcs'])
-                                                billable = t_pcs - f_pcs
+                                                s_pcs = int(row['s_pcs'])
+                                                s_pct = float(row['s_pct'])
+                                                normal_pcs = int(row['normal_pcs'])
                                                 
                                                 rev = row['Theoretical_Revenue']
                                                 cost = row['Total_Cost']
@@ -3723,9 +3727,23 @@ elif page == "👥 Πελατολόγιο":
                                                 grand_cost += cost
                                                 grand_prof += prof
                                                 
-                                                pcs_str = f"<b>{billable}</b>"
-                                                if f_pcs > 0: pcs_str += f" <br><span class='free-badge'>(+ {f_pcs} Δώρα)</span>"
-                                                
+                                                # --- 🚀 ΝΕΑ ΑΝΑΛΥΤΙΚΗ ΑΠΕΙΚΟΝΙΣΗ ΤΕΜΑΧΙΩΝ ---
+                                                details_arr = []
+                                                if normal_pcs > 0:
+                                                    details_arr.append(f"{normal_pcs} κανονικά")
+                                                if s_pcs > 0:
+                                                    # Βάζουμε μπλε χρώμα στην έξτρα έκπτωση για να ξεχωρίζει
+                                                    details_arr.append(f"<span style='color:#1976d2; font-weight:bold;'>{s_pcs} με έκπτ. -{s_pct:g}%</span>")
+                                                if f_pcs > 0:
+                                                    # Κόκκινο στα δώρα
+                                                    details_arr.append(f"<span class='free-badge'>{f_pcs} δώρα</span>")
+                                                    
+                                                if details_arr:
+                                                    details_html = " / ".join(details_arr)
+                                                    pcs_str = f"<b>{t_pcs} τμχ</b><br><span style='font-size:11px; color:#555;'>({details_html})</span>"
+                                                else:
+                                                    pcs_str = f"<b>{t_pcs} τμχ</b>"
+                                                    
                                                 prof_class = "profit-pos" if prof >= 0 else "profit-neg"
                                                 
                                                 html_content += f"""
