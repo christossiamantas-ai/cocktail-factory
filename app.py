@@ -2807,8 +2807,34 @@ elif page == "📦 Lot Παραγωγής":
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
     
     res_log = supabase.table("production_log").select("*").order("prod_date", desc=True).execute()
+    
     if res_log.data:
-        df_all_logs = pd.DataFrame(res_log.data)
+        raw_data = res_log.data
+        # 🚀 ΜΗΧΑΝΙΣΜΟΣ ΑΝΑΚΤΗΣΗΣ LOT ΠΡΩΤΩΝ ΥΛΩΝ (Virtual Join)
+        # Φτιάχνουμε ένα "λεξικό" που αντιστοιχίζει το LOT της παρτίδας με τα υλικά της
+        lot_lookup = {}
+        for row in raw_data:
+            c_name = row.get("cocktail_name")
+            l_cock = row.get("lot_cocktail")
+            if c_name and l_cock and row.get("ingredient_name") != "📦 Έτοιμο Προϊόν (Στοκ)":
+                key = (c_name, l_cock, row.get("ingredient_name"))
+                lot_lookup[key] = {"lot": row.get("lot_number"), "exp": row.get("expiry_date")}
+        
+        # Ενημερώνουμε τα δεδομένα ώστε το "Στοκ" να δείχνει τα πραγματικά LOT της παρτίδας
+        for row in raw_data:
+            if row.get("ingredient_name") == "📦 Έτοιμο Προϊόν (Στοκ)":
+                c_name = row.get("cocktail_name")
+                l_cock = row.get("lot_cocktail")
+                # Ψάχνουμε αν υπάρχουν υλικά για αυτό το LOT
+                # (Απλοποιημένη προσέγγιση: παίρνουμε τα LOT από την αρχική παραγωγή)
+                for key, val in lot_lookup.items():
+                    if key[0] == c_name and key[1] == l_cock:
+                        row["ingredient_name"] = key[2] # Εμφανίζουμε το υλικό
+                        row["lot_number"] = val["lot"]  # Εμφανίζουμε το πραγματικό LOT
+                        row["expiry_date"] = val["exp"] # Εμφανίζουμε τη λήξη
+                        break
+
+        df_all_logs = pd.DataFrame(raw_data)
         df_all_logs_renamed = df_all_logs.rename(columns={
             "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
             "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια", "ingredient_name": "Υλικό",
