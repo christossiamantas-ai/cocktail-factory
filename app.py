@@ -2625,45 +2625,61 @@ elif page == "📦 Lot Παραγωγής":
                             st.session_state.daily_lots_memory[ing] = {"lot": val_l1, "exp": val_e1}
 
                     # --- ΔΗΜΙΟΥΡΓΙΑ ΕΓΓΡΑΦΩΝ ΓΙΑ ΒΑΣΗ ΔΕΔΟΜΕΝΩΝ ---
-                    for i in range(1, 14):
-                        ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-                        if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
+                    for _, row_assign in df_assign.iterrows():
+                        c_name = str(row_assign.get("Πελάτης", "Λιανική / Άγνωστος")).strip()
+                        if not c_name: c_name = "Λιανική / Άγνωστος"
+                        c_qty = int(row_assign.get("Τεμάχια", 0))
+                        is_stock = row_assign.get("Στοκ", "ΟΧΙ")
+                        old_lot = row_assign.get("Παλιό_LOT", "-")
                         
-                        ml_u = get_recipe_ml(recipe_row, i)
-                        match_ing = df_ing[df_ing["Name"] == ing]
+                        c_config = cust_lot_config_map.get(c_name, {
+                            "prod_date": formatted_date, 
+                            "lot_cocktail": date_lot_label
+                        })
                         
-                        for _, row_assign in df_assign.iterrows():
-                            c_name = str(row_assign.get("Πελάτης", "Λιανική / Άγνωστος")).strip()
-                            if not c_name: c_name = "Λιανική / Άγνωστος"
-                            c_qty = int(row_assign.get("Τεμάχια", 0))
-                            is_stock = row_assign.get("Στοκ", "ΟΧΙ")
-                            old_lot = row_assign.get("Παλιό_LOT", "-")
-                            
-                            c_config = cust_lot_config_map.get(c_name, {
-                                "prod_date": formatted_date, 
-                                "lot_cocktail": date_lot_label
-                            })
-                            
-                            if c_qty > 0:
-                                actual_lot_cocktail = old_lot if is_stock == "ΝΑΙ" else c_config["lot_cocktail"]
-                                # 🚀 Τώρα αποθηκεύει τα ΠΡΑΓΜΑΤΙΚΑ LOT των υλικών (ακόμα και αν είναι από Στοκ)
-                                actual_ing_lot = ui_lots.get(ing, ("-", "-"))[0]
-                                actual_ing_exp = ui_lots.get(ing, ("-", "-"))[1]
-
+                        if c_qty > 0:
+                            if is_stock == "ΝΑΙ":
+                                # 🚀 ΜΟΝΟ 1 ΓΡΑΜΜΗ ΓΙΑ ΤΟ ΣΤΟΚ (Χωρίς περιττές πρώτες ύλες)
                                 lot_entries.append({
                                     "prod_date": c_config["prod_date"], 
                                     "prod_time": current_time, 
                                     "customer": c_name,
                                     "cocktail_name": cocktail_name, 
-                                    "lot_cocktail": actual_lot_cocktail, 
+                                    "lot_cocktail": old_lot, 
                                     "pieces": c_qty,
-                                    "ingredient_name": ing, 
-                                    "total_ml": float(ml_u * c_qty), 
-                                    "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"] * match_ing.iloc[0]["Weight_Full"]), 1) if not match_ing.empty else float(ml_u * c_qty),
-                                    "lot_number": actual_ing_lot, 
-                                    "expiry_date": actual_ing_exp,
+                                    "ingredient_name": "📦 Έτοιμο Προϊόν (Στοκ)", 
+                                    "total_ml": 0.0, 
+                                    "target_g": 0.0,
+                                    "lot_number": old_lot, 
+                                    "expiry_date": "-",
                                     "unit_cost": round(current_unit_cost, 4)
                                 })
+                            else:
+                                # 🚀 ΚΑΝΟΝΙΚΗ ΠΑΡΑΓΩΓΗ: Αναλυτικά όλα τα υλικά
+                                for i in range(1, 14):
+                                    ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                                    if ing in ["ΚΕΝΟ", "nan", "Νερό", ""]: continue
+                                    
+                                    ml_u = get_recipe_ml(recipe_row, i)
+                                    match_ing = df_ing[df_ing["Name"] == ing]
+                                    
+                                    actual_ing_lot = ui_lots.get(ing, ("-", "-"))[0]
+                                    actual_ing_exp = ui_lots.get(ing, ("-", "-"))[1]
+
+                                    lot_entries.append({
+                                        "prod_date": c_config["prod_date"], 
+                                        "prod_time": current_time, 
+                                        "customer": c_name,
+                                        "cocktail_name": cocktail_name, 
+                                        "lot_cocktail": c_config["lot_cocktail"], 
+                                        "pieces": c_qty,
+                                        "ingredient_name": ing, 
+                                        "total_ml": float(ml_u * c_qty), 
+                                        "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"] * match_ing.iloc[0]["Weight_Full"]), 1) if not match_ing.empty else float(ml_u * c_qty),
+                                        "lot_number": actual_ing_lot, 
+                                        "expiry_date": actual_ing_exp,
+                                        "unit_cost": round(current_unit_cost, 4)
+                                    })
                 
                 st.divider()
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud", type="primary"):
@@ -2790,40 +2806,9 @@ elif page == "📦 Lot Παραγωγής":
     st.divider()
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
     
-    # ΑΥΤΗ ΕΙΝΑΙ Η ΓΡΑΜΜΗ ΠΟΥ ΕΛΕΙΠΕ!
     res_log = supabase.table("production_log").select("*").order("prod_date", desc=True).execute()
-    
     if res_log.data:
-        # 🚀 ΕΞΥΠΝΟΣ ΜΕΤΑΦΡΑΣΤΗΣ ΣΤΟΚ: Βρίσκει τα πραγματικά LOT πίσω από το "- (Στοκ)"
-        raw_data = res_log.data
-        real_lots_map = {}
-        
-        # Πέρασμα 1: Μαζεύουμε όλα τα πραγματικά LOT από τις κανονικές παραγωγές
-        for row in raw_data:
-            lot_n = str(row.get("lot_number", ""))
-            if lot_n and "- (Στοκ)" not in lot_n:
-                key = (row.get("cocktail_name"), row.get("lot_cocktail"), row.get("ingredient_name"))
-                if key not in real_lots_map:
-                    real_lots_map[key] = {
-                        "lot": row.get("lot_number", ""),
-                        "exp": row.get("expiry_date", "")
-                    }
-                    
-        # Πέρασμα 2: Αντικαθιστούμε τα "- (Στοκ)" με τα πραγματικά LOT που βρήκαμε!
-        for row in raw_data:
-            lot_n = str(row.get("lot_number", ""))
-            if lot_n and "- (Στοκ)" in lot_n:
-                key = (row.get("cocktail_name"), row.get("lot_cocktail"), row.get("ingredient_name"))
-                if key in real_lots_map:
-                    row["lot_number"] = real_lots_map[key]["lot"]
-                    row["expiry_date"] = real_lots_map[key]["exp"]
-                else:
-                    # Αν για κάποιο λόγο έχει διαγραφεί η παλιά παραγωγή από τη βάση
-                    row["lot_number"] = "- (Παλιό Στοκ/Άγνωστο)"
-                    row["expiry_date"] = "-"
-
-        # Τώρα το DataFrame και όλες οι εκτυπώσεις θα έχουν τα ΣΩΣΤΑ LOT!
-        df_all_logs = pd.DataFrame(raw_data)
+        df_all_logs = pd.DataFrame(res_log.data)
         df_all_logs_renamed = df_all_logs.rename(columns={
             "prod_date": "Ημερομηνία", "prod_time": "Ώρα", "customer": "Πελάτης", "cocktail_name": "Cocktail",
             "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια", "ingredient_name": "Υλικό",
