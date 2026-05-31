@@ -2806,9 +2806,7 @@ elif page == "📦 Lot Παραγωγής":
     st.divider()
     st.subheader("📂 Ιστορικό Παραγωγής & Εκτυπώσεις")
     
-    # ΑΥΤΗ ΕΙΝΑΙ Η ΓΡΑΜΜΗ ΠΟΥ ΕΛΕΙΠΕ!
     res_log = supabase.table("production_log").select("*").order("prod_date", desc=True).execute()
-    
     if res_log.data:
         # 🚀 ΕΞΥΠΝΟΣ ΜΕΤΑΦΡΑΣΤΗΣ ΣΤΟΚ: Βρίσκει τα πραγματικά LOT πίσω από το "- (Στοκ)"
         raw_data = res_log.data
