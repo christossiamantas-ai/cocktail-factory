@@ -3050,8 +3050,8 @@ elif page == "📦 Lot Παραγωγής":
                         st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
         with tab_mass_date:
-            st.markdown("### 🔢 Μαζική Αλλαγή Διψήφιου (Ημέρας) Παραγωγής")
-            st.info("💡 Αλλάξτε ΜΟΝΟ τον διψήφιο αριθμό στο τέλος του LOT (π.χ. από -01 σε -02) για όσα κοκτέιλ θέλετε. Τα οικονομικά και τα υπόλοιπα LOT παραμένουν άθικτα!")
+            st.markdown("### 🔢 Μαζική Αλλαγή Ημέρας Παραγωγής στο LOT")
+            st.info("💡 Αλλάξτε το τέλος του LOT (π.χ. από -01 σε -02 ή -02/06). Τα οικονομικά και τα υπόλοιπα LOT παραμένουν άθικτα!")
 
             if sel_hist_date == "-- Όλες οι Ημερομηνίες --":
                 st.warning("⚠️ Παρακαλώ επιλέξτε πρώτα μια συγκεκριμένη Ημερομηνία από το φίλτρο στην κορυφή της σελίδας.")
@@ -3066,22 +3066,26 @@ elif page == "📦 Lot Παραγωγής":
                         options=list(unique_cocktails_of_day)
                     )
                     
-                    new_mass_prod_day = st.text_input("🔢 2. Νέος Διψήφιος Αριθμός (π.χ. 02):", max_chars=2)
+                    # 🚀 Αφαιρέσαμε τον περιορισμό των 2 χαρακτήρων (το κάναμε 8)
+                    new_mass_prod_day = st.text_input("🔢 2. Νέα Ημέρα (ή Ημ/Μήνας) Παραγωγής (π.χ. 02 ή 02/06):", max_chars=8)
                     
                     st.divider()
-                    if st.button("💾 Αποθήκευση Νέου Διψήφιου", type="primary"):
+                    if st.button("💾 Αποθήκευση Νέας Ημερομηνίας", type="primary"):
                         if not selected_mass_cocktails:
                             st.error("Επιλέξτε τουλάχιστον ένα κοκτέιλ.")
                         elif not new_mass_prod_day.strip():
-                            st.error("Παρακαλώ συμπληρώστε τον νέο διψήφιο αριθμό.")
-                        elif not new_mass_prod_day.strip().isdigit():
-                            st.error("⚠️ Σφάλμα: Ο διψήφιος πρέπει να περιέχει ΜΟΝΟ αριθμούς (π.χ. 01, 02).")
+                            st.error("Παρακαλώ συμπληρώστε τη νέα κατάληξη LOT.")
+                        # 🚀 Διαγράψαμε τον αυστηρό έλεγχο isdigit() για να δέχεται την κάθετο "/"
                         else:
                             try:
-                                # 🚀 ΔΙΟΡΘΩΣΗ 2 & 3: Σωστό padding με μηδενικό
-                                safe_prod_day = new_mass_prod_day.strip().zfill(2)
+                                safe_prod_day = new_mass_prod_day.strip()
                                 
-                                # 🚀 ΔΙΟΡΘΩΣΗ 1: Σεβόμαστε το φίλτρο του πελάτη!
+                                # Αν γράψει σκέτο αριθμό (π.χ. "5"), του βάζει μηδενικό μπροστά ("05").
+                                # Αν γράψει "02/06" το αφήνει ανέπαφο!
+                                if len(safe_prod_day) <= 2 and safe_prod_day.isdigit():
+                                    safe_prod_day = safe_prod_day.zfill(2)
+                                
+                                # Σεβόμαστε το φίλτρο του πελάτη!
                                 mask = (df_all_logs["prod_date"] == sel_hist_date) & (df_all_logs["cocktail_name"].isin(selected_mass_cocktails))
                                 if sel_customer != "-- Όλοι οι Πελάτες --":
                                     mask = mask & (df_all_logs["customer"] == sel_customer)
@@ -3105,11 +3109,11 @@ elif page == "📦 Lot Παραγωγής":
                                 if updates_count > 0:
                                     st.session_state['lot_reset_key'] += 1
                                     st.session_state.pop('search_data_loaded', None) # Καθαρισμός μνήμης για ανανέωση
-                                    st.success(f"✅ Ο διψήφιος αριθμός άλλαξε επιτυχώς σε '-{safe_prod_day}' για {updates_count} εγγραφές!")
+                                    st.success(f"✅ Η κατάληξη άλλαξε επιτυχώς σε '-{safe_prod_day}' για {updates_count} εγγραφές!")
                                     time.sleep(1)
                                     st.rerun()
                                 else:
-                                    st.info("Όλες οι επιλεγμένες εγγραφές έχουν ήδη αυτόν τον διψήφιο αριθμό.")
+                                    st.info("Όλες οι επιλεγμένες εγγραφές έχουν ήδη αυτήν την κατάληξη.")
                             except Exception as e:
                                 st.error(f"Σφάλμα κατά την ενημέρωση: {e}")
 
