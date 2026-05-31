@@ -2475,6 +2475,22 @@ elif page == "📦 Lot Παραγωγής":
                 
             # --- ΒΗΜΑ 3: ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ ---
             st.markdown("### 🏷️ 3. Αναλυτικό Δελτίο & Οριστικοποίηση")
+            
+            # 🚀 ΝΕΟ: ΑΥΤΟΜΑΤΗ ΑΝΑΚΤΗΣΗ LOT ΠΑΡΕΛΘΟΝΤΟΣ ΑΠΟ ΤΗ ΒΑΣΗ 🚀
+            historical_lots_db = {}
+            try:
+                # Ψάχνουμε αν έχει ξαναγίνει παραγωγή τη συγκεκριμένη ημερομηνία (formatted_date)
+                res_hist = supabase.table("production_log").select("ingredient_name, lot_number, expiry_date").eq("prod_date", formatted_date).execute()
+                if res_hist.data:
+                    for r_hist in res_hist.data:
+                        h_ing = r_hist.get("ingredient_name")
+                        h_lot = str(r_hist.get("lot_number") or "").split(" / ")[0].strip()
+                        h_exp = str(r_hist.get("expiry_date") or "").split(" / ")[0].strip()
+                        if h_ing and h_lot and h_ing not in historical_lots_db:
+                            historical_lots_db[h_ing] = {"lot": h_lot, "exp": h_exp}
+            except Exception:
+                pass
+
             lot_entries = []
             
             with st.form(f"detailed_lot_form_{reset_key}"):
@@ -2484,7 +2500,6 @@ elif page == "📦 Lot Παραγωγής":
                     
                     total_qty_this = df_assign["Τεμάχια"].sum() if "Τεμάχια" in df_assign.columns else 0
                     if total_qty_this == 0: continue
-
                     current_unit_cost = 0.22 
                     for idx_ing in range(1, 14):
                         tmp_ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{idx_ing}", "ΚΕΝΟ"))
