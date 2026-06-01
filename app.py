@@ -2279,7 +2279,7 @@ elif page == "📦 Lot Παραγωγής":
                 manual_old_lot = ""
         
         st.write("") 
-        if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
+        iif c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
             if sel_cocktail:
                 # Έλεγχος: Αν τσέκαρε το στοκ, ΠΡΕΠΕΙ να γράψει το παλιό LOT
                 if is_from_stock and not manual_old_lot.strip():
@@ -2305,16 +2305,17 @@ elif page == "📦 Lot Παραγωγής":
                     if existing_qty > 0 and not is_from_stock:
                         st.session_state['pending_conflict'] = {
                             "cust": sel_cust, "cocktail": sel_cocktail,
-                            "new_pcs": sel_pcs, "old_pcs": existing_qty
+                            "new_pcs": sel_pcs, "old_pcs": existing_qty,
+                            "charge_cost": charge_stock_cost # <--- Περνάει την επιλογή κόστους
                         }
                         st.rerun() 
                     else:
-                        # 🚀 Αποθηκεύουμε τα νέα δεδομένα (μαζί με την επιλογή κόστους)
+                        # 🚀 Αποθηκεύουμε τα νέα δεδομένα
                         st.session_state.production_batch_items.append({
                             "Πελάτης": sel_cust, "Κοκτέιλ": sel_cocktail, "Τεμάχια": sel_pcs,
                             "Στοκ": "ΝΑΙ" if is_from_stock else "ΟΧΙ",
                             "Παλιό_LOT": manual_old_lot.strip() if is_from_stock else "-",
-                            "Με Κόστος;": charge_stock_cost  # <--- Η ΝΕΑ ΠΑΡΑΜΕΤΡΟΣ!
+                            "Με Κόστος;": charge_stock_cost # <--- Αποθηκεύει αν θα έχει κόστος
                         })
                         st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} {'(Από παλιό Στοκ)' if is_from_stock else ''}!")
                         st.rerun()
@@ -2331,7 +2332,8 @@ elif page == "📦 Lot Παραγωγής":
                 st.session_state.production_batch_items = [i for i in st.session_state.production_batch_items if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'])]
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['old_pcs'] + conf['new_pcs'],
-                    "Στοκ": "ΟΧΙ", "Παλιό_LOT": "-"
+                    "Στοκ": "ΟΧΙ", "Παλιό_LOT": "-", 
+                    "Με Κόστος;": conf.get('charge_cost', False) # <---
                 })
                 st.session_state['pending_conflict'] = None
                 st.toast("✅ Η ποσότητα ενημερώθηκε επιτυχώς!")
@@ -2341,7 +2343,8 @@ elif page == "📦 Lot Παραγωγής":
                 st.session_state.production_batch_items = [i for i in st.session_state.production_batch_items if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'])]
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['new_pcs'],
-                    "Στοκ": "ΟΧΙ", "Παλιό_LOT": "-"
+                    "Στοκ": "ΟΧΙ", "Παλιό_LOT": "-", 
+                    "Με Κόστος;": conf.get('charge_cost', False) # <---
                 })
                 st.session_state['pending_conflict'] = None
                 st.toast("🔄 Η ποσότητα αντικαταστάθηκε!")
