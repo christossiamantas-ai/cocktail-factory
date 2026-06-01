@@ -2775,8 +2775,11 @@ elif page == "📦 Lot Παραγωγής":
                                 except Exception:
                                     pass
 
-                                supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).execute()
-                            
+                                # 🚀 ΕΞΥΠΝΗ ΔΙΑΓΡΑΦΗ: Σβήνει ΜΟΝΟ τη συγκεκριμένη παρτίδα (Στοκ ή Κανονικό) χωρίς να πειράζει τις άλλες
+                        if is_stock == "ΝΑΙ":
+                            supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).eq("lot_cocktail", old_lot).execute()
+                        else:
+                            supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).eq("lot_cocktail", c_config["lot_cocktail"]).execute()
                             supabase.table("production_log").insert(lot_entries).execute()
                             
                             # 🚀 ΑΦΑΙΡΕΣΗ ΥΛΙΚΩΝ ΑΠΟ ΑΠΟΘΗΚΗ - ΕΞΑΙΡΟΥΝΤΑΙ ΤΑ ΣΤΟΚ!
