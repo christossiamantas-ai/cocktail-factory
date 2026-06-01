@@ -1773,15 +1773,22 @@ elif page == "📈 Dashboard":
         df_filtered['Theoretical_Revenue'] = df_filtered['Theoretical_Revenue'].clip(lower=0)
         
         # Συνολικό Κόστος & Κέρδος
-        # 🚀 ΑΛΛΑΓΗ ΓΙΑ ΤΟ ΣΤΟΚ: Διαβάζουμε το unit_cost απευθείας από τη Βάση!
-        if 'unit_cost' in df_filtered.columns:
-            # Αν υπάρχει η στήλη unit_cost (π.χ. 0.0 για δωρεάν στοκ), τη χρησιμοποιούμε. 
-            # Αν είναι κενή σε παλιές παραγγελίες, χρησιμοποιεί τη συνταγή (name_to_cost)
-            df_filtered['db_unit_cost'] = pd.to_numeric(df_filtered['unit_cost'], errors='coerce')
-            df_filtered['Final_Unit_Cost'] = df_filtered['db_unit_cost'].fillna(df_filtered['cocktail_name'].map(name_to_cost).fillna(FIXED_COST))
-        else:
-            df_filtered['Final_Unit_Cost'] = df_filtered['cocktail_name'].map(name_to_cost).fillna(FIXED_COST)
+        def get_actual_cost(row):
+            # Παίρνει το βασικό κόστος συνταγής από τον κατάλογο
+            catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
+            
+            # 1. Κοιτάμε τη ΝΕΑ στήλη applied_cost (που ακούει το Checkbox σου!)
+            if 'applied_cost' in row and pd.notna(row['applied_cost']):
+                return float(row['applied_cost'])
+            
+            # 2. Ασφαλιστική δικλείδα ΜΟΝΟ για τις ΠΑΛΙΕΣ εγγραφές (πριν φτιάξεις τη στήλη)
+            is_stock = "Έτοιμο Προϊόν" in str(row.get('ingredient_name', ''))
+            if is_stock:
+                return 0.0
+                
+            return catalog_c
 
+        df_filtered['Final_Unit_Cost'] = df_filtered.apply(get_actual_cost, axis=1)
         df_filtered['Total_Cost'] = df_filtered['t_pcs'] * df_filtered['Final_Unit_Cost']
         df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
 
