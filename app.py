@@ -2663,7 +2663,13 @@ elif page == "📦 Lot Παραγωγής":
                         })
                         
                         if c_qty > 0:
+                            # 🚀 Διαβάζουμε αν ο χρήστης τικάρισε την επιλογή χρέωσης
+                            charge_cost = row_assign.get("Με Κόστος;", False) if 'row_assign' in locals() else False
+                            
                             if is_stock == "ΝΑΙ":
+                                # Υπολογίζουμε το κόστος ΜΟΝΟ για το στοκ βάσει του checkbox
+                                final_cost = round(current_unit_cost, 4) if charge_cost else 0.0
+
                                 # 🚀 ΜΟΝΟ 1 ΓΡΑΜΜΗ ΓΙΑ ΤΟ ΣΤΟΚ (Χωρίς περιττές πρώτες ύλες)
                                 lot_entries.append({
                                     "prod_date": c_config["prod_date"], 
@@ -2677,7 +2683,8 @@ elif page == "📦 Lot Παραγωγής":
                                     "target_g": 0.0,
                                     "lot_number": old_lot, 
                                     "expiry_date": "-",
-                                    "unit_cost": round(current_unit_cost, 4)
+                                    "unit_cost": round(current_unit_cost, 4),
+                                    "applied_cost": final_cost  # <--- Η ΝΕΑ ΣΤΗΛΗ ΓΙΑ ΤΟ ΣΤΟΚ
                                 })
                             else:
                                 # 🚀 ΚΑΝΟΝΙΚΗ ΠΑΡΑΓΩΓΗ: Αναλυτικά όλα τα υλικά
@@ -2703,7 +2710,8 @@ elif page == "📦 Lot Παραγωγής":
                                         "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"] * match_ing.iloc[0]["Weight_Full"]), 1) if not match_ing.empty else float(ml_u * c_qty),
                                         "lot_number": actual_ing_lot, 
                                         "expiry_date": actual_ing_exp,
-                                        "unit_cost": round(current_unit_cost, 4)
+                                        "unit_cost": round(current_unit_cost, 4),
+                                        "applied_cost": round(current_unit_cost, 4)  # <--- Η ΝΕΑ ΣΤΗΛΗ ΓΙΑ ΚΑΝΟΝΙΚΗ ΠΑΡΑΓΩΓΗ
                                     })
                 
                 st.divider()
