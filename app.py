@@ -2980,6 +2980,7 @@ elif page == "📦 Lot Παραγωγής":
         ])
 
         with tab_edit_batch:
+            with tab_edit_batch:
             st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT")
             unique_cocktails_of_day = df_past["Cocktail"].unique() if not df_past.empty else []
             options = ["-- Επιλέξτε Κοκτέιλ για Επεξεργασία --"] + list(unique_cocktails_of_day)
@@ -2989,8 +2990,10 @@ elif page == "📦 Lot Παραγωγής":
                 batch_id = str(hash(sel_cocktail_edit))
                 cocktail_df = df_past[df_past["Cocktail"] == sel_cocktail_edit]
                 
-                # 🚀 ΑΛΛΑΓΗ 1: Ομαδοποίηση με βάση τον Πελάτη ΚΑΙ το LOT για να φαίνονται και τα 2 ξεχωριστά!
+                # 🚀 ΑΛΛΑΓΗ 1: Ομαδοποίηση ΚΑΙ Δημιουργία Απόλυτα Μοναδικού Κλειδιού (Με αύξοντα αριθμό 'i')
                 cust_lot_combinations = cocktail_df[["Πελάτης", "LOT_Cocktail", "Ημερομηνία"]].drop_duplicates().to_dict('records')
+                for i, c in enumerate(cust_lot_combinations):
+                    c["safe_key"] = f"c_{i}_{c['Πελάτης']}_{c['LOT_Cocktail']}".replace("/", "_").replace("-", "_").replace(" ", "")
                 
                 first_combo = cust_lot_combinations[0]
                 old_lot_cocktail = str(first_combo["LOT_Cocktail"])
@@ -3015,8 +3018,7 @@ elif page == "📦 Lot Παραγωγής":
                 for combo in cust_lot_combinations:
                     cust = combo["Πελάτης"]
                     lot_c = combo["LOT_Cocktail"]
-                    # Ασφαλές κλειδί για να μην μπερδεύονται τα widgets μεταξύ τους
-                    safe_key = f"{cust}_{lot_c}".replace("/", "_").replace("-", "_").replace(" ", "")
+                    safe_key = combo["safe_key"] # <-- Χρησιμοποιεί το έτοιμο ΑΠΟΛΥΤΑ μοναδικό κλειδί
                     
                     cust_df = cocktail_df[(cocktail_df["Πελάτης"] == cust) & (cocktail_df["LOT_Cocktail"] == lot_c)]
                     base_cust = cust_df.iloc[0]
@@ -3027,7 +3029,6 @@ elif page == "📦 Lot Παραγωγής":
                     new_cust_name = c1.text_input("Όνομα Πελάτη", value=cust, key=f"ed_cname_{batch_id}_{safe_key}")
                     new_pcs = c2.number_input("📦 Τεμάχια Παραγωγής", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{safe_key}")
                     
-                    # Νέο πεδίο: Επιτρέπει στο Στοκ να κρατήσει το παλιό του LOT ανεξάρτητα από το "Κεντρικό LOT"
                     override_lot = c3.text_input("LOT Προϊόντος (Αφήστε το ίδιο για Στοκ)", value=lot_c, key=f"ed_lotc_{batch_id}_{safe_key}")
                     
                     customer_settings[safe_key] = {
@@ -3053,10 +3054,9 @@ elif page == "📦 Lot Παραγωγής":
                     for combo in cust_lot_combinations:
                         cust = combo["Πελάτης"]
                         lot_c = combo["LOT_Cocktail"]
-                        safe_key = f"{cust}_{lot_c}".replace("/", "_").replace("-", "_").replace(" ", "")
+                        safe_key = combo["safe_key"] # <-- Το ίδιο κλειδί και εδώ!
                         
                         for ing_name in existing_ingredients:
-                            # 🚀 ΑΛΛΑΓΗ 2: Φιλτράρισμα ΚΑΙ με το LOT για να φέρει τα σωστά υλικά του Κανονικού ή του Στοκ!
                             current_ing_row = cocktail_df[(cocktail_df["Υλικό"] == ing_name) & (cocktail_df["Πελάτης"] == cust) & (cocktail_df["LOT_Cocktail"] == lot_c)]
                             
                             if current_ing_row.empty:
