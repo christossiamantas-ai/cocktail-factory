@@ -1829,11 +1829,15 @@ elif page == "📈 Dashboard":
 
                 with col_aud2:
                     st.markdown("### 2️⃣ Υπολογισμός Κόστους")
-                    st.write(f"- **Κόστος Υλικών:** {s['Final_Unit_Cost'] - FIXED_COST:.4f}€")
-                    st.write(f"- **Σταθερά Έξοδα:** {FIXED_COST:.2f}€")
-                    st.markdown(f"- **Κόστος ανά τμχ: {s['Final_Unit_Cost']:.4f}€**")
+                    if s['Final_Unit_Cost'] == 0.0:
+                        st.write("📦 **Άντληση από Στοκ (Χωρίς χρέωση)**")
+                        st.markdown("**Κόστος ανά τμχ: 0.00€**")
+                    else:
+                        st.write(f"- **Κόστος Υλικών:** {s['Final_Unit_Cost'] - FIXED_COST:.4f}€")
+                        st.write(f"- **Σταθερά Έξοδα:** {FIXED_COST:.2f}€")
+                        st.markdown(f"- **Κόστος ανά τμχ: {s['Final_Unit_Cost']:.4f}€**")
                     st.caption("---")
-                    st.write(f"- Παράχθηκαν: {s['t_pcs']} τμχ (πληρώνονται και τα δωρεάν)")
+                    st.write(f"- Παράχθηκαν: {s['t_pcs']} τμχ")
                     st.error(f"📉 Κόστος = {s['t_pcs']} x {s['Final_Unit_Cost']:.4f}€ = **{s['Total_Cost']:.2f}€**")
 
                 with col_aud3:
