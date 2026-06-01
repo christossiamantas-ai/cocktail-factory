@@ -2232,9 +2232,15 @@ elif page == "📦 Lot Παραγωγής":
         # --- 🚀 ΝΕΟΣ ΔΙΑΚΟΠΤΗΣ ΣΤΟΚ ---
         st_col1, st_col2 = st.columns([2, 2])
         is_from_stock = st_col1.checkbox("📦 Άντληση από έτοιμο Στοκ (Δεν αφαιρεί υλικά)", key=f"stock_check_{reset_key}")
+        
+        # ΝΕΟ: Μεταβλητή για το κόστος (προεπιλογή Όχι)
+        charge_stock_cost = False 
         manual_old_lot = ""
         
         if is_from_stock:
+            # ΝΕΟ: Εμφανίζεται μόνο αν επιλέξεις Στοκ!
+            charge_stock_cost = st_col1.checkbox("💰 Να υπολογιστεί κανονικά το κόστος στα σημερινά έξοδα;", value=False, key=f"charge_cost_{reset_key}")
+            
             available_lots = []
             if sel_cocktail:
                 try:
@@ -2284,11 +2290,12 @@ elif page == "📦 Lot Παραγωγής":
                         }
                         st.rerun() 
                     else:
-                        # 🚀 Αποθηκεύουμε τα νέα δεδομένα (αν είναι από Στοκ και το παλιό LOT)
+                        # 🚀 Αποθηκεύουμε τα νέα δεδομένα (μαζί με την επιλογή κόστους)
                         st.session_state.production_batch_items.append({
                             "Πελάτης": sel_cust, "Κοκτέιλ": sel_cocktail, "Τεμάχια": sel_pcs,
                             "Στοκ": "ΝΑΙ" if is_from_stock else "ΟΧΙ",
-                            "Παλιό_LOT": manual_old_lot.strip() if is_from_stock else "-"
+                            "Παλιό_LOT": manual_old_lot.strip() if is_from_stock else "-",
+                            "Με Κόστος;": charge_stock_cost  # <--- Η ΝΕΑ ΠΑΡΑΜΕΤΡΟΣ!
                         })
                         st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} {'(Από παλιό Στοκ)' if is_from_stock else ''}!")
                         st.rerun()
@@ -2346,11 +2353,17 @@ elif page == "📦 Lot Παραγωγής":
                 pcs = item["Τεμάχια"]
                 is_stock = item.get("Στοκ", "ΟΧΙ")
                 old_lot = item.get("Παλιό_LOT", "-")
+                charge_cost = item.get("Με Κόστος;", False) # <--- Διαβάζει την επιλογή
                 
                 if cocktail not in all_assignments:
-                    all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια", "Στοκ", "Παλιό_LOT"])
+                    # Προσθέσαμε τη στήλη 'Με Κόστος;'
+                    all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια", "Στοκ", "Παλιό_LOT", "Με Κόστος;"])
                 
-                new_row = pd.DataFrame([{"Πελάτης": c_name, "Τεμάχια": int(pcs), "Στοκ": is_stock, "Παλιό_LOT": old_lot}])
+                new_row = pd.DataFrame([{
+                    "Πελάτης": c_name, "Τεμάχια": int(pcs), 
+                    "Στοκ": is_stock, "Παλιό_LOT": old_lot, 
+                    "Με Κόστος;": charge_cost # <--- Την περνάει στον πίνακα
+                }])
                 all_assignments[cocktail] = pd.concat([all_assignments[cocktail], new_row], ignore_index=True)
 
             selected_cocktails = list(all_assignments.keys())
