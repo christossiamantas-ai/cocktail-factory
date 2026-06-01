@@ -3930,7 +3930,16 @@ elif page == "👥 Πελατολόγιο":
                                     df_sales['rev_normal'] = df_sales['normal_pcs'] * df_sales['price_after_global']
                                     df_sales['rev_special'] = df_sales['s_pcs'] * df_sales['price_after_global'] * (1 - (df_sales['s_pct'] / 100))
                                     df_sales['Theoretical_Revenue'] = (df_sales['rev_normal'] + df_sales['rev_special']).clip(lower=0)
-                                    df_sales['Final_Unit_Cost'] = df_sales['cocktail_name'].map(name_to_cost).fillna(FIXED_COST)
+                                    
+                                    # 🚀 ΕΞΥΠΝΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ ΓΙΑ ΤΟ ΣΤΟΚ
+                                    def get_actual_cost(row):
+                                        catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
+                                        if 'applied_cost' in row and pd.notna(row['applied_cost']): return float(row['applied_cost'])
+                                        is_stock = "Έτοιμο Προϊόν" in str(row.get('ingredient_name', ''))
+                                        if is_stock: return 0.0
+                                        return catalog_c
+
+                                    df_sales['Final_Unit_Cost'] = df_sales.apply(get_actual_cost, axis=1)
                                     df_sales['Total_Cost'] = df_sales['t_pcs'] * df_sales['Final_Unit_Cost']
                                     df_sales['Profit'] = df_sales['Theoretical_Revenue'] - df_sales['Total_Cost']
                                 
