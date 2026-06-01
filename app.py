@@ -2279,7 +2279,7 @@ elif page == "📦 Lot Παραγωγής":
                 manual_old_lot = ""
         
         st.write("") 
-        iif c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
+        if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
             if sel_cocktail:
                 # Έλεγχος: Αν τσέκαρε το στοκ, ΠΡΕΠΕΙ να γράψει το παλιό LOT
                 if is_from_stock and not manual_old_lot.strip():
