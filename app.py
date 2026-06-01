@@ -2285,65 +2285,78 @@ elif page == "📦 Lot Παραγωγής":
                 if is_from_stock and not manual_old_lot.strip():
                     st.error("⚠️ Πρέπει να συμπληρώσετε το παλιό LOT του έτοιμου κοκτέιλ!")
                 else:
-                    # 1. Βρίσκουμε αν υπάρχει ήδη στο Καλάθι (Σήμερα)
+                    stock_status = "ΝΑΙ" if is_from_stock else "ΟΧΙ"
+                    lot_status = manual_old_lot.strip() if is_from_stock else "-"
+                    
+                    # 1. Βρίσκουμε αν υπάρχει ήδη ΑΚΡΙΒΩΣ ΙΔΙΑ καταχώρηση στο Καλάθι (Σήμερα)
                     cart_qty = 0
                     for item in st.session_state.production_batch_items:
-                        if item["Πελάτης"] == sel_cust and item["Κοκτέιλ"] == sel_cocktail:
+                        # 🚀 ΤΩΡΑ ΕΛΕΓΧΕΙ ΑΝ ΕΙΝΑΙ ΚΑΙ ΙΔΙΟΥ ΤΥΠΟΥ (Στοκ ή Κανονικό)
+                        if (item["Πελάτης"] == sel_cust and 
+                            item["Κοκτέιλ"] == sel_cocktail and 
+                            item.get("Στοκ") == stock_status and 
+                            item.get("Παλιό_LOT") == lot_status):
                             cart_qty = item["Τεμάχια"]
                             break
                     
-                    # 2. Βρίσκουμε αν υπάρχει ήδη στη Βάση Δεδομένων (Σήμερα)
+                    # 2. Βρίσκουμε αν υπάρχει ήδη στη Βάση (ΜΟΝΟ για κανονική παραγωγή)
                     db_qty = 0
-                    if cart_qty == 0: 
+                    if cart_qty == 0 and not is_from_stock: 
                         try:
-                            res_db = supabase.table("production_log").select("pieces").eq("prod_date", formatted_date).eq("customer", sel_cust).eq("cocktail_name", sel_cocktail).execute()
+                            res_db = supabase.table("production_log").select("pieces, ingredient_name").eq("prod_date", formatted_date).eq("customer", sel_cust).eq("cocktail_name", sel_cocktail).execute()
                             if res_db.data:
-                                db_qty = res_db.data[0]["pieces"]
+                                # Ψάχνουμε μόνο γραμμές που ΔΕΝ είναι στοκ για να βρούμε τα τεμάχια
+                                for r in res_db.data:
+                                    if "Έτοιμο Προϊόν" not in str(r.get("ingredient_name", "")):
+                                        db_qty = r["pieces"]
+                                        break
                         except Exception:
                             pass
 
                     existing_qty = cart_qty + db_qty
 
-                    # 3. ΕΛΕΓΧΟΣ: Ρωτάμε ΠΑΝΤΑ αν βρει παλιά ποσότητα (Αφαιρέσαμε τον περιορισμό)
+                    # 3. ΕΛΕΓΧΟΣ: Ρωτάμε ΜΟΝΟ αν βρει ακριβώς ίδιας φύσης ποσότητα
                     if existing_qty > 0:
                         st.session_state['pending_conflict'] = {
                             "cust": sel_cust, "cocktail": sel_cocktail,
                             "new_pcs": sel_pcs, "old_pcs": existing_qty,
                             "charge_cost": charge_stock_cost,
                             "is_stock": is_from_stock,
-                            "old_lot": manual_old_lot
+                            "old_lot": lot_status
                         }
                         st.rerun() 
                     else:
-                        # Αν είναι εντελώς νέο, το προσθέτει κατευθείαν
+                        # Αν είναι διαφορετικού τύπου, μπαίνει σαν ολοκαίνουργια - ξεχωριστή γραμμή!
                         st.session_state.production_batch_items.append({
                             "Πελάτης": sel_cust, "Κοκτέιλ": sel_cocktail, "Τεμάχια": sel_pcs,
-                            "Στοκ": "ΝΑΙ" if is_from_stock else "ΟΧΙ",
-                            "Παλιό_LOT": manual_old_lot.strip() if is_from_stock else "-",
+                            "Στοκ": stock_status,
+                            "Παλιό_LOT": lot_status,
                             "Με Κόστος;": charge_stock_cost
                         })
-                        st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail}!")
+                        st.toast(f"✅ Προστέθηκαν {sel_pcs} τμχ {sel_cocktail} {'(Από Στοκ)' if is_from_stock else ''}!")
                         st.rerun()
 
         # ---------------------------------------------------------
-        # ΕΜΦΑΝΙΣΗ ΜΗΝΥΜΑΤΟΣ ΣΥΓΚΡΟΥΣΗΣ
+        # ΕΜΦΑΝΙΣΗ ΜΗΝΥΜΑΤΟΣ ΣΥΓΚΡΟΥΣΗΣ 
         # ---------------------------------------------------------
         if st.session_state.get('pending_conflict'):
             conf = st.session_state['pending_conflict']
             
-            st.error(f"⚠️ **Προσοχή:** Το κοκτέιλ **{conf['cocktail']}** υπάρχει ήδη καταχωρημένο για τον πελάτη **{conf['cust']}** (Σήμερα)!")
+            st.error(f"⚠️ **Προσοχή:** Το κοκτέιλ **{conf['cocktail']}** ({'Από Στοκ' if conf.get('is_stock') else 'Κανονική Παραγωγή'}) υπάρχει ήδη για τον πελάτη **{conf['cust']}**!")
             st.write(f"📊 Ήδη υπάρχουσα ποσότητα: **{conf['old_pcs']} τμχ** | Νέα προσθήκη: **{conf['new_pcs']} τμχ**")
             
             col_btn1, col_btn2, col_btn3 = st.columns(3)
             
             if col_btn1.button(f"➕ Άθροισμα (Σύνολο: {conf['old_pcs'] + conf['new_pcs']} τμχ)", type="primary"):
-                # Διαγράφει το παλιό από το καλάθι
-                st.session_state.production_batch_items = [i for i in st.session_state.production_batch_items if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'])]
-                # Προσθέτει το νέο με το άθροισμα
+                # Διαγράφει ΜΟΝΟ την εγγραφή που έχει τον ΙΔΙΟ τύπο (Στοκ ή Κανονικό)
+                st.session_state.production_batch_items = [
+                    i for i in st.session_state.production_batch_items 
+                    if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'] and i.get("Στοκ") == ("ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ") and i.get("Παλιό_LOT") == conf.get("old_lot", "-"))
+                ]
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['old_pcs'] + conf['new_pcs'],
                     "Στοκ": "ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ",
-                    "Παλιό_LOT": str(conf.get("old_lot", "-")).strip() if conf.get("is_stock") else "-",
+                    "Παλιό_LOT": conf.get("old_lot", "-"),
                     "Με Κόστος;": conf.get('charge_cost', False)
                 })
                 st.session_state['pending_conflict'] = None
@@ -2351,11 +2364,14 @@ elif page == "📦 Lot Παραγωγής":
                 st.rerun()
                 
             if col_btn2.button(f"🔄 Αντικατάσταση (Τελικό: {conf['new_pcs']} τμχ)"):
-                st.session_state.production_batch_items = [i for i in st.session_state.production_batch_items if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'])]
+                st.session_state.production_batch_items = [
+                    i for i in st.session_state.production_batch_items 
+                    if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'] and i.get("Στοκ") == ("ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ") and i.get("Παλιό_LOT") == conf.get("old_lot", "-"))
+                ]
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['new_pcs'],
                     "Στοκ": "ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ",
-                    "Παλιό_LOT": str(conf.get("old_lot", "-")).strip() if conf.get("is_stock") else "-",
+                    "Παλιό_LOT": conf.get("old_lot", "-"),
                     "Με Κόστος;": conf.get('charge_cost', False)
                 })
                 st.session_state['pending_conflict'] = None
@@ -2367,7 +2383,6 @@ elif page == "📦 Lot Παραγωγής":
                 st.rerun()
             
             st.divider()
-
         selected_cocktails = []
         all_assignments = {}
 
