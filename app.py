@@ -2755,81 +2755,84 @@ elif page == "📦 Lot Παραγωγής":
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud", type="primary"):
                     if lot_entries:
                         try:
-                            unique_updates = set((e["customer"], e["cocktail_name"], e["prod_date"]) for e in lot_entries)
-                            for cust, cock, pdate in unique_updates:
+                            # 1. Βρίσκουμε τους μοναδικούς συνδυασμούς ΠΕΡΙΛΑΜΒΑΝΟΝΤΑΣ ΤΟ LOT!
+                            # Έτσι διαχωρίζεται το Κανονικό από το Στοκ οριστικά και αμετάκλητα.
+                            unique_updates = set((e["customer"], e["cocktail_name"], e["prod_date"], e["lot_cocktail"]) for e in lot_entries)
+                            
+                            for cust, cock, pdate, lot_c in unique_updates:
+                                # Ανάκτηση παλιών δεδομένων (Δώρα/Εκπτώσεις) για να μην χαθούν
                                 try:
-                                    old_data = supabase.table("production_log").select("free_pieces, discounted_pieces, discount_pct").eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).execute()
-                                    saved_free = 0
-                                    saved_spcs = 0
-                                    saved_spct = 0.0
+                                    old_data = supabase.table("production_log").select("free_pieces, discounted_pieces, discount_pct").eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).eq("lot_cocktail", lot_c).execute()
+                                    saved_free, saved_spcs, saved_spct = 0, 0, 0.0
+                                    
                                     if old_data.data:
                                         saved_free = int(old_data.data[0].get("free_pieces") or 0)
                                         saved_spcs = int(old_data.data[0].get("discounted_pieces") or 0)
                                         saved_spct = float(old_data.data[0].get("discount_pct") or 0.0)
                                         
                                     for entry in lot_entries:
-                                        if entry["customer"] == cust and entry["cocktail_name"] == cock and entry["prod_date"] == pdate:
+                                        if entry["customer"] == cust and entry["cocktail_name"] == cock and entry["prod_date"] == pdate and entry["lot_cocktail"] == lot_c:
                                             entry["free_pieces"] = saved_free
                                             entry["discounted_pieces"] = saved_spcs
                                             entry["discount_pct"] = saved_spct
                                 except Exception:
                                     pass
 
-                                # 🚀 ΕΞΥΠΝΗ ΔΙΑΓΡΑΦΗ: Σβήνει ΜΟΝΟ τη συγκεκριμένη παρτίδα (Στοκ ή Κανονικό) χωρίς να πειράζει τις άλλες
-                        if is_stock == "ΝΑΙ":
-                            supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).eq("lot_cocktail", old_lot).execute()
-                        else:
-                            supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).eq("lot_cocktail", c_config["lot_cocktail"]).execute()
+                                # 🚀 ΕΞΥΠΝΗ ΔΙΑΓΡΑΦΗ: Σβήνει ΑΥΣΤΗΡΑ μόνο το συγκεκριμένο LOT! 
+                                supabase.table("production_log").delete().eq("prod_date", pdate).eq("customer", cust).eq("cocktail_name", cock).eq("lot_cocktail", lot_c).execute()
+                            
+                            # 2. Αποθήκευση όλων των νέων εγγραφών (Στοκ και Κανονικών) με τη μία
                             supabase.table("production_log").insert(lot_entries).execute()
                             
-                            # 🚀 ΑΦΑΙΡΕΣΗ ΥΛΙΚΩΝ ΑΠΟ ΑΠΟΘΗΚΗ - ΕΞΑΙΡΟΥΝΤΑΙ ΤΑ ΣΤΟΚ!
+                            # 3. ΑΦΑΙΡΕΣΗ ΥΛΙΚΩΝ ΑΠΟ ΑΠΟΘΗΚΗ - ΕΞΑΙΡΟΥΝΤΑΙ ΤΑ ΣΤΟΚ!
                             for item in st.session_state.production_batch_items:
                                 if item.get("Στοκ", "ΟΧΙ") == "ΟΧΙ":
                                     deduct_inventory_for_production(item["Κοκτέιλ"], item["Τεμάχια"])
                             
-                            # 🚀 ΣΥΓΧΩΝΕΥΣΗ B2B ΟΙΚΟΝΟΜΙΚΩΝ (Αυτόματο Re-build)
+                            # 4. ΣΥΓΧΩΝΕΥΣΗ B2B ΟΙΚΟΝΟΜΙΚΩΝ (Αυτόματο Re-build)
                             all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
                             all_customers_res = supabase.table("customers").select("name, discount").execute()
                             
                             recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in all_recipes_res.data} if all_recipes_res.data else {}
                             customer_discounts = {c['name']: float(c.get('discount') or 0.0) for c in all_customers_res.data} if all_customers_res.data else {}
 
-                            for cust, _, pdate in unique_updates:
+                            # Μοναδικοί πελάτες-ημερομηνίες για το B2B
+                            b2b_customers = set((e["customer"], e["prod_date"]) for e in lot_entries)
+                            
+                            for cust, pdate in b2b_customers:
                                 if cust == "Λιανική / Άγνωστος": continue
                                 
-                                # Διαβάζουμε ΟΛΗ την παραγωγή του πελάτη, ΜΑΖΙ με ΔΩΡΑ και ΕΚΠΤΩΣΕΙΣ
+                                # Διαβάζουμε ΟΛΗ την παραγωγή του πελάτη
                                 today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct").eq("prod_date", pdate).eq("customer", cust).execute()
                                 
                                 if today_logs.data:
                                     unique_cocktails = {}
                                     for row in today_logs.data:
-                                        # Κρατάμε τεμάχια, δώρα και εκπτώσεις ανά κοκτέιλ
-                                        unique_cocktails[row["cocktail_name"]] = {
-                                            "pcs": int(row.get("pieces") or 0),
-                                            "free": int(row.get("free_pieces") or 0),
-                                            "s_pcs": int(row.get("discounted_pieces") or 0),
-                                            "s_pct": float(row.get("discount_pct") or 0.0)
-                                        }
+                                        c_name = row["cocktail_name"]
+                                        if c_name not in unique_cocktails:
+                                            unique_cocktails[c_name] = {"pcs": 0, "free": 0, "s_pcs": 0, "s_pct": 0.0}
+                                        
+                                        # 🚀 ΕΔΩ ΓΙΝΕΤΑΙ ΤΟ ΘΑΥΜΑ: Αθροίζει τεμάχια Κανονικού & Στοκ σε 1 γραμμή για το Τιμολόγιο!
+                                        unique_cocktails[c_name]["pcs"] += int(row.get("pieces") or 0)
+                                        unique_cocktails[c_name]["free"] = max(unique_cocktails[c_name]["free"], int(row.get("free_pieces") or 0))
+                                        unique_cocktails[c_name]["s_pcs"] = max(unique_cocktails[c_name]["s_pcs"], int(row.get("discounted_pieces") or 0))
+                                        unique_cocktails[c_name]["s_pct"] = max(unique_cocktails[c_name]["s_pct"], float(row.get("discount_pct") or 0.0))
                                         
                                     total_amount = 0.0
                                     details_lines = []
                                     for cockt, data in unique_cocktails.items():
                                         price = recipe_prices.get(cockt, 0.0)
                                         
-                                        # Διαχωρισμός τεμαχίων για τον σωστό υπολογισμό
                                         t_pcs = data["pcs"]
                                         f_pcs = data["free"]
                                         s_pcs = min(data["s_pcs"], max(0, t_pcs - f_pcs))
                                         normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
                                         
-                                        # 1. Κόστος Κανονικών: Τεμάχια x Λιανική
                                         cost_normal = normal_pcs * price
-                                        # 2. Κόστος Εκπτωτικών: Τεμάχια x Λιανική x (μείον το ειδικό ποσοστό)
                                         cost_special = s_pcs * price * (1 - (data["s_pct"] / 100.0))
                                         
                                         total_amount += (cost_normal + cost_special)
                                         
-                                        # Φτιάχνουμε την έξυπνη περιγραφή
                                         line = f"• {t_pcs} τμχ {cockt}"
                                         if f_pcs > 0 or s_pcs > 0:
                                             extras = []
@@ -2851,7 +2854,6 @@ elif page == "📦 Lot Παραγωγής":
                                     except:
                                         date_iso = selected_date.isoformat()
 
-                                    # Ψάχνουμε αν υπάρχει ήδη B2B παραγγελία
                                     existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
                                     
                                     if existing_order.data:
@@ -2865,10 +2867,11 @@ elif page == "📦 Lot Παραγωγής":
                                             "order_details": details_str, "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
                                             "created_at": f"{date_iso}T{current_time}:00"
                                         }).execute()
+                                        
                             st.session_state.production_batch_items = []
                             st.session_state['active_b2b_order'] = None 
                             st.session_state['lot_reset_key'] += 1
-                            st.session_state.pop('search_data_loaded', None) # 🚀 FORCES REFRESH
+                            st.session_state.pop('search_data_loaded', None)
                             st.success("✅ Η παραγωγή αποθηκεύτηκε και συγχωνεύτηκε άψογα!")
                             time.sleep(2)
                             st.rerun()
