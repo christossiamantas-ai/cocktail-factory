@@ -2802,17 +2802,23 @@ elif page == "📦 Lot Παραγωγής":
                             for cust, pdate in b2b_customers:
                                 if cust == "Λιανική / Άγνωστος": continue
                                 
-                                # Διαβάζουμε ΟΛΗ την παραγωγή του πελάτη
-                                today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct").eq("prod_date", pdate).eq("customer", cust).execute()
+                                # 🚀 Τραβάμε ΟΛΗ την παραγωγή ΚΑΙ το lot_cocktail / prod_time για να μη διπλομετράμε
+                                today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, lot_cocktail, prod_time").eq("prod_date", pdate).eq("customer", cust).execute()
                                 
                                 if today_logs.data:
+                                    import pandas as pd
+                                    df_logs = pd.DataFrame(today_logs.data)
+                                    
+                                    # 🚀 ΕΔΩ ΛΥΝΕΤΑΙ ΤΟ ΠΡΟΒΛΗΜΑ: Πετάμε τις πολλαπλές γραμμές των συστατικών!
+                                    df_logs = df_logs.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
+                                    
                                     unique_cocktails = {}
-                                    for row in today_logs.data:
+                                    for _, row in df_logs.iterrows():
                                         c_name = row["cocktail_name"]
                                         if c_name not in unique_cocktails:
                                             unique_cocktails[c_name] = {"pcs": 0, "free": 0, "s_pcs": 0, "s_pct": 0.0}
                                         
-                                        # 🚀 ΕΔΩ ΓΙΝΕΤΑΙ ΤΟ ΘΑΥΜΑ: Αθροίζει τεμάχια Κανονικού & Στοκ σε 1 γραμμή για το Τιμολόγιο!
+                                        # Πλέον αθροίζει ΜΟΝΟ μία φορά το κάθε κοκτέιλ!
                                         unique_cocktails[c_name]["pcs"] += int(row.get("pieces") or 0)
                                         unique_cocktails[c_name]["free"] = max(unique_cocktails[c_name]["free"], int(row.get("free_pieces") or 0))
                                         unique_cocktails[c_name]["s_pcs"] = max(unique_cocktails[c_name]["s_pcs"], int(row.get("discounted_pieces") or 0))
