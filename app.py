@@ -4194,11 +4194,12 @@ elif page == "👥 Πελατολόγιο":
                     order_dt = pd.to_datetime(selected_order['created_at'])
                     prod_date_str = order_dt.strftime('%d/%m/%Y')
                     
-                    # Διαβάζουμε και τις νέες στήλες έκπτωσης από τη Supabase
-                    res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, prod_time").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
+                    # Διαβάζουμε και τις νέες στήλες έκπτωσης από τη Supabase (τραβάμε και το LOT!)
+                    res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, prod_time, lot_cocktail").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
                     
                     if res_prod.data:
-                        df_prod = pd.DataFrame(res_prod.data).drop_duplicates(subset=["cocktail_name", "prod_time"])
+                        # 🚀 Ξεχωρίζουμε τα κοκτέιλ με βάση το LOT τους (Κανονικό vs Στοκ)
+                        df_prod = pd.DataFrame(res_prod.data).drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
                         
                         with st.form("apply_gifts_and_discounts_form"):
                             inputs = {}
