@@ -2976,15 +2976,18 @@ elif page == "📦 Lot Παραγωγής":
             if sel_cocktail_edit != "-- Επιλέξτε Κοκτέιλ για Επεξεργασία --":
                 batch_id = str(hash(sel_cocktail_edit))
                 cocktail_df = df_past[df_past["Cocktail"] == sel_cocktail_edit]
-                unique_customers = cocktail_df["Πελάτης"].unique()
-                first_cust_df = cocktail_df[cocktail_df["Πελάτης"] == unique_customers[0]]
-                old_lot_cocktail = str(first_cust_df.iloc[0]["LOT_Cocktail"])
+                
+                # 🚀 ΑΛΛΑΓΗ 1: Ομαδοποίηση με βάση τον Πελάτη ΚΑΙ το LOT για να φαίνονται και τα 2 ξεχωριστά!
+                cust_lot_combinations = cocktail_df[["Πελάτης", "LOT_Cocktail", "Ημερομηνία"]].drop_duplicates().to_dict('records')
+                
+                first_combo = cust_lot_combinations[0]
+                old_lot_cocktail = str(first_combo["LOT_Cocktail"])
                 
                 if "-" in old_lot_cocktail:
                     parts_lot = old_lot_cocktail.split("-")
                     default_lot_date, default_prod_day = parts_lot[0].strip(), parts_lot[1].strip()
                 else:
-                    default_lot_date = str(first_cust_df.iloc[0]["Ημερομηνία"])
+                    default_lot_date = str(first_combo["Ημερομηνία"])
                     default_prod_day = default_lot_date.split("/")[0] if "/" in default_lot_date else "01"
 
                 st.markdown(f"#### 📅 Κεντρικό LOT Παραγωγής για το {sel_cocktail_edit}")
@@ -2994,45 +2997,58 @@ elif page == "📦 Lot Παραγωγής":
                 global_lot_c = f"{new_global_lot_date.strip()}-{new_global_prod_day.strip()}"
                 
                 st.divider()
-                st.markdown("#### 👥 Κατανόηση Ποσοτήτων ανά Πελάτη")
+                st.markdown("#### 👥 Κατανόηση Ποσοτήτων ανά Πελάτη & LOT")
                 customer_settings = {}
                 
-                for cust in unique_customers:
-                    cust_df = cocktail_df[cocktail_df["Πελάτης"] == cust]
+                for combo in cust_lot_combinations:
+                    cust = combo["Πελάτης"]
+                    lot_c = combo["LOT_Cocktail"]
+                    # Ασφαλές κλειδί για να μην μπερδεύονται τα widgets μεταξύ τους
+                    safe_key = f"{cust}_{lot_c}".replace("/", "_").replace("-", "_").replace(" ", "")
+                    
+                    cust_df = cocktail_df[(cocktail_df["Πελάτης"] == cust) & (cocktail_df["LOT_Cocktail"] == lot_c)]
                     base_cust = cust_df.iloc[0]
                     old_pcs = int(base_cust["Τεμάχια"])
                     
-                    st.markdown(f"**👤 Πελάτης: {cust}**")
-                    c1, c2 = st.columns([2, 1])
-                    new_cust_name = c1.text_input("Όνομα Πελάτη", value=cust, key=f"ed_cname_{batch_id}_{cust}")
-                    new_pcs = c2.number_input("📦 Τεμάχια Παραγωγής", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{cust}")
+                    st.markdown(f"**👤 Πελάτης: {cust} | 🏷️ LOT: {lot_c}**")
+                    c1, c2, c3 = st.columns([1.5, 1, 1.5])
+                    new_cust_name = c1.text_input("Όνομα Πελάτη", value=cust, key=f"ed_cname_{batch_id}_{safe_key}")
+                    new_pcs = c2.number_input("📦 Τεμάχια Παραγωγής", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{safe_key}")
                     
-                    customer_settings[cust] = {
-                        "new_cust_name": new_cust_name.strip(), "new_lot_date": new_global_lot_date.strip(),
-                        "new_prod_day": new_global_prod_day.strip(), "new_lot_c": global_lot_c,
-                        "new_pcs": new_pcs, "old_pcs": old_pcs, "base_date_str": base_cust["Ημερομηνία"]
+                    # Νέο πεδίο: Επιτρέπει στο Στοκ να κρατήσει το παλιό του LOT ανεξάρτητα από το "Κεντρικό LOT"
+                    override_lot = c3.text_input("LOT Προϊόντος (Αφήστε το ίδιο για Στοκ)", value=lot_c, key=f"ed_lotc_{batch_id}_{safe_key}")
+                    
+                    customer_settings[safe_key] = {
+                        "orig_cust": cust, "orig_lot_c": lot_c,
+                        "new_cust_name": new_cust_name.strip(), 
+                        "new_lot_date": new_global_lot_date.strip(),
+                        "new_prod_day": new_global_prod_day.strip(), 
+                        "new_lot_c": override_lot.strip(),
+                        "new_pcs": new_pcs, "old_pcs": old_pcs, 
+                        "base_date_str": base_cust["Ημερομηνία"]
                     }
                     st.caption("---")
 
                 st.markdown("#### 🧪 Έλεγχος Υλικών & LOT Πρώτων Υλών ανά Πελάτη")
                 with st.form(f"edit_form_cocktail_batch_{batch_id}"):
                     h_edit = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
-                    for col, label in zip(h_edit, ["Πελάτης", "Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
+                    for col, label in zip(h_edit, ["Πελάτης (LOT)", "Υλικό", "ml", "Lot 1", "Λήξη 1", "Lot 2", "Λήξη 2"]): col.caption(label)
                     
                     final_updated_rows = []
-                    
-                    # 🚀 ΑΠΛΗ ΚΑΙ ΣΙΓΟΥΡΗ ΛΥΣΗ: Διαβάζουμε ΑΚΡΙΒΩΣ τα υλικά που έχει το Ιστορικό (cocktail_df)
-                    # Αν είναι Στοκ θα βρει 1 γραμμή. Αν είναι Κανονικό θα βρει όλα τα υλικά του!
                     existing_ingredients = cocktail_df["Υλικό"].unique()
                     
                     row_counter = 0
-                    for cust in unique_customers:
+                    for combo in cust_lot_combinations:
+                        cust = combo["Πελάτης"]
+                        lot_c = combo["LOT_Cocktail"]
+                        safe_key = f"{cust}_{lot_c}".replace("/", "_").replace("-", "_").replace(" ", "")
+                        
                         for ing_name in existing_ingredients:
-                            # Απομονώνουμε τη γραμμή για το συγκεκριμένο υλικό και πελάτη
-                            current_ing_row = cocktail_df[(cocktail_df["Υλικό"] == ing_name) & (cocktail_df["Πελάτης"] == cust)]
+                            # 🚀 ΑΛΛΑΓΗ 2: Φιλτράρισμα ΚΑΙ με το LOT για να φέρει τα σωστά υλικά του Κανονικού ή του Στοκ!
+                            current_ing_row = cocktail_df[(cocktail_df["Υλικό"] == ing_name) & (cocktail_df["Πελάτης"] == cust) & (cocktail_df["LOT_Cocktail"] == lot_c)]
                             
                             if current_ing_row.empty:
-                                continue # Προσπέραση αν λείπει το υλικό για αυτόν τον πελάτη
+                                continue 
                                 
                             raw_lot = str(current_ing_row["Lot Number"].iloc[0]) if pd.notna(current_ing_row["Lot Number"].iloc[0]) else ""
                             raw_exp = str(current_ing_row["Ημ_Λήξης"].iloc[0]) if pd.notna(current_ing_row["Ημ_Λήξης"].iloc[0]) else ""
@@ -3041,8 +3057,7 @@ elif page == "📦 Lot Παραγωγής":
                             orig_time = str(current_ing_row["Ώρα"].iloc[0])
                             u_cost = float(current_ing_row["unit_cost"].iloc[0]) if "unit_cost" in current_ing_row.columns and pd.notna(current_ing_row["unit_cost"].iloc[0]) else 0.22
 
-                            # Υπολογισμός νέων ml σε περίπτωση που αλλάξεις τα Τεμάχια Παραγωγής
-                            c_set = customer_settings[cust]
+                            c_set = customer_settings[safe_key]
                             new_ml = old_ml * (float(c_set["new_pcs"]) / float(c_set["old_pcs"]) if float(c_set["old_pcs"]) != 0 else 1.0)
                             
                             lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
@@ -3051,7 +3066,9 @@ elif page == "📦 Lot Παραγωγής":
                             while len(exp_parts) < 2: exp_parts.append("")
                             
                             r = st.columns([1.2, 1.5, 0.6, 1.2, 1.2, 1.2, 1.2])
-                            r[0].write(f"{cust}")
+                            
+                            short_lot = lot_c.split('-')[0] if '-' in lot_c else lot_c
+                            r[0].write(f"{cust} ({short_lot})")
                             r[1].write(f"**{ing_name}**")
                             r[2].write(f"{new_ml:.0f}" if new_ml > 0 else "-")
                             
@@ -3061,7 +3078,9 @@ elif page == "📦 Lot Παραγωγής":
                             ex2 = r[6].text_input("E2", value=exp_parts[1], key=f"ed_e2_{batch_id}_{row_counter}", label_visibility="collapsed")
                             
                             final_updated_rows.append({
-                                "orig_cust": cust, "ing": ing_name, "ml": new_ml,
+                                "safe_key": safe_key,
+                                "orig_cust": cust, "orig_lot_c": lot_c,
+                                "ing": ing_name, "ml": new_ml,
                                 "lot": lt1 if not lt2 else f"{lt1} / {lt2}", "exp": ex1 if not ex2 else f"{ex1} / {ex2}", 
                                 "u_cost": u_cost, "orig_id": orig_id, "orig_time": orig_time
                             })
@@ -3079,7 +3098,7 @@ elif page == "📦 Lot Παραγωγής":
                             
                             new_batch = []
                             for fd in final_updated_rows:
-                                c_set = customer_settings[fd["orig_cust"]]
+                                c_set = customer_settings[fd["safe_key"]]
                                 g_calc = fd["ml"]
                                 match_i = df_ing[df_ing["Name"] == fd["ing"]]
                                 if not match_i.empty: g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
@@ -3093,7 +3112,9 @@ elif page == "📦 Lot Παραγωγής":
                                 })
                             if new_batch: supabase.table("production_log").insert(new_batch).execute()
                             
-                            for orig_c, c_set in customer_settings.items():
+                            # Ενημέρωση B2B (Προσπερνάμε τυχόν σφάλματα για να μην κολλήσει η παραγωγή)
+                            for c_set in customer_settings.values():
+                                orig_c = c_set["orig_cust"]
                                 old_target_date = datetime.strptime(c_set["base_date_str"], "%d/%m/%Y").strftime("%Y-%m-%d")
                                 new_target_date = datetime.strptime(c_set["new_lot_date"], "%d/%m/%Y").strftime("%Y-%m-%d")
                                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", orig_c).gte("created_at", f"{old_target_date}T00:00:00").lte("created_at", f"{old_target_date}T23:59:59").execute()
@@ -3139,7 +3160,7 @@ elif page == "📦 Lot Παραγωγής":
                                             break
                             st.session_state['lot_reset_key'] += 1
                             st.session_state.pop('search_data_loaded', None)
-                            st.success("✅ Επιτυχία! Το LOT και η ημερομηνία άλλαξαν και εφαρμόστηκαν σε όλους!")
+                            st.success("✅ Επιτυχία! Οι αλλαγές εφαρμόστηκαν σωστά ανά LOT!")
                             time.sleep(1)
                             st.rerun()
                         except Exception as save_err:
@@ -3147,10 +3168,12 @@ elif page == "📦 Lot Παραγωγής":
 
                     if btn_del:
                         try:
-                            ids_to_del = df_all_logs.loc[cocktail_df.index, "id"].tolist()
+                            # 🚀 ΑΛΛΑΓΗ 3: Διαγραφή ΜΟΝΟ των επιλεγμένων LOTs αντί για όλα τα κοκτέιλ του πελάτη
+                            ids_to_del = [f["orig_id"] for f in final_updated_rows]
                             if ids_to_del: supabase.table("production_log").delete().in_("id", ids_to_del).execute()
                             
-                            for orig_c, c_set in customer_settings.items():
+                            for c_set in customer_settings.values():
+                                orig_c = c_set["orig_cust"]
                                 target_date = datetime.strptime(c_set["base_date_str"], "%d/%m/%Y").strftime("%Y-%m-%d")
                                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", orig_c).gte("created_at", f"{target_date}T00:00:00").lte("created_at", f"{target_date}T23:59:59").execute()
                                 
