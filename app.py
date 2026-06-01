@@ -4201,15 +4201,13 @@ elif page == "👥 Πελατολόγιο":
                     prod_date_str = order_dt.strftime('%d/%m/%Y')
                     
                     # Διαβάζουμε και τις νέες στήλες έκπτωσης από τη Supabase (τραβάμε και το LOT!)
-                    res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, prod_time, lot_cocktail").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
-                    
                     if res_prod.data:
                         # 🚀 Ξεχωρίζουμε τα κοκτέιλ με βάση το LOT τους (Κανονικό vs Στοκ)
                         df_prod = pd.DataFrame(res_prod.data).drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
                         
                         with st.form("apply_gifts_and_discounts_form"):
                             inputs = {}
-                            st.markdown("##### ⚙️ Ρυθμίσεις ανά Κωδικό Παραγγελίας")
+                            st.markdown("##### ⚙️ Ρυθμίσεις ανά Κωδικό Παραγγελίας & LOT")
                             
                             h1, h2, h3, h4 = st.columns([2.5, 1, 1.2, 1])
                             h1.caption("Κοκτέιλ (Σύνολο Τμχ)")
@@ -4219,19 +4217,25 @@ elif page == "👥 Πελατολόγιο":
                             
                             for _, prow in df_prod.iterrows():
                                 c_name = prow['cocktail_name']
+                                lot_c = prow['lot_cocktail']
+                                p_time = prow['prod_time']
                                 t_pcs = int(prow['pieces'])
                                 curr_free = int(prow.get('free_pieces', 0)) if pd.notnull(prow.get('free_pieces', 0)) else 0
                                 curr_s_pcs = int(prow.get('discounted_pieces', 0)) if pd.notnull(prow.get('discounted_pieces', 0)) else 0
                                 curr_s_pct = float(prow.get('discount_pct', 0.0)) if pd.notnull(prow.get('discount_pct', 0.0)) else 0.0
                                 
+                                # 🚀 ΑΣΦΑΛΗ ΚΛΕΙΔΙΑ (Προσθήκη LOT για να μην έχουμε DuplicateElementKey)
+                                safe_key_suffix = f"{c_name}_{lot_c}_{p_time}".replace("/", "_").replace("-", "_").replace(" ", "")
+                                
                                 c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1])
-                                c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ)")
+                                c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ) <br><span style='font-size:11px; color:gray;'>LOT: {lot_c}</span>", unsafe_allow_html=True)
                                 
-                                f_pcs = c2.number_input("Δώρο", min_value=0, max_value=t_pcs, value=curr_free, step=1, key=f"f_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
-                                s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
-                                s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{c_name}_{prow['prod_time']}", label_visibility="collapsed")
+                                f_pcs = c2.number_input("Δώρο", min_value=0, max_value=t_pcs, value=curr_free, step=1, key=f"f_{safe_key_suffix}", label_visibility="collapsed")
+                                s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{safe_key_suffix}", label_visibility="collapsed")
+                                s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{safe_key_suffix}", label_visibility="collapsed")
                                 
-                                inputs[(c_name, prow['prod_time'])] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
+                                # 🚀 Κρατάμε και το LOT στο λεξικό για την αποθήκευση
+                                inputs[(c_name, lot_c, p_time)] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
                                 
                             if st.form_submit_button("💾 Εφαρμογή & Επανυπολογισμός Παραγγελίας", type="primary"):
                                 new_total = 0.0
@@ -4242,7 +4246,7 @@ elif page == "👥 Πελατολόγιο":
                                 
                                 with st.spinner("Επανυπολογισμός αξιών..."):
                                     for key, vals in inputs.items():
-                                        c_name, p_time = key
+                                        c_name, lot_c, p_time = key
                                         t_pcs = vals["t_pcs"]
                                         f_pcs = vals["f_pcs"]
                                         s_pcs = vals["s_pcs"]
@@ -4254,12 +4258,12 @@ elif page == "👥 Πελατολόγιο":
                                             
                                         normal_pcs = t_pcs - f_pcs - s_pcs
                                         
-                                        # Update παραγωγής
+                                        # 🚀 Ενημερώνουμε ΑΚΡΙΒΩΣ αυτό το LOT στη βάση
                                         supabase.table("production_log").update({
                                             "free_pieces": f_pcs,
                                             "discounted_pieces": s_pcs,
                                             "discount_pct": s_pct
-                                        }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("prod_time", p_time).eq("cocktail_name", c_name).execute()
+                                        }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("prod_time", p_time).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).execute()
                                         
                                         catalog_p = float(recipe_prices.get(c_name, 0.0))
                                         
@@ -4267,21 +4271,21 @@ elif page == "👥 Πελατολόγιο":
                                         # 🚀 ΑΣΦΑΛΗΣ & ΣΩΣΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΕΚΠΤΩΣΕΩΝ
                                         # -------------------------------------------------------------
                                         
-                                        # 1. Βρίσκουμε την τιμή μετά τη γενική έκπτωση του πελάτη (π.χ. 26%)
+                                        # 1. Βρίσκουμε την τιμή μετά τη γενική έκπτωση του πελάτη
                                         price_after_global = catalog_p * (1 - (cust_discount / 100))
                                         
-                                        # 2. Αξία κανονικών τεμαχίων (χρεώνονται μόνο με το 26%)
+                                        # 2. Αξία κανονικών τεμαχίων
                                         cost_normal = normal_pcs * price_after_global
                                         
-                                        # 3. Αξία εκπτωτικών τεμαχίων (πάνω στο 26% αφαιρείται έξτρα η ειδική π.χ. 10%)
+                                        # 3. Αξία εκπτωτικών τεμαχίων
                                         cost_spec = s_pcs * price_after_global * (1 - (s_pct / 100))
                                         
                                         new_total += (cost_normal + cost_spec)
                                         
                                         if f_pcs > 0:
-                                            gift_text += f"🎁 {f_pcs}x {c_name} (ΔΩΡΟ)\n"
+                                            gift_text += f"🎁 {f_pcs}x {c_name} (ΔΩΡΟ - LOT: {lot_c})\n"
                                         if s_pcs > 0:
-                                            disc_text += f"📉 {s_pcs}x {c_name} (Έκπτωση {s_pct}%)\n"
+                                            disc_text += f"📉 {s_pcs}x {c_name} (Έκπτωση {s_pct}% - LOT: {lot_c})\n"
                                             
                                     # Ενημέρωση Παραγγελίας
                                     final_details = clean_display_details
