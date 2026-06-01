@@ -2981,7 +2981,7 @@ elif page == "📦 Lot Παραγωγής":
 
         with tab_edit_batch:
             with tab_edit_batch:
-            st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT")
+                st.markdown("### 🛠️ Επεξεργασία ανά Κοκτέιλ & Μαζική Ρύθμιση LOT")
             unique_cocktails_of_day = df_past["Cocktail"].unique() if not df_past.empty else []
             options = ["-- Επιλέξτε Κοκτέιλ για Επεξεργασία --"] + list(unique_cocktails_of_day)
             sel_cocktail_edit = st.selectbox("Διαλέξτε το Κοκτέιλ που παράγεται:", options, key="batch_edit_by_cocktail_key")
