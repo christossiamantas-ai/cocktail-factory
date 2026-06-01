@@ -2809,6 +2809,12 @@ elif page == "📦 Lot Παραγωγής":
                                     import pandas as pd
                                     df_logs = pd.DataFrame(today_logs.data)
                                     
+                                    # 🚀 ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Μετατρέπει όλα τα κενά (NaN) σε 0 για να μην κρασάρει η Python!
+                                    df_logs = df_logs.fillna(0)
+                                    
+                                    # 🚀 ΕΔΩ ΛΥΝΕΤΑΙ ΤΟ ΠΡΟΒΛΗΜΑ: Πετάμε τις πολλαπλές γραμμές των συστατικών!
+                                    df_logs = df_logs.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
+                                    
                                     # 🚀 ΕΔΩ ΛΥΝΕΤΑΙ ΤΟ ΠΡΟΒΛΗΜΑ: Πετάμε τις πολλαπλές γραμμές των συστατικών!
                                     df_logs = df_logs.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
                                     
