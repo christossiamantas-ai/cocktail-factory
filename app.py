@@ -1773,7 +1773,15 @@ elif page == "📈 Dashboard":
         df_filtered['Theoretical_Revenue'] = df_filtered['Theoretical_Revenue'].clip(lower=0)
         
         # Συνολικό Κόστος & Κέρδος
-        df_filtered['Final_Unit_Cost'] = df_filtered['cocktail_name'].map(name_to_cost).fillna(FIXED_COST)
+        # 🚀 ΑΛΛΑΓΗ ΓΙΑ ΤΟ ΣΤΟΚ: Διαβάζουμε το unit_cost απευθείας από τη Βάση!
+        if 'unit_cost' in df_filtered.columns:
+            # Αν υπάρχει η στήλη unit_cost (π.χ. 0.0 για δωρεάν στοκ), τη χρησιμοποιούμε. 
+            # Αν είναι κενή σε παλιές παραγγελίες, χρησιμοποιεί τη συνταγή (name_to_cost)
+            df_filtered['db_unit_cost'] = pd.to_numeric(df_filtered['unit_cost'], errors='coerce')
+            df_filtered['Final_Unit_Cost'] = df_filtered['db_unit_cost'].fillna(df_filtered['cocktail_name'].map(name_to_cost).fillna(FIXED_COST))
+        else:
+            df_filtered['Final_Unit_Cost'] = df_filtered['cocktail_name'].map(name_to_cost).fillna(FIXED_COST)
+
         df_filtered['Total_Cost'] = df_filtered['t_pcs'] * df_filtered['Final_Unit_Cost']
         df_filtered['Profit'] = df_filtered['Theoretical_Revenue'] - df_filtered['Total_Cost']
 
