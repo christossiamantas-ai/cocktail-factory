@@ -2388,10 +2388,41 @@ elif page == "📦 Lot Παραγωγής":
 
         if st.session_state.production_batch_items:
             st.markdown("#### 📋 Στοιχεία Τρέχουσας Παρτίδας προς Παραγωγή")
-            df_current_batch = pd.DataFrame(st.session_state.production_batch_items)
-            st.dataframe(df_current_batch, use_container_width=True, hide_index=True)
             
-            if st.button("🗑️ Καθαρισμός Παρτίδας", type="secondary"):
+            # --- ΝΕΟ: Διαδραστική Λίστα με Κουμπιά Διαγραφής ---
+            # Επικεφαλίδες
+            hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([2, 2.5, 1, 1.5, 1.5, 0.5])
+            hc1.caption("Πελάτης")
+            hc2.caption("Κοκτέιλ")
+            hc3.caption("Τεμάχια")
+            hc4.caption("Στοκ (Παλιό LOT)")
+            hc5.caption("Με Κόστος;")
+            hc6.caption("")
+
+            for idx, item in enumerate(st.session_state.production_batch_items):
+                c1, c2, c3, c4, c5, c6 = st.columns([2, 2.5, 1, 1.5, 1.5, 0.5])
+                c1.write(item.get("Πελάτης", ""))
+                c2.write(item.get("Κοκτέιλ", ""))
+                c3.write(f"**{item.get('Τεμάχια', 0)}**")
+                
+                # Έξυπνη εμφάνιση του Στοκ
+                if item.get("Στοκ") == "ΝΑΙ":
+                    c4.markdown(f"✅ Στοκ<br><span style='font-size:10px; color:gray;'>({item.get('Παλιό_LOT', '-')})</span>", unsafe_allow_html=True)
+                else:
+                    c4.write("❌ Όχι")
+                
+                c5.write("✅ Ναι" if item.get("Με Κόστος;") else "❌ Όχι")
+                
+                # 🚀 ΚΟΥΜΠΙ ΔΙΑΓΡΑΦΗΣ ΓΙΑ ΤΟ ΣΥΓΚΕΚΡΙΜΕΝΟ ΚΟΚΤΕΙΛ
+                if c6.button("🗑️", key=f"del_cart_item_{idx}_{reset_key}"):
+                    st.session_state.production_batch_items.pop(idx)
+                    st.toast(f"Το {item.get('Κοκτέιλ')} αφαιρέθηκε από την παρτίδα!")
+                    st.rerun()
+            
+            st.write("") # Κενό για ομορφιά
+            
+            # Κουμπί για καθαρισμό ΟΛΗΣ της παρτίδας (όπως το είχες)
+            if st.button("🗑️ Καθαρισμός Όλης της Παρτίδας", type="secondary"):
                 st.session_state.production_batch_items = []
                 st.session_state['active_b2b_order'] = None
                 st.rerun()
