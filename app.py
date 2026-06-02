@@ -1682,13 +1682,34 @@ elif page == "📈 Dashboard":
         df_orders_raw = pd.DataFrame(res_orders.data) if res_orders.data else pd.DataFrame()
         
         # --- ΚΑΘΑΡΙΣΜΟΣ & ΠΡΟΕΤΟΙΜΑΣΙΑ ΔΕΔΟΜΕΝΩΝ ---
+        # --- ΚΑΘΑΡΙΣΜΟΣ & ΠΡΟΕΤΟΙΜΑΣΙΑ ΔΕΔΟΜΕΝΩΝ ---
         if not df_customers.empty:
             df_customers['name'] = df_customers.get('name', '').astype(str).str.strip()
             df_customers['discount'] = pd.to_numeric(df_customers.get('discount', 0), errors='coerce').fillna(0)
         else:
             df_customers = pd.DataFrame({'name': [], 'discount': []})
 
-        df_sales = df_raw.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"]).copy()
+        # 🚀 ΜΑΓΙΚΗ ΑΣΠΙΔΑ DASHBOARD: Αντί για απλό drop_duplicates, κάνουμε έξυπνη Ομαδοποίηση!
+        for col in ['pieces', 'free_pieces', 'discounted_pieces', 'discount_pct']:
+            if col in df_raw.columns:
+                df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce').fillna(0)
+
+        if 'applied_cost' not in df_raw.columns:
+            df_raw['applied_cost'] = None
+
+        # Σκανάρουμε όλα τα υλικά για να δούμε αν κάποιο ήταν "Έτοιμο Προϊόν" (για τα παλιά Στοκ)
+        df_raw['is_stock_legacy'] = df_raw.get('ingredient_name', '').astype(str).str.contains("Έτοιμο Προϊόν", na=False)
+
+        # Συμπιέζουμε σε 1 γραμμή ανά παραγωγή διατηρώντας το μικρότερο κόστος (το 0)
+        df_sales = df_raw.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+            pieces=("pieces", "max"),
+            free_pieces=("free_pieces", "max"),
+            discounted_pieces=("discounted_pieces", "max"),
+            discount_pct=("discount_pct", "max"),
+            applied_cost=("applied_cost", "min"), 
+            has_legacy_stock=("is_stock_legacy", "max") 
+        )
+
         if 'customer' in df_sales.columns:
             df_sales['customer'] = df_sales['customer'].astype(str).str.strip()
         df_sales['Date_Obj'] = pd.to_datetime(df_sales.get('prod_date'), format='%d/%m/%Y', errors='coerce')
