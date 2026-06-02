@@ -3075,7 +3075,7 @@ elif page == "📦 Lot Παραγωγής":
                     st.markdown(f"**👤 Πελάτης: {cust} | 🏷️ LOT: {lot_c}**")
                     c1, c2, c3 = st.columns([1.5, 1, 1.5])
                     new_cust_name = c1.text_input("Όνομα Πελάτη", value=cust, key=f"ed_cname_{batch_id}_{safe_key}")
-                    new_pcs = c2.number_input("📦 Τεμάχια Παραγωγής", value=old_pcs, min_value=1, key=f"ed_pcs_{batch_id}_{safe_key}")
+                    new_pcs = c2.number_input("📦 Τεμάχια Παραγωγής", value=old_pcs, min_value=0, key=f"ed_pcs_{batch_id}_{safe_key}")
                     
                     override_lot = c3.text_input("LOT Προϊόντος (Αφήστε το ίδιο για Στοκ)", value=lot_c, key=f"ed_lotc_{batch_id}_{safe_key}")
                     
@@ -3168,6 +3168,11 @@ elif page == "📦 Lot Παραγωγής":
                             new_batch = []
                             for fd in final_updated_rows:
                                 c_set = customer_settings[fd["safe_key"]]
+                                
+                                # 🚀 ΝΕΟ: Αν ο χρήστης έβαλε 0 τεμάχια, δεν το ξαναγράφουμε (άρα ΔΙΑΓΡΑΦΕΤΑΙ ΟΡΙΣΤΙΚΑ!)
+                                if int(c_set["new_pcs"]) == 0:
+                                    continue
+                                
                                 g_calc = fd["ml"]
                                 match_i = df_ing[df_ing["Name"] == fd["ing"]]
                                 if not match_i.empty: g_calc = (fd["ml"] / match_i.iloc[0]["Volume"]) * match_i.iloc[0]["Weight_Full"]
