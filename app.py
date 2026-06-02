@@ -1795,16 +1795,14 @@ elif page == "📈 Dashboard":
         
         # Συνολικό Κόστος & Κέρδος
         def get_actual_cost(row):
-            # Παίρνει το βασικό κόστος συνταγής από τον κατάλογο
             catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
             
-            # 1. Κοιτάμε τη ΝΕΑ στήλη applied_cost (που ακούει το Checkbox σου!)
-            if 'applied_cost' in row and pd.notna(row['applied_cost']):
+            # 1. Κοιτάμε τη ΝΕΑ στήλη applied_cost (κρατάει το 0 αν είναι Στοκ)
+            if pd.notna(row.get('applied_cost')):
                 return float(row['applied_cost'])
             
-            # 2. Ασφαλιστική δικλείδα ΜΟΝΟ για τις ΠΑΛΙΕΣ εγγραφές (πριν φτιάξεις τη στήλη)
-            is_stock = "Έτοιμο Προϊόν" in str(row.get('ingredient_name', ''))
-            if is_stock:
+            # 2. Ασφαλιστική δικλείδα για τα παλιά Στοκ που πιάσαμε με την ομαδοποίηση
+            if row.get('has_legacy_stock'):
                 return 0.0
                 
             return catalog_c
