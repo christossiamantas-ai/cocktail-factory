@@ -2347,16 +2347,26 @@ elif page == "📦 Lot Παραγωγής":
             
             col_btn1, col_btn2, col_btn3 = st.columns(3)
             
+            # --- 🚀 ΔΙΟΡΘΩΣΗ: Απόλυτα ασφαλής εντοπισμός και καθαρισμός του παλιού LOT ---
+            target_stock = "ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ"
+            target_lot = str(conf.get("old_lot", "-")).strip()
+            if not target_lot or target_lot == "": 
+                target_lot = "-"
+            
             if col_btn1.button(f"➕ Άθροισμα (Σύνολο: {conf['old_pcs'] + conf['new_pcs']} τμχ)", type="primary"):
-                # Διαγράφει ΜΟΝΟ την εγγραφή που έχει τον ΙΔΙΟ τύπο (Στοκ ή Κανονικό)
+                # Διαγράφει 100% σίγουρα την παλιά εγγραφή
                 st.session_state.production_batch_items = [
                     i for i in st.session_state.production_batch_items 
-                    if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'] and i.get("Στοκ") == ("ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ") and i.get("Παλιό_LOT") == conf.get("old_lot", "-"))
+                    if not (str(i.get("Πελάτης")).strip() == str(conf['cust']).strip() and 
+                            str(i.get("Κοκτέιλ")).strip() == str(conf['cocktail']).strip() and 
+                            str(i.get("Στοκ", "ΟΧΙ")).strip() == target_stock and 
+                            str(i.get("Παλιό_LOT", "-")).strip() == target_lot)
                 ]
+                # Προσθέτει το άθροισμα
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['old_pcs'] + conf['new_pcs'],
-                    "Στοκ": "ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ",
-                    "Παλιό_LOT": conf.get("old_lot", "-"),
+                    "Στοκ": target_stock,
+                    "Παλιό_LOT": target_lot,
                     "Με Κόστος;": conf.get('charge_cost', False)
                 })
                 st.session_state['pending_conflict'] = None
@@ -2364,14 +2374,19 @@ elif page == "📦 Lot Παραγωγής":
                 st.rerun()
                 
             if col_btn2.button(f"🔄 Αντικατάσταση (Τελικό: {conf['new_pcs']} τμχ)"):
+                # Διαγράφει 100% σίγουρα την παλιά εγγραφή
                 st.session_state.production_batch_items = [
                     i for i in st.session_state.production_batch_items 
-                    if not (i["Πελάτης"] == conf['cust'] and i["Κοκτέιλ"] == conf['cocktail'] and i.get("Στοκ") == ("ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ") and i.get("Παλιό_LOT") == conf.get("old_lot", "-"))
+                    if not (str(i.get("Πελάτης")).strip() == str(conf['cust']).strip() and 
+                            str(i.get("Κοκτέιλ")).strip() == str(conf['cocktail']).strip() and 
+                            str(i.get("Στοκ", "ΟΧΙ")).strip() == target_stock and 
+                            str(i.get("Παλιό_LOT", "-")).strip() == target_lot)
                 ]
+                # Προσθέτει τη νέα ποσότητα
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['new_pcs'],
-                    "Στοκ": "ΝΑΙ" if conf.get("is_stock") else "ΟΧΙ",
-                    "Παλιό_LOT": conf.get("old_lot", "-"),
+                    "Στοκ": target_stock,
+                    "Παλιό_LOT": target_lot,
                     "Με Κόστος;": conf.get('charge_cost', False)
                 })
                 st.session_state['pending_conflict'] = None
@@ -2381,6 +2396,8 @@ elif page == "📦 Lot Παραγωγής":
             if col_btn3.button("❌ Ακύρωση"):
                 st.session_state['pending_conflict'] = None
                 st.rerun()
+            
+            st.divider()
             
             st.divider()
         selected_cocktails = []
