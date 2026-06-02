@@ -4206,10 +4206,41 @@ elif page == "👥 Πελατολόγιο":
                     order_dt = pd.to_datetime(selected_order['created_at'])
                     prod_date_str = order_dt.strftime('%d/%m/%Y')
                     
-                    # Διαβάζουμε και τις νέες στήλες έκπτωσης από τη Supabase (τραβάμε και το LOT!)
+                    # 🚀 ΦΙΛΤΡΟ ΑΣΦΑΛΕΙΑΣ: Διαβάζουμε ποια κοκτέιλ ανήκουν ΠΡΑΓΜΑΤΙΚΑ σε ΑΥΤΗ την παραγγελία
+                    valid_cocktails = []
+                    for line in clean_display_details.split('\n'):
+                        if line.strip().startswith('•') or 'τμχ' in line:
+                            try:
+                                # Κόβει το "• X τμχ " και κρατάει το καθαρό όνομα του κοκτέιλ
+                                c_name_ext = line.replace('•', '').split(' τμχ ')[1].split(' (Εκ των οποίων:')[0].strip()
+                                valid_cocktails.append(c_name_ext)
+                            except:
+                                pass
+
+                    # Τραβάμε τα δεδομένα από τη βάση
+                    res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, prod_time, lot_cocktail").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
+                    
                     if res_prod.data:
-                        # 🚀 Ξεχωρίζουμε τα κοκτέιλ με βάση το LOT τους (Κανονικό vs Στοκ)
-                        df_prod = pd.DataFrame(res_prod.data).drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
+                        import pandas as pd
+                        df_prod = pd.DataFrame(res_prod.data)
+                        
+                        # 🚀 ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Γεμίζουμε τα κενά με 0
+                        df_prod = df_prod.fillna(0)
+                        
+                        # 🚀 ΕΦΑΡΜΟΓΗ ΦΙΛΤΡΟΥ: Κόβουμε ό,τι άσχετο βρήκε από άλλες ώρες/παραγγελίες!
+                        if valid_cocktails:
+                            df_prod = df_prod[df_prod['cocktail_name'].isin(valid_cocktails)]
+                            
+                        # 1. Πετάμε τις πολλαπλές γραμμές των υλικών
+                        df_prod = df_prod.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
+                        
+                        # 2. 🚀 ΟΜΑΔΟΠΟΙΗΣΗ: Ενώνει ίδιες παραγγελίες της ημέρας (ανά Κοκτέιλ και LOT)
+                        df_grouped = df_prod.groupby(["cocktail_name", "lot_cocktail"], as_index=False).agg({
+                            "pieces": "sum",
+                            "free_pieces": "sum",
+                            "discounted_pieces": "sum",
+                            "discount_pct": "max"
+                        })
                         
                         with st.form("apply_gifts_and_discounts_form"):
                             inputs = {}
@@ -4221,17 +4252,16 @@ elif page == "👥 Πελατολόγιο":
                             h3.caption("Τμχ με Έκπτωση")
                             h4.caption("Έκπτωση (%)")
                             
-                            for _, prow in df_prod.iterrows():
+                            for _, prow in df_grouped.iterrows():
                                 c_name = prow['cocktail_name']
                                 lot_c = prow['lot_cocktail']
-                                p_time = prow['prod_time']
                                 t_pcs = int(prow['pieces'])
-                                curr_free = int(prow.get('free_pieces', 0)) if pd.notnull(prow.get('free_pieces', 0)) else 0
-                                curr_s_pcs = int(prow.get('discounted_pieces', 0)) if pd.notnull(prow.get('discounted_pieces', 0)) else 0
-                                curr_s_pct = float(prow.get('discount_pct', 0.0)) if pd.notnull(prow.get('discount_pct', 0.0)) else 0.0
+                                curr_free = int(prow['free_pieces'])
+                                curr_s_pcs = int(prow['discounted_pieces'])
+                                curr_s_pct = float(prow['discount_pct'])
                                 
-                                # 🚀 ΑΣΦΑΛΗ ΚΛΕΙΔΙΑ (Προσθήκη LOT για να μην έχουμε DuplicateElementKey)
-                                safe_key_suffix = f"{c_name}_{lot_c}_{p_time}".replace("/", "_").replace("-", "_").replace(" ", "")
+                                # Ασφαλή κλειδιά
+                                safe_key_suffix = f"{c_name}_{lot_c}".replace("/", "_").replace("-", "_").replace(" ", "")
                                 
                                 c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1])
                                 c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ) <br><span style='font-size:11px; color:gray;'>LOT: {lot_c}</span>", unsafe_allow_html=True)
@@ -4240,8 +4270,7 @@ elif page == "👥 Πελατολόγιο":
                                 s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{safe_key_suffix}", label_visibility="collapsed")
                                 s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{safe_key_suffix}", label_visibility="collapsed")
                                 
-                                # 🚀 Κρατάμε και το LOT στο λεξικό για την αποθήκευση
-                                inputs[(c_name, lot_c, p_time)] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
+                                inputs[(c_name, lot_c)] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
                                 
                             if st.form_submit_button("💾 Εφαρμογή & Επανυπολογισμός Παραγγελίας", type="primary"):
                                 new_total = 0.0
@@ -4252,38 +4281,27 @@ elif page == "👥 Πελατολόγιο":
                                 
                                 with st.spinner("Επανυπολογισμός αξιών..."):
                                     for key, vals in inputs.items():
-                                        c_name, lot_c, p_time = key
+                                        c_name, lot_c = key
                                         t_pcs = vals["t_pcs"]
                                         f_pcs = vals["f_pcs"]
                                         s_pcs = vals["s_pcs"]
                                         s_pct = vals["s_pct"]
                                         
-                                        # Ασφάλεια
                                         if f_pcs + s_pcs > t_pcs:
                                             s_pcs = t_pcs - f_pcs 
                                             
                                         normal_pcs = t_pcs - f_pcs - s_pcs
                                         
-                                        # 🚀 Ενημερώνουμε ΑΚΡΙΒΩΣ αυτό το LOT στη βάση
                                         supabase.table("production_log").update({
                                             "free_pieces": f_pcs,
                                             "discounted_pieces": s_pcs,
                                             "discount_pct": s_pct
-                                        }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("prod_time", p_time).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).execute()
+                                        }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).execute()
                                         
                                         catalog_p = float(recipe_prices.get(c_name, 0.0))
                                         
-                                        # -------------------------------------------------------------
-                                        # 🚀 ΑΣΦΑΛΗΣ & ΣΩΣΤΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΕΚΠΤΩΣΕΩΝ
-                                        # -------------------------------------------------------------
-                                        
-                                        # 1. Βρίσκουμε την τιμή μετά τη γενική έκπτωση του πελάτη
                                         price_after_global = catalog_p * (1 - (cust_discount / 100))
-                                        
-                                        # 2. Αξία κανονικών τεμαχίων
                                         cost_normal = normal_pcs * price_after_global
-                                        
-                                        # 3. Αξία εκπτωτικών τεμαχίων
                                         cost_spec = s_pcs * price_after_global * (1 - (s_pct / 100))
                                         
                                         new_total += (cost_normal + cost_spec)
@@ -4293,7 +4311,6 @@ elif page == "👥 Πελατολόγιο":
                                         if s_pcs > 0:
                                             disc_text += f"📉 {s_pcs}x {c_name} (Έκπτωση {s_pct}% - LOT: {lot_c})\n"
                                             
-                                    # Ενημέρωση Παραγγελίας
                                     final_details = clean_display_details
                                     if gift_text:
                                         final_details += f"\n\n--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---\n{gift_text}"
