@@ -8,7 +8,6 @@ import plotly.express as px
 import imaplib
 import email
 import time
-from supabase import create_client, Client
 import zipfile
 import io
 from fpdf import FPDF
@@ -5006,6 +5005,27 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
             
             now_str = datetime.now().strftime("%d/%m/%Y")
             
+            # 🚀 ΝΕΟ: Ενσωμάτωση Λογότυπου ως Υδατογράφημα (Απευθείας από το link)
+            watermark_url = "https://cabclub.gr/wp-content/uploads/2021/12/logo.png"
+            
+            watermark_css = f"""
+            .container::before {{
+                content: "";
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 70%;
+                height: 70%;
+                background-image: url('{watermark_url}');
+                background-repeat: no-repeat;
+                background-position: center;
+                background-size: contain;
+                opacity: 0.08; /* 👈 Εδώ ρυθμίζεις τη διαφάνεια (0.08 = 8%) */
+                z-index: -1;
+            }}
+            """
+            
             # 🚀 Ελέγχουμε αν υπάρχει ΕΣΤΩ ΚΑΙ ΕΝΑ δώρο/έκπτωση σε όλη την παραγγελία
             has_item_promos = any(row['Δώρα/Εκπτώσεις'] != "" for row in sim_export_data)
             
@@ -5017,7 +5037,12 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 <title>Εμπορική Πρόταση - {st.session_state.sim_customer_name}</title>
                 <style>
                     body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; }}
-                    .container {{ max-width: 800px; margin: auto; padding: 30px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
+                    /* Προσθέσαμε position: relative και z-index στο container για να μπει το υδατογράφημα από πίσω */
+                    .container {{ max-width: 800px; margin: auto; padding: 30px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); position: relative; z-index: 1; }}
+                    
+                    /* Εδώ μπαίνει αυτόματα ο κώδικας της εικόνας */
+                    {watermark_css}
+                    
                     .header {{ text-align: center; border-bottom: 3px solid #1a3a5f; padding-bottom: 15px; margin-bottom: 30px; }}
                     .header h1 {{ color: #1a3a5f; margin: 0; text-transform: uppercase; letter-spacing: 2px; }}
                     .info-box {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 30px; border-left: 5px solid #1a3a5f; }}
