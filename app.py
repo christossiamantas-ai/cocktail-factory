@@ -1543,7 +1543,7 @@ elif page == "🔍 Ανάλυση":
                 st.warning("Δεν βρέθηκαν δεδομένα ιστορικού παραγωγής (df_raw) για ανάλυση.")
 
 
-# --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH MULTISELECT & NET PROFIT) ---
+# --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH MULTISELECT, NET PROFIT & HTML EXPORT) ---
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
     st.write("Συγκρίνετε τη στρατηγική Δώρων έναντι της Έκπτωσης % και δείτε την ανάλυση κερδοφορίας.")
@@ -1627,7 +1627,7 @@ elif page == "📊 Εμπορική Πολιτική":
                 sB_markup = (sB_profit / sB_cost * 100) if sB_cost > 0 else 0
                 sB_loss = (normal_profit_per_unit * sB_total_units) - sB_profit if sB_total_units > 0 else 0
 
-                # --- 🚀 ΝΕΟ: Υπολογισμός Net Κέρδους ανά τμχ (Με Χρώματα) ---
+                # --- 🚀 Υπολογισμός Net Κέρδους ανά τμχ (Με Χρώματα) ---
                 net_profit_a = (sA_profit / sA_total_units) if sA_total_units > 0 else 0
                 net_profit_b = (sB_profit / sB_total_units) if sB_total_units > 0 else 0
                 
@@ -1638,76 +1638,72 @@ elif page == "📊 Εμπορική Πολιτική":
                     winner_text = "ΣΕΝΑΡΙΟ Α" if sA_profit > sB_profit else "ΣΕΝΑΡΙΟ Β"
                     diff_val = abs(sA_profit - sB_profit)
 
-                    # 4. Σχεδιασμός Πίνακα (HTML format) με τις νέες γραμμές
+                    # 4. Σχεδιασμός Πίνακα (HTML format) - Τραβηγμένο τέρμα αριστερά για το Streamlit
                     html_table = """
-                    <div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #444; margin-bottom: 15px;">
-                        <table style="width: 100%; border-collapse: collapse; color: white; font-family: sans-serif;">
-                            <tr style="background-color: #1a3a5f;">
-                                <th style="padding: 12px; text-align: left; border: 1px solid #444;">ΠΕΡΙΓΡΑΦΗ ΑΝΑΛΥΣΗΣ</th>
-                                <th style="padding: 12px; text-align: center; border: 1px solid #444;">ΣΕΝΑΡΙΟ Α</th>
-                                <th style="padding: 12px; text-align: center; border: 1px solid #444;">ΣΕΝΑΡΙΟ Β</th>
-                            </tr>
-                            <tr style="background-color: #333; font-weight: bold;">
-                                <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΟΙΚΟΝΟΜΙΚΑ ΜΕΓΕΘΗ</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #444;">{15}</td>
-                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{0:.2f} €</td>
-                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{0:.2f} €</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #444;">Effective Τιμή/Τμχ</td>
-                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{1:.2f} €</td>
-                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{2:.2f} €</td>
-                            </tr>
-                            
-                            <!-- ΝΕΕΣ ΓΡΑΜΜΕΣ ΓΙΑ NET ΚΕΡΔΟΣ ΑΝΑ ΤΜΧ -->
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #444;">Net Κέρδος / τμχ (Αρχικό)</td>
-                                <td style="text-align:center; color: #ddd; border: 1px solid #444;">{16:.2f} €</td>
-                                <td style="text-align:center; color: #ddd; border: 1px solid #444;">{16:.2f} €</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #444;">Net Κέρδος / τμχ (Τελικό)</td>
-                                <td style="text-align:center; color: {19}; font-weight: bold; border: 1px solid #444;">{17:.2f} €</td>
-                                <td style="text-align:center; color: {20}; font-weight: bold; border: 1px solid #444;">{18:.2f} €</td>
-                            </tr>
-                            <!-- ΤΕΛΟΣ ΝΕΩΝ ΓΡΑΜΜΩΝ -->
-                            
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #444;">Συνολικά Έσοδα</td>
-                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{3:.2f} €</td>
-                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{4:.2f} €</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #444;">Συνολικό Κόστος</td>
-                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{5:.2f} €</td>
-                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{6:.2f} €</td>
-                            </tr>
-                            <tr style="font-weight: bold; background-color: #222;">
-                                <td style="padding: 10px; border: 1px solid #444;">ΚΑΘΑΡΟ ΚΕΡΔΟΣ</td>
-                                <td style="text-align:center; color: #4caf50; font-size: 1.2em; border: 1px solid #444;">{7:.2f} €</td>
-                                <td style="text-align:center; color: #2196f3; font-size: 1.2em; border: 1px solid #444;">{8:.2f} €</td>
-                            </tr>
-                            <tr style="background-color: #333; font-weight: bold;">
-                                <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΔΕΙΚΤΕΣ</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #444;">Margin %</td>
-                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{9:.1f}%</td>
-                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{10:.1f}%</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 10px; border: 1px solid #444;">Markup %</td>
-                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{11:.1f}%</td>
-                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{12:.1f}%</td>
-                            </tr>
-                        </table>
-                        <div style="margin-top: 20px; padding: 15px; background-color: #1b5e20; border-radius: 8px; text-align: center; color: white;">
-                            <h2 style="margin:0;">🏆 ΝΙΚΗΤΗΣ: {13}</h2>
-                            <p style="margin:5px 0 0 0;">Επιπλέον κέρδος: <b>{14:.2f} €</b></p>
-                        </div>
-                    </div>
+<div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #444; margin-bottom: 15px;">
+    <table style="width: 100%; border-collapse: collapse; color: white; font-family: sans-serif;">
+        <tr style="background-color: #1a3a5f;">
+            <th style="padding: 12px; text-align: left; border: 1px solid #444;">ΠΕΡΙΓΡΑΦΗ ΑΝΑΛΥΣΗΣ</th>
+            <th style="padding: 12px; text-align: center; border: 1px solid #444;">ΣΕΝΑΡΙΟ Α</th>
+            <th style="padding: 12px; text-align: center; border: 1px solid #444;">ΣΕΝΑΡΙΟ Β</th>
+        </tr>
+        <tr style="background-color: #333; font-weight: bold;">
+            <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΟΙΚΟΝΟΜΙΚΑ ΜΕΓΕΘΗ</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #444;">{15}</td>
+            <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{0:.2f} €</td>
+            <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{0:.2f} €</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #444;">Effective Τιμή/Τμχ</td>
+            <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{1:.2f} €</td>
+            <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{2:.2f} €</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #444;">Net Κέρδος / τμχ (Αρχικό)</td>
+            <td style="text-align:center; color: #ddd; border: 1px solid #444;">{16:.2f} €</td>
+            <td style="text-align:center; color: #ddd; border: 1px solid #444;">{16:.2f} €</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #444;">Net Κέρδος / τμχ (Τελικό)</td>
+            <td style="text-align:center; color: {19}; font-weight: bold; border: 1px solid #444;">{17:.2f} €</td>
+            <td style="text-align:center; color: {20}; font-weight: bold; border: 1px solid #444;">{18:.2f} €</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #444;">Συνολικά Έσοδα</td>
+            <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{3:.2f} €</td>
+            <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{4:.2f} €</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #444;">Συνολικό Κόστος</td>
+            <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{5:.2f} €</td>
+            <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{6:.2f} €</td>
+        </tr>
+        <tr style="font-weight: bold; background-color: #222;">
+            <td style="padding: 10px; border: 1px solid #444;">ΚΑΘΑΡΟ ΚΕΡΔΟΣ</td>
+            <td style="text-align:center; color: #4caf50; font-size: 1.2em; border: 1px solid #444;">{7:.2f} €</td>
+            <td style="text-align:center; color: #2196f3; font-size: 1.2em; border: 1px solid #444;">{8:.2f} €</td>
+        </tr>
+        <tr style="background-color: #333; font-weight: bold;">
+            <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΔΕΙΚΤΕΣ</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #444;">Margin %</td>
+            <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{9:.1f}%</td>
+            <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{10:.1f}%</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #444;">Markup %</td>
+            <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{11:.1f}%</td>
+            <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{12:.1f}%</td>
+        </tr>
+    </table>
+    <div style="margin-top: 20px; padding: 15px; background-color: #1b5e20; border-radius: 8px; text-align: center; color: white;">
+        <h2 style="margin:0;">🏆 ΝΙΚΗΤΗΣ: {13}</h2>
+        <p style="margin:5px 0 0 0;">Επιπλέον κέρδος: <b>{14:.2f} €</b></p>
+    </div>
+</div>
                     """.format(
                         active_base_price, sA_effective, sB_effective, 
                         sA_revenue, sB_revenue, sA_cost, sB_cost, 
@@ -1718,8 +1714,12 @@ elif page == "📊 Εμπορική Πολιτική":
                     
                     st.markdown(html_table, unsafe_allow_html=True)
 
-                    # 5. ΥΠΕΡ-ΑΝΑΛΥΤΙΚΟ ΕΠΑΓΓΕΛΜΑΤΙΚΟ REPORT (Μέσα στη λούπα με δυναμικό κουμπί)
-                    now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+                    # 5. ΥΠΕΡ-ΑΝΑΛΥΤΙΚΟ ΕΠΑΓΓΕΛΜΑΤΙΚΟ REPORT (ΕΞΑΓΩΓΗ ΣΕ HTML)
+                    try:
+                        now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+                    except:
+                        now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+                        
                     sA_indirect_disc = ((1 - sA_effective/active_base_price)*100) if active_base_price > 0 else 0
                     
                     full_audit_data = [
@@ -1749,27 +1749,93 @@ elif page == "📊 Εμπορική Πολιτική":
                         {"ΚΑΤΗΓΟΡΙΑ": "5. KPIs & PERFORMANCE", "ΣΤΟΙΧΕΙΟ": "Ποσοστό Έκπτωσης (Direct/Indirect)", "ΣΕΝΑΡΙΟ Α": f"{sA_indirect_disc:.1f}%", "ΣΕΝΑΡΙΟ Β": f"{sB_discount:.1f}%"},
                         {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
                         
-                        # ΝΕΑ ΔΕΔΟΜΕΝΑ ΣΤΟ CSV ΓΙΑ ΤΟ NET ΚΕΡΔΟΣ
                         {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "Net Κέρδος ανά τμχ (Αρχικό)", "ΣΕΝΑΡΙΟ Α": f"{normal_profit_per_unit:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{normal_profit_per_unit:.2f} €"},
                         {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "Net Κέρδος ανά τμχ (Τελικό)", "ΣΕΝΑΡΙΟ Α": f"{net_profit_a:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{net_profit_b:.2f} €"},
-                        
                         {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "Διαφορά Κέρδους Συμφωνίας", "ΣΕΝΑΡΙΟ Α": f"{diff_val:.2f} €" if sA_profit > sB_profit else "-", "ΣΕΝΑΡΙΟ Β": f"{diff_val:.2f} €" if sB_profit > sA_profit else "-"},
                         {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "ΚΑΤΑΣΤΑΣΗ ΕΓΚΡΙΣΗΣ", "ΣΕΝΑΡΙΟ Α": "ΕΠΙΛΟΓΗ" if sA_profit > sB_profit else "-", "ΣΕΝΑΡΙΟ Β": "ΕΠΙΛΟΓΗ" if sB_profit > sA_profit else "-"}
                     ]
                     
-                    df_rep = pd.DataFrame(full_audit_data)
-                    csv = df_rep.to_csv(index=False, sep=';', encoding='utf-8-sig')
+                    # --- Δημιουργία HTML Πίνακα από τα Δεδομένα ---
+                    html_rows = ""
+                    for row in full_audit_data:
+                        if row["ΣΤΟΙΧΕΙΟ"] == "":
+                            html_rows += "<tr style='background-color: #f8f9fa;'><td colspan='4'>&nbsp;</td></tr>"
+                        else:
+                            html_rows += f"""
+                            <tr>
+                                <td><strong>{row['ΚΑΤΗΓΟΡΙΑ']}</strong></td>
+                                <td>{row['ΣΤΟΙΧΕΙΟ']}</td>
+                                <td style='text-align: center; font-weight: bold;'>{row['ΣΕΝΑΡΙΟ Α']}</td>
+                                <td style='text-align: center; font-weight: bold;'>{row['ΣΕΝΑΡΙΟ Β']}</td>
+                            </tr>
+                            """
+
+                    report_html = f"""
+                    <!DOCTYPE html>
+                    <html lang="el">
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>Audit Report - {choice}</title>
+                        <style>
+                            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; padding: 30px; background-color: #f4f6f8; }}
+                            .container {{ max-width: 900px; margin: auto; background-color: white; border: 1px solid #ddd; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }}
+                            .header {{ text-align: center; border-bottom: 3px solid #1a3a5f; padding-bottom: 20px; margin-bottom: 30px; }}
+                            .header h1 {{ color: #1a3a5f; margin: 0; font-size: 28px; letter-spacing: 1px; }}
+                            .header h2 {{ color: #555; font-size: 16px; font-weight: 400; margin-top: 5px; text-transform: uppercase; }}
+                            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
+                            th, td {{ border: 1px solid #e0e0e0; padding: 12px; text-align: left; }}
+                            th {{ background-color: #1a3a5f; color: white; text-align: center; font-weight: 600; text-transform: uppercase; }}
+                            tr:nth-child(even) {{ background-color: #fcfcfc; }}
+                            .winner-box {{ background-color: #e8f5e9; border-left: 5px solid #4caf50; padding: 15px; margin-top: 30px; border-radius: 4px; }}
+                            .footer {{ text-align: center; margin-top: 40px; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 15px; }}
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <h1>CABCLUB COCKTAILS</h1>
+                                <h2>AUDIT REPORT ΕΜΠΟΡΙΚΗΣ ΠΟΛΙΤΙΚΗΣ: {choice}</h2>
+                            </div>
+                            
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ΚΑΤΗΓΟΡΙΑ</th>
+                                        <th>ΣΤΟΙΧΕΙΟ / ΠΕΡΙΓΡΑΦΗ</th>
+                                        <th>ΣΕΝΑΡΙΟ Α (ΔΩΡΑ)</th>
+                                        <th>ΣΕΝΑΡΙΟ Β (ΕΚΠΤΩΣΗ)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {html_rows}
+                                </tbody>
+                            </table>
+                            
+                            <div class="winner-box">
+                                <h3 style="color: #2e7d32; margin-top: 0;">🏆 Τελικό Συμπέρασμα: Επικρατεί το {winner_text}</h3>
+                                <p style="margin-bottom: 0;">Βάσει της ανάλυσης, η συγκεκριμένη επιλογή αποφέρει επιπλέον καθαρό κέρδος <b>{diff_val:.2f} €</b> για την εταιρεία.</p>
+                            </div>
+
+                            <div class="footer">
+                                Το έγγραφο δημιουργήθηκε αυτόματα από το σύστημα διαχείρισης DC CABCLUB στις {now_str}.
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                    """
                     
-                    st.download_button(
-                        label=f"💾 Λήψη Φακέλου Ανάλυσης: {choice}", 
-                        data=csv, 
-                        file_name=f"Full_Audit_Report_{choice.replace(' ', '_')}.csv",
-                        mime="text/csv",
-                        key=f"dl_audit_{choice}" # 👈 Δυναμικό Key για να μην σκάει το Streamlit όταν βγάζει πολλά κουμπιά
-                    )
-                    st.markdown("<br><br>", unsafe_allow_html=True) # Κενό μεταξύ των κοκτέιλ
+                    col_btn1, col_btn2 = st.columns([1, 2])
+                    with col_btn1:
+                        st.download_button(
+                            label=f"📥 Λήψη Φακέλου (HTML): {choice}", 
+                            data=report_html, 
+                            file_name=f"Audit_Report_{choice.replace(' ', '_')}.html",
+                            mime="text/html",
+                            key=f"dl_audit_{choice}"
+                        )
+                    st.markdown("<br><br>", unsafe_allow_html=True)
                     
-            # 6. ΕΠΕΞΗΓΗΣΗ ΟΙΚΟΝΟΜΙΚΩΝ ΟΡΩΝ (Εκτός λούπας, εμφανίζεται μια φορά στο τέλος)
+            # 6. ΕΠΕΞΗΓΗΣΗ ΟΙΚΟΝΟΜΙΚΩΝ ΟΡΩΝ
             st.divider()
             with st.expander("ℹ️ Ερμηνεία Οικονομικών Όρων & Δεικτών"):
                 st.info("""
