@@ -144,30 +144,52 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
         for order in financial_data:
             total_euro += float(order.get('total_amount', 0))
 
-    # --- 1. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΣΥΓΚΕΝΤΡΩΤΙΚΕΣ ΑΓΟΡΕΣ) ---
+    # --- 1. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΣΥΓΚΕΝΤΡΩΤΙΚΕΣ ΑΓΟΡΕΣ & LOT) ---
     pdf.set_font(f_name, size=12)
     pdf.set_fill_color(230, 230, 230)
-    pdf.cell(0, 10, "Συνολικές Αγορές ανά Προϊόν (Τεμάχια)", ln=1, fill=True)
+    pdf.cell(0, 10, "Συνολικές Αγορές & Ιχνηλασιμότητα (LOT)", ln=1, fill=True)
     pdf.set_font(f_name, size=10)
     
     total_pieces = 0
     if production_data:
-        # Ομαδοποίηση των τεμαχίων ανά Cocktail
-        cocktail_totals = {}
+        # 🚀 ΝΕΑ ΛΟΓΙΚΗ: Ομαδοποίηση και ανά Κοκτέιλ ΚΑΙ ανά LOT
+        cocktail_data = {}
         for row in production_data:
             name = str(row.get('cocktail_name', 'Άγνωστο'))
             pcs = int(row.get('pieces', 0))
-            cocktail_totals[name] = cocktail_totals.get(name, 0) + pcs
+            lot = str(row.get('lot_cocktail', '-'))
+            if not lot or lot == 'nan': lot = '-'
+
+            if name not in cocktail_data:
+                cocktail_data[name] = {"total": 0, "lots": {}}
+
+            cocktail_data[name]["total"] += pcs
+            cocktail_data[name]["lots"][lot] = cocktail_data[name]["lots"].get(lot, 0) + pcs
             total_pieces += pcs
 
         # Επικεφαλίδες Πίνακα
-        pdf.cell(145, 10, "Προϊόν (Cocktail)", 1)
+        pdf.cell(145, 10, "Προϊόν (Cocktail) & Κωδικοί Παρτίδας (LOT)", 1)
         pdf.cell(45, 10, "Συνολικά Τεμάχια", 1, 1, 'C')
         
         # Εκτύπωση των συγκεντρωτικών (από το δημοφιλέστερο στο λιγότερο)
-        for cocktail, pcs in sorted(cocktail_totals.items(), key=lambda x: x[1], reverse=True):
-            pdf.cell(145, 10, cocktail, 1)
-            pdf.cell(45, 10, f"{pcs} τμχ", 1, 1, 'C')
+        for cocktail, data in sorted(cocktail_data.items(), key=lambda x: x[1]['total'], reverse=True):
+            # 1. Κύρια Γραμμή: Όνομα Κοκτέιλ και Συνολικά Τεμάχια
+            pdf.set_font(f_name, size=10)
+            pdf.cell(145, 8, f" {cocktail}", border='LTR', ln=0)
+            pdf.cell(45, 8, f"{data['total']} τμχ", border='LTR', ln=1, align='C')
+
+            # 2. Υπο-γραμμές: Ανάλυση των LOT με μικρότερα, γκρι γράμματα
+            pdf.set_font(f_name, size=8)
+            pdf.set_text_color(100, 100, 100) # Γκρι χρώμα για τα LOT
+            
+            lot_items = list(data['lots'].items())
+            for i, (lot_name, lot_pcs) in enumerate(lot_items):
+                # Κλείνει το κάτω περίγραμμα του πίνακα μόνο όταν είναι το τελευταίο LOT του κοκτέιλ
+                border_style = 'LBR' if i == len(lot_items) - 1 else 'LR' 
+                pdf.cell(145, 5, f"      ↳ L.O.T: {lot_name}  ({lot_pcs} τμχ)", border=border_style, ln=0)
+                pdf.cell(45, 5, "", border=border_style, ln=1, align='C') # Αφήνει κενό το κουτάκι δεξιά για να φαίνεται καθαρά
+            
+            pdf.set_text_color(0, 0, 0) # Επαναφορά σε μαύρο χρώμα για το επόμενο κοκτέιλ
     else:
         pdf.cell(0, 10, "Δεν βρέθηκε ιστορικό παραγωγής.", ln=1)
 
@@ -179,27 +201,6 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΑ ΤΕΜΑΧΙΑ: {total_pieces} τμχ", ln=1, align='R')
     
     return pdf.output()
-
-# --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
-url: str = st.secrets["supabase"]["url"]
-key: str = st.secrets["supabase"]["key"]
-supabase: Client = create_client(url, key)
-
-# --- ΣΥΣΤΗΜΑ LIVE STATUS ---
-def update_live_status(user_name):
-    with open("app_status.txt", "w", encoding="utf-8") as f:
-        f.write(f"{user_name}|{time.time()}")
-
-def get_who_is_online():
-    if os.path.exists("app_status.txt"):
-        with open("app_status.txt", "r", encoding="utf-8") as f:
-            data = f.read().split("|")
-            if len(data) == 2:
-                user, last_time = data[0], float(data[1])
-                if time.time() - last_time < 60:
-                    return user
-    return None
-
 # --- Σύστημα Password ---
 def check_password():
     def password_entered():
