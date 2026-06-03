@@ -4811,11 +4811,10 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
         rec = supabase.table("recipes").select("id, name, catalog_price").execute().data
         ing = supabase.table("ingredients").select("name, price, volume").execute().data
         items = supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute().data
-        cust = supabase.table("customers").select("name, discount").execute().data
-        return rec, ing, items, cust
+        return rec, ing, items
 
     with st.spinner("Φόρτωση δεδομένων κόστους..."):
-        rec_data, ing_data, items_data, cust_data = load_simulation_data()
+        rec_data, ing_data, items_data = load_simulation_data()
 
     if rec_data:
         df_recipes = pd.DataFrame(rec_data)
@@ -4836,17 +4835,16 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
             
         name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], FIXED_COST) for _, r in df_recipes.iterrows()}
 
-        df_customers = pd.DataFrame(cust_data) if cust_data else pd.DataFrame(columns=['name', 'discount'])
-        customer_list = ["-- Νέος Πελάτης (Χειροκίνητα) --"] + sorted(df_customers['name'].dropna().tolist())
-        cust_discount_map = dict(zip(df_customers['name'], pd.to_numeric(df_customers.get('discount', 0), errors='coerce').fillna(0)))
-
         # --- 2. INITIALIZE SESSION STATE ---
         if 'sim_cart' not in st.session_state:
             st.session_state.sim_cart = []
         if 'sim_global_disc' not in st.session_state:
             st.session_state.sim_global_disc = 0.0
-        if 'sim_customer' not in st.session_state:
-            st.session_state.sim_customer = "-- Νέος Πελάτης (Χειροκίνητα) --"
+        # 🚀 ΝΕΑ ΠΕΔΙΑ ΓΙΑ ΧΕΙΡΟΚΙΝΗΤΗ ΕΙΣΑΓΩΓΗ ΠΕΛΑΤΗ & ΑΦΜ
+        if 'sim_customer_name' not in st.session_state:
+            st.session_state.sim_customer_name = ""
+        if 'sim_customer_afm' not in st.session_state:
+            st.session_state.sim_customer_afm = ""
 
         # --- 3. ΡΥΘΜΙΣΕΙΣ & ΠΡΟΣΘΗΚΗ ΠΡΟΪΟΝΤΩΝ ---
         st.divider()
@@ -4855,14 +4853,14 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
         with col_c1:
             st.markdown("### 👤 Στοιχεία Πρότασης")
             
-            # Δυναμική αλλαγή πελάτη και έκπτωσης
-            selected_cust = st.selectbox("Πελάτης:", customer_list, index=customer_list.index(st.session_state.sim_customer) if st.session_state.sim_customer in customer_list else 0)
-            
-            if selected_cust != st.session_state.sim_customer:
-                st.session_state.sim_customer = selected_cust
-                if selected_cust != "-- Νέος Πελάτης (Χειροκίνητα) --":
-                    st.session_state.sim_global_disc = float(cust_discount_map.get(selected_cust, 0.0))
-                st.rerun()
+            # 🚀 Ελεύθερη πληκτρολόγηση Πελάτη και ΑΦΜ
+            new_name = st.text_input("Επωνυμία / Όνομα Πελάτη:", value=st.session_state.sim_customer_name, placeholder="π.χ. CABCLUB BAR")
+            if new_name != st.session_state.sim_customer_name:
+                st.session_state.sim_customer_name = new_name
+                
+            new_afm = st.text_input("ΑΦΜ Πελάτη (Προαιρετικό):", value=st.session_state.sim_customer_afm, placeholder="π.χ. 999999999")
+            if new_afm != st.session_state.sim_customer_afm:
+                st.session_state.sim_customer_afm = new_afm
 
             new_global_disc = st.number_input("Γενική Έκπτωση (%) Στο Σενάριο:", min_value=0.0, max_value=100.0, value=float(st.session_state.sim_global_disc), step=1.0)
             if new_global_disc != st.session_state.sim_global_disc:
@@ -4885,7 +4883,7 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                         st.error("⚠️ Τα δώρα και τα εκπτωτικά τεμάχια δεν μπορούν να ξεπερνούν το συνολικό αριθμό!")
                     else:
                         st.session_state.sim_cart.append({
-                            "id": str(datetime.now().timestamp()), # Μοναδικό ID
+                            "id": str(datetime.now().timestamp()),
                             "cocktail": sim_cocktail,
                             "t_pcs": t_pcs,
                             "f_pcs": f_pcs,
@@ -4915,7 +4913,7 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                         new_s_pct = st.number_input("Extra %", min_value=0.0, max_value=100.0, value=float(item['s_pct']), key=f"pct_{item['id']}")
                     
                     with e_col5:
-                        st.write("") # Κενό για ευθυγράμμιση
+                        st.write("") 
                         st.write("")
                         if st.button("💾 Αποθήκευση", key=f"save_{item['id']}", use_container_width=True):
                             if new_f_pcs + new_s_pcs > new_t_pcs:
@@ -4941,9 +4939,9 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
             
             total_sim_rev = 0.0
             total_sim_cost = 0.0
-            total_list_value = 0.0 # Για να δούμε πόσο θα κόστιζαν χωρίς εκπτώσεις
+            total_list_value = 0.0 
             
-            sim_export_data = [] # Δεδομένα για το PDF
+            sim_export_data = [] 
             
             for item in st.session_state.sim_cart:
                 c_name = item["cocktail"]
@@ -4956,7 +4954,6 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 cat_price = recipe_prices.get(c_name, 0.0)
                 unit_cost = name_to_cost.get(c_name, FIXED_COST)
                 
-                # Διαδοχικά Μαθηματικά
                 price_after_global = cat_price * (1 - (st.session_state.sim_global_disc / 100))
                 rev_norm = normal_pcs * price_after_global
                 rev_spec = s_pcs * price_after_global * (1 - (s_pct / 100))
@@ -4966,22 +4963,30 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 
                 total_sim_rev += item_rev
                 total_sim_cost += item_cost
-                total_list_value += (t_pcs * cat_price) # Αξία καταλόγου χωρίς καμία έκπτωση
+                total_list_value += (t_pcs * cat_price) 
+                
+                # 🚀 Δημιουργία κειμένου ΜΟΝΟ αν υπάρχουν εκπτώσεις
+                promo_text_parts = []
+                if f_pcs > 0:
+                    promo_text_parts.append(f"{f_pcs} Δώρα")
+                if s_pcs > 0:
+                    promo_text_parts.append(f"{s_pcs} με -{s_pct}%")
+                promo_text = " | ".join(promo_text_parts) if promo_text_parts else ""
                 
                 sim_export_data.append({
                     "Cocktail": c_name,
                     "Τεμάχια": t_pcs,
-                    "Δώρα/Εκπτώσεις": f"{f_pcs} Δώρα | {s_pcs} με -{s_pct}%",
+                    "Δώρα/Εκπτώσεις": promo_text,
                     "Αρχική Αξία": t_pcs * cat_price,
                     "Τελική Χρέωση": item_rev
                 })
 
             total_sim_profit = total_sim_rev - total_sim_cost
             sim_margin = (total_sim_profit / total_sim_rev * 100) if total_sim_rev > 0 else 0
-            customer_savings = total_list_value - total_sim_rev # Το "Δώρο" στον πελάτη
+            customer_savings = total_list_value - total_sim_rev 
             
             sm1, sm2, sm3, sm4 = st.columns(4)
-            sm1.metric("Εκτιμώμενος Τζίρος", f"{total_sim_rev:,.2f} €", delta=f"-{customer_savings:,.2f}€ όφελος πελάτη", delta_color="normal")
+            sm1.metric("Εκτιμώμενος Τζίρος", f"{total_sim_rev:,.2f} €", delta=f"-{customer_savings:,.2f}€ όφελος πελάτη" if customer_savings > 0 else None, delta_color="normal")
             sm2.metric("Συνολικό Κόστος", f"{total_sim_cost:,.2f} €")
             
             if sim_margin >= 40:
@@ -4997,16 +5002,19 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
             # --- 6. ΕΚΤΥΠΩΣΗ ΕΠΑΓΓΕΛΜΑΤΙΚΗΣ ΠΡΟΤΑΣΗΣ ---
             st.divider()
             st.markdown("### 🖨️ Εξαγωγή Εμπορικής Πρότασης")
-            st.write("Δημιουργήστε ένα επαγγελματικό έγγραφο για να το παρουσιάσετε στον πελάτη. Στο έγγραφο φαίνεται στρατηγικά το **Συνολικό του Όφελος** για ψυχολογικούς λόγους πώλησης.")
+            st.write("Δημιουργήστε ένα επαγγελματικό έγγραφο για να το παρουσιάσετε στον πελάτη. Τα δώρα και οι εκπτώσεις (αν υπάρχουν) αναδεικνύονται στρατηγικά.")
             
             now_str = datetime.now().strftime("%d/%m/%Y")
+            
+            # 🚀 Ελέγχουμε αν υπάρχει ΕΣΤΩ ΚΑΙ ΕΝΑ δώρο/έκπτωση σε όλη την παραγγελία
+            has_item_promos = any(row['Δώρα/Εκπτώσεις'] != "" for row in sim_export_data)
             
             html_proposal = f"""
             <!DOCTYPE html>
             <html lang="el">
             <head>
                 <meta charset="UTF-8">
-                <title>Εμπορική Πρόταση - {st.session_state.sim_customer}</title>
+                <title>Εμπορική Πρόταση - {st.session_state.sim_customer_name}</title>
                 <style>
                     body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; }}
                     .container {{ max-width: 800px; margin: auto; padding: 30px; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
@@ -5029,13 +5037,14 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 <div class="container">
                     <div class="header">
                         <h1>ΕΜΠΟΡΙΚΗ ΠΡΟΤΑΣΗ ΣΥΝΕΡΓΑΣΙΑΣ</h1>
-                        <p>DC CABCLUB PREMIUM COCKTAILS</p>
+                        <p>CABCLUB COCKTAIL</p>
                     </div>
                     
                     <div class="info-box">
-                        <p><strong>Προς:</strong> {st.session_state.sim_customer}</p>
+                        <p><strong>Προς:</strong> {st.session_state.sim_customer_name}</p>
+                        {f"<p><strong>ΑΦΜ:</strong> {st.session_state.sim_customer_afm}</p>" if st.session_state.sim_customer_afm else ""}
                         <p><strong>Ημερομηνία:</strong> {now_str}</p>
-                        <p><strong>Βασική Έκπτωση Συνεργασίας:</strong> {st.session_state.sim_global_disc}%</p>
+                        {f"<p><strong>Βασική Έκπτωση Συνεργασίας:</strong> {st.session_state.sim_global_disc}%</p>" if st.session_state.sim_global_disc > 0 else ""}
                     </div>
                     
                     <table>
@@ -5043,7 +5052,7 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                             <tr>
                                 <th>Προϊόν</th>
                                 <th>Συνολικά Τεμάχια</th>
-                                <th>Ειδικές Προσφορές</th>
+                                {"<th>Ειδικές Προσφορές</th>" if has_item_promos else ""}
                                 <th style="text-align: right;">Τελική Αξία Γραμμής</th>
                             </tr>
                         </thead>
@@ -5055,7 +5064,7 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                             <tr>
                                 <td><strong>{row['Cocktail']}</strong></td>
                                 <td>{row['Τεμάχια']} τμχ</td>
-                                <td style="color: #d32f2f; font-size: 0.9em;">{row['Δώρα/Εκπτώσεις']}</td>
+                                {f'<td style="color: #d32f2f; font-size: 0.9em;">{row["Δώρα/Εκπτώσεις"]}</td>' if has_item_promos else ''}
                                 <td style="text-align: right; font-weight: bold;">{row['Τελική Χρέωση']:.2f} €</td>
                             </tr>
                 """
@@ -5066,6 +5075,11 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                     
                     <div class="totals">
                         <table>
+            """
+            
+            # 🚀 Εμφανίζουμε το "Όφελος Πελάτη" ΜΟΝΟ αν κερδίζει κάτι!
+            if customer_savings > 0:
+                html_proposal += f"""
                             <tr>
                                 <th>Αρχική Αξία Καταλόγου:</th>
                                 <td style="text-align: right; text-decoration: line-through; color: #777;">{total_list_value:.2f} €</td>
@@ -5074,6 +5088,9 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                                 <th>Συνολικό Όφελος / Έκπτωση:</th>
                                 <td style="text-align: right;">- {customer_savings:.2f} €</td>
                             </tr>
+                """
+                
+            html_proposal += f"""
                             <tr class="final-row">
                                 <th style="color: white;">ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ ΣΥΝΟΛΟ:</th>
                                 <td style="text-align: right; color: white;">{total_sim_rev:.2f} €</td>
@@ -5091,10 +5108,12 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
             </html>
             """
             
+            safe_filename = st.session_state.sim_customer_name.replace(" ", "_") if st.session_state.sim_customer_name else "New_Customer"
+            
             st.download_button(
                 label="📥 Κατέβασμα Εμπορικής Πρότασης (Ανοίξτε το & τυπώστε σε PDF)",
                 data=html_proposal,
-                file_name=f"Quotation_{st.session_state.sim_customer}_{now_str.replace('/','-')}.html",
+                file_name=f"Quotation_{safe_filename}_{now_str.replace('/','-')}.html",
                 mime="text/html",
                 type="primary"
             )
