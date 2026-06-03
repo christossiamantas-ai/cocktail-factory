@@ -1519,7 +1519,7 @@ elif page == "🔍 Ανάλυση":
                                             "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
                                             "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
                                             "Αναλογία (%)": "{:.1f}%"
-                                        }), # Αν έχεις το matplotlib βάζεις το .background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues')
+                                        }).background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues'),
                                         use_container_width=True, hide_index=True
                                     )
                                 with colB:
