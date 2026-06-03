@@ -4521,6 +4521,9 @@ elif page == "👥 Πελατολόγιο":
                                         .profit-pos {{ color: #2e7d32; font-weight: bold; }}
                                         .profit-neg {{ color: #d32f2f; font-weight: bold; }}
                                         .total-row {{ background-color: #1a3a5f; color: white; font-weight: bold; font-size: 14px; }}
+                                        /* 🚀 ΝΕΑ ΣΤΥΛ ΓΙΑ ΤΟ ΣΤΟΚ */
+                                        .stock-row {{ background-color: #fff4e5 !important; }}
+                                        .stock-badge {{ font-size: 10px; font-weight: bold; background-color: #ff9800; color: white; padding: 2px 5px; border-radius: 4px; margin-left: 5px; vertical-align: middle; }}
                                     </style>
                                 </head>
                                 <body>
@@ -4563,10 +4566,17 @@ elif page == "👥 Πελατολόγιο":
                                             for _, row in day_sales.iterrows():
                                                 c_name = row['cocktail_name']
                                                 
-                                                # 🚀 ΝΕΟ: Τραβάμε το LOT και το βάζουμε κάτω από το όνομα του κοκτέιλ
+                                                # 🚀 ΕΛΕΓΧΟΣ ΑΝ ΕΙΝΑΙ ΑΠΟ ΣΤΟΚ
+                                                is_stock = "Έτοιμο Προϊόν" in str(row.get('ingredient_name', ''))
+                                                
                                                 lot_c = str(row.get('lot_cocktail', '-'))
                                                 if lot_c == 'nan' or not lot_c: lot_c = '-'
-                                                display_name = f"{c_name}<br><span style='font-size:11px; color:#777;'>↳ LOT: {lot_c}</span>"
+                                                
+                                                # Δημιουργία Ταμπελίτσας Στοκ αν ισχύει
+                                                stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
+                                                row_class = "stock-row" if is_stock else ""
+                                                
+                                                display_name = f"{c_name} {stock_label}<br><span style='font-size:11px; color:#777;'>↳ LOT: {lot_c}</span>"
                                                 
                                                 p_price = row['price_after_global']
                                                 
@@ -4603,8 +4613,9 @@ elif page == "👥 Πελατολόγιο":
                                                     
                                                 prof_class = "profit-pos" if prof >= 0 else "profit-neg"
                                                 
+                                                # 🚀 ΠΡΟΣΘΗΚΗ ΤΟΥ row_class ΣΤΟ <tr>
                                                 html_content += f"""
-                                                <tr>
+                                                <tr class="{row_class}">
                                                     <td class="text-left">{display_name}</td>
                                                     <td>{p_price:.2f} €</td>
                                                     <td>{pcs_str}</td>
