@@ -4190,6 +4190,12 @@ elif page == "👥 Πελατολόγιο":
                                         if not day_sales.empty:
                                             for _, row in day_sales.iterrows():
                                                 c_name = row['cocktail_name']
+                                                
+                                                # 🚀 ΝΕΟ: Τραβάμε το LOT και το βάζουμε κάτω από το όνομα του κοκτέιλ
+                                                lot_c = str(row.get('lot_cocktail', '-'))
+                                                if lot_c == 'nan' or not lot_c: lot_c = '-'
+                                                display_name = f"{c_name}<br><span style='font-size:11px; color:#777;'>↳ LOT: {lot_c}</span>"
+                                                
                                                 p_price = row['price_after_global']
                                                 
                                                 # Τραβάμε ΟΛΕΣ τις κατηγορίες τεμαχίων
@@ -4208,15 +4214,13 @@ elif page == "👥 Πελατολόγιο":
                                                 grand_cost += cost
                                                 grand_prof += prof
                                                 
-                                                # --- 🚀 ΝΕΑ ΑΝΑΛΥΤΙΚΗ ΑΠΕΙΚΟΝΙΣΗ ΤΕΜΑΧΙΩΝ ---
+                                                # --- 🚀 ΑΝΑΛΥΤΙΚΗ ΑΠΕΙΚΟΝΙΣΗ ΤΕΜΑΧΙΩΝ ---
                                                 details_arr = []
                                                 if normal_pcs > 0:
                                                     details_arr.append(f"{normal_pcs} κανονικά")
                                                 if s_pcs > 0:
-                                                    # Βάζουμε μπλε χρώμα στην έξτρα έκπτωση για να ξεχωρίζει
                                                     details_arr.append(f"<span style='color:#1976d2; font-weight:bold;'>{s_pcs} με έκπτ. -{s_pct:g}%</span>")
                                                 if f_pcs > 0:
-                                                    # Κόκκινο στα δώρα
                                                     details_arr.append(f"<span class='free-badge'>{f_pcs} δώρα</span>")
                                                     
                                                 if details_arr:
@@ -4229,7 +4233,7 @@ elif page == "👥 Πελατολόγιο":
                                                 
                                                 html_content += f"""
                                                 <tr>
-                                                    <td class="text-left">{c_name}</td>
+                                                    <td class="text-left">{display_name}</td>
                                                     <td>{p_price:.2f} €</td>
                                                     <td>{pcs_str}</td>
                                                     <td><b>{rev:.2f} €</b></td>
