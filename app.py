@@ -1447,12 +1447,14 @@ elif page == "🔍 Ανάλυση":
         with tab2:
             st.subheader("🍾 Ανάλυση Κατανάλωσης Πρώτων Υλών (Ιστορικά Δεδομένα)")
             
-            # 🚀 ΜΑΓΕΙΑ: Αντί για θεωρητικούς υπολογισμούς, χρησιμοποιούμε το df_raw του Dashboard!
-            try:
-                df_tab2 = df_raw.copy()
-            except NameError:
-                st.error("⚠️ Το df_raw δεν βρέθηκε. Βεβαιωθείτε ότι φορτώνεται σωστά στον κώδικά σας.")
-                df_tab2 = pd.DataFrame()
+            with st.spinner("Φόρτωση ιστορικών δεδομένων..."):
+                try:
+                    # 🚀 Φορτώνουμε τα ιστορικά δεδομένα ΑΚΡΙΒΩΣ όπως τα φορτώνει το Dashboard
+                    res_raw = supabase.table("production_log").select("*").execute()
+                    df_tab2 = pd.DataFrame(res_raw.data)
+                except Exception as e:
+                    df_tab2 = pd.DataFrame()
+                    st.error(f"Σφάλμα φόρτωσης: {e}")
             
             if not df_ing.empty and not df_tab2.empty:
                 ing_names = sorted(df_ing['Name'].dropna().unique().tolist())
@@ -1463,78 +1465,80 @@ elif page == "🔍 Ανάλυση":
                     bottle_vol = float(ing_info['Volume'])
                     price_per_ml = float(ing_info['Τιμή/ml'])
                     
-                    # 🚀 ΦΙΛΤΡΟ: Κρατάμε μόνο την επιλεγμένη πρώτη ύλη από το ΠΡΑΓΜΑΤΙΚΟ ιστορικό (df_raw)
-                    df_ing_history = df_tab2[df_tab2['ingredient_name'] == selected_ing].copy()
-                    
-                    if not df_ing_history.empty:
-                        df_ing_history['total_ml'] = pd.to_numeric(df_ing_history.get('total_ml', 0), errors='coerce').fillna(0)
+                    if 'ingredient_name' in df_tab2.columns:
+                        df_ing_history = df_tab2[df_tab2['ingredient_name'] == selected_ing].copy()
                         
-                        # Προστασία αν λείπει η στήλη pieces
-                        if 'pieces' not in df_ing_history.columns:
-                            df_ing_history['pieces'] = 0
-                        else:
-                            df_ing_history['pieces'] = pd.to_numeric(df_ing_history['pieces'], errors='coerce').fillna(0)
-                        
-                        # 🚀 ΟΜΑΔΟΠΟΙΗΣΗ ΑΝΑ ΚΟΚΤΕΙΛ (Ακριβώς όπως καταγράφηκε ιστορικά)
-                        group_col = 'cocktail_name' if 'cocktail_name' in df_ing_history.columns else 'recipe_name' if 'recipe_name' in df_ing_history.columns else None
-                        
-                        if group_col:
-                            df_breakdown = df_ing_history.groupby(group_col).agg(
-                                Κατανάλωση_ml=('total_ml', 'sum'),
-                                Παραχθέντα_Τεμάχια=('pieces', 'sum')
-                            ).reset_index()
-                            df_breakdown.rename(columns={group_col: 'Κοκτέιλ', 'Κατανάλωση_ml': 'Κατανάλωση (ml)', 'Παραχθέντα_Τεμάχια': 'Παραχθέντα Τεμάχια'}, inplace=True)
-                        else:
-                            # Σε περίπτωση που το df_raw δεν έχει στήλη κοκτέιλ, βγάζει συγκεντρωτικό σύνολο
-                            df_breakdown = pd.DataFrame([{
-                                "Κοκτέιλ": "Ιστορικό / Διάφορα",
-                                "Παραχθέντα Τεμάχια": df_ing_history['pieces'].sum(),
-                                "Κατανάλωση (ml)": df_ing_history['total_ml'].sum()
-                            }])
+                        # 🚀 ΚΑΘΑΡΙΣΜΟΣ ΔΙΠΛΟΕΓΓΡΑΦΩΝ
+                        if not df_ing_history.empty and "prod_time" in df_ing_history.columns and "prod_date" in df_ing_history.columns:
+                            df_ing_history = df_ing_history.drop_duplicates(subset=["cocktail_name", "prod_date", "prod_time", "customer", "ingredient_name"])
                             
-                        # Κόβουμε τυχόν μηδενικά για καθαρό γράφημα
-                        df_breakdown = df_breakdown[df_breakdown['Κατανάλωση (ml)'] > 0]
-                        total_ml_used = df_breakdown['Κατανάλωση (ml)'].sum()
-                        
-                        total_bottles = total_ml_used / bottle_vol if bottle_vol > 0 else 0
-                        total_cost = total_ml_used * price_per_ml 
+                        if not df_ing_history.empty:
+                            df_ing_history['total_ml'] = pd.to_numeric(df_ing_history.get('total_ml', 0), errors='coerce').fillna(0)
+                            
+                            if 'pieces' not in df_ing_history.columns:
+                                df_ing_history['pieces'] = 0
+                            else:
+                                df_ing_history['pieces'] = pd.to_numeric(df_ing_history['pieces'], errors='coerce').fillna(0)
+                            
+                            group_col = 'cocktail_name' if 'cocktail_name' in df_ing_history.columns else 'recipe_name' if 'recipe_name' in df_ing_history.columns else None
+                            
+                            if group_col:
+                                df_breakdown = df_ing_history.groupby(group_col).agg(
+                                    Κατανάλωση_ml=('total_ml', 'sum'),
+                                    Παραχθέντα_Τεμάχια=('pieces', 'sum')
+                                ).reset_index()
+                                df_breakdown.rename(columns={group_col: 'Κοκτέιλ', 'Κατανάλωση_ml': 'Κατανάλωση (ml)', 'Παραχθέντα_Τεμάχια': 'Παραχθέντα Τεμάχια'}, inplace=True)
+                            else:
+                                df_breakdown = pd.DataFrame([{
+                                    "Κοκτέιλ": "Ιστορικό / Διάφορα",
+                                    "Παραχθέντα Τεμάχια": df_ing_history['pieces'].sum(),
+                                    "Κατανάλωση (ml)": df_ing_history['total_ml'].sum()
+                                }])
+                                
+                            df_breakdown = df_breakdown[df_breakdown['Κατανάλωση (ml)'] > 0]
+                            total_ml_used = df_breakdown['Κατανάλωση (ml)'].sum()
+                            
+                            total_bottles = total_ml_used / bottle_vol if bottle_vol > 0 else 0
+                            total_cost = total_ml_used * price_per_ml 
 
-                        st.divider()
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric("📦 Φιάλες που καταναλώθηκαν", f"{total_bottles:.2f} μπουκάλια".replace('.', ','))
-                        m2.metric("💶 Συνολικό Κόστος Υλικού", f"{total_cost:.2f} €".replace('.', ','))
-                        m3.metric("💧 Συνολικά ml", f"{total_ml_used:,.0f} ml".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                            st.divider()
+                            m1, m2, m3 = st.columns(3)
+                            m1.metric("📦 Φιάλες που καταναλώθηκαν", f"{total_bottles:.2f} μπουκάλια".replace('.', ','))
+                            m2.metric("💶 Συνολικό Κόστος Υλικού", f"{total_cost:.2f} €".replace('.', ','))
+                            m3.metric("💧 Συνολικά ml", f"{total_ml_used:,.0f} ml".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
-                        if not df_breakdown.empty:
-                            df_breakdown['Αναλογία (%)'] = (df_breakdown['Κατανάλωση (ml)'] / total_ml_used) * 100
-                            
-                            st.markdown(f"#### 🍹 Πού καταναλώθηκε το {selected_ing};")
-                            
-                            colA, colB = st.columns([1.2, 1])
-                            with colA:
-                                st.dataframe(
-                                    df_breakdown.style.format({
-                                        "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
-                                        "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
-                                        "Αναλογία (%)": "{:.1f}%"
-                                    }), # Πρόσθεσε το .background_gradient(...) αν έχεις ενεργοποιήσει το matplotlib!
-                                    use_container_width=True, hide_index=True
-                                )
-                            with colB:
-                                fig = px.pie(
-                                    df_breakdown, 
-                                    values='Κατανάλωση (ml)', 
-                                    names='Κοκτέιλ', 
-                                    hole=0.4, 
-                                    color_discrete_sequence=px.colors.sequential.Teal
-                                )
-                                fig.update_traces(textinfo='percent+label')
-                                fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
-                                st.plotly_chart(fig, use_container_width=True)
+                            if not df_breakdown.empty:
+                                df_breakdown['Αναλογία (%)'] = (df_breakdown['Κατανάλωση (ml)'] / total_ml_used) * 100
+                                
+                                st.markdown(f"#### 🍹 Πού καταναλώθηκε το {selected_ing};")
+                                
+                                colA, colB = st.columns([1.2, 1])
+                                with colA:
+                                    st.dataframe(
+                                        df_breakdown.style.format({
+                                            "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
+                                            "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
+                                            "Αναλογία (%)": "{:.1f}%"
+                                        }), # Αν έχεις το matplotlib βάζεις το .background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues')
+                                        use_container_width=True, hide_index=True
+                                    )
+                                with colB:
+                                    fig = px.pie(
+                                        df_breakdown, 
+                                        values='Κατανάλωση (ml)', 
+                                        names='Κοκτέιλ', 
+                                        hole=0.4, 
+                                        color_discrete_sequence=px.colors.sequential.Teal
+                                    )
+                                    fig.update_traces(textinfo='percent+label')
+                                    fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
+                                    st.plotly_chart(fig, use_container_width=True)
+                            else:
+                                st.info(f"💡 Το υλικό '{selected_ing}' δεν έχει καταγραφεί ακόμα στο ιστορικό παραγωγής.")
                         else:
-                            st.info(f"💡 Το υλικό '{selected_ing}' δεν έχει καταγραφεί ακόμα στο ιστορικό παραγωγής.")
+                            st.info(f"💡 Το υλικό '{selected_ing}' δεν έχει χρησιμοποιηθεί ακόμα σύμφωνα με το ιστορικό παραγωγής.")
                     else:
-                        st.info(f"💡 Το υλικό '{selected_ing}' δεν έχει χρησιμοποιηθεί ακόμα σύμφωνα με το ιστορικό παραγωγής.")
+                        st.info("Δεν υπάρχει ιστορικό υλικών (total_ml) καταγεγραμμένο στον πίνακα παραγωγής.")
             else:
                 st.warning("Δεν βρέθηκαν δεδομένα ιστορικού παραγωγής (df_raw) για ανάλυση.")
 
