@@ -5090,10 +5090,23 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                             </tr>
                 """
                 
+            # 🚀 Υπολογισμός ΦΠΑ (24%)
+            vat_rate = 0.24
+            vat_amount = total_sim_rev * vat_rate
+            total_with_vat = total_sim_rev + vat_amount
+                
             html_proposal += f"""
+                            <tr>
+                                <th>Καθαρή Αξία (Χωρίς Φ.Π.Α.):</th>
+                                <td style="text-align: right;">{total_sim_rev:.2f} €</td>
+                            </tr>
+                            <tr>
+                                <th>Φ.Π.Α. (24%):</th>
+                                <td style="text-align: right;">{vat_amount:.2f} €</td>
+                            </tr>
                             <tr class="final-row">
-                                <th style="color: white;">ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ ΣΥΝΟΛΟ:</th>
-                                <td style="text-align: right; color: white;">{total_sim_rev:.2f} €</td>
+                                <th style="color: white;">ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ (Με Φ.Π.Α.):</th>
+                                <td style="text-align: right; color: white;">{total_with_vat:.2f} €</td>
                             </tr>
                         </table>
                     </div>
@@ -5101,7 +5114,6 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                     
                     <div class="footer">
                         <p>Σας ευχαριστούμε για την προτίμηση. Η προσφορά ισχύει για 30 ημέρες.</p>
-                        <p>Οι τιμές δεν περιλαμβάνουν Φ.Π.Α.</p>
                     </div>
                 </div>
             </body>
