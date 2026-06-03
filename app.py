@@ -326,16 +326,7 @@ with st.sidebar:
     
     st.divider()
 
-    # --- Live Status User Selection ---
-    current_user = st.sidebar.selectbox("Είσαι ο:", ["Χρήστης Α", "Χρήστης Β", "Χρήστης Γ"])
-update_live_status(current_user)  # <--- Μπαίνει ΕΔΩ, αφού πρώτα έχει διαβάσει ποιος είναι ο χρήστης!
-
-    if online_user and online_user != current_user:
-        st.success(f"🟢 Ο {online_user} είναι online!")
-    else:
-        st.info("⚪️ Μόνος στην εφαρμογή")
-
-    st.divider()
+    
 
     # 2. Κεντρικό Μενού (Το key="main_page" το βοηθάει να μην "ξεχνάει" τη σελίδα στο refresh)
     page = st.radio(
