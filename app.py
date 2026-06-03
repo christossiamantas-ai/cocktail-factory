@@ -1510,29 +1510,36 @@ elif page == "🔍 Ανάλυση":
                             if not df_breakdown.empty:
                                 df_breakdown['Αναλογία (%)'] = (df_breakdown['Κατανάλωση (ml)'] / total_ml_used) * 100
                                 
+                                # 🚀 ΝΕΟ: Υπολογισμός Κόστους της πρώτης ύλης ανά Κοκτέιλ
+                                df_breakdown['Κόστος (€)'] = df_breakdown['Κατανάλωση (ml)'] * price_per_ml
+                                
                                 st.markdown(f"#### 🍹 Πού καταναλώθηκε το {selected_ing};")
                                 
-                                colA, colB = st.columns([1.2, 1])
-                                with colA:
-                                    st.dataframe(
-                                        df_breakdown.style.format({
-                                            "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
-                                            "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
-                                            "Αναλογία (%)": "{:.1f}%"
-                                        }).background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues'),
-                                        use_container_width=True, hide_index=True
-                                    )
-                                with colB:
-                                    fig = px.pie(
-                                        df_breakdown, 
-                                        values='Κατανάλωση (ml)', 
-                                        names='Κοκτέιλ', 
-                                        hole=0.4, 
-                                        color_discrete_sequence=px.colors.sequential.Teal
-                                    )
-                                    fig.update_traces(textinfo='percent+label')
-                                    fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
-                                    st.plotly_chart(fig, use_container_width=True)
+                                # 1. Ο ΠΙΝΑΚΑΣ (Πιάνει πλέον όλο το πλάτος της οθόνης)
+                                st.dataframe(
+                                    df_breakdown.style.format({
+                                        "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
+                                        "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
+                                        "Αναλογία (%)": "{:.1f}%",
+                                        "Κόστος (€)": "{:,.2f} €".replace('.', ',') # Μορφοποίηση σε νομισματική μορφή
+                                    }).background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues'),
+                                    use_container_width=True, hide_index=True
+                                )
+                                
+                                st.markdown("<br><br>", unsafe_allow_html=True) # Κενό για να ανασαίνει το μάτι
+                                
+                                # 2. Η ΠΙΤΑ (Ακριβώς από κάτω, κεντραρισμένη)
+                                fig = px.pie(
+                                    df_breakdown, 
+                                    values='Κατανάλωση (ml)', 
+                                    names='Κοκτέιλ', 
+                                    hole=0.4, 
+                                    color_discrete_sequence=px.colors.sequential.Teal
+                                )
+                                fig.update_traces(textinfo='percent+label')
+                                # Αυξήσαμε λίγο το ύψος (height=400) για να φαίνεται εντυπωσιακή
+                                fig.update_layout(margin=dict(t=20, b=20, l=0, r=0), height=400)
+                                st.plotly_chart(fig, use_container_width=True)
                             else:
                                 st.info(f"💡 Το υλικό '{selected_ing}' δεν έχει καταγραφεί ακόμα στο ιστορικό παραγωγής.")
                         else:
