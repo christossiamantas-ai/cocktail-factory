@@ -1521,7 +1521,8 @@ elif page == "🔍 Ανάλυση":
                                         "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
                                         "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
                                         "Αναλογία (%)": "{:.1f}%",
-                                        "Κόστος (€)": "{:,.2f} €".replace('.', ',') # Μορφοποίηση σε νομισματική μορφή
+                                        # 🚀 ΔΙΟΡΘΩΣΗ: Χρήση lambda για ασφαλή μετατροπή νομίσματος!
+                                        "Κόστος (€)": lambda x: f"{x:,.2f} €".replace(',', 'X').replace('.', ',').replace('X', '.')
                                     }).background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues'),
                                     use_container_width=True, hide_index=True
                                 )
