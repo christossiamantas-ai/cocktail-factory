@@ -1509,7 +1509,7 @@ elif page == "🔍 Ανάλυση":
                             st.dataframe(
                                 df_breakdown.style.format({
                                     "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
-                                    "Κατανάλωση (ml)": "{:,.1f} ml",
+                                    "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
                                     "Αναλογία (%)": "{:.1f}%"
                                 }).background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues'),
                                 use_container_width=True, hide_index=True
