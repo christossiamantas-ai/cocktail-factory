@@ -946,506 +946,589 @@ elif page == "🔍 Ανάλυση":
     recipe_options = sorted(df_rec["Ονομα"].unique().tolist()) if not df_rec.empty else []
 
     if not df_rec.empty:
-        # Sidebar Ρυθμίσεις
-        st.sidebar.subheader("Ρυθμίσεις Ανάλυσης")
-        discount = st.sidebar.slider("Έκπτωση Προσφοράς %", 0, 100, 0)
+        # 🚀 ΔΗΜΙΟΥΡΓΙΑ TABS ΕΔΩ
+        tab1, tab2 = st.tabs(["🍸 Ανάλυση Συνταγών & Πωλήσεων", "🍾 Εις Βάθος Ανάλυση Πρώτων Υλών"])
         
-        # ΜΟΝΑΔΙΚΗ ΕΠΙΛΟΓΗ ΚΟΚΤΕΙΛ
-        choice = st.selectbox("Επιλέξτε Cocktail:", df_rec["Ονομα"].unique())
-        r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
-        
-        # Βασικές Τιμές
-        p_retail = float(r.get("Τιμή Καταλόγου", 0))
-        p_agent = p_retail * 0.74
-        p_custom = p_retail * (1 - discount/100)
-        
-        raw_cost, pure_alc_ml, total_ml_cocktail, total_weight_cocktail = 0.0, 0.0, 0.0, 0.0
-        breakdown = []
-        missing_ingredients = [] # Λίστα για υλικά που δεν βρέθηκαν
-        
-        # --- ΣΥΛΛΟΓΗ ΔΕΔΟΜΕΝΩΝ ΣΥΝΤΑΓΗΣ ---
-        for i in range(1, 14):
-            ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
-            ml = float(r.get(f"ML{i}", 0))
+        # =========================================================================
+        # TAB 1: Ο ΠΑΛΙΟΣ ΣΟΥ ΚΩΔΙΚΑΣ (ΑΚΡΙΒΩΣ ΟΠΩΣ ΗΤΑΝ)
+        # =========================================================================
+        with tab1:
+            # Sidebar Ρυθμίσεις
+            st.sidebar.subheader("Ρυθμίσεις Ανάλυσης")
+            discount = st.sidebar.slider("Έκπτωση Προσφοράς %", 0, 100, 0)
             
-            if ing_n != "ΚΕΝΟ" and ml > 0:
-                total_ml_cocktail += ml
-                if ing_n == "Νερό":
-                    total_weight_cocktail += ml  # 1 ml νερό = 1 γραμμάριο
-                    breakdown.append({"Υλικό": "Νερό", "ML": ml, "Βάρος (g)": ml, "Κόστος": 0.0, "Alc %": 0.0})
-                elif ing_n not in ["nan", ""]:
-                    # Αναζήτηση στην Αποθήκη
-                    match = df_ing[df_ing["Name"] == ing_n]
-                    
-                    if not match.empty:
-                        ing_row = match.iloc[0]
-                        alc_val = float(ing_row.get("Αλκοόλ %", 0))
-                        actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
-                        pure_alc_ml += (ml * actual_alc_pct)
+            # ΜΟΝΑΔΙΚΗ ΕΠΙΛΟΓΗ ΚΟΚΤΕΙΛ
+            choice = st.selectbox("Επιλέξτε Cocktail:", df_rec["Ονομα"].unique())
+            r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
+            
+            # Βασικές Τιμές
+            p_retail = float(r.get("Τιμή Καταλόγου", 0))
+            p_agent = p_retail * 0.74
+            p_custom = p_retail * (1 - discount/100)
+            
+            raw_cost, pure_alc_ml, total_ml_cocktail, total_weight_cocktail = 0.0, 0.0, 0.0, 0.0
+            breakdown = []
+            missing_ingredients = [] 
+            
+            # --- ΣΥΛΛΟΓΗ ΔΕΔΟΜΕΝΩΝ ΣΥΝΤΑΓΗΣ ---
+            for i in range(1, 14):
+                ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                ml = float(r.get(f"ML{i}", 0))
+                
+                if ing_n != "ΚΕΝΟ" and ml > 0:
+                    total_ml_cocktail += ml
+                    if ing_n == "Νερό":
+                        total_weight_cocktail += ml 
+                        breakdown.append({"Υλικό": "Νερό", "ML": ml, "Βάρος (g)": ml, "Κόστος": 0.0, "Alc %": 0.0})
+                    elif ing_n not in ["nan", ""]:
+                        match = df_ing[df_ing["Name"] == ing_n]
                         
-                        price_ml = float(ing_row.get("Τιμή/ml", 0))
-                        item_cost = ml * price_ml
-                        raw_cost += item_cost
-                        
-                        # --- ΔΥΝΑΜΙΚΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΒΑΡΟΥΣ ΑΠΟ ΤΗΝ ΑΠΟΘΗΚΗ ---
-                        pkg_weight = float(ing_row.get("weight_full", 0) or 0)
-                        pkg_volume = float(ing_row.get("Volume", 0) or 0)
-                        
-                        if pkg_volume > 0 and pkg_weight > 0:
-                            item_weight = (pkg_weight / pkg_volume) * ml
+                        if not match.empty:
+                            ing_row = match.iloc[0]
+                            alc_val = float(ing_row.get("Αλκοόλ %", 0))
+                            actual_alc_pct = alc_val if alc_val <= 1 else alc_val / 100
+                            pure_alc_ml += (ml * actual_alc_pct)
+                            
+                            price_ml = float(ing_row.get("Τιμή/ml", 0))
+                            item_cost = ml * price_ml
+                            raw_cost += item_cost
+                            
+                            # --- ΔΥΝΑΜΙΚΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΒΑΡΟΥΣ ---
+                            pkg_weight = float(ing_row.get("weight_full", 0) or 0)
+                            pkg_volume = float(ing_row.get("Volume", 0) or 0)
+                            
+                            if pkg_volume > 0 and pkg_weight > 0:
+                                item_weight = (pkg_weight / pkg_volume) * ml
+                            else:
+                                item_weight = ml 
+                            
+                            total_weight_cocktail += item_weight
+                            
+                            breakdown.append({
+                                "Υλικό": ing_n, 
+                                "ML": ml, 
+                                "Βάρος (g)": item_weight, 
+                                "Κόστος": item_cost, 
+                                "Alc %": actual_alc_pct * 100
+                            })
                         else:
-                            item_weight = ml  # Ασφάλεια 1:1 αν λείπουν δεδομένα βάρους
-                        
-                        total_weight_cocktail += item_weight
-                        
-                        breakdown.append({
-                            "Υλικό": ing_n, 
-                            "ML": ml, 
-                            "Βάρος (g)": item_weight, # 👈 Νέα στήλη ακριβώς μετά το ML
-                            "Κόστος": item_cost, 
-                            "Alc %": actual_alc_pct * 100
-                        })
-                    else:
-                        missing_ingredients.append(ing_n)
-                        total_weight_cocktail += ml  # Ασφάλεια 1:1 για το σύνολο
-                        breakdown.append({
-                            "Υλικό": f"⚠️ {ing_n} (Μη διαθέσιμο)", 
-                            "ML": ml, 
-                            "Βάρος (g)": ml,
-                            "Κόστος": 0.0, 
-                            "Alc %": 0.0
-                        })
+                            missing_ingredients.append(ing_n)
+                            total_weight_cocktail += ml
+                            breakdown.append({
+                                "Υλικό": f"⚠️ {ing_n} (Μη διαθέσιμο)", 
+                                "ML": ml, 
+                                "Βάρος (g)": ml,
+                                "Κόστος": 0.0, 
+                                "Alc %": 0.0
+                            })
 
-        if missing_ingredients:
-            st.error(f"⚠️ Τα παρακάτω υλικά δεν βρέθηκαν στην Αποθήκη: {', '.join(missing_ingredients)}")
+            if missing_ingredients:
+                st.error(f"⚠️ Τα παρακάτω υλικά δεν βρέθηκαν στην Αποθήκη: {', '.join(missing_ingredients)}")
 
-        # --- ΥΠΟΛΟΓΙΣΜΟΙ ΤΕΧΝΙΚΟΥ ΦΑΚΕΛΟΥ ---
-        final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
-        try: efk_informational = pure_alc_ml * tax_factor
-        except NameError: efk_informational = pure_alc_ml * 0.0255
-        try: fixed_cost = TOTAL_FIXED
-        except NameError: fixed_cost = 0.50
-        
-        # ΣΥΝΟΛΙΚΟ ΚΟΣΤΟΣ ΑΝΑ ΦΙΑΛΗ (Το χρησιμοποιούμε και στις πωλήσεις παρακάτω)
-        total_production = raw_cost + fixed_cost 
-        
-        profit_retail = p_retail - total_production
-        profit_agent = p_agent - total_production
-        profit_custom = p_custom - total_production
-        margin_retail = (profit_retail / p_retail * 100) if p_retail > 0 else 0
-
-        # --- ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ ---
-        st.subheader(f"Στατιστικά για: {choice}")
-        m_col1, m_col2, m_col3 = st.columns(3)  # Αυξήσαμε σε 3 στήλες για να χωρέσει το βάρος
-        m_col1.metric("Συνολική Ποσότητα", f"{total_ml_cocktail:.1f} ml".replace('.', ','))
-        m_col2.metric("Συνολικό Βάρος", f"{total_weight_cocktail:.1f} g".replace('.', ','))  # 👈 Το νέο πεδίο δίπλα στα ml
-        m_col3.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %".replace('.', ','))
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Τιμή Λιανικής", f"{p_retail:.2f} €".replace('.', ','))
-        c2.metric("Τιμή Αντιπροσώπου", f"{p_agent:.2f} €".replace('.', ','))
-        c3.metric("Τιμή με Έκπτωση", f"{p_custom:.2f} €".replace('.', ','), delta=f"-{discount}%")
-
-        st.markdown("---")
-        st.write("### 🛠️ Ανάλυση Κόστους & Φόρων (Ανά Φιάλη)")
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Κόστος Υλικών", f"{raw_cost:.2f} €".replace('.', ','))
-        k2.metric("ΕΦΚ (Ενσωμ.)", f"{efk_informational:.2f} €".replace('.', ','))
-        k3.metric("Σταθερά Έξοδα", f"{fixed_cost:.2f} €".replace('.', ','))
-        k4.metric("ΣΥΝΟΛΟ ΚΟΣΤΟΥΣ", f"{total_production:.2f} €".replace('.', ','))
-
-        # --- ΠΙΝΑΚΑΣ ΥΛΙΚΩΝ ΣΤΗΝ ΟΘΟΝΗ ---
-        st.markdown("---")
-        st.write("### 🍹 Σύνθεση Υλικών")
-        df_screen = pd.DataFrame(breakdown)
-        if not df_screen.empty:
-            df_render = df_screen.copy()
-            for col in ["ML", "Βάρος (g)", "Alc %", "Κόστος"]:  # Προσθέσαμε το "Βάρος (g)" στη μορφοποίηση
-                if col in df_render.columns:
-                    df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
-            st.table(df_render[["Υλικό", "ML", "Βάρος (g)", "Alc %", "Κόστος"]])  # Εμφάνιση της στήλης στη σωστή θέση
-
-        # =====================================================================
-        # ΝΕΑ ΕΝΟΤΗΤΑ: ΑΝΑΛΥΣΗ ΠΩΛΗΣΕΩΝ ΚΑΙ ΑΠΟΔΟΣΗΣ ΠΡΟΪΟΝΤΟΣ
-        # =====================================================================
-        st.markdown("---")
-        st.write(f"### 📈 Οικονομική Απόδοση & Πωλήσεις ({choice})")
-        
-        # Τραβάμε σωστά τη στήλη "discount" των πελατών
-        cust_discount_map = {}
-        try:
-            res_cust = supabase.table("customers").select("name, discount").execute()
-            if res_cust.data:
-                cust_discount_map = {str(c.get("name", "")).strip(): float(c.get("discount", 0.0) or 0.0) for c in res_cust.data}
-        except Exception as e:
-            pass
-        
-        res_sales = supabase.table("production_log").select("*").eq("cocktail_name", choice).execute()
-        if res_sales.data:
-            df_sales = pd.DataFrame(res_sales.data)
+            # --- ΥΠΟΛΟΓΙΣΜΟΙ ΤΕΧΝΙΚΟΥ ΦΑΚΕΛΟΥ ---
+            final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
+            try: efk_informational = pure_alc_ml * tax_factor
+            except NameError: efk_informational = pure_alc_ml * 0.0255
+            try: fixed_cost = TOTAL_FIXED
+            except NameError: fixed_cost = 0.50
             
-            # 1. 🚀 ΔΙΟΡΘΩΣΗ: Καθαρίζουμε τις διπλοεγγραφές προσθέτοντας το "prod_date" για να μην χάνονται σπασμένες παραγγελίες!
-            if "prod_time" in df_sales.columns and "prod_date" in df_sales.columns:
-                df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_date", "prod_time", "customer"])
+            total_production = raw_cost + fixed_cost 
             
-            # 2. ΑΣΦΑΛΗΣ ΜΕΤΑΤΡΟΠΗ ΔΕΔΟΜΕΝΩΝ (Τέλος στα NaN!)
-            df_sales['t_pcs'] = pd.to_numeric(df_sales.get('pieces', 0), errors='coerce').fillna(0)
-            df_sales['f_pcs'] = pd.to_numeric(df_sales.get('free_pieces', 0), errors='coerce').fillna(0)
-            df_sales['s_pcs'] = pd.to_numeric(df_sales.get('discounted_pieces', 0), errors='coerce').fillna(0)
-            df_sales['s_pct'] = pd.to_numeric(df_sales.get('discount_pct', 0), errors='coerce').fillna(0)
+            profit_retail = p_retail - total_production
+            profit_agent = p_agent - total_production
+            profit_custom = p_custom - total_production
+            margin_retail = (profit_retail / p_retail * 100) if p_retail > 0 else 0
 
-            # Ασφαλής διαχωρισμός τεμαχίων
-            df_sales['s_pcs'] = df_sales.apply(lambda r: min(r['s_pcs'], max(0, r['t_pcs'] - r['f_pcs'])), axis=1)
-            df_sales['normal_pcs'] = df_sales['t_pcs'] - df_sales['f_pcs'] - df_sales['s_pcs']
+            # --- ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ ---
+            st.subheader(f"Στατιστικά για: {choice}")
+            m_col1, m_col2, m_col3 = st.columns(3) 
+            m_col1.metric("Συνολική Ποσότητα", f"{total_ml_cocktail:.1f} ml".replace('.', ','))
+            m_col2.metric("Συνολικό Βάρος", f"{total_weight_cocktail:.1f} g".replace('.', ',')) 
+            m_col3.metric("Αλκοολικός Βαθμός (ABV)", f"{final_abv:.2f} %".replace('.', ','))
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Τιμή Λιανικής", f"{p_retail:.2f} €".replace('.', ','))
+            c2.metric("Τιμή Αντιπροσώπου", f"{p_agent:.2f} €".replace('.', ','))
+            c3.metric("Τιμή με Έκπτωση", f"{p_custom:.2f} €".replace('.', ','), delta=f"-{discount}%")
 
-            # Τιμή Καταλόγου
-            catalog_price = 0.0
+            st.markdown("---")
+            st.write("### 🛠️ Ανάλυση Κόστους & Φόρων (Ανά Φιάλη)")
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Κόστος Υλικών", f"{raw_cost:.2f} €".replace('.', ','))
+            k2.metric("ΕΦΚ (Ενσωμ.)", f"{efk_informational:.2f} €".replace('.', ','))
+            k3.metric("Σταθερά Έξοδα", f"{fixed_cost:.2f} €".replace('.', ','))
+            k4.metric("ΣΥΝΟΛΟ ΚΟΣΤΟΥΣ", f"{total_production:.2f} €".replace('.', ','))
+
+            # --- ΠΙΝΑΚΑΣ ΥΛΙΚΩΝ ΣΤΗΝ ΟΘΟΝΗ ---
+            st.markdown("---")
+            st.write("### 🍹 Σύνθεση Υλικών")
+            df_screen = pd.DataFrame(breakdown)
+            if not df_screen.empty:
+                df_render = df_screen.copy()
+                for col in ["ML", "Βάρος (g)", "Alc %", "Κόστος"]: 
+                    if col in df_render.columns:
+                        df_render[col] = df_render[col].apply(lambda x: f"{x:.2f}".replace('.', ','))
+                st.table(df_render[["Υλικό", "ML", "Βάρος (g)", "Alc %", "Κόστος"]])
+
+            # =====================================================================
+            # ΑΝΑΛΥΣΗ ΠΩΛΗΣΕΩΝ ΚΑΙ ΑΠΟΔΟΣΗΣ ΠΡΟΪΟΝΤΟΣ
+            # =====================================================================
+            st.markdown("---")
+            st.write(f"### 📈 Οικονομική Απόδοση & Πωλήσεις ({choice})")
+            
+            cust_discount_map = {}
             try:
-                res_rec_price = supabase.table("recipes").select("catalog_price").eq("name", choice).execute()
-                if res_rec_price.data:
-                    catalog_price = float(res_rec_price.data[0].get("catalog_price", 0.0) or 0.0)
-            except Exception:
+                res_cust = supabase.table("customers").select("name, discount").execute()
+                if res_cust.data:
+                    cust_discount_map = {str(c.get("name", "")).strip(): float(c.get("discount", 0.0) or 0.0) for c in res_cust.data}
+            except Exception as e:
                 pass
             
-            # Γενική Έκπτωση Πελάτη
-            df_sales['customer'] = df_sales.get('customer', '').astype(str).str.strip()
-            df_sales['global_discount'] = df_sales['customer'].map(cust_discount_map).fillna(0)
-
-            # 3. ΑΣΦΑΛΗΣ ΥΠΟΛΟΓΙΣΜΟΣ ΕΣΟΔΩΝ (Διαδοχικές Εκπτώσεις)
-            df_sales['price_after_global'] = catalog_price * (1 - (df_sales['global_discount'] / 100))
-            
-            df_sales['rev_normal'] = df_sales['normal_pcs'] * df_sales['price_after_global']
-            df_sales['rev_special'] = df_sales['s_pcs'] * df_sales['price_after_global'] * (1 - (df_sales['s_pct'] / 100))
-            
-            df_sales['Theoretical_Revenue'] = df_sales['rev_normal'] + df_sales['rev_special']
-            df_sales['Theoretical_Revenue'] = df_sales['Theoretical_Revenue'].clip(lower=0)
-
-            # 4. ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΑΠΟΤΕΛΕΣΜΑΤΑ
-            total_produced_pcs = int(df_sales['t_pcs'].sum())
-            total_free_pcs = int(df_sales['f_pcs'].sum())
-            total_real_revenue = df_sales['Theoretical_Revenue'].sum()
-            
-            # Υπολογισμός Κόστους (Χρησιμοποιεί το total_production = κόστος 1 τμχ, που έχεις υπολογίσει πιο πάνω)
-            total_production_cost = total_produced_pcs * total_production
-            total_net_profit = total_real_revenue - total_production_cost
-            
-            profit_percentage = 0.0
-            cost_percentage = 0.0
-            
-            if total_real_revenue > 0:
-                profit_percentage = (total_net_profit / total_real_revenue) * 100.0
-                cost_percentage = (total_production_cost / total_real_revenue) * 100.0
+            res_sales = supabase.table("production_log").select("*").eq("cocktail_name", choice).execute()
+            if res_sales.data:
+                df_sales = pd.DataFrame(res_sales.data)
                 
-            # --- ΕΜΦΑΝΙΣΗ ΔΕΔΟΜΕΝΩΝ ---
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric(label="Συνολική Παραγωγή", value=f"{total_produced_pcs} τμχ", delta=f"{total_free_pcs} δώρα", delta_color="off")
-            m2.metric(label="Τζίρος Προϊόντος", value=f"{total_real_revenue:,.2f} €")
-            m3.metric(label="Συνολικό Κόστος", value=f"{total_production_cost:,.2f} €", delta=f"{cost_percentage:.1f}% επί τζίρου", delta_color="inverse")
-            m4.metric(label="Καθαρό Κέρδος", value=f"{total_net_profit:,.2f} €", delta=f"{profit_percentage:.1f}% περιθώριο")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            g1, g2 = st.columns(2)
-            with g1:
-                st.markdown("**📊 Ποσοστιαία Ανάλυση Τζίρου**")
-                fig_pie = px.pie(
-                    names=["Καθαρό Κέρδος", "Κόστος (Υλικά & Σταθερά)"],
-                    values=[max(0, total_net_profit), total_production_cost],
-                    hole=0.4,
-                    color_discrete_sequence=["#28a745", "#dc3545"]
-                )
-                fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250)
-                st.plotly_chart(fig_pie, use_container_width=True)
-            with g2:
-                st.markdown("**🏆 Top 5 Αγοραστές (Τεμάχια)**")
-                # Δείχνουμε τα "πληρωμένα" τεμάχια (Σύνολο - Δώρα) στο γράφημα
-                df_sales['paid_pieces'] = df_sales['t_pcs'] - df_sales['f_pcs']
-                df_cust = df_sales.groupby("customer")["paid_pieces"].sum().reset_index()
-                df_cust = df_cust.sort_values(by="paid_pieces", ascending=True).tail(5)
-                fig_bar = px.bar(
-                    df_cust, x="paid_pieces", y="customer", orientation="h", text="paid_pieces", color_discrete_sequence=["#007bff"]
-                )
-                fig_bar.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250, xaxis_title="Πληρωμένα Τεμάχια", yaxis_title="")
-                st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.info("Δεν βρέθηκαν καταγεγραμμένες πωλήσεις/παραγωγή για το συγκεκριμένο κοκτέιλ.")
-        # =====================================================================
-        # --- 📜 ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ ΕΠΑΓΓΕΛΜΑΤΙΚΟΥ REPORT (HTML) ---
-        st.divider()
-        st.subheader("📜 Εξαγωγή Τεχνικού Φακέλου")
+                if "prod_time" in df_sales.columns and "prod_date" in df_sales.columns:
+                    df_sales = df_sales.drop_duplicates(subset=["cocktail_name", "prod_date", "prod_time", "customer"])
+                
+                df_sales['t_pcs'] = pd.to_numeric(df_sales.get('pieces', 0), errors='coerce').fillna(0)
+                df_sales['f_pcs'] = pd.to_numeric(df_sales.get('free_pieces', 0), errors='coerce').fillna(0)
+                df_sales['s_pcs'] = pd.to_numeric(df_sales.get('discounted_pieces', 0), errors='coerce').fillna(0)
+                df_sales['s_pct'] = pd.to_numeric(df_sales.get('discount_pct', 0), errors='coerce').fillna(0)
 
-        try:
-            current_barcode = df_rec[df_rec['Ονομα'] == choice]['Barcode'].values[0]
-            if not current_barcode or str(current_barcode).lower() == 'nan':
-                current_barcode = "Δεν ορίστηκε"
-        except:
-            current_barcode = "Δεν βρέθηκε"
+                df_sales['s_pcs'] = df_sales.apply(lambda r: min(r['s_pcs'], max(0, r['t_pcs'] - r['f_pcs'])), axis=1)
+                df_sales['normal_pcs'] = df_sales['t_pcs'] - df_sales['f_pcs'] - df_sales['s_pcs']
 
-        ingredients_rows = ""
-        for item in breakdown:
-            ingredients_rows += f"""
-            <tr>
-                <td>{item['Υλικό']}</td>
-                <td style='text-align:right;'>{item['ML']:g} ml</td>
-                <td style='text-align:right;'>{item.get('Βάρος (g)', item['ML']):.1f} g</td>
-                <td style='text-align:right;'>{item.get('Alc %', 0):g}%</td>
-                <td style='text-align:right;'>{item['Κόστος']:.3f} €</td>
-            </tr>
+                catalog_price = 0.0
+                try:
+                    res_rec_price = supabase.table("recipes").select("catalog_price").eq("name", choice).execute()
+                    if res_rec_price.data:
+                        catalog_price = float(res_rec_price.data[0].get("catalog_price", 0.0) or 0.0)
+                except Exception:
+                    pass
+                
+                df_sales['customer'] = df_sales.get('customer', '').astype(str).str.strip()
+                df_sales['global_discount'] = df_sales['customer'].map(cust_discount_map).fillna(0)
+
+                df_sales['price_after_global'] = catalog_price * (1 - (df_sales['global_discount'] / 100))
+                
+                df_sales['rev_normal'] = df_sales['normal_pcs'] * df_sales['price_after_global']
+                df_sales['rev_special'] = df_sales['s_pcs'] * df_sales['price_after_global'] * (1 - (df_sales['s_pct'] / 100))
+                
+                df_sales['Theoretical_Revenue'] = df_sales['rev_normal'] + df_sales['rev_special']
+                df_sales['Theoretical_Revenue'] = df_sales['Theoretical_Revenue'].clip(lower=0)
+
+                total_produced_pcs = int(df_sales['t_pcs'].sum())
+                total_free_pcs = int(df_sales['f_pcs'].sum())
+                total_real_revenue = df_sales['Theoretical_Revenue'].sum()
+                
+                total_production_cost = total_produced_pcs * total_production
+                total_net_profit = total_real_revenue - total_production_cost
+                
+                profit_percentage = 0.0
+                cost_percentage = 0.0
+                
+                if total_real_revenue > 0:
+                    profit_percentage = (total_net_profit / total_real_revenue) * 100.0
+                    cost_percentage = (total_production_cost / total_real_revenue) * 100.0
+                    
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric(label="Συνολική Παραγωγή", value=f"{total_produced_pcs} τμχ", delta=f"{total_free_pcs} δώρα", delta_color="off")
+                m2.metric(label="Τζίρος Προϊόντος", value=f"{total_real_revenue:,.2f} €")
+                m3.metric(label="Συνολικό Κόστος", value=f"{total_production_cost:,.2f} €", delta=f"{cost_percentage:.1f}% επί τζίρου", delta_color="inverse")
+                m4.metric(label="Καθαρό Κέρδος", value=f"{total_net_profit:,.2f} €", delta=f"{profit_percentage:.1f}% περιθώριο")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                g1, g2 = st.columns(2)
+                with g1:
+                    st.markdown("**📊 Ποσοστιαία Ανάλυση Τζίρου**")
+                    fig_pie = px.pie(
+                        names=["Καθαρό Κέρδος", "Κόστος (Υλικά & Σταθερά)"],
+                        values=[max(0, total_net_profit), total_production_cost],
+                        hole=0.4,
+                        color_discrete_sequence=["#28a745", "#dc3545"]
+                    )
+                    fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250)
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                with g2:
+                    st.markdown("**🏆 Top 5 Αγοραστές (Τεμάχια)**")
+                    df_sales['paid_pieces'] = df_sales['t_pcs'] - df_sales['f_pcs']
+                    df_cust = df_sales.groupby("customer")["paid_pieces"].sum().reset_index()
+                    df_cust = df_cust.sort_values(by="paid_pieces", ascending=True).tail(5)
+                    fig_bar = px.bar(
+                        df_cust, x="paid_pieces", y="customer", orientation="h", text="paid_pieces", color_discrete_sequence=["#007bff"]
+                    )
+                    fig_bar.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250, xaxis_title="Πληρωμένα Τεμάχια", yaxis_title="")
+                    st.plotly_chart(fig_bar, use_container_width=True)
+            else:
+                st.info("Δεν βρέθηκαν καταγεγραμμένες πωλήσεις/παραγωγή για το συγκεκριμένο κοκτέιλ.")
+
+            # --- 📜 ΕΝΟΤΗΤΑ ΕΞΑΓΩΓΗΣ ΕΠΑΓΓΕΛΜΑΤΙΚΟΥ REPORT (HTML) ---
+            st.divider()
+            st.subheader("📜 Εξαγωγή Τεχνικού Φακέλου")
+
+            try:
+                current_barcode = df_rec[df_rec['Ονομα'] == choice]['Barcode'].values[0]
+                if not current_barcode or str(current_barcode).lower() == 'nan':
+                    current_barcode = "Δεν ορίστηκε"
+            except:
+                current_barcode = "Δεν βρέθηκε"
+
+            ingredients_rows = ""
+            for item in breakdown:
+                ingredients_rows += f"""
+                <tr>
+                    <td>{item['Υλικό']}</td>
+                    <td style='text-align:right;'>{item['ML']:g} ml</td>
+                    <td style='text-align:right;'>{item.get('Βάρος (g)', item['ML']):.1f} g</td>
+                    <td style='text-align:right;'>{item.get('Alc %', 0):g}%</td>
+                    <td style='text-align:right;'>{item['Κόστος']:.3f} €</td>
+                </tr>
+                """
+
+            report_html = f"""
+            <html>
+            <head>
+                <meta charset='UTF-8'>
+                <style>
+                    body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #2c3e50; line-height: 1.5; padding: 30px; }}
+                    .report-card {{ max-width: 800px; margin: auto; border: 1px solid #eee; padding: 40px; border-radius: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.05); }}
+                    .header {{ text-align: center; border-bottom: 3px solid #d32f2f; padding-bottom: 20px; margin-bottom: 30px; }}
+                    .header h1 {{ margin: 0; color: #d32f2f; font-size: 28px; text-transform: uppercase; }}
+                    .meta-info {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 30px; }}
+                    .meta-item {{ font-size: 14px; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-bottom: 30px; }}
+                    th {{ background-color: #34495e; color: white; padding: 12px; text-align: left; font-size: 13px; }}
+                    td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }}
+                    .summary-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
+                    .stat-box {{ padding: 15px; border-radius: 8px; background: #2c3e50; color: white; }}
+                    .stat-label {{ font-size: 11px; text-transform: uppercase; opacity: 0.8; }}
+                    .stat-value {{ font-size: 18px; font-weight: bold; color: #00ffcc; }}
+                    .footer {{ margin-top: 40px; text-align: center; font-size: 11px; color: #95a5a6; border-top: 1px solid #eee; padding-top: 15px; }}
+                </style>
+            </head>
+            <body>
+                <div class='report-card'>
+                    <div class='header'>
+                        <h1>CABCLUB COCKTAILS</h1>
+                        <div style='font-size: 12px; color: #7f8c8d;'>ΤΕΧΝΙΚΟ ΔΕΛΤΙΟ & ΑΝΑΛΥΣΗ ΚΟΣΤΟΥΣ</div>
+                    </div>
+                    <div class='meta-info'>
+                        <div class='meta-item'><strong>Cocktail:</strong> {choice}</div>
+                        <div class='meta-item'><strong>Barcode:</strong> {current_barcode}</div>
+                        <div class='meta-item'><strong>Συνολικά ML:</strong> {total_ml_cocktail:g} ml</div>
+                        <div class='meta-item'><strong>Συνολικό Βάρος:</strong> {total_weight_cocktail:.1f} g</div>
+                        <div class='meta-item'><strong>Αλκοόλ (ABV):</strong> {final_abv:g}%</div>
+                        <div class='meta-item'><strong>Ημερομηνία:</strong> {datetime.now(greece_tz).strftime('%d/%m/%Y')}</div>
+                    </div>
+                    <h3 style='color: #2c3e50; border-left: 4px solid #d32f2f; padding-left: 10px;'>📋 Συνταγή</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Υλικό</th>
+                                <th style='text-align:right;'>Ποσότητα</th>
+                                <th style='text-align:right;'>Βάρος</th>
+                                <th style='text-align:right;'>ABV</th>
+                                <th style='text-align:right;'>Κόστος</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {ingredients_rows}
+                        </tbody>
+                    </table>
+                    <h3 style='color: #2c3e50; border-left: 4px solid #d32f2f; padding-left: 10px;'>💰 Οικονομικά Στοιχεία</h3>
+                    <div class='summary-grid'>
+                        <div class='stat-box'>
+                            <div class='stat-label'>Κόστος Παραγωγής</div>
+                            <div class='stat-value'>{total_production:.2f} €</div>
+                        </div>
+                        <div class='stat-box'>
+                            <div class='stat-label'>Margin Λιανικής</div>
+                            <div class='stat-value'>{margin_retail:.1f}%</div>
+                        </div>
+                        <div class='stat-box' style='background: #f1f2f6; color: #2c3e50;'>
+                            <div class='stat-label' style='color: #7f8c8d;'>Κέρδος Λιανικής</div>
+                            <div class='stat-value' style='color: #2c3e50;'>{profit_retail:.2f} €</div>
+                            <div style='font-size: 9px;'>Τιμή: {p_retail:.2f} €</div>
+                        </div>
+                        <div class='stat-box' style='background: #f1f2f6; color: #2c3e50;'>
+                            <div class='stat-label' style='color: #7f8c8d;'>Κέρδος Αντιπροσώπου</div>
+                            <div class='stat-value' style='color: #2c3e50;'>{profit_agent:.2f} €</div>
+                            <div style='font-size: 9px;'>Τιμή: {p_agent:.2f} €</div>
+                        </div>
+                    </div>
+                    <div class='footer'>
+                        Το παρόν έγγραφο αποτελεί πνευματική ιδιοκτησία της CABCLUB.<br>
+                        Υπολογισμένο με σταθερά έξοδα μονάδας {fixed_cost:g} €.
+                    </div>
+                </div>
+            </body>
+            </html>
             """
 
-        report_html = f"""
-        <html>
-        <head>
-            <meta charset='UTF-8'>
-            <style>
-                body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #2c3e50; line-height: 1.5; padding: 30px; }}
-                .report-card {{ max-width: 800px; margin: auto; border: 1px solid #eee; padding: 40px; border-radius: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.05); }}
-                .header {{ text-align: center; border-bottom: 3px solid #d32f2f; padding-bottom: 20px; margin-bottom: 30px; }}
-                .header h1 {{ margin: 0; color: #d32f2f; font-size: 28px; text-transform: uppercase; }}
-                .meta-info {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 30px; }}
-                .meta-item {{ font-size: 14px; }}
-                table {{ width: 100%; border-collapse: collapse; margin-bottom: 30px; }}
-                th {{ background-color: #34495e; color: white; padding: 12px; text-align: left; font-size: 13px; }}
-                td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }}
-                .summary-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
-                .stat-box {{ padding: 15px; border-radius: 8px; background: #2c3e50; color: white; }}
-                .stat-label {{ font-size: 11px; text-transform: uppercase; opacity: 0.8; }}
-                .stat-value {{ font-size: 18px; font-weight: bold; color: #00ffcc; }}
-                .footer {{ margin-top: 40px; text-align: center; font-size: 11px; color: #95a5a6; border-top: 1px solid #eee; padding-top: 15px; }}
-            </style>
-        </head>
-        <body>
-            <div class='report-card'>
-                <div class='header'>
-                    <h1>CABCLUB COCKTAILS</h1>
-                    <div style='font-size: 12px; color: #7f8c8d;'>ΤΕΧΝΙΚΟ ΔΕΛΤΙΟ & ΑΝΑΛΥΣΗ ΚΟΣΤΟΥΣ</div>
-                </div>
-                <div class='meta-info'>
-                    <div class='meta-item'><strong>Cocktail:</strong> {choice}</div>
-                    <div class='meta-item'><strong>Barcode:</strong> {current_barcode}</div>
-                    <div class='meta-item'><strong>Συνολικά ML:</strong> {total_ml_cocktail:g} ml</div>
-                    <div class='meta-item'><strong>Συνολικό Βάρος:</strong> {total_weight_cocktail:.1f} g</div>
-                    <div class='meta-item'><strong>Αλκοόλ (ABV):</strong> {final_abv:g}%</div>
-                    <div class='meta-item'><strong>Ημερομηνία:</strong> {datetime.now(greece_tz).strftime('%d/%m/%Y')}</div>
-                </div>
-                <h3 style='color: #2c3e50; border-left: 4px solid #d32f2f; padding-left: 10px;'>📋 Συνταγή</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Υλικό</th>
-                            <th style='text-align:right;'>Ποσότητα</th>
-                            <th style='text-align:right;'>Βάρος</th>
-                            <th style='text-align:right;'>ABV</th>
-                            <th style='text-align:right;'>Κόστος</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {ingredients_rows}
-                    </tbody>
-                </table>
-                <h3 style='color: #2c3e50; border-left: 4px solid #d32f2f; padding-left: 10px;'>💰 Οικονομικά Στοιχεία</h3>
-                <div class='summary-grid'>
-                    <div class='stat-box'>
-                        <div class='stat-label'>Κόστος Παραγωγής</div>
-                        <div class='stat-value'>{total_production:.2f} €</div>
-                    </div>
-                    <div class='stat-box'>
-                        <div class='stat-label'>Margin Λιανικής</div>
-                        <div class='stat-value'>{margin_retail:.1f}%</div>
-                    </div>
-                    <div class='stat-box' style='background: #f1f2f6; color: #2c3e50;'>
-                        <div class='stat-label' style='color: #7f8c8d;'>Κέρδος Λιανικής</div>
-                        <div class='stat-value' style='color: #2c3e50;'>{profit_retail:.2f} €</div>
-                        <div style='font-size: 9px;'>Τιμή: {p_retail:.2f} €</div>
-                    </div>
-                    <div class='stat-box' style='background: #f1f2f6; color: #2c3e50;'>
-                        <div class='stat-label' style='color: #7f8c8d;'>Κέρδος Αντιπροσώπου</div>
-                        <div class='stat-value' style='color: #2c3e50;'>{profit_agent:.2f} €</div>
-                        <div style='font-size: 9px;'>Τιμή: {p_agent:.2f} €</div>
-                    </div>
-                </div>
-                <div class='footer'>
-                    Το παρόν έγγραφο αποτελεί πνευματική ιδιοκτησία της CABCLUB.<br>
-                    Υπολογισμένο με σταθερά έξοδα μονάδας {fixed_cost:g} €.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+            col_btn1, col_btn2 = st.columns([2, 1])
+            with col_btn1:
+                st.info(f"Το επαγγελματικό report για το {choice} είναι έτοιμο για λήψη.")
+            with col_btn2:
+                st.download_button(
+                    label="📥 Λήψη Report (HTML)",
+                    data=report_html,
+                    file_name=f"Report_{choice.replace(' ', '_')}.html",
+                    mime="text/html",
+                    key="html_report_download"
+                )
 
-        col_btn1, col_btn2 = st.columns([2, 1])
-        with col_btn1:
-            st.info(f"Το επαγγελματικό report για το {choice} είναι έτοιμο για λήψη.")
-        with col_btn2:
+            # --- 🖨️ ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΒΙΒΛΙΟΥ ΣΥΝΤΑΓΩΝ (Yellow Theme + Logo) ---
+            st.divider()
+            st.subheader("🖨️ Εκτύπωση Βιβλίου Συνταγών")
+
+            import base64
+
+            def get_base64_image(image_path):
+                try:
+                    with open(image_path, "rb") as img_file:
+                        return base64.b64encode(img_file.read()).decode()
+                except:
+                    return ""
+
+            logo_base64 = get_base64_image("logo.png") 
+
+            html_book = f"""
+            <html>
+            <head>
+                <meta charset='UTF-8'>
+                <style>
+                    body {{ font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; background-color: #f9f9f9; }}
+                    .main-title {{ text-align: center; border-bottom: 5px solid #ffcc00; padding-bottom: 10px; margin-bottom: 50px; }}
+                    .logo-img {{ max-width: 150px; margin-bottom: 10px; }}
+                    .recipe-card {{ 
+                        background-color: white; 
+                        border: 1px solid #ddd; 
+                        border-radius: 12px; 
+                        padding: 25px; 
+                        margin-bottom: 40px; 
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                        page-break-inside: avoid;
+                    }}
+                    .recipe-header {{ 
+                        background-color: #ffcc00; 
+                        color: #1a1a1a; 
+                        padding: 15px; 
+                        border-radius: 8px 8px 0 0; 
+                        margin: -25px -25px 20px -25px; 
+                    }}
+                    .recipe-name {{ margin: 0; font-size: 26px; text-transform: uppercase; }}
+                    .barcode-label {{ font-size: 14px; opacity: 0.8; font-weight: bold; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+                    th {{ background-color: #fff9e6; text-align: left; padding: 12px; border-bottom: 2px solid #ffcc00; color: #444; }}
+                    td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 15px; }}
+                    .ing-name {{ font-weight: bold; color: #2c3e50; }}
+                    .footer {{ text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 60px; border-top: 1px solid #ccc; padding-top: 10px; }}
+                    .analysis-box {{ 
+                        margin-top:20px; 
+                        padding:12px; 
+                        background:#fffdf2; 
+                        border-top:3px solid #ffcc00; 
+                        border-radius: 0 0 8px 8px; 
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class='main-title'>
+                    {f'<img src="data:image/png;base64,{logo_base64}" class="logo-img"><br>' if logo_base64 else ''}
+                    <h1>CABCLUB COCKTAILS</h1>
+                    <h2>ΟΛΟΚΛΗΡΩΜΕΝΟ ΒΙΒΛΙΟ ΣΥΝΤΑΓΩΝ</h2>
+                    <p>Σύνολο Συνταγών: {len(df_rec)}</p>
+                </div>
+            """
+
+            for _, recipe in df_rec.iterrows():
+                name = recipe.get("Ονομα", "Χωρίς Όνομα")
+                bc = recipe.get("Barcode", "-")
+                
+                html_book += f"""
+                <div class='recipe-card'>
+                    <div class='recipe-header'>
+                        <h2 class='recipe-name'>{name}</h2>
+                        <span class='barcode-label'>Shop ID: {bc}</span>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Συστατικό Συνταγής</th>
+                                <th>Ποσότητα (ml)</th>
+                                <th>Βάρος (g)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                """
+                
+                r_total_ml = 0
+                r_total_alc = 0
+                r_total_weight = 0 
+                r_found_ing = 0
+                
+                for i in range(1, 14):
+                    raw_ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
+                    try:
+                        ml_str = str(recipe.get(f"ML{i}", 0)).replace(',', '.')
+                        ml = float(ml_str)
+                    except:
+                        ml = 0
+                    
+                    ing_clean = raw_ing.strip()
+                    ing_check = ing_clean.upper()
+                    
+                    if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"] and ml > 0:
+                        
+                        # --- Υπολογισμός Βάρους για το Βιβλίο ---
+                        ing_weight = ml
+                        if ing_clean == "Νερό":
+                            ing_weight = ml
+                        elif not df_ing.empty and ing_clean in df_ing["Name"].values:
+                            ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
+                            pkg_weight = float(ing_row.get("weight_full", 0) or 0)
+                            pkg_volume = float(ing_row.get("Volume", 0) or 0)
+                            if pkg_volume > 0 and pkg_weight > 0:
+                                ing_weight = (pkg_weight / pkg_volume) * ml
+                        
+                        html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.2f} ml</td><td>{ing_weight:.1f} g</td></tr>"
+                        r_found_ing += 1
+                        r_total_ml += ml
+                        r_total_weight += ing_weight
+                        
+                        if not df_ing.empty and ing_clean in df_ing["Name"].values:
+                            ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
+                            try:
+                                raw_abv = str(ing_row.get("ABV", ing_row.get("Αλκοόλ", 0)))
+                                clean_abv = raw_abv.replace(',', '.').replace('%', '').strip()
+                                abv = float(clean_abv)
+                                if 0 < abv <= 1.0:
+                                    abv = abv * 100
+                            except:
+                                abv = 0
+                            r_total_alc += ml * (abv / 100)
+                
+                if r_found_ing == 0:
+                    html_book += "<tr><td colspan='3'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
+
+                r_final_abv = (r_total_alc / r_total_ml * 100) if r_total_ml > 0 else 0
+                r_sugg_price = float(str(recipe.get("Τιμή Καταλόγου", 0.0)).replace(',', '.'))
+
+                html_book += f"""
+                        </tbody>
+                    </table>
+                    <div class='analysis-box'>
+                        <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{r_final_abv:.2f}%</b></span> | 
+                        <span style='font-size:16px;'>Συνολικό Βάρος: <b>{r_total_weight:.1f} g</b></span>
+                        <span style='float:right; font-size:18px; color:#b38f00;'>Προτεινόμενη Λιανική: <b>{r_sugg_price:.2f} €</b></span>
+                    </div>
+                </div>
+                """
+            html_book += f"""
+                <div class='footer'>
+                    Αυτόματη εξαγωγή από το σύστημα διαχείρισης CABCLUB: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}
+                </div>
+            </body>
+            </html>
+            """
+
             st.download_button(
-                label="📥 Λήψη Report (HTML)",
-                data=report_html,
-                file_name=f"Report_{choice.replace(' ', '_')}.html",
+                label="📑 Λήψη Κίτρινου Βιβλίου Συνταγών (με Logo)",
+                data=html_book,
+                file_name=f"Recipe_Book_Yellow_{datetime.now(greece_tz).strftime('%d_%m_%Y')}.html",
                 mime="text/html",
-                key="html_report_download"
+                use_container_width=True
             )
 
-        # --- 🖨️ ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΒΙΒΛΙΟΥ ΣΥΝΤΑΓΩΝ (Yellow Theme + Logo) ---
-        st.divider()
-        st.subheader("🖨️ Εκτύπωση Βιβλίου Συνταγών")
-
-        import base64
-
-        def get_base64_image(image_path):
-            try:
-                with open(image_path, "rb") as img_file:
-                    return base64.b64encode(img_file.read()).decode()
-            except:
-                return ""
-
-        logo_base64 = get_base64_image("logo.png") 
-
-        html_book = f"""
-        <html>
-        <head>
-            <meta charset='UTF-8'>
-            <style>
-                body {{ font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; background-color: #f9f9f9; }}
-                .main-title {{ text-align: center; border-bottom: 5px solid #ffcc00; padding-bottom: 10px; margin-bottom: 50px; }}
-                .logo-img {{ max-width: 150px; margin-bottom: 10px; }}
-                .recipe-card {{ 
-                    background-color: white; 
-                    border: 1px solid #ddd; 
-                    border-radius: 12px; 
-                    padding: 25px; 
-                    margin-bottom: 40px; 
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-                    page-break-inside: avoid;
-                }}
-                .recipe-header {{ 
-                    background-color: #ffcc00; 
-                    color: #1a1a1a; 
-                    padding: 15px; 
-                    border-radius: 8px 8px 0 0; 
-                    margin: -25px -25px 20px -25px; 
-                }}
-                .recipe-name {{ margin: 0; font-size: 26px; text-transform: uppercase; }}
-                .barcode-label {{ font-size: 14px; opacity: 0.8; font-weight: bold; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-                th {{ background-color: #fff9e6; text-align: left; padding: 12px; border-bottom: 2px solid #ffcc00; color: #444; }}
-                td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 15px; }}
-                .ing-name {{ font-weight: bold; color: #2c3e50; }}
-                .footer {{ text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 60px; border-top: 1px solid #ccc; padding-top: 10px; }}
-                .analysis-box {{ 
-                    margin-top:20px; 
-                    padding:12px; 
-                    background:#fffdf2; 
-                    border-top:3px solid #ffcc00; 
-                    border-radius: 0 0 8px 8px; 
-                }}
-            </style>
-        </head>
-        <body>
-            <div class='main-title'>
-                {f'<img src="data:image/png;base64,{logo_base64}" class="logo-img"><br>' if logo_base64 else ''}
-                <h1>CABCLUB COCKTAILS</h1>
-                <h2>ΟΛΟΚΛΗΡΩΜΕΝΟ ΒΙΒΛΙΟ ΣΥΝΤΑΓΩΝ</h2>
-                <p>Σύνολο Συνταγών: {len(df_rec)}</p>
-            </div>
-        """
-
-        for _, recipe in df_rec.iterrows():
-            name = recipe.get("Ονομα", "Χωρίς Όνομα")
-            bc = recipe.get("Barcode", "-")
+        # =========================================================================
+        # TAB 2: ΝΕΑ ΕΙΣ ΒΑΘΟΣ ΑΝΑΛΥΣΗ ΠΡΩΤΩΝ ΥΛΩΝ
+        # =========================================================================
+        with tab2:
+            st.subheader("🍾 Ανάλυση Κατανάλωσης Πρώτων Υλών")
             
-            html_book += f"""
-            <div class='recipe-card'>
-                <div class='recipe-header'>
-                    <h2 class='recipe-name'>{name}</h2>
-                    <span class='barcode-label'>Shop ID: {bc}</span>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Συστατικό Συνταγής</th>
-                            <th>Ποσότητα (ml)</th>
-                            <th>Βάρος (g)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
-            
-            r_total_ml = 0
-            r_total_alc = 0
-            r_total_weight = 0  # Νέος αθροιστής για το βιβλίο
-            r_found_ing = 0
-            
-            for i in range(1, 14):
-                raw_ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
+            with st.spinner("Άντληση ιστορικού παραγωγής..."):
                 try:
-                    ml_str = str(recipe.get(f"ML{i}", 0)).replace(',', '.')
-                    ml = float(ml_str)
+                    res_prod_all = supabase.table("production_log").select("cocktail_name, pieces").execute()
+                    df_prod_all = pd.DataFrame(res_prod_all.data) if res_prod_all.data else pd.DataFrame()
                 except:
-                    ml = 0
-                
-                ing_clean = raw_ing.strip()
-                ing_check = ing_clean.upper()
-                
-                if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"] and ml > 0:
-                    
-                    # --- Υπολογισμός Βάρους για το Βιβλίο ---
-                    ing_weight = ml
-                    if ing_clean == "Νερό":
-                        ing_weight = ml
-                    elif not df_ing.empty and ing_clean in df_ing["Name"].values:
-                        ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
-                        pkg_weight = float(ing_row.get("weight_full", 0) or 0)
-                        pkg_volume = float(ing_row.get("Volume", 0) or 0)
-                        if pkg_volume > 0 and pkg_weight > 0:
-                            ing_weight = (pkg_weight / pkg_volume) * ml
-                    
-                    html_book += f"<tr><td class='ing-name'>{ing_clean}</td><td>{ml:.2f} ml</td><td>{ing_weight:.1f} g</td></tr>"
-                    r_found_ing += 1
-                    r_total_ml += ml
-                    r_total_weight += ing_weight
-                    
-                    if not df_ing.empty and ing_clean in df_ing["Name"].values:
-                        ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
-                        try:
-                            raw_abv = str(ing_row.get("ABV", ing_row.get("Αλκοόλ", 0)))
-                            clean_abv = raw_abv.replace(',', '.').replace('%', '').strip()
-                            abv = float(clean_abv)
-                            if 0 < abv <= 1.0:
-                                abv = abv * 100
-                        except:
-                            abv = 0
-                        r_total_alc += ml * (abv / 100)
+                    df_prod_all = pd.DataFrame()
             
-            if r_found_ing == 0:
-                html_book += "<tr><td colspan='3'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
+            if not df_ing.empty and not df_prod_all.empty and all_items:
+                df_items_all = pd.DataFrame(all_items)
+                df_prod_all['pieces'] = pd.to_numeric(df_prod_all['pieces'], errors='coerce').fillna(0)
+                df_items_all['ml_per_unit'] = pd.to_numeric(df_items_all['ml_per_unit'], errors='coerce').fillna(0)
+                
+                ing_names = sorted(df_ing['Name'].dropna().unique().tolist())
+                selected_ing = st.selectbox("🔍 Επιλέξτε Πρώτη Ύλη προς ανάλυση:", ing_names, key="ing_analysis_select")
+                
+                if selected_ing:
+                    ing_info = df_ing[df_ing['Name'] == selected_ing].iloc[0]
+                    bottle_vol = ing_info['Volume']
+                    bottle_price = ing_info['Price']
+                    
+                    ing_recipes = df_items_all[df_items_all['ingredient_name'] == selected_ing]
+                    rec_id_to_name = {r["id"]: r["name"] for r in rec_data}
+                    
+                    total_ml_used = 0
+                    breakdown_data = []
 
-            r_final_abv = (r_total_alc / r_total_ml * 100) if r_total_ml > 0 else 0
-            r_sugg_price = float(str(recipe.get("Τιμή Καταλόγου", 0.0)).replace(',', '.'))
+                    for _, row in ing_recipes.iterrows():
+                        r_id = row['recipe_id']
+                        ml_per_cocktail = row['ml_per_unit']
+                        c_name = rec_id_to_name.get(r_id, "Άγνωστο")
+                        
+                        produced_pcs = df_prod_all[df_prod_all['cocktail_name'] == c_name]['pieces'].sum()
+                        
+                        if produced_pcs > 0:
+                            ml_consumed = produced_pcs * ml_per_cocktail
+                            total_ml_used += ml_consumed
+                            breakdown_data.append({
+                                "Κοκτέιλ": c_name,
+                                "Παραχθέντα Τεμάχια": produced_pcs,
+                                "Κατανάλωση (ml)": ml_consumed
+                            })
 
-            html_book += f"""
-                    </tbody>
-                </table>
-                <div class='analysis-box'>
-                    <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{r_final_abv:.2f}%</b></span> | 
-                    <span style='font-size:16px;'>Συνολικό Βάρος: <b>{r_total_weight:.1f} g</b></span>
-                    <span style='float:right; font-size:18px; color:#b38f00;'>Προτεινόμενη Λιανική: <b>{r_sugg_price:.2f} €</b></span>
-                </div>
-            </div>
-            """
-        html_book += f"""
-            <div class='footer'>
-                Αυτόματη εξαγωγή από το σύστημα διαχείρισης CABCLUB: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}
-            </div>
-        </body>
-        </html>
-        """
+                    total_bottles = total_ml_used / bottle_vol if bottle_vol > 0 else 0
+                    total_cost = total_bottles * bottle_price
 
-        st.download_button(
-            label="📑 Λήψη Κίτρινου Βιβλίου Συνταγών (με Logo)",
-            data=html_book,
-            file_name=f"Recipe_Book_Yellow_{datetime.now(greece_tz).strftime('%d_%m_%Y')}.html",
-            mime="text/html",
-            use_container_width=True
-        )
+                    st.divider()
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("📦 Φιάλες που καταναλώθηκαν", f"{total_bottles:.2f} μπουκάλια".replace('.', ','))
+                    m2.metric("💶 Συνολικό Κόστος Υλικού", f"{total_cost:.2f} €".replace('.', ','))
+                    m3.metric("💧 Συνολικά ml", f"{total_ml_used:,.0f} ml".replace(',', 'X').replace('.', ',').replace('X', '.'))
+
+                    if breakdown_data:
+                        df_breakdown = pd.DataFrame(breakdown_data)
+                        df_breakdown['Αναλογία (%)'] = (df_breakdown['Κατανάλωση (ml)'] / total_ml_used) * 100
+                        
+                        st.markdown(f"#### 🍹 Πού καταναλώθηκε το {selected_ing};")
+                        
+                        colA, colB = st.columns([1.2, 1])
+                        with colA:
+                            st.dataframe(
+                                df_breakdown.style.format({
+                                    "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
+                                    "Κατανάλωση (ml)": "{:,.1f} ml",
+                                    "Αναλογία (%)": "{:.1f}%"
+                                }).background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues'),
+                                use_container_width=True, hide_index=True
+                            )
+                        with colB:
+                            fig = px.pie(
+                                df_breakdown, 
+                                values='Κατανάλωση (ml)', 
+                                names='Κοκτέιλ', 
+                                hole=0.4, 
+                                color_discrete_sequence=px.colors.sequential.Teal
+                            )
+                            fig.update_traces(textinfo='percent+label')
+                            fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
+                            st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info(f"💡 Το υλικό '{selected_ing}' δεν έχει χρησιμοποιηθεί ακόμα σε καμία καταγεγραμμένη παραγωγή.")
+            else:
+                st.warning("Δεν βρέθηκαν δεδομένα παραγωγής για ανάλυση.")
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH GLOSSARY) ---
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
