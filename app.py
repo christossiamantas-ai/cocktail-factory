@@ -1550,6 +1550,172 @@ elif page == "🔍 Ανάλυση":
             else:
                 st.warning("Δεν βρέθηκαν δεδομένα ιστορικού παραγωγής (df_raw) για ανάλυση.")
 
+# =========================================================================
+            # --- ΝΕΟ: ΜΑΖΙΚΗ ΕΞΑΓΩΓΗ HTML ΓΙΑ ΠΡΩΤΕΣ ΥΛΕΣ ---
+            # =========================================================================
+            st.divider()
+            st.subheader("📑 Μαζική Εξαγωγή Αναφορών (Interactive HTML)")
+            st.write("Δημιουργήστε ένα πλήρες, διαδραστικό report με πίνακες και γραφήματα για επιλεγμένες ή και για όλες τις πρώτες ύλες ταυτόχρονα.")
+
+            col_e1, col_e2 = st.columns([3, 1])
+            with col_e2:
+                st.write("") # Spacer για να έρθει στο ίδιο ύψος
+                st.write("")
+                export_all = st.checkbox("Επιλογή Όλων των Υλών", value=False)
+            
+            with col_e1:
+                if export_all:
+                    export_selection = ing_names
+                    st.info(f"Επιλέχθηκαν αυτόματα και τα {len(ing_names)} διαθέσιμα υλικά.")
+                else:
+                    export_selection = st.multiselect("Επιλέξτε υλικά για εξαγωγή στο Report:", ing_names, default=[selected_ing] if selected_ing else None)
+
+            if export_selection:
+                # Κουμπί για να χτιστεί το report (απαιτεί επεξεργασία αν είναι πολλά)
+                if st.button("⚙️ Δημιουργία Διαδραστικού Report"):
+                    with st.spinner("Ανάλυση δεδομένων & δημιουργία γραφημάτων (μπορεί να διαρκέσει λίγο)..."):
+                        try:
+                            now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+                        except:
+                            now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+                            
+                        # Χτίζουμε τον "σκελετό" (κεφαλίδα) της HTML σελίδας
+                        html_report = f"""
+                        <!DOCTYPE html>
+                        <html lang="el">
+                        <head>
+                            <meta charset="UTF-8">
+                            <title>Report Πρώτων Υλών - CABCLUB</title>
+                            <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+                            <style>
+                                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f8; color: #333; padding: 20px; line-height: 1.6; }}
+                                .container {{ max-width: 1000px; margin: auto; }}
+                                .header {{ text-align: center; margin-bottom: 40px; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }}
+                                .header h1 {{ margin: 0; color: #1a3a5f; letter-spacing: 1px; }}
+                                .material-card {{ background: white; margin-bottom: 40px; padding: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border-top: 5px solid #1a3a5f; page-break-inside: avoid; }}
+                                .material-title {{ font-size: 24px; color: #1a3a5f; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; }}
+                                .metrics {{ display: flex; justify-content: space-between; margin-top: 20px; margin-bottom: 30px; flex-wrap: wrap; gap: 15px; }}
+                                .metric-box {{ text-align: center; background: #f8f9fa; padding: 15px; border-radius: 8px; flex: 1; border: 1px solid #ddd; min-width: 200px; }}
+                                .metric-value {{ font-size: 22px; font-weight: bold; color: #2e7d32; margin-top: 5px; }}
+                                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
+                                th, td {{ border: 1px solid #e0e0e0; padding: 12px; text-align: left; }}
+                                th {{ background-color: #1a3a5f; color: white; text-align: center; font-weight: 500; }}
+                                tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                                .chart-container {{ margin-top: 30px; text-align: center; display: flex; justify-content: center; }}
+                            </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="header">
+                                    <h1>CABCLUB COCKTAILS</h1>
+                                    <h2>ΣΥΓΚΕΝΤΡΩΤΙΚΗ ΑΝΑΦΟΡΑ ΚΑΤΑΝΑΛΩΣΕΩΝ</h2>
+                                    <p style="color: #666;">Ημερομηνία Εξαγωγής: {now_str}</p>
+                                </div>
+                        """
+
+                        # Λούπα για κάθε υλικό που επιλέχθηκε
+                        for ing in export_selection:
+                            ing_info = df_ing[df_ing['Name'] == ing].iloc[0]
+                            bottle_vol = float(ing_info['Volume'])
+                            price_per_ml = float(ing_info['Τιμή/ml'])
+                            
+                            if 'ingredient_name' in df_tab2.columns:
+                                df_ing_history = df_tab2[df_tab2['ingredient_name'] == ing].copy()
+                            else:
+                                df_ing_history = pd.DataFrame()
+                            
+                            # Καθαρισμός διπλοεγγραφών
+                            if not df_ing_history.empty and "prod_time" in df_ing_history.columns and "prod_date" in df_ing_history.columns:
+                                df_ing_history = df_ing_history.drop_duplicates(subset=["cocktail_name", "prod_date", "prod_time", "customer", "ingredient_name"])
+                            
+                            if not df_ing_history.empty:
+                                df_ing_history['total_ml'] = pd.to_numeric(df_ing_history.get('total_ml', 0), errors='coerce').fillna(0)
+                                df_ing_history['pieces'] = pd.to_numeric(df_ing_history.get('pieces', 0), errors='coerce').fillna(0)
+                                
+                                group_col = 'cocktail_name' if 'cocktail_name' in df_ing_history.columns else 'recipe_name' if 'recipe_name' in df_ing_history.columns else None
+                                
+                                if group_col:
+                                    df_breakdown = df_ing_history.groupby(group_col).agg(
+                                        Κατανάλωση_ml=('total_ml', 'sum'),
+                                        Παραχθέντα_Τεμάχια=('pieces', 'sum')
+                                    ).reset_index()
+                                    df_breakdown.rename(columns={group_col: 'Κοκτέιλ', 'Κατανάλωση_ml': 'Κατανάλωση (ml)', 'Παραχθέντα_Τεμάχια': 'Παραχθέντα Τεμάχια'}, inplace=True)
+                                else:
+                                    df_breakdown = pd.DataFrame([{"Κοκτέιλ": "Ιστορικό", "Παραχθέντα Τεμάχια": df_ing_history['pieces'].sum(), "Κατανάλωση (ml)": df_ing_history['total_ml'].sum()}])
+                                    
+                                df_breakdown = df_breakdown[df_breakdown['Κατανάλωση (ml)'] > 0]
+                                total_ml_used = df_breakdown['Κατανάλωση (ml)'].sum()
+                                
+                                if total_ml_used > 0:
+                                    total_bottles = total_ml_used / bottle_vol if bottle_vol > 0 else 0
+                                    total_cost = total_ml_used * price_per_ml
+                                    
+                                    df_breakdown['Αναλογία (%)'] = (df_breakdown['Κατανάλωση (ml)'] / total_ml_used) * 100
+                                    df_breakdown['Κόστος (€)'] = df_breakdown['Κατανάλωση (ml)'] * price_per_ml
+                                    
+                                    # --- 1. Δημιουργία HTML Πίνακα για το συγκεκριμένο υλικό ---
+                                    table_html = "<table><thead><tr><th>Κοκτέιλ</th><th style='text-align:center;'>Τεμάχια</th><th style='text-align:center;'>Κατανάλωση (ml)</th><th style='text-align:center;'>Φιάλες</th><th style='text-align:center;'>Αναλογία</th><th style='text-align:center;'>Κόστος</th></tr></thead><tbody>"
+                                    
+                                    for _, row in df_breakdown.sort_values(by='Κατανάλωση (ml)', ascending=False).iterrows():
+                                        bottles_str = f"{(row['Κατανάλωση (ml)'] / bottle_vol):.1f}" if bottle_vol > 0 else "-"
+                                        table_html += f"<tr><td>{row['Κοκτέιλ']}</td><td style='text-align:center;'>{row['Παραχθέντα Τεμάχια']:g}</td><td style='text-align:center;'>{row['Κατανάλωση (ml)']:,.1f}</td><td style='text-align:center;'>{bottles_str}</td><td style='text-align:center;'>{row['Αναλογία (%)']:.1f}%</td><td style='text-align:center;'>{row['Κόστος (€)']:.2f} €</td></tr>"
+                                    table_html += "</tbody></table>"
+                                    
+                                    # --- 2. Δημιουργία Plotly Γραφήματος (Πίτα) και μετατροπή σε HTML ---
+                                    fig_pie = px.pie(df_breakdown, values='Κατανάλωση (ml)', names='Κοκτέιλ', hole=0.4, color_discrete_sequence=px.colors.sequential.Teal)
+                                    fig_pie.update_traces(textinfo='percent+label')
+                                    fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=350, showlegend=False)
+                                    
+                                    # include_plotlyjs=False επειδή το φορτώσαμε ήδη μια φορά στο Head (κάνει το αρχείο πολύ πιο ελαφρύ!)
+                                    graph_div = fig_pie.to_html(full_html=False, include_plotlyjs=False)
+                                    
+                                    # --- 3. Σύνθεση της "Κάρτας" του υλικού ---
+                                    html_report += f"""
+                                    <div class="material-card">
+                                        <h2 class="material-title">🍾 {ing}</h2>
+                                        <div class="metrics">
+                                            <div class="metric-box">
+                                                <div style="color: #666; font-size: 13px; text-transform: uppercase;">Συνολικά ml</div>
+                                                <div class="metric-value">{total_ml_used:,.1f}</div>
+                                            </div>
+                                            <div class="metric-box">
+                                                <div style="color: #666; font-size: 13px; text-transform: uppercase;">Φιάλες</div>
+                                                <div class="metric-value">{total_bottles:.2f}</div>
+                                            </div>
+                                            <div class="metric-box">
+                                                <div style="color: #666; font-size: 13px; text-transform: uppercase;">Συνολικό Κόστος</div>
+                                                <div class="metric-value">{total_cost:.2f} €</div>
+                                            </div>
+                                        </div>
+                                        {table_html}
+                                        <div class="chart-container">
+                                            {graph_div}
+                                        </div>
+                                    </div>
+                                    """
+                                else:
+                                    html_report += f"<div class='material-card'><h2 class='material-title'>🍾 {ing}</h2><p style='color: #666; font-style: italic;'>Δεν καταγράφηκε κατανάλωση (0 ml).</p></div>"
+                            else:
+                                html_report += f"<div class='material-card'><h2 class='material-title'>🍾 {ing}</h2><p style='color: #666; font-style: italic;'>Δεν υπάρχει καταγεγραμμένο ιστορικό για αυτό το υλικό.</p></div>"
+                                
+                        # Κλείσιμο HTML
+                        html_report += "</div></body></html>"
+                        
+                        # Αποθήκευση του report στη μνήμη του Streamlit
+                        st.session_state['material_export_html_data'] = html_report
+                        
+                # Εμφάνιση του κουμπιού λήψης αν το Report είναι έτοιμο
+                if 'material_export_html_data' in st.session_state:
+                    st.success("✅ Το Διαδραστικό Report είναι έτοιμο για λήψη!")
+                    st.download_button(
+                        label="📥 Κατέβασμα Full Report (HTML)",
+                        data=st.session_state['material_export_html_data'],
+                        file_name=f"CABCLUB_Materials_Report_{datetime.now().strftime('%d%m%Y')}.html",
+                        mime="text/html",
+                        type="primary",
+                        use_container_width=True
+                    )
+
 
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH MULTISELECT, NET PROFIT & HTML EXPORT) ---
 elif page == "📊 Εμπορική Πολιτική":
