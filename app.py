@@ -4974,9 +4974,9 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 # 🚀 Δημιουργία κειμένου ΜΟΝΟ αν υπάρχουν εκπτώσεις
                 promo_text_parts = []
                 if f_pcs > 0:
-                    promo_text_parts.append(f"{f_pcs} Δώρα")
+                    promo_text_parts.append(f"{f_pcs} τμχ Δώρο")
                 if s_pcs > 0:
-                    promo_text_parts.append(f"{s_pcs} με -{s_pct}%")
+                    promo_text_parts.append(f"{s_pcs} τμχ με -{s_pct}%")
                 promo_text = " | ".join(promo_text_parts) if promo_text_parts else ""
                 
                 sim_export_data.append({
