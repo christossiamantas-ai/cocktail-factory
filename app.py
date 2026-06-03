@@ -1543,214 +1543,243 @@ elif page == "🔍 Ανάλυση":
                 st.warning("Δεν βρέθηκαν δεδομένα ιστορικού παραγωγής (df_raw) για ανάλυση.")
 
 
-# --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH GLOSSARY) ---
+# --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH MULTISELECT & NET PROFIT) ---
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
     st.write("Συγκρίνετε τη στρατηγική Δώρων έναντι της Έκπτωσης % και δείτε την ανάλυση κερδοφορίας.")
 
     if not df_rec.empty:
-        # 1. Επιλογή Cocktail & Υπολογισμός Κόστους
-        choice = st.selectbox("Επιλέξτε Cocktail:", df_rec["Ονομα"].unique())
-        r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
+        # 1. 🚀 ΠΟΛΛΑΠΛΗ ΕΠΙΛΟΓΗ ΚΟΚΤΕΙΛ
+        choices = st.multiselect("Επιλέξτε Cocktail(s) για Σύγκριση:", df_rec["Ονομα"].unique())
 
-        raw_cost = 0.0
-        for i in range(1, 14):
-            ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
-            ml = float(r.get(f"ML{i}", 0))
-            if ing_n not in ["ΚΕΝΟ", "nan", "Νερό", ""] and ml > 0:
-                match = df_ing[df_ing["Name"] == ing_n]
-                if not match.empty:
-                    raw_cost += ml * float(match.iloc[0]["Τιμή/ml"])
-        
-        unit_cost = raw_cost + TOTAL_FIXED
-        p_retail = float(r["Τιμή Καταλόγου"])
-        p_agent_base = p_retail * 0.74  # Κανονική τιμή προ προσφορών (Αντιπροσώπου)
-        
-        st.divider()
-        
-        # --- ΝΕΟ: ΔΥΝΑΜΙΚΟ ΦΙΛΤΡΟ ΤΙΜΟΛΟΓΙΑΚΗΣ ΒΑΣΗΣ ---
-        price_target = st.radio(
-            "🏷️ Επιλογή Τιμολογιακής Βάσης για τη Σύγκριση:", 
-            options=["Τιμή Αντιπροσώπου (Χονδρική)", "Τιμή Λιανικής (Κατάλογος)"],
-            horizontal=True,
-            key="commercial_policy_price_filter"
-        )
-        
-        # Ορισμός της ενεργής τιμής με βάση το φίλτρο
-        if price_target == "Τιμή Λιανικής (Κατάλογος)":
-            active_base_price = p_retail
-            price_label_text = "Κανονική Τιμή Λιανικής"
-        else:
-            active_base_price = p_agent_base
-            price_label_text = "Κανονική Τιμή Αντιπρ."
-            
-        normal_profit_per_unit = active_base_price - unit_cost
-        # ------------------------------------------------
-
-        st.divider()
-
-        # 2. Είσοδος Δεδομένων (Ξεκινάνε από 0)
-        col_in_a, col_in_b = st.columns(2)
-
-        with col_in_a:
-            st.subheader("Σενάριο Α: Δώρα (Free Goods)")
-            sA_paid = st.number_input("Τεμάχια προς Πώληση (Paid)", min_value=0, value=0, key="sa_paid")
-            sA_free = st.number_input("Τεμάχια Δώρο (Free)", min_value=0, value=0, key="sa_free")
-            
-            sA_total_units = sA_paid + sA_free
-            sA_revenue = sA_paid * active_base_price # Υπολογισμός με τη δυναμική τιμή
-            sA_cost = sA_total_units * unit_cost
-            sA_profit = sA_revenue - sA_cost
-            sA_effective = sA_revenue / sA_total_units if sA_total_units > 0 else 0
-            sA_margin = (sA_profit / sA_revenue * 100) if sA_revenue > 0 else 0
-            sA_markup = (sA_profit / sA_cost * 100) if sA_cost > 0 else 0
-            sA_loss = (normal_profit_per_unit * sA_total_units) - sA_profit if sA_total_units > 0 else 0
-
-        with col_in_b:
-            st.subheader("Σενάριο Β: Έκπτωση επί της Τιμής")
-            sB_total_units = st.number_input("Συνολικά Τεμάχια (Β)", min_value=0, value=0, key="sb_total")
-            sB_discount = st.number_input("Ποσοστό Έκπτωσης %", min_value=0.0, value=0.0, key="sb_disc")
-            
-            sB_price_per_unit = active_base_price * (1 - sB_discount/100) # Υπολογισμός με τη δυναμική τιμή
-            sB_revenue = sB_total_units * sB_price_per_unit
-            sB_cost = sB_total_units * unit_cost
-            sB_profit = sB_revenue - sB_cost
-            sB_effective = sB_price_per_unit
-            sB_margin = (sB_profit / sB_revenue * 100) if sB_revenue > 0 else 0
-            sB_markup = (sB_profit / sB_cost * 100) if sB_cost > 0 else 0
-            sB_loss = (normal_profit_per_unit * sB_total_units) - sB_profit if sB_total_units > 0 else 0
-
-        # 3. Εμφάνιση Επαγγελματικού Πίνακα
-        if sA_total_units > 0 or sB_total_units > 0:
+        if choices:
             st.divider()
             
-            winner_text = "ΣΕΝΑΡΙΟ Α" if sA_profit > sB_profit else "ΣΕΝΑΡΙΟ Β"
-            diff_val = abs(sA_profit - sB_profit)
-
-            # Σχεδιασμός Πίνακα (HTML format)
-            html_table = """
-            <div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #444;">
-                <table style="width: 100%; border-collapse: collapse; color: white; font-family: sans-serif;">
-                    <tr style="background-color: #1a3a5f;">
-                        <th style="padding: 12px; text-align: left; border: 1px solid #444;">ΠΕΡΙΓΡΑΦΗ ΑΝΑΛΥΣΗΣ</th>
-                        <th style="padding: 12px; text-align: center; border: 1px solid #444;">ΣΕΝΑΡΙΟ Α</th>
-                        <th style="padding: 12px; text-align: center; border: 1px solid #444;">ΣΕΝΑΡΙΟ Β</th>
-                    </tr>
-                    <tr style="background-color: #333; font-weight: bold;">
-                        <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΟΙΚΟΝΟΜΙΚΑ ΜΕΓΕΘΗ</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #444;">{15}</td>
-                        <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{0:.2f} €</td>
-                        <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{0:.2f} €</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #444;">Effective Τιμή/Τμχ</td>
-                        <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{1:.2f} €</td>
-                        <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{2:.2f} €</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #444;">Συνολικά Έσοδα</td>
-                        <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{3:.2f} €</td>
-                        <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{4:.2f} €</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #444;">Συνολικό Κόστος</td>
-                        <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{5:.2f} €</td>
-                        <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{6:.2f} €</td>
-                    </tr>
-                    <tr style="font-weight: bold; background-color: #222;">
-                        <td style="padding: 10px; border: 1px solid #444;">ΚΑΘΑΡΟ ΚΕΡΔΟΣ</td>
-                        <td style="text-align:center; color: #4caf50; font-size: 1.2em; border: 1px solid #444;">{7:.2f} €</td>
-                        <td style="text-align:center; color: #2196f3; font-size: 1.2em; border: 1px solid #444;">{8:.2f} €</td>
-                    </tr>
-                    <tr style="background-color: #333; font-weight: bold;">
-                        <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΔΕΙΚΤΕΣ</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #444;">Margin %</td>
-                        <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{9:.1f}%</td>
-                        <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{10:.1f}%</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px; border: 1px solid #444;">Markup %</td>
-                        <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{11:.1f}%</td>
-                        <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{12:.1f}%</td>
-                    </tr>
-                </table>
-                <div style="margin-top: 20px; padding: 15px; background-color: #1b5e20; border-radius: 8px; text-align: center; color: white;">
-                    <h2 style="margin:0;">🏆 ΝΙΚΗΤΗΣ: {13}</h2>
-                    <p style="margin:5px 0 0 0;">Επιπλέον κέρδος: <b>{14:.2f} €</b></p>
-                </div>
-            </div>
-            """.format(
-                active_base_price, sA_effective, sB_effective, 
-                sA_revenue, sB_revenue, sA_cost, sB_cost, 
-                sA_profit, sB_profit, sA_margin, sB_margin, 
-                sA_markup, sB_markup, winner_text, diff_val, price_label_text
+            # --- ΔΥΝΑΜΙΚΟ ΦΙΛΤΡΟ ΤΙΜΟΛΟΓΙΑΚΗΣ ΒΑΣΗΣ (GLOBAL) ---
+            price_target = st.radio(
+                "🏷️ Επιλογή Τιμολογιακής Βάσης για τη Σύγκριση:", 
+                options=["Τιμή Αντιπροσώπου (Χονδρική)", "Τιμή Λιανικής (Κατάλογος)"],
+                horizontal=True,
+                key="commercial_policy_price_filter"
             )
             
-            st.markdown(html_table, unsafe_allow_html=True)
+            # 2. 🚀 ΠΑΡΑΜΕΤΡΟΙ ΣΕΝΑΡΙΩΝ (Εφαρμόζονται σε ΟΛΑ τα επιλεγμένα κοκτέιλ)
+            st.markdown("### ⚙️ Παράμετροι Σεναρίων (Εφαρμόζονται σε όλα τα επιλεγμένα)")
+            col_in_a, col_in_b = st.columns(2)
 
-            # --- ΝΕΟ: ΕΠΕΞΗΓΗΣΗ ΟΙΚΟΝΟΜΙΚΩΝ ΟΡΩΝ ---
+            with col_in_a:
+                st.subheader("Σενάριο Α: Δώρα (Free Goods)")
+                sA_paid = st.number_input("Τεμάχια προς Πώληση (Paid)", min_value=0, value=0, key="sa_paid")
+                sA_free = st.number_input("Τεμάχια Δώρο (Free)", min_value=0, value=0, key="sa_free")
+
+            with col_in_b:
+                st.subheader("Σενάριο Β: Έκπτωση επί της Τιμής")
+                sB_total_units = st.number_input("Συνολικά Τεμάχια (Β)", min_value=0, value=0, key="sb_total")
+                sB_discount = st.number_input("Ποσοστό Έκπτωσης %", min_value=0.0, value=0.0, key="sb_disc")
+
+            st.divider()
+
+            # 3. 🚀 ΛΟΥΠΑ ΥΠΟΛΟΓΙΣΜΟΥ ΚΑΙ ΕΜΦΑΝΙΣΗΣ ΓΙΑ ΚΑΘΕ ΚΟΚΤΕΙΛ
+            for choice in choices:
+                st.markdown(f"## 🍹 Ανάλυση: {choice}")
+                
+                r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
+
+                raw_cost = 0.0
+                for i in range(1, 14):
+                    ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+                    ml = float(r.get(f"ML{i}", 0))
+                    if ing_n not in ["ΚΕΝΟ", "nan", "Νερό", ""] and ml > 0:
+                        match = df_ing[df_ing["Name"] == ing_n]
+                        if not match.empty:
+                            raw_cost += ml * float(match.iloc[0]["Τιμή/ml"])
+                
+                unit_cost = raw_cost + TOTAL_FIXED
+                p_retail = float(r["Τιμή Καταλόγου"])
+                p_agent_base = p_retail * 0.74  
+                
+                if price_target == "Τιμή Λιανικής (Κατάλογος)":
+                    active_base_price = p_retail
+                    price_label_text = "Κανονική Τιμή Λιανικής"
+                else:
+                    active_base_price = p_agent_base
+                    price_label_text = "Κανονική Τιμή Αντιπρ."
+                    
+                normal_profit_per_unit = active_base_price - unit_cost
+                
+                # --- Υπολογισμοί Σεναρίου Α ---
+                sA_total_units = sA_paid + sA_free
+                sA_revenue = sA_paid * active_base_price
+                sA_cost = sA_total_units * unit_cost
+                sA_profit = sA_revenue - sA_cost
+                sA_effective = sA_revenue / sA_total_units if sA_total_units > 0 else 0
+                sA_margin = (sA_profit / sA_revenue * 100) if sA_revenue > 0 else 0
+                sA_markup = (sA_profit / sA_cost * 100) if sA_cost > 0 else 0
+                sA_loss = (normal_profit_per_unit * sA_total_units) - sA_profit if sA_total_units > 0 else 0
+                
+                # --- Υπολογισμοί Σεναρίου Β ---
+                sB_price_per_unit = active_base_price * (1 - sB_discount/100)
+                sB_revenue = sB_total_units * sB_price_per_unit
+                sB_cost = sB_total_units * unit_cost
+                sB_profit = sB_revenue - sB_cost
+                sB_effective = sB_price_per_unit
+                sB_margin = (sB_profit / sB_revenue * 100) if sB_revenue > 0 else 0
+                sB_markup = (sB_profit / sB_cost * 100) if sB_cost > 0 else 0
+                sB_loss = (normal_profit_per_unit * sB_total_units) - sB_profit if sB_total_units > 0 else 0
+
+                # --- 🚀 ΝΕΟ: Υπολογισμός Net Κέρδους ανά τμχ (Με Χρώματα) ---
+                net_profit_a = (sA_profit / sA_total_units) if sA_total_units > 0 else 0
+                net_profit_b = (sB_profit / sB_total_units) if sB_total_units > 0 else 0
+                
+                color_a = "#ff4d4d" if net_profit_a < 0 else "#4caf50"
+                color_b = "#ff4d4d" if net_profit_b < 0 else "#2196f3"
+
+                if sA_total_units > 0 or sB_total_units > 0:
+                    winner_text = "ΣΕΝΑΡΙΟ Α" if sA_profit > sB_profit else "ΣΕΝΑΡΙΟ Β"
+                    diff_val = abs(sA_profit - sB_profit)
+
+                    # 4. Σχεδιασμός Πίνακα (HTML format) με τις νέες γραμμές
+                    html_table = """
+                    <div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #444; margin-bottom: 15px;">
+                        <table style="width: 100%; border-collapse: collapse; color: white; font-family: sans-serif;">
+                            <tr style="background-color: #1a3a5f;">
+                                <th style="padding: 12px; text-align: left; border: 1px solid #444;">ΠΕΡΙΓΡΑΦΗ ΑΝΑΛΥΣΗΣ</th>
+                                <th style="padding: 12px; text-align: center; border: 1px solid #444;">ΣΕΝΑΡΙΟ Α</th>
+                                <th style="padding: 12px; text-align: center; border: 1px solid #444;">ΣΕΝΑΡΙΟ Β</th>
+                            </tr>
+                            <tr style="background-color: #333; font-weight: bold;">
+                                <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΟΙΚΟΝΟΜΙΚΑ ΜΕΓΕΘΗ</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #444;">{15}</td>
+                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{0:.2f} €</td>
+                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{0:.2f} €</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #444;">Effective Τιμή/Τμχ</td>
+                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{1:.2f} €</td>
+                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{2:.2f} €</td>
+                            </tr>
+                            
+                            <!-- ΝΕΕΣ ΓΡΑΜΜΕΣ ΓΙΑ NET ΚΕΡΔΟΣ ΑΝΑ ΤΜΧ -->
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #444;">Net Κέρδος / τμχ (Αρχικό)</td>
+                                <td style="text-align:center; color: #ddd; border: 1px solid #444;">{16:.2f} €</td>
+                                <td style="text-align:center; color: #ddd; border: 1px solid #444;">{16:.2f} €</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #444;">Net Κέρδος / τμχ (Τελικό)</td>
+                                <td style="text-align:center; color: {19}; font-weight: bold; border: 1px solid #444;">{17:.2f} €</td>
+                                <td style="text-align:center; color: {20}; font-weight: bold; border: 1px solid #444;">{18:.2f} €</td>
+                            </tr>
+                            <!-- ΤΕΛΟΣ ΝΕΩΝ ΓΡΑΜΜΩΝ -->
+                            
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #444;">Συνολικά Έσοδα</td>
+                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{3:.2f} €</td>
+                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{4:.2f} €</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #444;">Συνολικό Κόστος</td>
+                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{5:.2f} €</td>
+                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{6:.2f} €</td>
+                            </tr>
+                            <tr style="font-weight: bold; background-color: #222;">
+                                <td style="padding: 10px; border: 1px solid #444;">ΚΑΘΑΡΟ ΚΕΡΔΟΣ</td>
+                                <td style="text-align:center; color: #4caf50; font-size: 1.2em; border: 1px solid #444;">{7:.2f} €</td>
+                                <td style="text-align:center; color: #2196f3; font-size: 1.2em; border: 1px solid #444;">{8:.2f} €</td>
+                            </tr>
+                            <tr style="background-color: #333; font-weight: bold;">
+                                <td colspan="3" style="padding: 10px; border: 1px solid #444;">ΔΕΙΚΤΕΣ</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #444;">Margin %</td>
+                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{9:.1f}%</td>
+                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{10:.1f}%</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #444;">Markup %</td>
+                                <td style="text-align:center; color: #4caf50; border: 1px solid #444;">{11:.1f}%</td>
+                                <td style="text-align:center; color: #2196f3; border: 1px solid #444;">{12:.1f}%</td>
+                            </tr>
+                        </table>
+                        <div style="margin-top: 20px; padding: 15px; background-color: #1b5e20; border-radius: 8px; text-align: center; color: white;">
+                            <h2 style="margin:0;">🏆 ΝΙΚΗΤΗΣ: {13}</h2>
+                            <p style="margin:5px 0 0 0;">Επιπλέον κέρδος: <b>{14:.2f} €</b></p>
+                        </div>
+                    </div>
+                    """.format(
+                        active_base_price, sA_effective, sB_effective, 
+                        sA_revenue, sB_revenue, sA_cost, sB_cost, 
+                        sA_profit, sB_profit, sA_margin, sB_margin, 
+                        sA_markup, sB_markup, winner_text, diff_val, price_label_text,
+                        normal_profit_per_unit, net_profit_a, net_profit_b, color_a, color_b 
+                    )
+                    
+                    st.markdown(html_table, unsafe_allow_html=True)
+
+                    # 5. ΥΠΕΡ-ΑΝΑΛΥΤΙΚΟ ΕΠΑΓΓΕΛΜΑΤΙΚΟ REPORT (Μέσα στη λούπα με δυναμικό κουμπί)
+                    now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+                    sA_indirect_disc = ((1 - sA_effective/active_base_price)*100) if active_base_price > 0 else 0
+                    
+                    full_audit_data = [
+                        {"ΚΑΤΗΓΟΡΙΑ": "1. ΤΑΥΤΟΤΗΤΑ ΣΥΜΦΩΝΙΑΣ", "ΣΤΟΙΧΕΙΟ": "Cocktail / Προϊόν", "ΣΕΝΑΡΙΟ Α": choice, "ΣΕΝΑΡΙΟ Β": choice},
+                        {"ΚΑΤΗΓΟΡΙΑ": "1. ΤΑΥΤΟΤΗΤΑ ΣΥΜΦΩΝΙΑΣ", "ΣΤΟΙΧΕΙΟ": "Ημερομηνία & Ώρα", "ΣΕΝΑΡΙΟ Α": now_str, "ΣΕΝΑΡΙΟ Β": ""},
+                        {"ΚΑΤΗΓΟΡΙΑ": "1. ΤΑΥΤΟΤΗΤΑ ΣΥΜΦΩΝΙΑΣ", "ΣΤΟΙΧΕΙΟ": "Υπεύθυνος Ανάλυσης", "ΣΕΝΑΡΙΟ Α": "DC CABCLUB System", "ΣΕΝΑΡΙΟ Β": ""},
+                        {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
+                        
+                        {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Ενεργή Βάση Σύγκρισης", "ΣΕΝΑΡΙΟ Α": price_label_text, "ΣΕΝΑΡΙΟ Β": price_label_text},
+                        {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Κανονική Τιμή (Gross)", "ΣΕΝΑΡΙΟ Α": f"{active_base_price:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{active_base_price:.2f} €"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Πραγματική Τιμή Μονάδας (Net)", "ΣΕΝΑΡΙΟ Α": f"{sA_effective:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_effective:.2f} €"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
+
+                        {"ΚΑΤΗΓΟΡΙΑ": "3. ΑΝΑΛΥΣΗ ΟΓΚΩΝ (UNITS)", "ΣΤΟΙΧΕΙΟ": "Τεμάχια προς Τιμολόγηση", "ΣΕΝΑΡΙΟ Α": f"{sA_paid} τμχ", "ΣΕΝΑΡΙΟ Β": f"{sB_total_units} τμχ"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "3. ΑΝΑΛΥΣΗ ΟΓΚΩΝ (UNITS)", "ΣΤΟΙΧΕΙΟ": "Δωρεάν Τεμάχια (Free Goods)", "ΣΕΝΑΡΙΟ Α": f"{sA_free} τμχ", "ΣΕΝΑΡΙΟ Β": "0 τμχ"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "3. ΑΝΑΛΥΣΗ ΟΓΚΩΝ (UNITS)", "ΣΤΟΙΧΕΙΟ": "Συνολικό Stock που θα φύγει", "ΣΕΝΑΡΙΟ Α": f"{sA_total_units} τμχ", "ΣΕΝΑΡΙΟ Β": f"{sB_total_units} τμχ"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
+
+                        {"ΚΑΤΗΓΟΡΙΑ": "4. ΟΙΚΟΝΟΜΙΚΟ P&L", "ΣΤΟΙΧΕΙΟ": "Συνολικά Έσοδα (Revenue)", "ΣΕΝΑΡΙΟ Α": f"{sA_revenue:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_revenue:.2f} €"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "4. ΟΙΚΟΝΟΜΙΚΟ P&L", "ΣΤΟΙΧΕΙΟ": "Συνολικό Κόστος Παραγωγής (COGS)", "ΣΕΝΑΡΙΟ Α": f"{sA_cost:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_cost:.2f} €"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "4. ΟΙΚΟΝΟΜΙΚΟ P&L", "ΣΤΟΙΧΕΙΟ": "Μικτό Κέρδος (Gross Profit)", "ΣΕΝΑΡΙΟ Α": f"{sA_profit:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_profit:.2f} €"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "4. ΟΙΚΟΝΟΜΙΚΟ P&L", "ΣΤΟΙΧΕΙΟ": "Κόστος Εμπορικής Ενέργειας", "ΣΕΝΑΡΙΟ Α": f"{sA_loss:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_loss:.2f} €"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
+
+                        {"ΚΑΤΗΓΟΡΙΑ": "5. KPIs & PERFORMANCE", "ΣΤΟΙΧΕΙΟ": "Margin % (Επί του Τζίρου)", "ΣΕΝΑΡΙΟ Α": f"{sA_margin:.2f}%", "ΣΕΝΑΡΙΟ Β": f"{sB_margin:.2f}%"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "5. KPIs & PERFORMANCE", "ΣΤΟΙΧΕΙΟ": "Markup % (Επί του Κόστους)", "ΣΕΝΑΡΙΟ Α": f"{sA_markup:.2f}%", "ΣΕΝΑΡΙΟ Β": f"{sB_markup:.2f}%"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "5. KPIs & PERFORMANCE", "ΣΤΟΙΧΕΙΟ": "Ποσοστό Έκπτωσης (Direct/Indirect)", "ΣΕΝΑΡΙΟ Α": f"{sA_indirect_disc:.1f}%", "ΣΕΝΑΡΙΟ Β": f"{sB_discount:.1f}%"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
+                        
+                        # ΝΕΑ ΔΕΔΟΜΕΝΑ ΣΤΟ CSV ΓΙΑ ΤΟ NET ΚΕΡΔΟΣ
+                        {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "Net Κέρδος ανά τμχ (Αρχικό)", "ΣΕΝΑΡΙΟ Α": f"{normal_profit_per_unit:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{normal_profit_per_unit:.2f} €"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "Net Κέρδος ανά τμχ (Τελικό)", "ΣΕΝΑΡΙΟ Α": f"{net_profit_a:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{net_profit_b:.2f} €"},
+                        
+                        {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "Διαφορά Κέρδους Συμφωνίας", "ΣΕΝΑΡΙΟ Α": f"{diff_val:.2f} €" if sA_profit > sB_profit else "-", "ΣΕΝΑΡΙΟ Β": f"{diff_val:.2f} €" if sB_profit > sA_profit else "-"},
+                        {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "ΚΑΤΑΣΤΑΣΗ ΕΓΚΡΙΣΗΣ", "ΣΕΝΑΡΙΟ Α": "ΕΠΙΛΟΓΗ" if sA_profit > sB_profit else "-", "ΣΕΝΑΡΙΟ Β": "ΕΠΙΛΟΓΗ" if sB_profit > sA_profit else "-"}
+                    ]
+                    
+                    df_rep = pd.DataFrame(full_audit_data)
+                    csv = df_rep.to_csv(index=False, sep=';', encoding='utf-8-sig')
+                    
+                    st.download_button(
+                        label=f"💾 Λήψη Φακέλου Ανάλυσης: {choice}", 
+                        data=csv, 
+                        file_name=f"Full_Audit_Report_{choice.replace(' ', '_')}.csv",
+                        mime="text/csv",
+                        key=f"dl_audit_{choice}" # 👈 Δυναμικό Key για να μην σκάει το Streamlit όταν βγάζει πολλά κουμπιά
+                    )
+                    st.markdown("<br><br>", unsafe_allow_html=True) # Κενό μεταξύ των κοκτέιλ
+                    
+            # 6. ΕΠΕΞΗΓΗΣΗ ΟΙΚΟΝΟΜΙΚΩΝ ΟΡΩΝ (Εκτός λούπας, εμφανίζεται μια φορά στο τέλος)
+            st.divider()
             with st.expander("ℹ️ Ερμηνεία Οικονομικών Όρων & Δεικτών"):
                 st.info("""
+                * **Net Κέρδος/τμχ (Αρχικό):** Το καθαρό κέρδος που βγάζεις ανά τεμάχιο ΧΩΡΙΣ καμία προσφορά (Τιμή - Κόστος).
+                * **Net Κέρδος/τμχ (Τελικό):** Το πραγματικό σου κέρδος ανά τεμάχιο, έχοντας συνυπολογίσει τη "χασούρα" από τα δώρα ή την έκπτωση. Αν είναι κόκκινο, μπαίνεις μέσα!
                 * **Effective Τιμή:** Η πραγματική τιμή που εισπράττει η εταιρεία ανά μονάδα προϊόντος, αφού υπολογιστούν τα δώρα ή οι εκπτώσεις.
                 * **Margin (Περιθώριο Κέρδους %):** Το ποσοστό του τζίρου που παραμένει ως κέρδος. Υπολογίζεται ως: `(Κέρδος / Έσοδα) * 100`.
                 * **Markup (Ποσοστό Επιβάρυνσης %):** Το ποσοστό πάνω στο κόστος παραγωγής που προστίθεται για να προκύψει η τιμή πώλησης. Υπολογίζεται ως: `(Κέρδος / Κόστος) * 100`.
                 * **Κόστος Εμπορικής Ενέργειας:** Το "διαφυγόν κέρδος". Πόσα χρήματα επενδύει η εταιρεία στην προσφορά σε σχέση με την κανονική τιμή πώλησης.
                 """)
-            
-            st.divider()
-            
-            # 5. ΥΠΕΡ-ΑΝΑΛΥΤΙΚΟ ΕΠΑΓΓΕΛΜΑΤΙΚΟ REPORT
-            if st.button("💾 Λήψη Πλήρους Φακέλου Ανάλυσης (Full Audit Report)"):
-                now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
-                
-                # Υπολογισμός Έμμεσης Έκπτωσης για το Σενάριο Α βάσει της ενεργής τιμής
-                sA_indirect_disc = ((1 - sA_effective/active_base_price)*100) if active_base_price > 0 else 0
-                
-                full_audit_data = [
-                    {"ΚΑΤΗΓΟΡΙΑ": "1. ΤΑΥΤΟΤΗΤΑ ΣΥΜΦΩΝΙΑΣ", "ΣΤΟΙΧΕΙΟ": "Cocktail / Προϊόν", "ΣΕΝΑΡΙΟ Α": choice, "ΣΕΝΑΡΙΟ Β": choice},
-                    {"ΚΑΤΗΓΟΡΙΑ": "1. ΤΑΥΤΟΤΗΤΑ ΣΥΜΦΩΝΙΑΣ", "ΣΤΟΙΧΕΙΟ": "Ημερομηνία & Ώρα", "ΣΕΝΑΡΙΟ Α": now_str, "ΣΕΝΑΡΙΟ Β": ""},
-                    {"ΚΑΤΗΓΟΡΙΑ": "1. ΤΑΥΤΟΤΗΤΑ ΣΥΜΦΩΝΙΑΣ", "ΣΤΟΙΧΕΙΟ": "Υπεύθυνος Ανάλυσης", "ΣΕΝΑΡΙΟ Α": "DC CABCLUB System", "ΣΕΝΑΡΙΟ Β": ""},
-                    {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
-                    
-                    {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Ενεργή Βάση Σύγκρισης", "ΣΕΝΑΡΙΟ Α": price_label_text, "ΣΕΝΑΡΙΟ Β": price_label_text},
-                    {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Κανονική Τιμή (Gross)", "ΣΕΝΑΡΙΟ Α": f"{active_base_price:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{active_base_price:.2f} €"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "2. ΤΙΜΟΛΟΓΙΑΚΗ ΒΑΣΗ", "ΣΤΟΙΧΕΙΟ": "Πραγματική Τιμή Μονάδας (Net)", "ΣΕΝΑΡΙΟ Α": f"{sA_effective:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_effective:.2f} €"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
-
-                    {"ΚΑΤΗΓΟΡΙΑ": "3. ΑΝΑΛΥΣΗ ΟΓΚΩΝ (UNITS)", "ΣΤΟΙΧΕΙΟ": "Τεμάχια προς Τιμολόγηση", "ΣΕΝΑΡΙΟ Α": f"{sA_paid} τμχ", "ΣΕΝΑΡΙΟ Β": f"{sB_total_units} τμχ"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "3. ΑΝΑΛΥΣΗ ΟΓΚΩΝ (UNITS)", "ΣΤΟΙΧΕΙΟ": "Δωρεάν Τεμάχια (Free Goods)", "ΣΕΝΑΡΙΟ Α": f"{sA_free} τμχ", "ΣΕΝΑΡΙΟ Β": "0 τμχ"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "3. ΑΝΑΛΥΣΗ ΟΓΚΩΝ (UNITS)", "ΣΤΟΙΧΕΙΟ": "Συνολικό Stock που θα φύγει", "ΣΕΝΑΡΙΟ Α": f"{sA_total_units} τμχ", "ΣΕΝΑΡΙΟ Β": f"{sB_total_units} τμχ"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
-
-                    {"ΚΑΤΗΓΟΡΙΑ": "4. ΟΙΚΟΝΟΜΙΚΟ P&L", "ΣΤΟΙΧΕΙΟ": "Συνολικά Έσοδα (Revenue)", "ΣΕΝΑΡΙΟ Α": f"{sA_revenue:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_revenue:.2f} €"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "4. ΟΙΚΟΝΟΜΙΚΟ P&L", "ΣΤΟΙΧΕΙΟ": "Συνολικό Κόστος Παραγωγής (COGS)", "ΣΕΝΑΡΙΟ Α": f"{sA_cost:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_cost:.2f} €"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "4. ΟΙΚΟΝΟΜΙΚΟ P&L", "ΣΤΟΙΧΕΙΟ": "Μικτό Κέρδος (Gross Profit)", "ΣΕΝΑΡΙΟ Α": f"{sA_profit:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_profit:.2f} €"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "4. ΟΙΚΟΝΟΜΙΚΟ P&L", "ΣΤΟΙΧΕΙΟ": "Κόστος Εμπορικής Ενέργειας", "ΣΕΝΑΡΙΟ Α": f"{sA_loss:.2f} €", "ΣΕΝΑΡΙΟ Β": f"{sB_loss:.2f} €"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
-
-                    {"ΚΑΤΗΓΟΡΙΑ": "5. KPIs & PERFORMANCE", "ΣΤΟΙΧΕΙΟ": "Margin % (Επί του Τζίρου)", "ΣΕΝΑΡΙΟ Α": f"{sA_margin:.2f}%", "ΣΕΝΑΡΙΟ Β": f"{sB_margin:.2f}%"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "5. KPIs & PERFORMANCE", "ΣΤΟΙΧΕΙΟ": "Markup % (Επί του Κόστους)", "ΣΕΝΑΡΙΟ Α": f"{sA_markup:.2f}%", "ΣΕΝΑΡΙΟ Β": f"{sB_markup:.2f}%"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "5. KPIs & PERFORMANCE", "ΣΤΟΙΧΕΙΟ": "Ποσοστό Έκπτωσης (Direct/Indirect)", "ΣΕΝΑΡΙΟ Α": f"{sA_indirect_disc:.1f}%", "ΣΕΝΑΡΙΟ Β": f"{sB_discount:.1f}%"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "", "ΣΤΟΙΧΕΙΟ": "", "ΣΕΝΑΡΙΟ Α": "", "ΣΕΝΑΡΙΟ Β": ""},
-
-                    {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "Κερδοφορία ανά τμχ (Net)", "ΣΕΝΑΡΙΟ Α": f"{(sA_profit/sA_total_units):.2f} €", "ΣΕΝΑΡΙΟ Β": f"{(sB_profit/sB_total_units):.2f} €"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "Διαφορά Κέρδους Συμφωνίας", "ΣΕΝΑΡΙΟ Α": f"{diff_val:.2f} €" if sA_profit > sB_profit else "-", "ΣΕΝΑΡΙΟ Β": f"{diff_val:.2f} €" if sB_profit > sA_profit else "-"},
-                    {"ΚΑΤΗΓΟΡΙΑ": "6. ΤΕΛΙΚΗ ΑΞΙΟΛΟΓΗΣΗ", "ΣΤΟΙΧΕΙΟ": "ΚΑΤΑΣΤΑΣΗ ΕΓΚΡΙΣΗΣ", "ΣΕΝΑΡΙΟ Α": "ΕΠΙΛΟΓΗ" if sA_profit > sB_profit else "-", "ΣΕΝΑΡΙΟ Β": "ΕΠΙΛΟΓΗ" if sB_profit > sA_profit else "-"}
-                ]
-                
-                df_rep = pd.DataFrame(full_audit_data)
-                csv = df_rep.to_csv(index=False, sep=';', encoding='utf-8-sig')
-                
-                st.download_button(
-                    label="📥 Λήψη Πλήρους Φακέλου (CSV)", 
-                    data=csv, 
-                    file_name=f"Full_Audit_Report_{choice}.csv",
-                    mime="text/csv"
-                )
             
 # --- 7. DASHBOARD (ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΕΙΚΟΝΑ - ΤΕΛΙΚΗ ΕΚΔΟΣΗ ΜΕ ΔΙΑΔΟΧΙΚΕΣ ΕΚΠΤΩΣΕΙΣ) ---
 elif page == "📈 Dashboard":
