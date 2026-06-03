@@ -12,6 +12,15 @@ import zipfile
 import io
 from fpdf import FPDF
 
+# 🚀 ΕΔΩ ΕΙΝΑΙ ΤΟ ΚΛΕΙΔΙ: Φορτώνουμε τη Supabase ΠΡΙΝ τη χρησιμοποιήσουμε
+from supabase import create_client, Client
+
+# --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
+# Η σύνδεση γίνεται αμέσως, στην κορυφή του αρχείου!
+url: str = st.secrets["supabase"]["url"]
+key: str = st.secrets["supabase"]["key"]
+supabase: Client = create_client(url, key)
+
 # --- 📌 ΟΔΗΓΙΕΣ ΧΡΗΣΗΣ (ΣΤΗΝ ΑΡΙΣΤΕΡΗ ΠΛΕΥΡΑ) ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("📖 Οδηγίες Χρήσης (SOS)"):
@@ -38,8 +47,6 @@ with st.sidebar.expander("📖 Οδηγίες Χρήσης (SOS)"):
     </div>
     """, unsafe_allow_html=True) # Το unsafe_allow_html=True είναι απαραίτητο για να παίξουν τα χρώματα!
 
-
-    
 
 # 🌟 ΝΕΟ: Κλείδωμα Ώρας Ελλάδος (για να μην καταγράφει ώρα Αγγλίας ο server)
 greece_tz = pytz.timezone('Europe/Athens')
