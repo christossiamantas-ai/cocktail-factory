@@ -5082,11 +5082,11 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 html_proposal += f"""
                             <tr>
                                 <th>Αρχική Αξία Καταλόγου:</th>
-                                <td style="text-align: right; text-decoration: line-through; color: #777;">{total_list_value:.2f} €</td>
+                                <td style="text-align: right; text-decoration: line-through; color: #777; white-space: nowrap;">{total_list_value:.2f} &nbsp;€</td>
                             </tr>
                             <tr class="savings-row">
                                 <th>Συνολικό Όφελος / Έκπτωση:</th>
-                                <td style="text-align: right;">- {customer_savings:.2f} €</td>
+                                <td style="text-align: right; white-space: nowrap;">- {customer_savings:.2f} &nbsp;€</td>
                             </tr>
                 """
                 
@@ -5098,15 +5098,15 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
             html_proposal += f"""
                             <tr>
                                 <th>Καθαρή Αξία (Χωρίς Φ.Π.Α.):</th>
-                                <td style="text-align: right;">{total_sim_rev:.2f} €</td>
+                                <td style="text-align: right; white-space: nowrap;">{total_sim_rev:.2f} &nbsp;€</td>
                             </tr>
                             <tr>
                                 <th>Φ.Π.Α. (24%):</th>
-                                <td style="text-align: right;">{vat_amount:.2f} €</td>
+                                <td style="text-align: right; white-space: nowrap;">{vat_amount:.2f} &nbsp;€</td>
                             </tr>
                             <tr class="final-row">
                                 <th style="color: white;">ΤΕΛΙΚΟ ΠΛΗΡΩΤΕΟ (Με Φ.Π.Α.):</th>
-                                <td style="text-align: right; color: white;">{total_with_vat:.2f} €</td>
+                                <td style="text-align: right; color: white; white-space: nowrap;">{total_with_vat:.2f} &nbsp;€</td>
                             </tr>
                         </table>
                     </div>
