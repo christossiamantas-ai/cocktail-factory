@@ -1442,15 +1442,20 @@ elif page == "🔍 Ανάλυση":
             )
 
         # =========================================================================
-        # TAB 2: ΝΕΑ ΕΙΣ ΒΑΘΟΣ ΑΝΑΛΥΣΗ ΠΡΩΤΩΝ ΥΛΩΝ
+        # TAB 2: ΝΕΑ ΕΙΣ ΒΑΘΟΣ ΑΝΑΛΥΣΗ ΠΡΩΤΩΝ ΥΛΩΝ (ΔΙΟΡΘΩΜΕΝΟ)
         # =========================================================================
         with tab2:
             st.subheader("🍾 Ανάλυση Κατανάλωσης Πρώτων Υλών")
             
             with st.spinner("Άντληση ιστορικού παραγωγής..."):
                 try:
-                    res_prod_all = supabase.table("production_log").select("cocktail_name, pieces").execute()
+                    # 🚀 ΔΙΟΡΘΩΣΗ: Φέρνουμε ΚΑΙ ημερομηνία/ώρα/πελάτη για να κόψουμε τις διπλοεγγραφές!
+                    res_prod_all = supabase.table("production_log").select("cocktail_name, pieces, prod_date, prod_time, customer").execute()
                     df_prod_all = pd.DataFrame(res_prod_all.data) if res_prod_all.data else pd.DataFrame()
+                    
+                    # 🚀 ΚΑΘΑΡΙΣΜΟΣ ΔΙΠΛΟΕΓΓΡΑΦΩΝ (όπως ακριβώς κάναμε και στο Tab 1)
+                    if not df_prod_all.empty and "prod_time" in df_prod_all.columns and "prod_date" in df_prod_all.columns:
+                        df_prod_all = df_prod_all.drop_duplicates(subset=["cocktail_name", "prod_date", "prod_time", "customer"])
                 except:
                     df_prod_all = pd.DataFrame()
             
@@ -1464,8 +1469,8 @@ elif page == "🔍 Ανάλυση":
                 
                 if selected_ing:
                     ing_info = df_ing[df_ing['Name'] == selected_ing].iloc[0]
-                    bottle_vol = ing_info['Volume']
-                    bottle_price = ing_info['Price']
+                    bottle_vol = float(ing_info['Volume'])
+                    price_per_ml = float(ing_info['Τιμή/ml']) # 👈 Χρησιμοποιούμε την τιμή ανά ml για απόλυτη μαθηματική ακρίβεια
                     
                     ing_recipes = df_items_all[df_items_all['ingredient_name'] == selected_ing]
                     rec_id_to_name = {r["id"]: r["name"] for r in rec_data}
@@ -1489,8 +1494,9 @@ elif page == "🔍 Ανάλυση":
                                 "Κατανάλωση (ml)": ml_consumed
                             })
 
+                    # Υπολογισμοί
                     total_bottles = total_ml_used / bottle_vol if bottle_vol > 0 else 0
-                    total_cost = total_bottles * bottle_price
+                    total_cost = total_ml_used * price_per_ml # 👈 Σωστό κόστος βασισμένο στο κάθε μεμονωμένο ml!
 
                     st.divider()
                     m1, m2, m3 = st.columns(3)
@@ -1509,9 +1515,10 @@ elif page == "🔍 Ανάλυση":
                             st.dataframe(
                                 df_breakdown.style.format({
                                     "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
+                                    # 🚀 Εδώ προσθέσαμε την παρένθεση με τις φιάλες δίπλα στα ml!
                                     "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
                                     "Αναλογία (%)": "{:.1f}%"
-                                }).background_gradient(subset=['Κατανάλωση (ml)'], cmap='Blues'),
+                                }), # Αν έχεις εγκαταστήσει το matplotlib, βάλε ξανά εδώ το .background_gradient(...)
                                 use_container_width=True, hide_index=True
                             )
                         with colB:
@@ -1529,6 +1536,8 @@ elif page == "🔍 Ανάλυση":
                         st.info(f"💡 Το υλικό '{selected_ing}' δεν έχει χρησιμοποιηθεί ακόμα σε καμία καταγεγραμμένη παραγωγή.")
             else:
                 st.warning("Δεν βρέθηκαν δεδομένα παραγωγής για ανάλυση.")
+
+
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH GLOSSARY) ---
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
