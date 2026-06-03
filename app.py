@@ -4467,10 +4467,9 @@ elif page == "👥 Πελατολόγιο":
                                 
                                 if not df_sales.empty:
                                     df_sales = df_sales.drop_duplicates(subset=["prod_date", "prod_time", "cocktail_name", "lot_cocktail"])
-                                    # Προετοιμασία ημερομηνίας για να ταιριάζει με τις παραγγελίες
+                                    
                                     df_sales['match_date'] = pd.to_datetime(df_sales['prod_date'], format='%d/%m/%Y', errors='coerce').dt.strftime('%Y-%m-%d')
                                     
-                                    # Ποσότητες
                                     df_sales['t_pcs'] = pd.to_numeric(df_sales.get('pieces', 0), errors='coerce').fillna(0)
                                     df_sales['f_pcs'] = pd.to_numeric(df_sales.get('free_pieces', 0), errors='coerce').fillna(0)
                                     df_sales['s_pcs'] = pd.to_numeric(df_sales.get('discounted_pieces', 0), errors='coerce').fillna(0)
@@ -4478,19 +4477,16 @@ elif page == "👥 Πελατολόγιο":
                                     df_sales['s_pcs'] = df_sales.apply(lambda r: min(r['s_pcs'], max(0, r['t_pcs'] - r['f_pcs'])), axis=1)
                                     df_sales['normal_pcs'] = df_sales['t_pcs'] - df_sales['f_pcs'] - df_sales['s_pcs']
                                     
-                                    # Έσοδα & Κόστος
                                     df_sales['catalog_price'] = df_sales['cocktail_name'].map(recipe_price_dict).fillna(0)
                                     df_sales['price_after_global'] = df_sales['catalog_price'] * (1 - (global_discount / 100))
                                     df_sales['rev_normal'] = df_sales['normal_pcs'] * df_sales['price_after_global']
                                     df_sales['rev_special'] = df_sales['s_pcs'] * df_sales['price_after_global'] * (1 - (df_sales['s_pct'] / 100))
                                     df_sales['Theoretical_Revenue'] = (df_sales['rev_normal'] + df_sales['rev_special']).clip(lower=0)
                                     
-                                    # 🚀 ΕΞΥΠΝΟΣ ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ ΓΙΑ ΤΟ ΣΤΟΚ
+                                    # 🚀 ΔΙΟΡΘΩΣΗ: Αφαιρέσαμε τον μηδενισμό. Πλέον ΟΛΑ τα προϊόντα υπολογίζουν κανονικά το κόστος τους!
                                     def get_actual_cost(row):
                                         catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
                                         if 'applied_cost' in row and pd.notna(row['applied_cost']): return float(row['applied_cost'])
-                                        is_stock = "Έτοιμο Προϊόν" in str(row.get('ingredient_name', ''))
-                                        if is_stock: return 0.0
                                         return catalog_c
 
                                     df_sales['Final_Unit_Cost'] = df_sales.apply(get_actual_cost, axis=1)
@@ -4521,7 +4517,6 @@ elif page == "👥 Πελατολόγιο":
                                         .profit-pos {{ color: #2e7d32; font-weight: bold; }}
                                         .profit-neg {{ color: #d32f2f; font-weight: bold; }}
                                         .total-row {{ background-color: #1a3a5f; color: white; font-weight: bold; font-size: 14px; }}
-                                        /* 🚀 ΝΕΑ ΣΤΥΛ ΓΙΑ ΤΟ ΣΤΟΚ */
                                         .stock-row {{ background-color: #fff4e5 !important; }}
                                         .stock-badge {{ font-size: 10px; font-weight: bold; background-color: #ff9800; color: white; padding: 2px 5px; border-radius: 4px; margin-left: 5px; vertical-align: middle; }}
                                     </style>
@@ -4559,20 +4554,20 @@ elif page == "👥 Πελατολόγιο":
                                     html_content += f"""<tr class="order-date-row"><td colspan="7">📅 Παραγγελία: {date_formatted}</td></tr>"""
                                     
                                     if not df_sales.empty:
-                                        # Φιλτράρουμε τις παραγωγές που έγιναν αυτή τη μέρα για αυτόν τον πελάτη
                                         day_sales = df_sales[df_sales['match_date'] == o_date_raw]
                                         
                                         if not day_sales.empty:
                                             for _, row in day_sales.iterrows():
                                                 c_name = row['cocktail_name']
                                                 
-                                                # 🚀 ΕΛΕΓΧΟΣ ΑΝ ΕΙΝΑΙ ΑΠΟ ΣΤΟΚ
-                                                is_stock = "Έτοιμο Προϊόν" in str(row.get('ingredient_name', ''))
-                                                
                                                 lot_c = str(row.get('lot_cocktail', '-'))
                                                 if lot_c == 'nan' or not lot_c: lot_c = '-'
                                                 
-                                                # Δημιουργία Ταμπελίτσας Στοκ αν ισχύει
+                                                # 🚀 ΝΕΑ, ΑΛΑΝΘΑΣΤΗ ΛΟΓΙΚΗ ΓΙΑ ΤΟ ΣΤΟΚ:
+                                                # Αν η Ημερομηνία της Παραγγελίας (π.χ. 05/06/2026) ΔΕΝ υπάρχει μέσα στο LOT (π.χ. 25/05/2026-26) 
+                                                # και το LOT δεν είναι κενό, σημαίνει ότι παρήχθη σε άλλη μέρα, άρα είναι από ΣΤΟΚ!
+                                                is_stock = (date_formatted not in lot_c) and (lot_c != '-')
+                                                
                                                 stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                                                 row_class = "stock-row" if is_stock else ""
                                                 
@@ -4580,7 +4575,6 @@ elif page == "👥 Πελατολόγιο":
                                                 
                                                 p_price = row['price_after_global']
                                                 
-                                                # Τραβάμε ΟΛΕΣ τις κατηγορίες τεμαχίων
                                                 t_pcs = int(row['t_pcs'])
                                                 f_pcs = int(row['f_pcs'])
                                                 s_pcs = int(row['s_pcs'])
@@ -4596,7 +4590,6 @@ elif page == "👥 Πελατολόγιο":
                                                 grand_cost += cost
                                                 grand_prof += prof
                                                 
-                                                # --- 🚀 ΑΝΑΛΥΤΙΚΗ ΑΠΕΙΚΟΝΙΣΗ ΤΕΜΑΧΙΩΝ ---
                                                 details_arr = []
                                                 if normal_pcs > 0:
                                                     details_arr.append(f"{normal_pcs} κανονικά")
@@ -4613,7 +4606,6 @@ elif page == "👥 Πελατολόγιο":
                                                     
                                                 prof_class = "profit-pos" if prof >= 0 else "profit-neg"
                                                 
-                                                # 🚀 ΠΡΟΣΘΗΚΗ ΤΟΥ row_class ΣΤΟ <tr>
                                                 html_content += f"""
                                                 <tr class="{row_class}">
                                                     <td class="text-left">{display_name}</td>
@@ -4626,7 +4618,6 @@ elif page == "👥 Πελατολόγιο":
                                                 </tr>
                                                 """
                                         else:
-                                            # Αν δεν βρει παραγωγή, τυπώνει την εγγραφή ασφαλείας
                                             html_content += f"""<tr><td colspan="7" class="text-left" style="color:#666;">{o['order_details']}</td></tr>"""
                                     else:
                                         html_content += f"""<tr><td colspan="7" class="text-left" style="color:#666;">{o['order_details']}</td></tr>"""
@@ -4660,7 +4651,6 @@ elif page == "👥 Πελατολόγιο":
                     
                     st.divider()
 
-                    # Εμφάνιση των παραγγελιών στο UI (Παλιό κομμάτι διαγραφής)
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
