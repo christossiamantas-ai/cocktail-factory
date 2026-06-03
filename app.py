@@ -144,37 +144,58 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
         for order in financial_data:
             total_euro += float(order.get('total_amount', 0))
 
-    # --- 1. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΣΥΓΚΕΝΤΡΩΤΙΚΕΣ ΑΓΟΡΕΣ) ---
+    # --- 1. ΠΙΝΑΚΑΣ ΠΑΡΑΓΩΓΗΣ (ΣΥΓΚΕΝΤΡΩΤΙΚΕΣ ΑΓΟΡΕΣ & LOT) ---
     pdf.set_font(f_name, size=12)
     pdf.set_fill_color(230, 230, 230)
-    pdf.cell(0, 10, "Συνολικές Αγορές ανά Προϊόν (Τεμάχια)", ln=1, fill=True)
+    pdf.cell(0, 10, "Συνολικές Αγορές & Ιχνηλασιμότητα (LOT)", ln=1, fill=True)
     pdf.set_font(f_name, size=10)
     
     total_pieces = 0
     if production_data:
-        # Ομαδοποίηση των τεμαχίων ανά Cocktail
-        cocktail_totals = {}
+        # Ομαδοποίηση και ανά Κοκτέιλ ΚΑΙ ανά LOT
+        cocktail_data = {}
         for row in production_data:
             name = str(row.get('cocktail_name', 'Άγνωστο'))
             pcs = int(row.get('pieces', 0))
-            cocktail_totals[name] = cocktail_totals.get(name, 0) + pcs
+            lot = str(row.get('lot_cocktail', '-'))
+            if not lot or lot == 'nan': lot = '-'
+
+            if name not in cocktail_data:
+                cocktail_data[name] = {"total": 0, "lots": {}}
+
+            cocktail_data[name]["total"] += pcs
+            cocktail_data[name]["lots"][lot] = cocktail_data[name]["lots"].get(lot, 0) + pcs
             total_pieces += pcs
 
         # Επικεφαλίδες Πίνακα
-        pdf.cell(145, 10, "Προϊόν (Cocktail)", 1)
+        pdf.cell(145, 10, "Προϊόν (Cocktail) & Κωδικοί Παρτίδας (LOT)", 1)
         pdf.cell(45, 10, "Συνολικά Τεμάχια", 1, 1, 'C')
         
-        # Εκτύπωση των συγκεντρωτικών (από το δημοφιλέστερο στο λιγότερο)
-        for cocktail, pcs in sorted(cocktail_totals.items(), key=lambda x: x[1], reverse=True):
-            pdf.cell(145, 10, cocktail, 1)
-            pdf.cell(45, 10, f"{pcs} τμχ", 1, 1, 'C')
+        # Εκτύπωση των συγκεντρωτικών
+        for cocktail, data in sorted(cocktail_data.items(), key=lambda x: x[1]['total'], reverse=True):
+            # 1. Κύρια Γραμμή: Όνομα Κοκτέιλ
+            pdf.set_font(f_name, size=10)
+            pdf.cell(145, 8, f" {cocktail}", border='LTR', ln=0)
+            pdf.cell(45, 8, f"{data['total']} τμχ", border='LTR', ln=1, align='C')
+
+            # 2. Υπο-γραμμές: Ανάλυση των LOT με γκρι γράμματα
+            pdf.set_font(f_name, size=8)
+            pdf.set_text_color(100, 100, 100) # Γκρι χρώμα
+            
+            lot_items = list(data['lots'].items())
+            for i, (lot_name, lot_pcs) in enumerate(lot_items):
+                border_style = 'LBR' if i == len(lot_items) - 1 else 'LR' 
+                # Χρησιμοποιούμε -> αντί για βελάκια ώστε να μην σκάσει το PDF
+                pdf.cell(145, 5, f"      -> L.O.T: {lot_name}  ({lot_pcs} τμχ)", border=border_style, ln=0)
+                pdf.cell(45, 5, "", border=border_style, ln=1, align='C') 
+            
+            pdf.set_text_color(0, 0, 0) # Επαναφορά σε μαύρο χρώμα
     else:
         pdf.cell(0, 10, "Δεν βρέθηκε ιστορικό παραγωγής.", ln=1)
 
     # --- ΤΕΛΙΚΑ ΣΥΝΟΛΑ (Τζίρος & Τεμάχια) ---
     pdf.ln(10)
     pdf.set_font(f_name, size=14)
-    # Εμφάνιση του συνολικού τζίρου (που περιλαμβάνει και τον θεωρητικό από το Dashboard)
     pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΟΣ ΤΖΙΡΟΣ: {total_euro:.2f} EUR", ln=1, align='R')
     pdf.cell(0, 10, f"ΣΥΝΟΛΙΚΑ ΤΕΜΑΧΙΑ: {total_pieces} τμχ", ln=1, align='R')
     
