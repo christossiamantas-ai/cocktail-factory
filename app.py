@@ -227,6 +227,17 @@ def check_password():
 
 if not check_password():
     st.stop()
+    
+# 🚀 ΠΡΟΣΘΗΚΗ ΕΔΩ: Εμφανίζεται μόνο αν ο κωδικός είναι σωστός!
+st.markdown(
+    """
+    <h2 style='color: #009b3a; text-align: center; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); margin-top: 10px;'>
+        ΠΑΝΑΓΙΩΤΗΣ ΚΟΡΔΑΤΟΣ ΘΥΡΑ - 13 - ☘️
+    </h2>
+    <br>
+    """, 
+    unsafe_allow_html=True
+)
 
 # Προσθήκη CSS (Διορθωμένο μέγεθος Metrics)
 st.markdown("""
