@@ -3640,7 +3640,7 @@ elif page == "📦 Lot Παραγωγής":
                             for fd in final_updated_rows:
                                 c_set = customer_settings[fd["safe_key"]]
                                 
-                                # 🚀 ΝΕΟ: Αν ο χρήστης έβαλε 0 τεμάχια, δεν το ξαναγράφουμε (άρα ΔΙΑΓΡΑΦΕΤΑΙ ΟΡΙΣΤΙΚΑ!)
+                                # 🚀 Αν ο χρήστης έβαλε 0 τεμάχια, δεν το ξαναγράφουμε (άρα ΔΙΑΓΡΑΦΕΤΑΙ ΟΡΙΣΤΙΚΑ!)
                                 if int(c_set["new_pcs"]) == 0:
                                     continue
                                 
@@ -3663,16 +3663,21 @@ elif page == "📦 Lot Παραγωγής":
                                 
                             if new_batch: supabase.table("production_log").insert(new_batch).execute()
                             
-                            # 4. ΑΥΤΟΜΑΤΟ REBUILD ΤΟΥ B2B (Τέλος στα λάθη με τα κείμενα!)
+                            # 4. ΑΥΤΟΜΑΤΟ REBUILD ΤΟΥ B2B (Τώρα καλύπτει και το μηδενισμό!)
                             all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
                             all_customers_res = supabase.table("customers").select("name, discount").execute()
                             recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in all_recipes_res.data} if all_recipes_res.data else {}
                             customer_discounts = {c['name']: float(c.get('discount') or 0.0) for c in all_customers_res.data} if all_customers_res.data else {}
 
-                            affected_dates_custs = set((c_set["new_cust_name"], c_set["new_lot_date"]) for c_set in customer_settings.values())
+                            # 🚀 Χρησιμοποιούμε τις αρχικές ημερομηνίες για να βρούμε σίγουρα την παραγγελία!
+                            affected_dates_custs = set((c_set["orig_cust"], c_set["base_date_str"]) for c_set in customer_settings.values())
                             
                             for cust, pdate in affected_dates_custs:
                                 today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, lot_cocktail, prod_time").eq("prod_date", pdate).eq("customer", cust).execute()
+                                
+                                from datetime import datetime
+                                date_iso = datetime.strptime(pdate, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
                                 
                                 if today_logs.data:
                                     import pandas as pd
@@ -3715,15 +3720,16 @@ elif page == "📦 Lot Παραγωγής":
                                     details_str = "\n".join(details_lines)
                                     if discount > 0: details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
                                         
-                                    from datetime import datetime
-                                    date_iso = datetime.strptime(pdate, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                    existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
                                     if existing_order.data:
                                         supabase.table("b2b_orders").update({"total_amount": round(final_total, 2), "order_details": details_str}).eq("id", existing_order.data[0]["id"]).execute()
+                                else:
+                                    # 🚀 ΕΔΩ ΗΤΑΝ Η ΤΡΥΠΑ! Αν μείνουν 0 κοκτέιλ (επειδή έβαλες 0), διαγράφει οριστικά και την B2B παραγγελία!
+                                    if existing_order.data:
+                                        supabase.table("b2b_orders").delete().eq("id", existing_order.data[0]["id"]).execute()
 
                             st.session_state['lot_reset_key'] += 1
                             st.session_state.pop('search_data_loaded', None)
-                            st.success("✅ Επιτυχία! Οι αλλαγές εφαρμόστηκαν, το B2B ενημερώθηκε και το Στοκ διατήρησε το μηδενικό κόστος!")
+                            st.success("✅ Επιτυχία! Οι αλλαγές εφαρμόστηκαν (τυχόν μηδενισμοί διέγραψαν σωστά τις παραγγελίες)!")
                             import time
                             time.sleep(1.5)
                             st.rerun()
