@@ -3520,6 +3520,13 @@ elif page == "📦 Lot Παραγωγής":
                     unique_cocktails_in_order = o_df[["Cocktail", "LOT_Cocktail"]].drop_duplicates()
                     cocktail_updates = {}
                     
+                    # 🚀 ΜΑΓΕΙΑ: Η συνάρτηση (callback) που μεταφέρει το LOT στο κουτάκι ΑΚΑΡΙΑΙΑ!
+                    def sync_lot(key_to_sync):
+                        chosen = st.session_state.get(f"slot_{key_to_sync}")
+                        if chosen and chosen != "-- Χειροκίνητη Καταχώρηση --":
+                            # Αλλάζει απευθείας την τιμή στο πάνω κουτάκι!
+                            st.session_state[f"l_{key_to_sync}"] = chosen
+                    
                     for idx, row in unique_cocktails_in_order.iterrows():
                         c_name = row["Cocktail"]
                         c_lot = row["LOT_Cocktail"]
@@ -3529,22 +3536,19 @@ elif page == "📦 Lot Παραγωγής":
                         
                         with st.expander(f"🍹 {c_name} | LOT: {c_lot} | {base_pcs} τμχ", expanded=False):
                             
-                            # 🚀 ΜΑΓΕΙΑ 1: Διαβάζουμε το μενού ΠΡΙΝ φτιάξουμε το κουτάκι! (Έτσι ενημερώνεται αυτόματα)
-                            current_slot = st.session_state.get(f"slot_{safe_key}", "-- Χειροκίνητη Καταχώρηση --")
-                            display_lot = c_lot if current_slot == "-- Χειροκίνητη Καταχώρηση --" else current_slot
-                            
                             c1, c2, c3, c4 = st.columns(4)
                             new_date = c1.text_input("Ημερομηνία", value=o_date, key=f"d_{safe_key}")
                             new_cust = c2.text_input("Πελάτης", value=o_cust, key=f"c_{safe_key}")
                             new_pcs = c3.number_input("Τεμάχια", value=base_pcs, min_value=0, key=f"p_{safe_key}")
-                            new_lot = c4.text_input("LOT Παραγωγής", value=display_lot, key=f"l_{safe_key}")
+                            
+                            # Επιστρέψαμε στην απλή μορφή, γιατί τώρα το αναλαμβάνει η συνάρτηση sync_lot!
+                            new_lot = c4.text_input("LOT Παραγωγής", value=c_lot, key=f"l_{safe_key}")
                             
                             st.markdown("---")
                             
                             is_currently_stock = all(float(x) == 0.0 for x in c_df["Σύνολο_ML"].dropna())
                             current_app_cost = float(c_df["applied_cost"].iloc[0]) if "applied_cost" in c_df.columns and pd.notna(c_df["applied_cost"].iloc[0]) else None
                             
-                            # 🚀 ΜΑΓΕΙΑ 2: Νέος Διακόπτης Προέλευσης!
                             col_rad1, col_rad2 = st.columns(2)
                             with col_rad1:
                                 prod_type = st.radio(
@@ -3573,11 +3577,14 @@ elif page == "📦 Lot Παραγωγής":
                                 stock_lot_selection = st.selectbox(
                                     "🔍 Αυτόματη Ανάκτηση Παλιών Υλικών:",
                                     options=["-- Χειροκίνητη Καταχώρηση --"] + available_lots,
-                                    key=f"slot_{safe_key}"
+                                    key=f"slot_{safe_key}",
+                                    on_change=sync_lot,          # 🚀 ΚΑΛΕΙ ΤΗ ΣΥΝΑΡΤΗΣΗ μόλις αλλάξεις επιλογή!
+                                    args=(safe_key,)             # 🚀 Της στέλνει το κλειδί για να βρει ποιο κουτάκι να αλλάξει!
                                 )
                             else:
                                 stock_lot_selection = "-- Χειροκίνητη Καταχώρηση --"
-                            
+                                
+                            # Από εδώ και κάτω ο κώδικας συνεχίζει κανονικά όπως τον είχες...
                             st.markdown("<p style='font-size:12px; color:#009b3a; font-weight:bold; margin-top:10px; margin-bottom:5px;'>Υλικά (Τα LOT στα κουτάκια σώζονται ακριβώς όπως τα βλέπετε):</p>", unsafe_allow_html=True)
                             
                             ingredients_data = []
