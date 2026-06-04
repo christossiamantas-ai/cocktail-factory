@@ -5944,19 +5944,9 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
     st.header("🧪 Αριθμομηχανή Δοκιμαστικών Παραγωγών")
     st.write("Υπολογίστε άμεσα τα ακριβή υλικά για παραγωγή. Οι δοκιμές εδώ **δεν αποθηκεύονται** στο ιστορικό.")
 
-    # Φόρτωση των δεδομένων (Συνταγές & Πρώτες Ύλες)
-    try:
-        res_rec_test = supabase.table("recipes").select("*").execute()
-        df_rec_test = pd.DataFrame(res_rec_test.data)
-        
-        res_ing_test = supabase.table("ingredients").select("*").execute()
-        df_ing_test = pd.DataFrame(res_ing_test.data)
-    except Exception as e:
-        st.error(f"Σφάλμα φόρτωσης: {e}")
-        df_rec_test, df_ing_test = pd.DataFrame(), pd.DataFrame()
-
-    if not df_rec_test.empty and not df_ing_test.empty:
-        recipe_options = sorted(list(df_rec_test["Ονομα"].unique()))
+    # Χρησιμοποιούμε απευθείας τα δεδομένα που έχει ήδη φορτώσει η εφαρμογή σου!
+    if not df_rec.empty and not df_ing.empty:
+        recipe_options = sorted(list(df_rec["Ονομα"].unique()))
         
         col1, col2 = st.columns(2)
         sel_cocktail = col1.selectbox("🍹 Επιλέξτε Κοκτέιλ για Δοκιμή:", ["-- Επιλέξτε --"] + recipe_options)
@@ -5966,9 +5956,9 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
             st.divider()
             st.subheader(f"📊 Απαιτούμενα Υλικά για {sel_pcs} τμχ {sel_cocktail}")
             
-            recipe_row = df_rec_test[df_rec_test["Ονομα"] == sel_cocktail].iloc[0]
+            recipe_row = df_rec[df_rec["Ονομα"] == sel_cocktail].iloc[0]
             
-            # Βοηθητική συνάρτηση για ασφαλή ανάγνωση των ML (όπως την έχεις στην παραγωγή)
+            # Βοηθητική συνάρτηση για ασφαλή ανάγνωση των ML
             def get_test_ml(row, idx):
                 exact_key = f"ML{idx}"
                 if exact_key in row: val = row[exact_key]
@@ -5986,16 +5976,16 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
                     ml_per_unit = get_test_ml(recipe_row, i)
                     total_ml = ml_per_unit * sel_pcs
                     
-                    # Αναζήτηση της πρώτης ύλης στον πίνακα συστατικών για Όγκο & Βάρος
-                    match_ing = df_ing_test[(df_ing_test["name"] == ing_name) | (df_ing_test.get("Name", "") == ing_name)]
+                    # Αναζήτηση της πρώτης ύλης στον πίνακα συστατικών (df_ing)
+                    match_ing = df_ing[(df_ing["Name"] == ing_name) | (df_ing.get("name", "") == ing_name)]
                     
                     total_g = total_ml
                     total_bottles = 0.0
                     
                     if not match_ing.empty:
-                        # Ασφαλής ανάγνωση στηλών (μικρά ή κεφαλαία γράμματα)
-                        vol = float(match_ing.iloc[0].get("volume", match_ing.iloc[0].get("Volume", 1)))
-                        weight = float(match_ing.iloc[0].get("weight_full", match_ing.iloc[0].get("Weight_Full", vol)))
+                        # Ασφαλής ανάγνωση στηλών
+                        vol = float(match_ing.iloc[0].get("Volume", match_ing.iloc[0].get("volume", 1)))
+                        weight = float(match_ing.iloc[0].get("Weight_Full", match_ing.iloc[0].get("weight_full", vol)))
                         
                         if vol > 0:
                             total_g = (total_ml / vol) * weight
@@ -6088,3 +6078,5 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
                 )
             else:
                 st.warning("Το κοκτέιλ δεν περιέχει καταχωρημένα συστατικά.")
+    else:
+        st.info("Παρακαλώ περιμένετε να φορτώσουν τα δεδομένα ή ελέγξτε αν υπάρχουν καταχωρημένες συνταγές.")
