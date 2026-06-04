@@ -3208,7 +3208,8 @@ elif page == "📦 Lot Παραγωγής":
                                     "lot_number": old_lot, 
                                     "expiry_date": "-",
                                     "unit_cost": round(current_unit_cost, 4),
-                                    "applied_cost": final_cost  # <--- Η ΝΕΑ ΣΤΗΛΗ ΓΙΑ ΤΟ ΣΤΟΚ
+                                    "applied_cost": final_cost,
+                                    "is_from_stock": True # 🚀 Η ΜΑΓΙΚΗ ΓΡΑΜΜΗ ΠΟΥ ΠΕΡΝΑΕΙ ΤΗΝ ΠΛΗΡΟΦΟΡΙΑ ΣΤΗ ΒΑΣΗ
                                 })
                             else:
                                 # 🚀 ΚΑΝΟΝΙΚΗ ΠΑΡΑΓΩΓΗ: Αναλυτικά όλα τα υλικά
@@ -3235,7 +3236,8 @@ elif page == "📦 Lot Παραγωγής":
                                         "lot_number": actual_ing_lot, 
                                         "expiry_date": actual_ing_exp,
                                         "unit_cost": round(current_unit_cost, 4),
-                                        "applied_cost": round(current_unit_cost, 4)  # <--- Η ΝΕΑ ΣΤΗΛΗ ΓΙΑ ΚΑΝΟΝΙΚΗ ΠΑΡΑΓΩΓΗ
+                                        "applied_cost": round(current_unit_cost, 4),
+                                        "is_from_stock": False # 🚀 ΕΔΩ ΕΙΝΑΙ FALSE (Κανονική Παραγωγή)
                                     })
                 
                 st.divider()
@@ -3298,9 +3300,6 @@ elif page == "📦 Lot Παραγωγής":
                                     
                                     # 🚀 ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Μετατρέπει όλα τα κενά (NaN) σε 0 για να μην κρασάρει η Python!
                                     df_logs = df_logs.fillna(0)
-                                    
-                                    # 🚀 ΕΔΩ ΛΥΝΕΤΑΙ ΤΟ ΠΡΟΒΛΗΜΑ: Πετάμε τις πολλαπλές γραμμές των συστατικών!
-                                    df_logs = df_logs.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
                                     
                                     # 🚀 ΕΔΩ ΛΥΝΕΤΑΙ ΤΟ ΠΡΟΒΛΗΜΑ: Πετάμε τις πολλαπλές γραμμές των συστατικών!
                                     df_logs = df_logs.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
