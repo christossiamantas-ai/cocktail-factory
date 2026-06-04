@@ -4482,7 +4482,6 @@ elif page == "👥 Πελατολόγιο":
                                     df_sales['rev_special'] = df_sales['s_pcs'] * df_sales['price_after_global'] * (1 - (df_sales['s_pct'] / 100))
                                     df_sales['Theoretical_Revenue'] = (df_sales['rev_normal'] + df_sales['rev_special']).clip(lower=0)
                                     
-                                    # 🚀 ΔΙΟΡΘΩΣΗ: Το κόστος ΔΕΝ μηδενίζεται ποτέ. Υπολογίζεται κανονικά για όλα!
                                     def get_actual_cost(row):
                                         catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
                                         if 'applied_cost' in row and pd.notna(row['applied_cost']): return float(row['applied_cost'])
@@ -4559,11 +4558,11 @@ elif page == "👥 Πελατολόγιο":
                                             for _, row in day_sales.iterrows():
                                                 c_name = row['cocktail_name']
                                                 
+                                                # 🚀 Η ΤΕΛΙΚΗ, ΑΛΑΝΘΑΣΤΗ ΛΟΓΙΚΗ ΓΙΑ ΤΟ ΣΤΟΚ (Διαβάζει τη Supabase!)
+                                                is_stock = (row.get("is_from_stock", False) == True) or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")))
+                                                
                                                 lot_c = str(row.get('lot_cocktail', '-'))
                                                 if lot_c == 'nan' or not lot_c: lot_c = '-'
-                                                
-                                                # 🚀 Η ΑΛΑΝΘΑΣΤΗ ΛΟΓΙΚΗ ΣΟΥ: Διαβάζουμε ΑΠΕΥΘΕΙΑΣ την επιλογή που κλίκαρες στην παραγωγή!
-                                                is_stock = "Έτοιμο Προϊόν" in str(row.get('ingredient_name', ''))
                                                 
                                                 stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                                                 row_class = "stock-row" if is_stock else ""
