@@ -2275,7 +2275,7 @@ elif page == "📈 Dashboard":
 
         # --- ΚΟΣΤΟΣ ΑΝΑ ΠΡΩΤΗ ΥΛΗ ---
         st.divider()
-        st.subheader("🛒 Συνολικό Κόστος ανά Πρώτη Ύλη")
+        st.subheader("🛒 Συνολικό Κόστος & Ανάλωση ανά Πρώτη Ύλη")
         
         df_ing_raw = df_raw.copy()
         df_ing_raw['Date_Obj'] = pd.to_datetime(df_ing_raw.get('prod_date'), format='%d/%m/%Y', errors='coerce')
@@ -2292,18 +2292,28 @@ elif page == "📈 Dashboard":
         if not df_ing_raw.empty:
             df_ing_raw['total_ml'] = pd.to_numeric(df_ing_raw['total_ml'], errors='coerce').fillna(0)
             
+            # 🚀 ΝΕΟ: Φορτώνουμε και τους όγκους (Volume) των φιαλών από τη βάση
+            df_ing_for_vol = pd.DataFrame(supabase.table("ingredients").select("name, volume").execute().data)
+            ing_vol_dict = dict(zip(df_ing_for_vol['name'], pd.to_numeric(df_ing_for_vol.get('volume', 1), errors='coerce')))
+            
             df_ing_costs = df_ing_raw.groupby('ingredient_name').agg(Total_ML=('total_ml', 'sum')).reset_index()
             df_ing_costs['Unit_Cost_per_ml'] = df_ing_costs['ingredient_name'].map(ing_cost_dict).fillna(0)
             df_ing_costs['Total_Cost'] = df_ing_costs['Total_ML'] * df_ing_costs['Unit_Cost_per_ml']
             
-            # 🚀 ΑΛΛΑΓΗ 1: Ταξινόμηση "Αύξουσα" (γιατί στα οριζόντια γραφήματα το μεγαλύτερο πάει πάνω)
+            # 🚀 ΝΕΟ: Υπολογισμός των φιαλών (Διαιρούμε τα συνολικά ml με τα ml της μίας φιάλης)
+            df_ing_costs['Bottle_Vol'] = df_ing_costs['ingredient_name'].map(ing_vol_dict).fillna(1)
+            # Προστασία για διαίρεση με το μηδέν
+            df_ing_costs['Bottle_Vol'] = df_ing_costs['Bottle_Vol'].apply(lambda x: 1 if x == 0 else x) 
+            df_ing_costs['Φιάλες'] = df_ing_costs['Total_ML'] / df_ing_costs['Bottle_Vol']
+            
+            # Ταξινόμηση "Αύξουσα" (γιατί στα οριζόντια γραφήματα το μεγαλύτερο πάει πάνω)
             df_ing_costs = df_ing_costs[df_ing_costs['Total_Cost'] > 0.01].sort_values('Total_Cost', ascending=True)
             
             if not df_ing_costs.empty:
-                # 🚀 ΑΛΛΑΓΗ 2: Χωρίζουμε την οθόνη στα δύο (2/3 το γράφημα, 1/3 ο πίνακας)
-                col_chart, col_table = st.columns([2.5, 1.5])
+                # Χωρίζουμε την οθόνη (γραφικό και πίνακας)
+                col_chart, col_table = st.columns([2.5, 2.0]) # Μεγάλωσα λίγο τον πίνακα για να χωρέσει η νέα στήλη
                 
-                # 🚀 ΑΛΛΑΓΗ 3: Δυναμικό ύψος! 30 pixels για κάθε υλικό, ώστε να μην στριμώχνονται ποτέ.
+                # Δυναμικό ύψος! 35 pixels για κάθε υλικό, ώστε να μην στριμώχνονται ποτέ.
                 dynamic_height = max(400, len(df_ing_costs) * 35)
                 
                 with col_chart:
@@ -2319,11 +2329,16 @@ elif page == "📈 Dashboard":
                     st.plotly_chart(fig_ing, use_container_width=True)
                 
                 with col_table:
-                    st.markdown("#### 📋 Αναλυτικά Ποσά")
+                    st.markdown("#### 📋 Αναλυτικά Ποσά & Φιάλες")
                     # Για τον πίνακα τα θέλουμε με φθίνουσα σειρά (τα ακριβά πάνω)
                     df_display = df_ing_costs.sort_values('Total_Cost', ascending=False)
                     st.dataframe(
-                        df_display[['ingredient_name', 'Total_Cost']].rename(columns={'ingredient_name': 'Πρώτη Ύλη', 'Total_Cost': 'Κόστος'}).style.format({'Κόστος': "{:.2f} €"}),
+                        df_display[['ingredient_name', 'Φιάλες', 'Total_Cost']].rename(
+                            columns={'ingredient_name': 'Πρώτη Ύλη', 'Total_Cost': 'Κόστος'}
+                        ).style.format({
+                            'Κόστος': "{:.2f} €",
+                            'Φιάλες': "{:.1f}" # 🚀 Μορφοποίηση με 1 δεκαδικό (π.χ. 2.4)
+                        }),
                         hide_index=True,
                         use_container_width=True,
                         height=dynamic_height # Ο πίνακας παίρνει ακριβώς το ίδιο ύψος με το γράφημα!
