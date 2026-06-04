@@ -3537,7 +3537,8 @@ elif page == "📦 Lot Παραγωγής":
                             st.markdown("<p style='font-size:12px; color:#666; margin-top:10px; margin-bottom:5px;'>Υλικά (Αφήστε κενό αν δεν υπάρχει 2ο LOT):</p>", unsafe_allow_html=True)
                             
                             ingredients_data = []
-                            for _, ing_row in c_df.iterrows():
+                            # 🚀 ΑΛΛΑΓΗ: Βάλαμε το enumerate για να έχουμε το index_ing (0, 1, 2...)
+                            for index_ing, (_, ing_row) in enumerate(c_df.iterrows()):
                                 ing_name = ing_row["Υλικό"]
                                 raw_lot = str(ing_row["Lot Number"]) if pd.notna(ing_row["Lot Number"]) else ""
                                 raw_exp = str(ing_row["Ημ_Λήξης"]) if pd.notna(ing_row["Ημ_Λήξης"]) else ""
@@ -3554,10 +3555,11 @@ elif page == "📦 Lot Παραγωγής":
                                 r[0].write(f"**{ing_name}**")
                                 r[1].write(f"{(old_ml * (new_pcs/base_pcs if base_pcs!=0 else 1)):.0f} ml")
                                 
-                                l1 = r[2].text_input("L1", value=lot_parts[0], key=f"l1_{safe_key}_{orig_id}", label_visibility="collapsed")
-                                e1 = r[3].text_input("E1", value=exp_parts[0], key=f"e1_{safe_key}_{orig_id}", label_visibility="collapsed")
-                                l2 = r[4].text_input("L2", value=lot_parts[1], key=f"l2_{safe_key}_{orig_id}", label_visibility="collapsed")
-                                e2 = r[5].text_input("E2", value=exp_parts[1], key=f"e2_{safe_key}_{orig_id}", label_visibility="collapsed")
+                                # 🚀 ΑΛΛΑΓΗ: Προσθέσαμε το _{index_ing} στο τέλος κάθε key για να είναι πάντα μοναδικό!
+                                l1 = r[2].text_input("L1", value=lot_parts[0], key=f"l1_{safe_key}_{orig_id}_{index_ing}", label_visibility="collapsed")
+                                e1 = r[3].text_input("E1", value=exp_parts[0], key=f"e1_{safe_key}_{orig_id}_{index_ing}", label_visibility="collapsed")
+                                l2 = r[4].text_input("L2", value=lot_parts[1], key=f"l2_{safe_key}_{orig_id}_{index_ing}", label_visibility="collapsed")
+                                e2 = r[5].text_input("E2", value=exp_parts[1], key=f"e2_{safe_key}_{orig_id}_{index_ing}", label_visibility="collapsed")
                                 
                                 ingredients_data.append({
                                     "orig_id": orig_id, "ing_name": ing_name, "old_ml": old_ml, "u_cost": u_cost,
