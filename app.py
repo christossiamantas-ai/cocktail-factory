@@ -3543,7 +3543,7 @@ elif page == "📦 Lot Παραγωγής":
                                 raw_exp = str(ing_row["Ημ_Λήξης"]) if pd.notna(ing_row["Ημ_Λήξης"]) else ""
                                 old_ml = float(ing_row["Σύνολο_ML"]) if pd.notna(ing_row["Σύνολο_ML"]) else 0.0
                                 orig_id = ing_row["id"]
-                                u_cost = float(ing_row["unit_cost"]) if "unit_cost" in ing_row.columns and pd.notna(ing_row["unit_cost"]) else 0.22
+                                u_cost = float(ing_row["unit_cost"]) if "unit_cost" in ing_row.index and pd.notna(ing_row["unit_cost"]) else 0.22
                                 
                                 lot_parts = raw_lot.split(" / ") if " / " in raw_lot else [raw_lot, ""]
                                 exp_parts = raw_exp.split(" / ") if " / " in raw_exp else [raw_exp, ""]
