@@ -4275,9 +4275,6 @@ elif page == "👥 Πελατολόγιο":
 
                 st.divider()
 
-                st.subheader("💰 Οικονομικό Ιστορικό")
-                res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
-                
                 st.subheader("💰 Οικονομικό Ιστορικό & Αναλυτική Κερδοφορία")
                 res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_name).order("created_at", desc=True).execute()
                 
@@ -4302,7 +4299,7 @@ elif page == "👥 Πελατολόγιο":
                                 df_items = pd.DataFrame(supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute().data)
                                 df_recipes = pd.DataFrame(supabase.table("recipes").select("id, name, catalog_price").execute().data)
                                 res_log_full = supabase.table("production_log").select("*").eq("customer", sel_name).execute()
-                                df_sales = pd.DataFrame(res_log_full.data)
+                                df_sales_raw = pd.DataFrame(res_log_full.data)
                                 
                                 # --- 2. ΜΑΘΗΜΑΤΙΚΑ ΚΟΣΤΟΥΣ & ΕΣΟΔΩΝ ---
                                 FIXED_COST = 0.22
@@ -4320,8 +4317,15 @@ elif page == "👥 Πελατολόγιο":
                                 
                                 global_discount = float(customer_data.get('discount', 0))
                                 
-                                if not df_sales.empty:
-                                    df_sales = df_sales.drop_duplicates(subset=["prod_date", "prod_time", "cocktail_name", "lot_cocktail"])
+                                if not df_sales_raw.empty:
+                                    # 🚀 ΝΕΑ ΛΟΓΙΚΗ ΑΝΙΧΝΕΥΣΗΣ ΣΤΟΚ: ΠΡΙΝ κάνουμε drop duplicates, αθροίζουμε τα ml κάθε κοκτέιλ!
+                                    # Αν τα συνολικά ML ενός κοκτέιλ είναι 0, τότε είναι Στοκ.
+                                    df_sales_raw['total_ml'] = pd.to_numeric(df_sales_raw['total_ml'], errors='coerce').fillna(0)
+                                    df_ml_sum = df_sales_raw.groupby(["prod_date", "prod_time", "cocktail_name", "lot_cocktail"])['total_ml'].sum().reset_index()
+                                    df_ml_sum = df_ml_sum.rename(columns={'total_ml': 'sum_ml'})
+                                    
+                                    df_sales = df_sales_raw.drop_duplicates(subset=["prod_date", "prod_time", "cocktail_name", "lot_cocktail"]).copy()
+                                    df_sales = pd.merge(df_sales, df_ml_sum, on=["prod_date", "prod_time", "cocktail_name", "lot_cocktail"], how="left")
                                     
                                     df_sales['match_date'] = pd.to_datetime(df_sales['prod_date'], format='%d/%m/%Y', errors='coerce').dt.strftime('%Y-%m-%d')
                                     
@@ -4414,8 +4418,8 @@ elif page == "👥 Πελατολόγιο":
                                             for _, row in day_sales.iterrows():
                                                 c_name = row['cocktail_name']
                                                 
-                                                # 🚀 Η ΤΕΛΙΚΗ, ΑΛΑΝΘΑΣΤΗ ΛΟΓΙΚΗ ΓΙΑ ΤΟ ΣΤΟΚ (Διαβάζει τη Supabase!)
-                                                is_stock = (row.get("is_from_stock", False) == True) or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")))
+                                                # 🚀 Ο ΝΕΟΣ ΑΠΟΛΥΤΟΣ ΑΙΣΘΗΤΗΡΑΣ ΣΤΟΚ: Αν το άθροισμα των ML είναι 0, είναι Στοκ!
+                                                is_stock = float(row.get("sum_ml", 1.0)) == 0.0 or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")))
                                                 
                                                 lot_c = str(row.get('lot_cocktail', '-'))
                                                 if lot_c == 'nan' or not lot_c: lot_c = '-'
