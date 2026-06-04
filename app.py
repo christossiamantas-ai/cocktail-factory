@@ -3515,7 +3515,8 @@ elif page == "📦 Lot Παραγωγής":
                 st.markdown(f"### 🛠️ 3. Καρτέλα Παραγγελίας: **{o_cust}** ({o_date})")
                 st.info("💡 Ανοίξτε τα κοκτέιλ παρακάτω. Μπορείτε να αλλάξετε την Ημερομηνία ή τον Πελάτη *ξεχωριστά* για το καθένα (αν θέλετε να τα διαχωρίσετε) ή να τα διαγράψετε βάζοντας **0** στα τεμάχια.")
                 
-                with st.form("master_edit_form"):
+                # 🚀 ΑΛΛΑΓΗ: Έγινε st.container() για να λειτουργεί ΖΩΝΤΑΝΑ η σελίδα!
+                with st.container():
                     unique_cocktails_in_order = o_df[["Cocktail", "LOT_Cocktail"]].drop_duplicates()
                     cocktail_updates = {}
                     
@@ -3533,45 +3534,52 @@ elif page == "📦 Lot Παραγωγής":
                             new_pcs = c3.number_input("Τεμάχια", value=base_pcs, min_value=0, key=f"p_{safe_key}")
                             new_lot = c4.text_input("LOT Παραγωγής", value=c_lot, key=f"l_{safe_key}")
                             
-                            is_currently_stock = all(float(x) == 0.0 for x in c_df["Σύνολο_ML"].dropna())
-                            current_app_cost = float(c_df["applied_cost"].iloc[0]) if "applied_cost" in c_df.columns and pd.notna(c_df["applied_cost"].iloc[0]) else None
-                            
-                            if is_currently_stock:
-                                default_stock_idx = 1 if (current_app_cost is not None and current_app_cost == 0.0) else 2
-                            else:
-                                default_stock_idx = 0
-                                
                             st.markdown("---")
-                            col_rad, col_sel = st.columns([1.5, 1])
+                            col_sel, col_rad = st.columns([1.2, 1.5])
                             
-                            with col_rad:
-                                stock_mode = st.radio(
-                                    "📦 Επιλογή Ανάλωσης & Κόστους:", 
-                                    ["Κανονική Παραγωγή (Κατανάλωση Υλικών & Κόστος)", 
-                                     "Τράβηγμα από Στοκ (ΜΗΔΕΝΙΚΟ Κόστος στο Κέρδος)", 
-                                     "Τράβηγμα από Στοκ (ΜΕ Κανονικό Κόστος Συνταγής)"],
-                                    index=default_stock_idx,
-                                    key=f"smode_{safe_key}"
-                                )
-                                
                             with col_sel:
                                 # 🚀 Βρίσκει ΑΥΤΟΜΑΤΑ όλα τα παλιά LOT αυτού του κοκτέιλ!
                                 available_lots = df_all_logs_renamed[df_all_logs_renamed["Cocktail"] == c_name]["LOT_Cocktail"].dropna().unique().tolist()
                                 available_lots = sorted([str(l) for l in available_lots if str(l).strip() not in ["", "-", "nan"]], reverse=True)
                                 
                                 stock_lot_selection = st.selectbox(
-                                    "🔍 Αν τραβάτε από Στοκ, από ποιο LOT;",
-                                    options=["-- Χρήση του LOT Παραγωγής --"] + available_lots,
+                                    "🔍 Αυτόματη Ανάκτηση Παλιών Υλικών:",
+                                    options=["-- Χειροκίνητη Καταχώρηση --"] + available_lots,
                                     key=f"slot_{safe_key}"
                                 )
+                                
+                            with col_rad:
+                                current_app_cost = float(c_df["applied_cost"].iloc[0]) if "applied_cost" in c_df.columns and pd.notna(c_df["applied_cost"].iloc[0]) else None
+                                default_cost_idx = 1 if (current_app_cost is not None and current_app_cost == 0.0) else 0
+                                
+                                cost_mode = st.radio(
+                                    "📦 Οικονομική Διαχείριση (Κόστος στο Κέρδος):", 
+                                    ["Κανονικό Κόστος Συνταγής", "Μηδενικό Κόστος (π.χ. Κέρασμα / Δείγμα)"],
+                                    index=default_cost_idx,
+                                    key=f"smode_{safe_key}"
+                                )
                             
-                            st.markdown("<p style='font-size:12px; color:#666; margin-top:10px; margin-bottom:5px;'>Υλικά (Αν επιλέξετε 'Στοκ', τα παρακάτω υλικά αγνοούνται και κλειδώνουν αυτόματα βάσει του παλιού LOT):</p>", unsafe_allow_html=True)
+                            st.markdown("<p style='font-size:12px; color:#009b3a; font-weight:bold; margin-top:10px; margin-bottom:5px;'>Υλικά (Τα LOT στα κουτάκια σώζονται ακριβώς όπως τα βλέπετε):</p>", unsafe_allow_html=True)
                             
                             ingredients_data = []
+                            
+                            # 🚀 ΙΣΤΟΡΙΚΗ ΑΝΑΖΗΤΗΣΗ LOT (Τρέχει ζωντανά στο παρασκήνιο!)
+                            hist_lot_data = pd.DataFrame()
+                            if stock_lot_selection != "-- Χειροκίνητη Καταχώρηση --":
+                                hist_lot_data = df_all_logs_renamed[(df_all_logs_renamed["Cocktail"] == c_name) & (df_all_logs_renamed["LOT_Cocktail"] == stock_lot_selection)]
+                            
                             for index_ing, (_, ing_row) in enumerate(c_df.iterrows()):
                                 ing_name = ing_row["Υλικό"]
                                 raw_lot = str(ing_row["Lot Number"]) if pd.notna(ing_row["Lot Number"]) else ""
                                 raw_exp = str(ing_row["Ημ_Λήξης"]) if pd.notna(ing_row["Ημ_Λήξης"]) else ""
+                                
+                                # 🚀 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΜΕ ΤΑ ΠΑΛΙΑ LOT ΑΝ ΒΡΕΘΟΥΝ!
+                                if not hist_lot_data.empty:
+                                    hist_ing = hist_lot_data[hist_lot_data["Υλικό"] == ing_name]
+                                    if not hist_ing.empty:
+                                        raw_lot = str(hist_ing["Lot Number"].iloc[0]) if pd.notna(hist_ing["Lot Number"].iloc[0]) else ""
+                                        raw_exp = str(hist_ing["Ημ_Λήξης"].iloc[0]) if pd.notna(hist_ing["Ημ_Λήξης"].iloc[0]) else ""
+                                
                                 old_ml = float(ing_row["Σύνολο_ML"]) if pd.notna(ing_row["Σύνολο_ML"]) else 0.0
                                 orig_id = ing_row["id"]
                                 u_cost = float(ing_row["unit_cost"]) if "unit_cost" in ing_row.index and pd.notna(ing_row["unit_cost"]) else 0.22
@@ -3598,12 +3606,13 @@ elif page == "📦 Lot Παραγωγής":
                             cocktail_updates[safe_key] = {
                                 "orig_cocktail": c_name, "orig_lot": c_lot, "base_pcs": base_pcs,
                                 "new_date": new_date, "new_cust": new_cust, "new_pcs": new_pcs, "new_lot": new_lot,
-                                "stock_mode": stock_mode, "stock_lot_selected": stock_lot_selection, # 🚀 Σώζει το LOT του Στοκ
+                                "cost_mode": cost_mode,
                                 "ingredients": ingredients_data
                             }
                             
                     st.divider()
-                    submit_edits = st.form_submit_button("💾 Αποθήκευση Όλων των Αλλαγών Παραγγελίας", type="primary")
+                    # 🚀 Έγινε st.button επειδή βγάλαμε τη Φόρμα!
+                    submit_edits = st.button("💾 Αποθήκευση Όλων των Αλλαγών Παραγγελίας", type="primary")
                     
                     if submit_edits:
                         try:
@@ -3631,46 +3640,29 @@ elif page == "📦 Lot Παραγωγής":
                                 affected_b2b_pairs.add((c_data["new_cust"], c_data["new_date"]))
                                 multiplier = float(c_data["new_pcs"]) / float(c_data["base_pcs"]) if c_data["base_pcs"] != 0 else 1.0
                                 
-                                s_mode = c_data["stock_mode"]
-                                final_lot_to_save = c_data["new_lot"]
+                                c_mode = c_data["cost_mode"]
                                 
-                                # 🚀 ΑΝ ΕΠΕΛΕΞΕ ΣΤΟΚ
-                                if "Τράβηγμα από Στοκ" in s_mode:
-                                    # Αν διάλεξε παλιό LOT από το μενού, χρησιμοποιεί εκείνο!
-                                    if c_data["stock_lot_selected"] != "-- Χρήση του LOT Παραγωγής --":
-                                        final_lot_to_save = c_data["stock_lot_selected"]
+                                # 🚀 Σώζουμε τα υλικά ΑΚΡΙΒΩΣ όπως τα έδειξαν/άλλαξαν τα κουτάκια (για την ιχνηλασιμότητα)!
+                                for ing in c_data["ingredients"]:
+                                    new_ml = ing["old_ml"] * multiplier
+                                    g_calc = new_ml
+                                    match_i = df_ing[df_ing["Name"] == ing["ing_name"]]
+                                    if not match_i.empty and float(match_i.iloc[0].get("Volume", 1)) > 0: 
+                                        g_calc = (new_ml / float(match_i.iloc[0]["Volume"])) * float(match_i.iloc[0]["Weight_Full"])
                                         
                                     new_row = {
                                         "prod_date": c_data["new_date"].strip(), "prod_time": o_time, 
                                         "customer": c_data["new_cust"].strip(), "cocktail_name": c_data["orig_cocktail"], 
-                                        "lot_cocktail": final_lot_to_save.strip(), "pieces": int(c_data["new_pcs"]), 
-                                        "ingredient_name": "📦 Έτοιμο Προϊόν (Στοκ)", "total_ml": 0.0, "target_g": 0.0, 
-                                        "lot_number": "-", "expiry_date": "-", "unit_cost": 0.0
+                                        "lot_cocktail": c_data["new_lot"].strip(), "pieces": int(c_data["new_pcs"]), 
+                                        "ingredient_name": ing["ing_name"], "total_ml": new_ml, "target_g": round(g_calc, 1), 
+                                        "lot_number": ing["new_lot"], "expiry_date": ing["new_exp"], "unit_cost": round(float(ing["u_cost"]), 4),
                                     }
-                                    if "ΜΗΔΕΝΙΚΟ" in s_mode:
+                                    if "Μηδενικό" in c_mode:
                                         new_row["applied_cost"] = 0.0
                                     else:
                                         new_row["applied_cost"] = None 
                                         
                                     new_batch.append(new_row)
-                                else:
-                                    # ΚΑΝΟΝΙΚΗ ΠΑΡΑΓΩΓΗ
-                                    for ing in c_data["ingredients"]:
-                                        new_ml = ing["old_ml"] * multiplier
-                                        g_calc = new_ml
-                                        match_i = df_ing[df_ing["Name"] == ing["ing_name"]]
-                                        if not match_i.empty and float(match_i.iloc[0].get("Volume", 1)) > 0: 
-                                            g_calc = (new_ml / float(match_i.iloc[0]["Volume"])) * float(match_i.iloc[0]["Weight_Full"])
-                                            
-                                        new_row = {
-                                            "prod_date": c_data["new_date"].strip(), "prod_time": o_time, 
-                                            "customer": c_data["new_cust"].strip(), "cocktail_name": c_data["orig_cocktail"], 
-                                            "lot_cocktail": final_lot_to_save.strip(), "pieces": int(c_data["new_pcs"]), 
-                                            "ingredient_name": ing["ing_name"], "total_ml": new_ml, "target_g": round(g_calc, 1), 
-                                            "lot_number": ing["new_lot"], "expiry_date": ing["new_exp"], "unit_cost": round(float(ing["u_cost"]), 4),
-                                            "applied_cost": None 
-                                        }
-                                        new_batch.append(new_row)
                             
                             if new_batch:
                                 supabase.table("production_log").insert(new_batch).execute()
@@ -3739,7 +3731,7 @@ elif page == "📦 Lot Παραγωγής":
                             
                             st.session_state['lot_reset_key'] += 1
                             st.session_state.pop('search_data_loaded', None)
-                            st.success("✅ Αποθηκεύτηκαν! (Οι μετατροπές Στοκ αντιστοιχίστηκαν αυτόματα με το παλιό LOT)")
+                            st.success("✅ Όλα αποθηκεύτηκαν τέλεια! Τα υλικά καταγράφηκαν, τα LOT σώθηκαν ακριβώς όπως τα πληκτρολόγησες και το B2B ενημερώθηκε!")
                             import time
                             time.sleep(1.5)
                             st.rerun()
