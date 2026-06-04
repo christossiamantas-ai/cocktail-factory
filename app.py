@@ -5937,3 +5937,154 @@ elif page == "🚚 Παραλαβές":
             st.dataframe(df_hist[["Ημερομηνία", "Υλικό", "Παραγγέλθηκαν (Φιάλες)", "Παρελήφθησαν (Φιάλες)"]], use_container_width=True, hide_index=True)
         else:
             st.info("Δεν υπάρχει ιστορικό παραλαβών.")
+
+
+# --- ΝΕΑ ΚΑΡΤΕΛΑ: ΔΟΚΙΜΑΣΤΙΚΕΣ ΠΑΡΑΓΩΓΕΣ ---
+elif page == "🧪 Δοκιμαστικές Παραγωγές":
+    st.header("🧪 Αριθμομηχανή Δοκιμαστικών Παραγωγών")
+    st.write("Υπολογίστε άμεσα τα ακριβή υλικά για παραγωγή. Οι δοκιμές εδώ **δεν αποθηκεύονται** στο ιστορικό.")
+
+    # Φόρτωση των δεδομένων (Συνταγές & Πρώτες Ύλες)
+    try:
+        res_rec_test = supabase.table("recipes").select("*").execute()
+        df_rec_test = pd.DataFrame(res_rec_test.data)
+        
+        res_ing_test = supabase.table("ingredients").select("*").execute()
+        df_ing_test = pd.DataFrame(res_ing_test.data)
+    except Exception as e:
+        st.error(f"Σφάλμα φόρτωσης: {e}")
+        df_rec_test, df_ing_test = pd.DataFrame(), pd.DataFrame()
+
+    if not df_rec_test.empty and not df_ing_test.empty:
+        recipe_options = sorted(list(df_rec_test["Ονομα"].unique()))
+        
+        col1, col2 = st.columns(2)
+        sel_cocktail = col1.selectbox("🍹 Επιλέξτε Κοκτέιλ για Δοκιμή:", ["-- Επιλέξτε --"] + recipe_options)
+        sel_pcs = col2.number_input("📦 Αριθμός Τεμαχίων (τμχ):", min_value=1, step=1, value=1)
+        
+        if sel_cocktail != "-- Επιλέξτε --":
+            st.divider()
+            st.subheader(f"📊 Απαιτούμενα Υλικά για {sel_pcs} τμχ {sel_cocktail}")
+            
+            recipe_row = df_rec_test[df_rec_test["Ονομα"] == sel_cocktail].iloc[0]
+            
+            # Βοηθητική συνάρτηση για ασφαλή ανάγνωση των ML (όπως την έχεις στην παραγωγή)
+            def get_test_ml(row, idx):
+                exact_key = f"ML{idx}"
+                if exact_key in row: val = row[exact_key]
+                else:
+                    target = exact_key.lower()
+                    val = next((row[c] for c in row.index if str(c).lower().replace(" ", "") == target), 0.0)
+                try: return float(str(val).replace(',', '.').replace(' ', '')) if pd.notna(val) else 0.0
+                except: return 0.0
+
+            test_results = []
+            
+            for i in range(1, 14):
+                ing_name = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                if ing_name not in ["ΚΕΝΟ", "nan", "", "-", "0"]:
+                    ml_per_unit = get_test_ml(recipe_row, i)
+                    total_ml = ml_per_unit * sel_pcs
+                    
+                    # Αναζήτηση της πρώτης ύλης στον πίνακα συστατικών για Όγκο & Βάρος
+                    match_ing = df_ing_test[(df_ing_test["name"] == ing_name) | (df_ing_test.get("Name", "") == ing_name)]
+                    
+                    total_g = total_ml
+                    total_bottles = 0.0
+                    
+                    if not match_ing.empty:
+                        # Ασφαλής ανάγνωση στηλών (μικρά ή κεφαλαία γράμματα)
+                        vol = float(match_ing.iloc[0].get("volume", match_ing.iloc[0].get("Volume", 1)))
+                        weight = float(match_ing.iloc[0].get("weight_full", match_ing.iloc[0].get("Weight_Full", vol)))
+                        
+                        if vol > 0:
+                            total_g = (total_ml / vol) * weight
+                            total_bottles = total_ml / vol
+                            
+                    test_results.append({
+                        "Πρώτη Ύλη": ing_name,
+                        "Απαιτούμενα (ml)": total_ml,
+                        "Βάρος (g)": total_g,
+                        "Φιάλες": total_bottles
+                    })
+            
+            if test_results:
+                df_results = pd.DataFrame(test_results)
+                
+                # 1. ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ
+                st.dataframe(
+                    df_results.style.format({
+                        "Απαιτούμενα (ml)": "{:.1f} ml",
+                        "Βάρος (g)": "{:.1f} g",
+                        "Φιάλες": "{:.2f} μπουκ."
+                    }),
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                # 2. ΔΗΜΙΟΥΡΓΙΑ HTML ΕΚΤΥΠΩΣΗΣ
+                html_content = f"""
+                <!DOCTYPE html>
+                <html lang="el">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Δοκιμαστική Παραγωγή - {sel_cocktail}</title>
+                    <style>
+                        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; }}
+                        .container {{ max-width: 800px; margin: auto; border: 1px solid #ddd; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }}
+                        .header {{ text-align: center; border-bottom: 3px solid #009b3a; padding-bottom: 15px; margin-bottom: 30px; }}
+                        h1 {{ color: #009b3a; margin: 0; font-size: 26px; }}
+                        p {{ font-size: 16px; color: #555; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
+                        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: center; }}
+                        th {{ background-color: #f8f9fa; color: #333; font-weight: bold; }}
+                        .ing-name {{ text-align: left; font-weight: bold; font-size: 15px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>🧪 Φύλλο Δοκιμαστικής Παραγωγής</h1>
+                            <p><b>Κοκτέιλ:</b> {sel_cocktail} &nbsp;|&nbsp; <b>Τεμάχια (Στόχος):</b> {sel_pcs} τμχ</p>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="ing-name">Πρώτη Ύλη</th>
+                                    <th>Απαιτούμενα (ml)</th>
+                                    <th>Βάρος Ζύγισης (g)</th>
+                                    <th>Εκτιμώμενες Φιάλες</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                """
+                
+                for row in test_results:
+                    html_content += f"""
+                                <tr>
+                                    <td class="ing-name">{row['Πρώτη Ύλη']}</td>
+                                    <td>{row['Απαιτούμενα (ml)']:.1f}</td>
+                                    <td>{row['Βάρος (g)']:.1f}</td>
+                                    <td>{row['Φιάλες']:.2f}</td>
+                                </tr>
+                    """
+                    
+                html_content += """
+                            </tbody>
+                        </table>
+                        <p style="text-align:center; font-size:11px; color:#999; margin-top: 30px;">Εκτύπωση από το B2B Σύστημα Παραγωγής - Μη Δεσμευτικό Έγγραφο</p>
+                    </div>
+                </body>
+                </html>
+                """
+                
+                st.write("")
+                st.download_button(
+                    label="🖨️ Λήψη Φύλλου Δοκιμής (HTML)",
+                    data=html_content,
+                    file_name=f"Test_Production_{sel_cocktail.replace(' ', '_')}.html",
+                    mime="text/html",
+                    type="primary"
+                )
+            else:
+                st.warning("Το κοκτέιλ δεν περιέχει καταχωρημένα συστατικά.")
