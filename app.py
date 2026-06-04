@@ -4483,7 +4483,7 @@ elif page == "👥 Πελατολόγιο":
                                     df_sales['rev_special'] = df_sales['s_pcs'] * df_sales['price_after_global'] * (1 - (df_sales['s_pct'] / 100))
                                     df_sales['Theoretical_Revenue'] = (df_sales['rev_normal'] + df_sales['rev_special']).clip(lower=0)
                                     
-                                    # 🚀 ΔΙΟΡΘΩΣΗ: Αφαιρέσαμε τον μηδενισμό. Πλέον ΟΛΑ τα προϊόντα υπολογίζουν κανονικά το κόστος τους!
+                                    # 🚀 ΔΙΟΡΘΩΣΗ: Το κόστος ΔΕΝ μηδενίζεται ποτέ. Υπολογίζεται κανονικά για όλα!
                                     def get_actual_cost(row):
                                         catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
                                         if 'applied_cost' in row and pd.notna(row['applied_cost']): return float(row['applied_cost'])
@@ -4563,10 +4563,8 @@ elif page == "👥 Πελατολόγιο":
                                                 lot_c = str(row.get('lot_cocktail', '-'))
                                                 if lot_c == 'nan' or not lot_c: lot_c = '-'
                                                 
-                                                # 🚀 ΝΕΑ, ΑΛΑΝΘΑΣΤΗ ΛΟΓΙΚΗ ΓΙΑ ΤΟ ΣΤΟΚ:
-                                                # Αν η Ημερομηνία της Παραγγελίας (π.χ. 05/06/2026) ΔΕΝ υπάρχει μέσα στο LOT (π.χ. 25/05/2026-26) 
-                                                # και το LOT δεν είναι κενό, σημαίνει ότι παρήχθη σε άλλη μέρα, άρα είναι από ΣΤΟΚ!
-                                                is_stock = (date_formatted not in lot_c) and (lot_c != '-')
+                                                # 🚀 Η ΑΛΑΝΘΑΣΤΗ ΛΟΓΙΚΗ ΣΟΥ: Διαβάζουμε ΑΠΕΥΘΕΙΑΣ την επιλογή που κλίκαρες στην παραγωγή!
+                                                is_stock = "Έτοιμο Προϊόν" in str(row.get('ingredient_name', ''))
                                                 
                                                 stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                                                 row_class = "stock-row" if is_stock else ""
