@@ -4523,11 +4523,38 @@ elif page == "👥 Πελατολόγιο":
                             st.caption(f"Λεπτομέρειες:\n{details}")
                             
                             if st.button("🗑️ Διαγραφή Παραγγελίας", key=f"del_o_{order_id}"):
-                                delete_order_and_production_safely(order_id, sel_name, order['created_at'], order['order_details'])
-                                st.warning("🔄 Η παραγγελία και τα υλικά παραγωγής διαγράφηκαν επιτυχώς!")
-                                import time
-                                time.sleep(1)
-                                st.rerun()
+                                with st.spinner("Διαγραφή σε εξέλιξη..."):
+                                    try:
+                                        from datetime import datetime
+                                        # 1. Βρίσκουμε την ημερομηνία της παραγγελίας (π.χ. "2026-06-04")
+                                        order_date_iso = str(order['created_at'])[:10]
+                                        
+                                        # 2. Σαρώνουμε την αποθήκη για να βρούμε ΟΛΑ τα υλικά αυτού του πελάτη
+                                        prod_res = supabase.table("production_log").select("id, prod_date").eq("customer", sel_name).execute()
+                                        if prod_res.data:
+                                            ids_to_delete = []
+                                            for p in prod_res.data:
+                                                try:
+                                                    # Φέρνουμε όλες τις ημερομηνίες στο ίδιο format
+                                                    p_iso = datetime.strptime(str(p['prod_date']).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
+                                                    if p_iso == order_date_iso:
+                                                        ids_to_delete.append(p['id'])
+                                                except Exception:
+                                                    pass
+                                            
+                                            # 3. Σβήνουμε μαζικά και ακαριαία τα υλικά
+                                            if ids_to_delete:
+                                                supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
+                                        
+                                        # 4. Σβήνουμε την παραγγελία από το B2B Πελατολόγιο
+                                        supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                        
+                                        st.warning("🔄 Η παραγγελία και όλα της τα υλικά διαγράφηκαν οριστικά και πεντακάθαρα!")
+                                        import time
+                                        time.sleep(1)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
                 else:
                     st.info("Δεν έχουν δημιουργηθεί ακόμα οικονομικές εγγραφές.")
     # =========================================================================
