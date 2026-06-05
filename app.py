@@ -2842,10 +2842,8 @@ elif page == "📦 Lot Παραγωγής":
         all_assignments = {}
 
         if st.session_state.production_batch_items:
-            # 🚀 Η ΑΛΛΑΓΗ: Μπήκε σε st.expander() που είναι από προεπιλογή κλειστό (expanded=False)
+            # 🚀 ΒΗΜΑ 2: Το Καλάθι μπήκε σε expander!
             with st.expander("📦 2. Στοιχεία Τρέχουσας Παρτίδας (Καλάθι Παραγγελιών)", expanded=False):
-                
-                # Επικεφαλίδες
                 hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([2, 2.5, 1, 1.5, 1.5, 0.5])
                 hc1.caption("Πελάτης")
                 hc2.caption("Κοκτέιλ")
@@ -2860,7 +2858,6 @@ elif page == "📦 Lot Παραγωγής":
                     c2.write(item.get("Κοκτέιλ", ""))
                     c3.write(f"**{item.get('Τεμάχια', 0)}**")
                     
-                    # Έξυπνη εμφάνιση του Στοκ
                     if item.get("Στοκ") == "ΝΑΙ":
                         c4.markdown(f"✅ Στοκ<br><span style='font-size:10px; color:gray;'>({item.get('Παλιό_LOT', '-')})</span>", unsafe_allow_html=True)
                     else:
@@ -2868,42 +2865,33 @@ elif page == "📦 Lot Παραγωγής":
                     
                     c5.write("✅ Ναι" if item.get("Με Κόστος;") else "❌ Όχι")
                     
-                    # 🚀 ΚΟΥΜΠΙ ΔΙΑΓΡΑΦΗΣ ΓΙΑ ΤΟ ΣΥΓΚΕΚΡΙΜΕΝΟ ΚΟΚΤΕΙΛ
                     if c6.button("🗑️", key=f"del_cart_item_{idx}_{reset_key}"):
                         st.session_state.production_batch_items.pop(idx)
                         st.toast(f"Το {item.get('Κοκτέιλ')} αφαιρέθηκε από την παρτίδα!")
                         st.rerun()
             
-                st.write("") # Κενό για ομορφιά
-                
-                # Κουμπί για καθαρισμό ΟΛΗΣ της παρτίδας
+                st.write("")
                 if st.button("🗑️ Καθαρισμός Όλης της Παρτίδας", type="secondary"):
                     st.session_state.production_batch_items = []
                     st.session_state['active_b2b_order'] = None
                     st.rerun()
                     
-            # 🚀 ΠΡΟΣΟΧΗ: Ο κώδικας από εδώ και κάτω (που φτιάχνει το all_assignments) παραμένει ΑΘΙΚΤΟΣ
-            # και ΠΡΕΠΕΙ να είναι ΕΞΩ από το expander (όπως ήταν).
-            for item in st.session_state.production_batch_items:
-                cocktail = item["Κοκτέιλ"]
-                c_name = item["Πελάτης"]
-                
+            # Υπολογισμός all_assignments (ΑΥΤΟ ΕΙΝΑΙ ΚΡΥΦΟ, ΔΕΝ ΦΑΙΝΕΤΑΙ ΣΤΗΝ ΟΘΟΝΗ)
             for item in st.session_state.production_batch_items:
                 cocktail = item["Κοκτέιλ"]
                 c_name = item["Πελάτης"]
                 pcs = item["Τεμάχια"]
                 is_stock = item.get("Στοκ", "ΟΧΙ")
                 old_lot = item.get("Παλιό_LOT", "-")
-                charge_cost = item.get("Με Κόστος;", False) # <--- Διαβάζει την επιλογή
+                charge_cost = item.get("Με Κόστος;", False)
                 
                 if cocktail not in all_assignments:
-                    # Προσθέσαμε τη στήλη 'Με Κόστος;'
                     all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια", "Στοκ", "Παλιό_LOT", "Με Κόστος;"])
                 
                 new_row = pd.DataFrame([{
                     "Πελάτης": c_name, "Τεμάχια": int(pcs), 
                     "Στοκ": is_stock, "Παλιό_LOT": old_lot, 
-                    "Με Κόστος;": charge_cost # <--- Την περνάει στον πίνακα
+                    "Με Κόστος;": charge_cost
                 }])
                 all_assignments[cocktail] = pd.concat([all_assignments[cocktail], new_row], ignore_index=True)
 
@@ -2921,35 +2909,36 @@ elif page == "📦 Lot Παραγωγής":
 
             cust_lot_config_map = {}
             if unique_customers_in_batch:
-                st.markdown("### 📅 1β. Ρύθμιση LOT Έτοιμου Κοκτέιλ ανά Πελάτη")
-                st.info("💡 Αν για κάποιον πελάτη μπήκες στο εργαστήριο άλλη μέρα, άλλαξε την Ημερομηνία LOT ή την Ημέρα Παραγωγής του εδώ ΜΙΑ φορά. Θα αλλάξει αυτόματα το LOT σε όλα του τα κοκτέιλ!")
-                
-                cust_lot_data = [{
-                    "Πελάτης": c, 
-                    "Ημερομηνία LOT": formatted_date, 
-                    "Ημέρα Παραγωγής": prod_day
-                } for c in sorted(list(unique_customers_in_batch))]
-                
-                df_cust_lots = pd.DataFrame(cust_lot_data)
-                
-                edited_cust_lots_df = st.data_editor(
-                    df_cust_lots,
-                    hide_index=True,
-                    use_container_width=True,
-                    key=f"cust_cocktail_lot_editor_{reset_key}",
-                    column_config={
-                        "Πελάτης": st.column_config.TextColumn("ΠΕΛΑΤΗΣ", disabled=True),
-                        "Ημερομηνία LOT": st.column_config.TextColumn("ΗΜΕΡΟΜΗΝΙΑ LOT (DD/MM/YYYY)"),
-                        "Ημέρα Παραγωγής": st.column_config.TextColumn("ΗΜΕΡΑ ΠΑΡΑΓΩΓΗΣ (Διψήφιος)", max_chars=8)
-                    }
-                )
-                
-                for _, row in edited_cust_lots_df.iterrows():
-                    c_name_key = row["Πελάτης"]
-                    cust_lot_config_map[c_name_key] = {
-                        "prod_date": str(row["Ημερομηνία LOT"]).strip(),
-                        "lot_cocktail": f"{str(row['Ημερομηνία LOT']).strip()}-{str(row['Ημέρα Παραγωγής']).strip()}"
-                    }
+                # 🚀 ΕΚΡΥΨΑ ΚΑΙ ΤΟ 1β ΜΕΣΑ ΣΕ EXPANDER ΓΙΑ ΝΑ ΑΔΕΙΑΣΕΙ ΕΝΤΕΛΩΣ Η ΟΘΟΝΗ ΣΟΥ!
+                with st.expander("📅 1β. Ρύθμιση LOT Έτοιμου Κοκτέιλ ανά Πελάτη", expanded=False):
+                    st.info("💡 Αν για κάποιον πελάτη μπήκες στο εργαστήριο άλλη μέρα, άλλαξε την Ημερομηνία LOT ή την Ημέρα Παραγωγής του εδώ ΜΙΑ φορά. Θα αλλάξει αυτόματα το LOT σε όλα του τα κοκτέιλ!")
+                    
+                    cust_lot_data = [{
+                        "Πελάτης": c, 
+                        "Ημερομηνία LOT": formatted_date, 
+                        "Ημέρα Παραγωγής": prod_day
+                    } for c in sorted(list(unique_customers_in_batch))]
+                    
+                    df_cust_lots = pd.DataFrame(cust_lot_data)
+                    
+                    edited_cust_lots_df = st.data_editor(
+                        df_cust_lots,
+                        hide_index=True,
+                        use_container_width=True,
+                        key=f"cust_cocktail_lot_editor_{reset_key}",
+                        column_config={
+                            "Πελάτης": st.column_config.TextColumn("ΠΕΛΑΤΗΣ", disabled=True),
+                            "Ημερομηνία LOT": st.column_config.TextColumn("ΗΜΕΡΟΜΗΝΙΑ LOT (DD/MM/YYYY)"),
+                            "Ημέρα Παραγωγής": st.column_config.TextColumn("ΗΜΕΡΑ ΠΑΡΑΓΩΓΗΣ (Διψήφιος)", max_chars=8)
+                        }
+                    )
+                    
+                    for _, row in edited_cust_lots_df.iterrows():
+                        c_name_key = row["Πελάτης"]
+                        cust_lot_config_map[c_name_key] = {
+                            "prod_date": str(row["Ημερομηνία LOT"]).strip(),
+                            "lot_cocktail": f"{str(row['Ημερομηνία LOT']).strip()}-{str(row['Ημέρα Παραγωγής']).strip()}"
+                        }
 
             # --- ΒΗΜΑ 2: ΥΠΟΛΟΓΙΣΜΟΣ ΜΟΝΑΔΙΚΩΝ ΥΛΙΚΩΝ ΚΑΙ ΣΥΝΟΛΙΚΩΝ ML & ΒΑΡΟΥΣ ---
             ing_weights_map = {}
