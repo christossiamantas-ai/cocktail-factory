@@ -3519,12 +3519,14 @@ elif page == "📦 Lot Παραγωγής":
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
                             orig_pcs = split_map[sel_split]["total_pcs"]
                             
-                            c_s1, c_s2, c_s3 = st.columns(3)
+                            # 🚀 ΑΛΛΑΓΗ ΕΔΩ: Προσθέσαμε στήλη για το checkbox του κόστους!
+                            c_s1, c_s2, c_s3, c_s4 = st.columns([1.5, 1.5, 1, 1.5])
                             stock_found = c_s1.number_input("Πόσα τμχ βρήκατε σε Στοκ;", min_value=1, max_value=orig_pcs-1, value=1, step=1)
                             old_stock_lot = c_s2.text_input("LOT του Στοκ (Παλιό):", placeholder="π.χ. ZMB-10/05")
+                            charge_stock_cost = c_s3.checkbox("Με Κόστος;", value=False, help="Τσεκάρετε αν θέλετε να υπολογιστεί λογιστικό κόστος για αυτά τα έτοιμα τεμάχια στο Οικονομικό Ιστορικό.")
                             
                             remain_pcs = orig_pcs - stock_found
-                            c_s3.info(f"Νέα Παραγωγή: **{remain_pcs} τμχ**\nΑπό Στοκ: **{stock_found} τμχ**")
+                            c_s4.info(f"Νέα Παραγ.: **{remain_pcs} τμχ**\nΑπό Στοκ: **{stock_found} τμχ**")
                             
                             if st.button("✂️ Εκτέλεση Σπασίματος", type="primary"):
                                 if old_stock_lot.strip():
@@ -3553,6 +3555,10 @@ elif page == "📦 Lot Παραγωγής":
                                                     
                                                 # 3. Δημιουργούμε 1 νέα γραμμή-Στοκ με το παλιό LOT
                                                 first_row = res_orig.data[0]
+                                                
+                                                # 🚀 ΑΛΛΑΓΗ ΕΔΩ: Υπολογισμός τελικού κόστους για το Στοκ (0 αν δεν είναι τσεκαρισμένο)
+                                                final_stock_cost = float(first_row["unit_cost"]) if charge_stock_cost else 0.0
+                                                
                                                 stock_entry = {
                                                     "prod_date": first_row["prod_date"],
                                                     "prod_time": first_row["prod_time"],
@@ -3566,9 +3572,8 @@ elif page == "📦 Lot Παραγωγής":
                                                     "lot_number": old_stock_lot.strip(),
                                                     "expiry_date": "-",
                                                     "unit_cost": first_row["unit_cost"],
-                                                    "applied_cost": first_row["applied_cost"],
+                                                    "applied_cost": final_stock_cost, # Εφαρμογή της επιλογής μας!
                                                     "is_from_stock": True,
-                                                    # Αφήνουμε τα δώρα 0 στο Στοκ για να μην μπερδευτεί το B2B, τα κρατάει όλα η Νέα Παραγωγή
                                                     "free_pieces": 0, 
                                                     "discounted_pieces": 0,
                                                     "discount_pct": 0.0
@@ -3576,7 +3581,7 @@ elif page == "📦 Lot Παραγωγής":
                                                 supabase.table("production_log").insert(stock_entry).execute()
                                                 
                                                 st.session_state.pop('search_data_loaded', None)
-                                                st.success("✅ Η παραγγελία σπάστηκε! Το εργαστήριο ενημερώθηκε ακαριαία.")
+                                                st.success("✅ Η παραγγελία σπάστηκε! Το εργαστήριο και τα οικονομικά ενημερώθηκαν ακαριαία.")
                                                 import time
                                                 time.sleep(1.5)
                                                 st.rerun()
