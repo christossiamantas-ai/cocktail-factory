@@ -3256,6 +3256,77 @@ elif page == "📦 Lot Παραγωγής":
                             st.rerun()
                         except Exception as save_err:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
+
+    # =========================================================================
+    # ΕΡΓΑΛΕΙΟ ΕΡΓΑΣΤΗΡΙΟΥ: ΜΑΖΙΚΗ ΚΑΤΑΧΩΡΗΣΗ LOT ΠΡΩΤΩΝ ΥΛΩΝ
+    # =========================================================================
+    st.divider()
+    with st.expander("🧪 Εργαστήριο: Μαζική Καταχώρηση LOT Πρώτων Υλών", expanded=False):
+        st.info("Επιλέξτε την ημέρα παραγωγής για να καταχωρήσετε μαζικά τα LOT των υλικών που χρησιμοποιήσατε. (Τα κοκτέιλ από Στοκ προστατεύονται και δεν επηρεάζονται).")
+
+        res_dates = supabase.table("production_log").select("prod_date").eq("is_from_stock", False).execute()
+        
+        if res_dates.data:
+            import pandas as pd
+            all_dates = sorted(list(set([r["prod_date"] for r in res_dates.data])), reverse=True)
+            sel_prep_date = st.selectbox("📅 Ημερομηνία Παραγωγής:", ["-- Επιλέξτε Ημερομηνία --"] + all_dates)
+            
+            if sel_prep_date != "-- Επιλέξτε Ημερομηνία --":
+                res_mats = supabase.table("production_log").select("ingredient_name, total_ml, target_g, lot_number, expiry_date").eq("prod_date", sel_prep_date).eq("is_from_stock", False).execute()
+                
+                if res_mats.data:
+                    df_mats = pd.DataFrame(res_mats.data)
+                    df_grouped = df_mats.groupby("ingredient_name").agg({
+                        "total_ml": "sum",
+                        "target_g": "sum",
+                        "lot_number": "first",
+                        "expiry_date": "first"
+                    }).reset_index()
+                    
+                    with st.form("bulk_lot_entry_form"):
+                        st.write(f"### Συγκεντρωτικά Υλικά για την παραγωγή της {sel_prep_date}")
+                        
+                        updated_lots = {}
+                        
+                        h1, h2, h3, h4 = st.columns([2, 1, 1.5, 1.5])
+                        h1.caption("Πρώτη Ύλη")
+                        h2.caption("Συνολικά ml")
+                        h3.caption("Lot Number")
+                        h4.caption("Ημ. Λήξης")
+                        
+                        for _, row in df_grouped.iterrows():
+                            ing = row["ingredient_name"]
+                            c1, c2, c3, c4 = st.columns([2, 1, 1.5, 1.5])
+                            
+                            c1.write(f"**{ing}**")
+                            c2.write(f"{row['total_ml']:.0f} ml")
+                            
+                            def_lot = row['lot_number'] if row['lot_number'] and row['lot_number'] != "-" else ""
+                            def_exp = row['expiry_date'] if row['expiry_date'] and row['expiry_date'] != "-" else ""
+                            
+                            n_lot = c3.text_input("LOT", value=def_lot, key=f"blot_{ing}", label_visibility="collapsed")
+                            n_exp = c4.text_input("EXP", value=def_exp, key=f"bexp_{ing}", label_visibility="collapsed")
+                            
+                            updated_lots[ing] = {"lot": n_lot.strip() if n_lot.strip() else "-", "exp": n_exp.strip() if n_exp.strip() else "-"}
+                        
+                        if st.form_submit_button("💾 Αποθήκευση LOT στην Παραγωγή", type="primary"):
+                            with st.spinner("Γίνεται μαζική ενημέρωση..."):
+                                try:
+                                    for ing_name, vals in updated_lots.items():
+                                        # 🚀 ΑΠΟΛΥΤΗ ΠΡΟΣΤΑΣΙΑ: Ενημερώνει ΜΟΝΟ το συγκεκριμένο υλικό, για τη συγκεκριμένη μέρα, και ΜΟΝΟ αν ΔΕΝ είναι από Στοκ!
+                                        supabase.table("production_log").update({
+                                            "lot_number": vals["lot"],
+                                            "expiry_date": vals["exp"]
+                                        }).eq("prod_date", sel_prep_date).eq("ingredient_name", ing_name).eq("is_from_stock", False).execute()
+                                    
+                                    st.success("✅ Όλα τα LOT των πρώτων υλών καταχωρήθηκαν επιτυχώς!")
+                                    import time
+                                    time.sleep(1.5)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
+                else:
+                    st.info("Δεν βρέθηκαν υλικά προς παρασκευή για αυτή την ημερομηνία (ή ήταν όλα από Στοκ).")
                             
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
