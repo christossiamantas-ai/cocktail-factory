@@ -3301,35 +3301,50 @@ elif page == "📦 Lot Παραγωγής":
                             
                             updated_lots = {}
                             
-                            h1, h2, h3, h4 = st.columns([2, 1, 1.5, 1.5])
+                            # 🚀 ΑΛΛΑΓΗ 1: 6 στήλες αντί για 4
+                            h1, h2, h3, h4, h5, h6 = st.columns([2, 1, 1.2, 1, 1.2, 1])
                             h1.caption("Πρώτη Ύλη")
                             h2.caption("Συνολικά ml")
-                            h3.caption("Lot Number")
-                            h4.caption("Ημ. Λήξης")
+                            h3.caption("LOT 1")
+                            h4.caption("Ημ. Λήξης 1")
+                            h5.caption("LOT 2")
+                            h6.caption("Ημ. Λήξης 2")
                             
                             for _, row in df_grouped.iterrows():
                                 ing = row["ingredient_name"]
-                                c1, c2, c3, c4 = st.columns([2, 1, 1.5, 1.5])
+                                c1, c2, c3, c4, c5, c6 = st.columns([2, 1, 1.2, 1, 1.2, 1])
                                 
                                 c1.write(f"**{ing}**")
                                 c2.write(f"{row['total_ml']:.0f} ml")
                                 
-                                def_lot = row['lot_number'] if row['lot_number'] and row['lot_number'] != "-" else ""
-                                def_exp = row['expiry_date'] if row['expiry_date'] and row['expiry_date'] != "-" else ""
+                                # Διάσπαση των υπαρχόντων LOT/EXP αν είχαν ήδη κάθετο (/)
+                                old_lot_full = str(row['lot_number']) if row['lot_number'] and row['lot_number'] != "-" else ""
+                                old_exp_full = str(row['expiry_date']) if row['expiry_date'] and row['expiry_date'] != "-" else ""
                                 
-                                # 🚀 Η ΔΙΟΡΘΩΣΗ: Φτιάχνουμε ένα μοναδικό κλειδί ανά ημέρα για να καθαρίζει η φόρμα!
+                                def_lot1, def_lot2 = (old_lot_full.split("/", 1) + [""])[:2] if "/" in old_lot_full else (old_lot_full, "")
+                                def_exp1, def_exp2 = (old_exp_full.split("/", 1) + [""])[:2] if "/" in old_exp_full else (old_exp_full, "")
+                                
                                 safe_date_key = sel_prep_date.replace("/", "_")
                                 
-                                n_lot = c3.text_input("LOT", value=def_lot, key=f"blot_{ing}_{safe_date_key}", label_visibility="collapsed")
-                                n_exp = c4.text_input("EXP", value=def_exp, key=f"bexp_{ing}_{safe_date_key}", label_visibility="collapsed")
+                                # 🚀 ΑΛΛΑΓΗ 2: Τα 4 κουτάκια εισαγωγής
+                                n_lot1 = c3.text_input("LOT1", value=def_lot1.strip(), key=f"blot1_{ing}_{safe_date_key}", label_visibility="collapsed")
+                                n_exp1 = c4.text_input("EXP1", value=def_exp1.strip(), key=f"bexp1_{ing}_{safe_date_key}", label_visibility="collapsed")
+                                n_lot2 = c5.text_input("LOT2", value=def_lot2.strip(), key=f"blot2_{ing}_{safe_date_key}", label_visibility="collapsed")
+                                n_exp2 = c6.text_input("EXP2", value=def_exp2.strip(), key=f"bexp2_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 
-                                updated_lots[ing] = {"lot": n_lot.strip() if n_lot.strip() else "-", "exp": n_exp.strip() if n_exp.strip() else "-"}
+                                # 🚀 ΑΛΛΑΓΗ 3: Ένωση των 2 LOT (αν υπάρχει 2ο)
+                                final_lot = f"{n_lot1.strip()} / {n_lot2.strip()}" if n_lot2.strip() else n_lot1.strip()
+                                final_exp = f"{n_exp1.strip()} / {n_exp2.strip()}" if n_exp2.strip() else n_exp1.strip()
+                                
+                                updated_lots[ing] = {
+                                    "lot": final_lot if final_lot else "-", 
+                                    "exp": final_exp if final_exp else "-"
+                                }
                             
                             if st.form_submit_button("💾 Αποθήκευση LOT στην Παραγωγή", type="primary"):
                                 with st.spinner("Γίνεται μαζική ενημέρωση..."):
                                     try:
                                         for ing_name, vals in updated_lots.items():
-                                            # Βρίσκουμε τα ID των γραμμών που πρέπει να αναβαθμιστούν
                                             target_rows = [
                                                 r["id"] for r in res_mats.data 
                                                 if r.get("ingredient_name") == ing_name 
@@ -3337,7 +3352,6 @@ elif page == "📦 Lot Παραγωγής":
                                             ]
                                             
                                             if target_rows:
-                                                # Ενημερώνουμε με ασφάλεια βάσει ID
                                                 supabase.table("production_log").update({
                                                     "lot_number": vals["lot"],
                                                     "expiry_date": vals["exp"]
@@ -3349,10 +3363,6 @@ elif page == "📦 Lot Παραγωγής":
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
-                    else:
-                        st.info("Όλα τα κοκτέιλ αυτής της ημερομηνίας ήταν από Στοκ, δεν υπάρχουν πρώτες ύλες για συμπλήρωση.")
-                else:
-                    st.info("Δεν βρέθηκαν υλικά προς παρασκευή για αυτή την ημερομηνία.")
                             
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
