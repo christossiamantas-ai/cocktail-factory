@@ -3520,16 +3520,23 @@ elif page == "📦 Lot Παραγωγής":
                             orig_pcs = split_map[sel_split]["total_pcs"]
                             b_cocktail_selected = split_map[sel_split]["cocktail"]
                             
-                            # 🚀 ΑΛΛΑΓΗ: Δυναμική άντληση των παλιών LOT ΜΟΝΟ για το συγκεκριμένο κοκτέιλ!
-                            hist_lots_res = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", b_cocktail_selected).eq("is_from_stock", False).execute()
+                            # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε και τα πεδία ελέγχου χωρίς αυστηρό φίλτρο στη βάση για να μη χάνουμε τα παλιά NULL
+                            hist_lots_res = supabase.table("production_log").select("lot_cocktail, is_from_stock, ingredient_name").eq("cocktail_name", b_cocktail_selected).execute()
                             hist_lots = []
+                            
                             if hist_lots_res.data:
-                                hist_lots = sorted(list(set([r["lot_cocktail"] for r in hist_lots_res.data if r.get("lot_cocktail") and r.get("lot_cocktail") != "-"])), reverse=True)
+                                # 🚀 Φιλτράρουμε έξυπνα μέσω Python για να εμφανιστούν όλες οι παλιές παραγωγές
+                                valid_lots = [
+                                    r["lot_cocktail"] for r in hist_lots_res.data
+                                    if str(r.get("is_from_stock", "False")).lower() != "true"
+                                    and "Έτοιμο Προϊόν" not in str(r.get("ingredient_name", ""))
+                                    and r.get("lot_cocktail") and r.get("lot_cocktail") != "-"
+                                ]
+                                hist_lots = sorted(list(set(valid_lots)), reverse=True)
                             
                             c_s1, c_s2, c_s3, c_s4 = st.columns([1.5, 1.5, 1, 1.5])
                             stock_found = c_s1.number_input("Πόσα τμχ βρήκατε σε Στοκ;", min_value=1, max_value=orig_pcs-1, value=1, step=1)
                             
-                            # 🚀 ΑΛΛΑΓΗ: Έξυπνο αναπτυσσόμενο μενού αντί για τυφλή πληκτρολόγηση!
                             if hist_lots:
                                 old_stock_lot = c_s2.selectbox("LOT του Στοκ (Από Ιστορικό):", ["-- Επιλέξτε LOT --"] + hist_lots)
                             else:
