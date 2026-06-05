@@ -3489,7 +3489,7 @@ elif page == "📦 Lot Παραγωγής":
         # --- 1Γ. ΕΞΥΠΝΟ ΣΠΑΣΙΜΟ ΠΑΡΑΓΓΕΛΙΑΣ (SPLIT) ---
         st.divider()
         with st.expander("✂️ Έξυπνο Σπάσιμο Παραγγελίας (Βρέθηκε Στοκ;)", expanded=False):
-            st.info("Βρήκατε έτοιμα κοκτέιλ στο ψυγείο; Επιλέξτε την παραγγελία, δηλώστε πόσα τεμάχια βρήκατε, και το σύστημα θα τη 'σπάσει' αυτόματα! Το τιμολόγιο του πελάτη παραμένει άθικτο, αλλά τα υλικά του εργαστηρίου μειώνονται.")
+            st.info("Βρήκατε έτοιμα κοκτέιλ στο ψυγείο; Επιλέξτε την παραγγελία και το παλιό LOT από τη λίστα. Το σύστημα θα 'σπάσει' την παραγγελία, διατηρώντας το τιμολόγιο άθικτο και συνδέοντας αυτόματα τις παλιές πρώτες ύλες!")
             
             if not df_filtered.empty:
                 # Κρατάμε μόνο τις νέες παραγωγές (με ml > 0)
@@ -3518,18 +3518,30 @@ elif page == "📦 Lot Παραγωγής":
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
                             orig_pcs = split_map[sel_split]["total_pcs"]
+                            b_cocktail_selected = split_map[sel_split]["cocktail"]
                             
-                            # 🚀 ΑΛΛΑΓΗ ΕΔΩ: Προσθέσαμε στήλη για το checkbox του κόστους!
+                            # 🚀 ΑΛΛΑΓΗ: Δυναμική άντληση των παλιών LOT ΜΟΝΟ για το συγκεκριμένο κοκτέιλ!
+                            hist_lots_res = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", b_cocktail_selected).eq("is_from_stock", False).execute()
+                            hist_lots = []
+                            if hist_lots_res.data:
+                                hist_lots = sorted(list(set([r["lot_cocktail"] for r in hist_lots_res.data if r.get("lot_cocktail") and r.get("lot_cocktail") != "-"])), reverse=True)
+                            
                             c_s1, c_s2, c_s3, c_s4 = st.columns([1.5, 1.5, 1, 1.5])
                             stock_found = c_s1.number_input("Πόσα τμχ βρήκατε σε Στοκ;", min_value=1, max_value=orig_pcs-1, value=1, step=1)
-                            old_stock_lot = c_s2.text_input("LOT του Στοκ (Παλιό):", placeholder="π.χ. ZMB-10/05")
+                            
+                            # 🚀 ΑΛΛΑΓΗ: Έξυπνο αναπτυσσόμενο μενού αντί για τυφλή πληκτρολόγηση!
+                            if hist_lots:
+                                old_stock_lot = c_s2.selectbox("LOT του Στοκ (Από Ιστορικό):", ["-- Επιλέξτε LOT --"] + hist_lots)
+                            else:
+                                old_stock_lot = c_s2.text_input("LOT του Στοκ (Χειροκίνητα):", placeholder="Δεν βρέθηκε ιστορικό")
+                                
                             charge_stock_cost = c_s3.checkbox("Με Κόστος;", value=False, help="Τσεκάρετε αν θέλετε να υπολογιστεί λογιστικό κόστος για αυτά τα έτοιμα τεμάχια στο Οικονομικό Ιστορικό.")
                             
                             remain_pcs = orig_pcs - stock_found
                             c_s4.info(f"Νέα Παραγ.: **{remain_pcs} τμχ**\nΑπό Στοκ: **{stock_found} τμχ**")
                             
                             if st.button("✂️ Εκτέλεση Σπασίματος", type="primary"):
-                                if old_stock_lot.strip():
+                                if old_stock_lot and old_stock_lot != "-- Επιλέξτε LOT --" and old_stock_lot.strip():
                                     with st.spinner("Γίνεται σπάσιμο παραγγελίας..."):
                                         try:
                                             b_date = split_map[sel_split]["date"]
@@ -3538,11 +3550,9 @@ elif page == "📦 Lot Παραγωγής":
                                             b_cocktail = split_map[sel_split]["cocktail"]
                                             b_lot = split_map[sel_split]["old_lot"]
                                             
-                                            # 1. Τραβάμε τα πραγματικά ID και δεδομένα από τη βάση
                                             res_orig = supabase.table("production_log").select("*").eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_lot).execute()
                                             
                                             if res_orig.data:
-                                                # 2. Μειώνουμε αναλογικά τα ml και τα γραμμάρια στις υπάρχουσες γραμμές
                                                 for row in res_orig.data:
                                                     new_ml = (float(row["total_ml"]) / orig_pcs) * remain_pcs
                                                     new_g = (float(row["target_g"]) / orig_pcs) * remain_pcs
@@ -3553,10 +3563,7 @@ elif page == "📦 Lot Παραγωγής":
                                                         "target_g": round(new_g, 2)
                                                     }).eq("id", row["id"]).execute()
                                                     
-                                                # 3. Δημιουργούμε 1 νέα γραμμή-Στοκ με το παλιό LOT
                                                 first_row = res_orig.data[0]
-                                                
-                                                # 🚀 ΑΛΛΑΓΗ ΕΔΩ: Υπολογισμός τελικού κόστους για το Στοκ (0 αν δεν είναι τσεκαρισμένο)
                                                 final_stock_cost = float(first_row["unit_cost"]) if charge_stock_cost else 0.0
                                                 
                                                 stock_entry = {
@@ -3572,7 +3579,7 @@ elif page == "📦 Lot Παραγωγής":
                                                     "lot_number": old_stock_lot.strip(),
                                                     "expiry_date": "-",
                                                     "unit_cost": first_row["unit_cost"],
-                                                    "applied_cost": final_stock_cost, # Εφαρμογή της επιλογής μας!
+                                                    "applied_cost": final_stock_cost,
                                                     "is_from_stock": True,
                                                     "free_pieces": 0, 
                                                     "discounted_pieces": 0,
@@ -3588,7 +3595,7 @@ elif page == "📦 Lot Παραγωγής":
                                         except Exception as e:
                                             st.error(f"Σφάλμα κατά το σπάσιμο: {e}")
                                 else:
-                                    st.warning("Παρακαλώ συμπληρώστε το LOT του Στοκ.")
+                                    st.warning("Παρακαλώ επιλέξτε (ή γράψτε) το LOT του Στοκ.")
                     else:
                         st.info("Δεν βρέθηκαν παραγγελίες νέας παραγωγής που να μπορούν να σπαστούν.")
                 else:
