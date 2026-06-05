@@ -3425,18 +3425,22 @@ elif page == "📦 Lot Παραγωγής":
             st.info("Επιλέξτε παραγγελίες και αλλάξτε μαζικά το LOT Παραγωγής τους (την ημέρα που φτιάχτηκαν). Τα οικονομικά στο B2B και η ημερομηνία χρέωσης παραμένουν 100% άθικτα!")
             
             if not df_filtered.empty:
-                # Ομαδοποίηση για να φαίνονται καθαρά στην επιλογή
-                bulk_groups = df_filtered.groupby(["Ημερομηνία", "Πελάτης", "Ώρα", "LOT_Cocktail"])
+                # 🚀 ΣΩΣΤΗ ΟΜΑΔΟΠΟΙΗΣΗ: Βάλαμε και το Cocktail στο Grouping!
+                bulk_groups = df_filtered.groupby(["Ημερομηνία", "Πελάτης", "Ώρα", "Cocktail", "LOT_Cocktail"])
                 bulk_options = []
                 bulk_map = {}
                 
                 for name, group in bulk_groups:
-                    o_date, o_cust, o_time, o_lot = name
-                    tot_pcs = group["Τεμάχια"].sum()
+                    o_date, o_cust, o_time, o_cocktail, o_lot = name
+                    # 🚀 ΣΩΣΤΑ ΤΕΜΑΧΙΑ: Παίρνει την ποσότητα μόνο από την πρώτη γραμμή, δεν αθροίζει τα υλικά!
+                    tot_pcs = group["Τεμάχια"].iloc[0]
                     
-                    lbl = f"📅 {o_date} | 👤 {o_cust} | LOT: {o_lot} | ({int(tot_pcs)} τμχ)"
+                    lbl = f"📅 {o_date} | 👤 {o_cust} | 🍹 {o_cocktail} | LOT: {o_lot} | ({int(tot_pcs)} τμχ)"
                     bulk_options.append(lbl)
-                    bulk_map[lbl] = {"date": o_date, "cust": o_cust, "time": o_time, "old_lot": o_lot}
+                    bulk_map[lbl] = {
+                        "date": o_date, "cust": o_cust, "time": o_time, 
+                        "cocktail": o_cocktail, "old_lot": o_lot
+                    }
                 
                 sel_bulk = st.multiselect("Επιλέξτε Παραγγελίες για αλλαγή του LOT Παραγωγής:", bulk_options)
                 
@@ -3451,13 +3455,14 @@ elif page == "📦 Lot Παραγωγής":
                                     b_date = bulk_map[lbl]["date"]
                                     b_cust = bulk_map[lbl]["cust"]
                                     b_time = bulk_map[lbl]["time"]
+                                    b_cocktail = bulk_map[lbl]["cocktail"]
                                     b_old_lot = bulk_map[lbl]["old_lot"]
                                     
-                                    # 🚀 Αλλάζει ΑΥΣΤΗΡΑ και ΜΟΝΟ το lot_cocktail. Ούτε B2B πειράζεται, ούτε η Ημερομηνία Χρέωσης!
-                                    supabase.table("production_log").update({"lot_cocktail": new_bulk_lot.strip()}).eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("lot_cocktail", b_old_lot).execute()
+                                    # 🚀 Αλλάζει ΑΥΣΤΗΡΑ και ΜΟΝΟ το lot_cocktail για το ΣΥΓΚΕΚΡΙΜΕΝΟ κοκτέιλ.
+                                    supabase.table("production_log").update({"lot_cocktail": new_bulk_lot.strip()}).eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_old_lot).execute()
                                 
                                 st.session_state.pop('search_data_loaded', None)
-                                st.success("✅ Το LOT Παραγωγής άλλαξε επιτυχώς σε όλες τις επιλεγμένες παραγγελίες!")
+                                st.success("✅ Το LOT Παραγωγής άλλαξε επιτυχώς στις επιλεγμένες παραγγελίες!")
                                 import time
                                 time.sleep(1.5)
                                 st.rerun()
