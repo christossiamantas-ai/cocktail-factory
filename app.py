@@ -3519,16 +3519,27 @@ elif page == "📦 Lot Παραγωγής":
                                         if discount > 0: details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
                                             
                                         if existing_order.data:
-                                            supabase.table("b2b_orders").update({"total_amount": round(final_total, 2), "order_details": details_str}).eq("id", existing_order.data[0]["id"]).execute()
+                                            # 🚀 ΔΙΟΡΘΩΣΗ: Προστέθηκε το status "ΟΛΟΚΛΗΡΩΘΗΚΕ" στο update
+                                            supabase.table("b2b_orders").update({
+                                                "total_amount": round(final_total, 2), 
+                                                "order_details": details_str,
+                                                "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"
+                                            }).eq("id", existing_order.data[0]["id"]).execute()
                                         else:
-                                            supabase.table("b2b_orders").insert({"customer_name": b2b_cust, "total_amount": round(final_total, 2), "order_details": details_str, "created_at": f"{date_iso}T12:00:00"}).execute()
+                                            # 🚀 ΔΙΟΡΘΩΣΗ: Προστέθηκε το status "ΟΛΟΚΛΗΡΩΘΗΚΕ" στο insert
+                                            supabase.table("b2b_orders").insert({
+                                                "customer_name": b2b_cust, 
+                                                "total_amount": round(final_total, 2), 
+                                                "order_details": details_str, 
+                                                "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
+                                                "created_at": f"{date_iso}T12:00:00"
+                                            }).execute()
                                     else:
-                                        # Αν η παλιά μέρα άδειασε τελείως, σβήνουμε και την παραγγελία B2B!
                                         if existing_order.data:
                                             supabase.table("b2b_orders").delete().eq("id", existing_order.data[0]["id"]).execute()
                                 
                                 st.session_state.pop('search_data_loaded', None)
-                                st.success("✅ Όλες οι επιλεγμένες παραγγελίες μεταφέρθηκαν και το Πελατολόγιο ενημερώθηκε επιτυχώς!")
+                                st.success("✅ Όλες οι επιλεγμένες παραγγελίες μεταφέρθηκαν και το Πελατολόγιο ενημερώθηκε ως ΟΛΟΚΛΗΡΩΜΕΝΟ!")
                                 import time
                                 time.sleep(1.5)
                                 st.rerun()
