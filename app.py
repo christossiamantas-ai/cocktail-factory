@@ -3486,6 +3486,108 @@ elif page == "📦 Lot Παραγωγής":
                     st.info("Όλα τα αποτελέσματα της αναζήτησης προέρχονται από έτοιμο Στοκ. Δεν υπάρχει κάποια νέα παραγωγή για αλλαγή LOT.")
             else:
                 st.info("Δεν υπάρχουν αποτελέσματα με τα τρέχοντα φίλτρα.")
+        # --- 1Γ. ΕΞΥΠΝΟ ΣΠΑΣΙΜΟ ΠΑΡΑΓΓΕΛΙΑΣ (SPLIT) ---
+        st.divider()
+        with st.expander("✂️ Έξυπνο Σπάσιμο Παραγγελίας (Βρέθηκε Στοκ;)", expanded=False):
+            st.info("Βρήκατε έτοιμα κοκτέιλ στο ψυγείο; Επιλέξτε την παραγγελία, δηλώστε πόσα τεμάχια βρήκατε, και το σύστημα θα τη 'σπάσει' αυτόματα! Το τιμολόγιο του πελάτη παραμένει άθικτο, αλλά τα υλικά του εργαστηρίου μειώνονται.")
+            
+            if not df_filtered.empty:
+                # Κρατάμε μόνο τις νέες παραγωγές (με ml > 0)
+                df_splittable = df_filtered[df_filtered["Σύνολο_ML"] > 0]
+                
+                if not df_splittable.empty:
+                    split_groups = df_splittable.groupby(["Ημερομηνία", "Πελάτης", "Ώρα", "Cocktail", "LOT_Cocktail"])
+                    split_options = ["-- Επιλέξτε Παραγγελία --"]
+                    split_map = {}
+                    
+                    for name, group in split_groups:
+                        o_date, o_cust, o_time, o_cocktail, o_lot = name
+                        tot_pcs = int(group["Τεμάχια"].iloc[0])
+                        
+                        # Μόνο αν είναι πάνω από 1 τεμάχιο έχει νόημα να σπάσει!
+                        if tot_pcs > 1: 
+                            lbl = f"📅 {o_date} | 👤 {o_cust} | 🍹 {o_cocktail} ({tot_pcs} τμχ)"
+                            split_options.append(lbl)
+                            split_map[lbl] = {
+                                "date": o_date, "cust": o_cust, "time": o_time, 
+                                "cocktail": o_cocktail, "old_lot": o_lot, "total_pcs": tot_pcs
+                            }
+                    
+                    if len(split_options) > 1:
+                        sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", split_options)
+                        
+                        if sel_split != "-- Επιλέξτε Παραγγελία --":
+                            orig_pcs = split_map[sel_split]["total_pcs"]
+                            
+                            c_s1, c_s2, c_s3 = st.columns(3)
+                            stock_found = c_s1.number_input("Πόσα τμχ βρήκατε σε Στοκ;", min_value=1, max_value=orig_pcs-1, value=1, step=1)
+                            old_stock_lot = c_s2.text_input("LOT του Στοκ (Παλιό):", placeholder="π.χ. ZMB-10/05")
+                            
+                            remain_pcs = orig_pcs - stock_found
+                            c_s3.info(f"Νέα Παραγωγή: **{remain_pcs} τμχ**\nΑπό Στοκ: **{stock_found} τμχ**")
+                            
+                            if st.button("✂️ Εκτέλεση Σπασίματος", type="primary"):
+                                if old_stock_lot.strip():
+                                    with st.spinner("Γίνεται σπάσιμο παραγγελίας..."):
+                                        try:
+                                            b_date = split_map[sel_split]["date"]
+                                            b_cust = split_map[sel_split]["cust"]
+                                            b_time = split_map[sel_split]["time"]
+                                            b_cocktail = split_map[sel_split]["cocktail"]
+                                            b_lot = split_map[sel_split]["old_lot"]
+                                            
+                                            # 1. Τραβάμε τα πραγματικά ID και δεδομένα από τη βάση
+                                            res_orig = supabase.table("production_log").select("*").eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_lot).execute()
+                                            
+                                            if res_orig.data:
+                                                # 2. Μειώνουμε αναλογικά τα ml και τα γραμμάρια στις υπάρχουσες γραμμές
+                                                for row in res_orig.data:
+                                                    new_ml = (float(row["total_ml"]) / orig_pcs) * remain_pcs
+                                                    new_g = (float(row["target_g"]) / orig_pcs) * remain_pcs
+                                                    
+                                                    supabase.table("production_log").update({
+                                                        "pieces": remain_pcs,
+                                                        "total_ml": round(new_ml, 2),
+                                                        "target_g": round(new_g, 2)
+                                                    }).eq("id", row["id"]).execute()
+                                                    
+                                                # 3. Δημιουργούμε 1 νέα γραμμή-Στοκ με το παλιό LOT
+                                                first_row = res_orig.data[0]
+                                                stock_entry = {
+                                                    "prod_date": first_row["prod_date"],
+                                                    "prod_time": first_row["prod_time"],
+                                                    "customer": first_row["customer"],
+                                                    "cocktail_name": first_row["cocktail_name"],
+                                                    "lot_cocktail": old_stock_lot.strip(),
+                                                    "pieces": stock_found,
+                                                    "ingredient_name": "📦 Έτοιμο Προϊόν (Στοκ)",
+                                                    "total_ml": 0.0,
+                                                    "target_g": 0.0,
+                                                    "lot_number": old_stock_lot.strip(),
+                                                    "expiry_date": "-",
+                                                    "unit_cost": first_row["unit_cost"],
+                                                    "applied_cost": first_row["applied_cost"],
+                                                    "is_from_stock": True,
+                                                    # Αφήνουμε τα δώρα 0 στο Στοκ για να μην μπερδευτεί το B2B, τα κρατάει όλα η Νέα Παραγωγή
+                                                    "free_pieces": 0, 
+                                                    "discounted_pieces": 0,
+                                                    "discount_pct": 0.0
+                                                }
+                                                supabase.table("production_log").insert(stock_entry).execute()
+                                                
+                                                st.session_state.pop('search_data_loaded', None)
+                                                st.success("✅ Η παραγγελία σπάστηκε! Το εργαστήριο ενημερώθηκε ακαριαία.")
+                                                import time
+                                                time.sleep(1.5)
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Σφάλμα κατά το σπάσιμο: {e}")
+                                else:
+                                    st.warning("Παρακαλώ συμπληρώστε το LOT του Στοκ.")
+                    else:
+                        st.info("Δεν βρέθηκαν παραγγελίες νέας παραγωγής που να μπορούν να σπαστούν.")
+                else:
+                    st.info("Δεν υπάρχουν παραγγελίες νέας παραγωγής (με >1 τμχ) για να σπαστούν.")
                 
         # --- 2. ΕΠΙΛΟΓΗ ΠΑΡΑΓΓΕΛΙΑΣ (MASTER) ---
         # --- 2. ΕΠΙΛΟΓΗ ΠΑΡΑΓΓΕΛΙΑΣ (MASTER) ---
