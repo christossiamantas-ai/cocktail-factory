@@ -3553,6 +3553,12 @@ elif page == "📦 Lot Παραγωγής":
                                             b_cocktail = split_map[sel_split]["cocktail"]
                                             b_lot = split_map[sel_split]["old_lot"]
                                             
+                                            # 🚀 Η ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Αν το LOT του στοκ είναι ολόιδιο με της νέας παραγωγής, 
+                                            # του κολλάμε ένα "-S" για να τα ξεχωρίζει η Python!
+                                            final_stock_lot = old_stock_lot.strip()
+                                            if final_stock_lot == b_lot:
+                                                final_stock_lot = f"{final_stock_lot}-S"
+                                            
                                             res_orig = supabase.table("production_log").select("*").eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_lot).execute()
                                             
                                             if res_orig.data:
@@ -3574,12 +3580,12 @@ elif page == "📦 Lot Παραγωγής":
                                                     "prod_time": first_row["prod_time"],
                                                     "customer": first_row["customer"],
                                                     "cocktail_name": first_row["cocktail_name"],
-                                                    "lot_cocktail": old_stock_lot.strip(),
+                                                    "lot_cocktail": final_stock_lot, # 🚀 Μπαίνει το ασφαλές LOT
                                                     "pieces": stock_found,
                                                     "ingredient_name": "📦 Έτοιμο Προϊόν (Στοκ)",
                                                     "total_ml": 0.0,
                                                     "target_g": 0.0,
-                                                    "lot_number": old_stock_lot.strip(),
+                                                    "lot_number": final_stock_lot, # 🚀 Και εδώ!
                                                     "expiry_date": "-",
                                                     "unit_cost": first_row["unit_cost"],
                                                     "applied_cost": final_stock_cost,
