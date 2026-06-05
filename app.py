@@ -3728,14 +3728,21 @@ elif page == "📦 Lot Παραγωγής":
                         except Exception as save_err:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
 
-        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (ΑΘΙΚΤΕΣ) ---
+        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (ΔΙΟΡΘΩΜΕΝΕΣ ΓΙΑ ΣΩΣΤΑ ΑΘΡΟΙΣΜΑΤΑ) ---
         st.divider()
         st.markdown("### 🖨️ 4. Συγκεντρωτικές Εκτυπώσεις (Βάσει Φίλτρων Αναζήτησης)")
         
         cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
         file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
-        df_clean_customers = df_past.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({"Τεμάχια": "first"})
+        # 🚀 ΝΕΑ ΛΟΓΙΚΗ: 1. Απομονώνουμε τις ξεχωριστές παραγγελίες (βάσει Ώρας) για να μην πολλαπλασιαστούν τα τεμάχια από τα συστατικά!
+        df_unique_productions = df_past[["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
+        
+        # 🚀 2. Ομαδοποιούμε και ΑΘΡΟΙΖΟΥΜΕ (sum) τα τεμάχια σε περίπτωση πολλαπλών παραγγελιών την ίδια μέρα!
+        df_clean_customers = df_unique_productions.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({"Τεμάχια": "sum"})
+        
+        # Το df_daily πλέον είναι ακριβώς το ίδιο καθαρό και αθροισμένο!
+        df_daily = df_clean_customers.copy()
 
         html_pro = f"""<html><head><meta charset='UTF-8'><style>
             body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 20px; line-height: 1.5; }}
@@ -3759,8 +3766,8 @@ elif page == "📦 Lot Παραγωγής":
             html_pro += "</tbody></table>"
         html_pro += "</body></html>"
 
-        df_daily = df_past.drop_duplicates(subset=["Πελάτης", "Cocktail", "LOT_Cocktail"])
-        grand_total_pcs, total_different_cocktails = df_daily["Τεμάχια"].sum(), df_daily["Cocktail"].nunique() if not df_daily.empty else 0
+        grand_total_pcs = df_daily["Τεμάχια"].sum() if not df_daily.empty else 0
+        total_different_cocktails = df_daily["Cocktail"].nunique() if not df_daily.empty else 0
         total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
         html_daily = f"""<html><head><meta charset='UTF-8'><style>
@@ -3784,6 +3791,7 @@ elif page == "📦 Lot Παραγωγής":
 
         html_daily += f"<div class='grand-total'>{total_label_text}<br><b>{grand_total_pcs} Τεμάχια</b><span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span></div></body></html>"
         
+        # Η λίστα προετοιμασίας παραμένει άθικτη, καθώς το .sum() δούλευε ήδη τέλεια!
         df_prep = df_past.groupby("Υλικό").agg({
             "Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum",
             "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan']))),
@@ -3811,7 +3819,6 @@ elif page == "📦 Lot Παραγωγής":
         col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
-    
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
