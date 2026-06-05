@@ -3419,136 +3419,54 @@ elif page == "📦 Lot Παραγωγής":
 
         df_past = df_filtered.copy() # Κρατάμε το αντίγραφο για τις εκτυπώσεις!
 
-        # --- 1Β. ΜΑΖΙΚΗ ΑΛΛΑΓΗ ΗΜΕΡΟΜΗΝΙΑΣ (BULK EDIT) ---
+        # --- 1Β. ΜΑΖΙΚΗ ΑΛΛΑΓΗ LOT ΠΑΡΑΓΩΓΗΣ (BULK EDIT) ---
         st.divider()
-        with st.expander("⏱️ Μαζική Αλλαγή Ημερομηνίας Παραγωγής", expanded=False):
-            st.info("Επιλέξτε μία ή περισσότερες παραγγελίες από τα αποτελέσματα της αναζήτησης και μεταφέρετέ τις σε νέα ημερομηνία. Το B2B Οικονομικό Ιστορικό θα ενημερωθεί αυτόματα!")
+        with st.expander("⏱️ Μαζική Αλλαγή LOT Παραγωγής", expanded=False):
+            st.info("Επιλέξτε παραγγελίες και αλλάξτε μαζικά το LOT Παραγωγής τους (την ημέρα που φτιάχτηκαν). Τα οικονομικά στο B2B και η ημερομηνία χρέωσης παραμένουν 100% άθικτα!")
             
             if not df_filtered.empty:
-                bulk_groups = df_filtered.groupby(["Ημερομηνία", "Πελάτης", "Ώρα"])
+                # Ομαδοποίηση για να φαίνονται καθαρά στην επιλογή
+                bulk_groups = df_filtered.groupby(["Ημερομηνία", "Πελάτης", "Ώρα", "LOT_Cocktail"])
                 bulk_options = []
                 bulk_map = {}
                 
                 for name, group in bulk_groups:
-                    o_date, o_cust, o_time = name
-                    # Βρίσκουμε τα σωστά συνολικά τεμάχια για την ετικέτα
-                    clean_g = group[["Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
-                    tot_pcs = clean_g["Τεμάχια"].sum()
+                    o_date, o_cust, o_time, o_lot = name
+                    tot_pcs = group["Τεμάχια"].sum()
                     
-                    lbl = f"📅 {o_date} | 👤 {o_cust} | 🕒 {o_time} ({int(tot_pcs)} τμχ)"
+                    lbl = f"📅 {o_date} | 👤 {o_cust} | LOT: {o_lot} | ({int(tot_pcs)} τμχ)"
                     bulk_options.append(lbl)
-                    bulk_map[lbl] = {"date": o_date, "cust": o_cust, "time": o_time}
+                    bulk_map[lbl] = {"date": o_date, "cust": o_cust, "time": o_time, "old_lot": o_lot}
                 
-                sel_bulk = st.multiselect("Επιλέξτε Παραγγελίες για μεταφορά:", bulk_options)
+                sel_bulk = st.multiselect("Επιλέξτε Παραγγελίες για αλλαγή του LOT Παραγωγής:", bulk_options)
                 
                 col_b1, col_b2 = st.columns([1.5, 2])
-                new_bulk_date = col_b1.text_input("Νέα Ημερομηνία (DD/MM/YYYY):", placeholder="π.χ. 15/06/2026", key="bulk_date_input")
+                new_bulk_lot = col_b1.text_input("Νέο LOT Παραγωγής:", placeholder="π.χ. ZMB-15/06 ή 15/06/2026-31", key="bulk_lot_input")
                 
-                if col_b2.button("💾 Εφαρμογή Μαζικής Αλλαγής", type="primary"):
-                    if sel_bulk and new_bulk_date.strip():
-                        with st.spinner("Γίνεται μεταφορά και επανυπολογισμός B2B..."):
+                if col_b2.button("💾 Εφαρμογή Νέου LOT", type="primary"):
+                    if sel_bulk and new_bulk_lot.strip():
+                        with st.spinner("Ενημέρωση LOT στη βάση δεδομένων..."):
                             try:
-                                affected_b2b_pairs = set()
-                                
                                 for lbl in sel_bulk:
                                     b_date = bulk_map[lbl]["date"]
                                     b_cust = bulk_map[lbl]["cust"]
                                     b_time = bulk_map[lbl]["time"]
+                                    b_old_lot = bulk_map[lbl]["old_lot"]
                                     
-                                    # 1. Αλλαγή ημερομηνίας στη βάση (για όλα τα υλικά αυτής της παραγγελίας)
-                                    supabase.table("production_log").update({"prod_date": new_bulk_date.strip()}).eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).execute()
-                                    
-                                    # 2. Σημειώνουμε ποιες ημερομηνίες πρέπει να ξαναχτιστούν (η Παλιά και η Νέα!)
-                                    affected_b2b_pairs.add((b_cust, b_date))
-                                    affected_b2b_pairs.add((b_cust, new_bulk_date.strip()))
-                                
-                                # 3. ΑΠΟΛΥΤΟ REBUILD B2B ΓΙΑ ΤΙΣ ΕΠΗΡΕΑΖΟΜΕΝΕΣ ΗΜΕΡΟΜΗΝΙΕΣ
-                                all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
-                                all_customers_res = supabase.table("customers").select("name, discount").execute()
-                                recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in all_recipes_res.data} if all_recipes_res.data else {}
-                                customer_discounts = {c['name']: float(c.get('discount') or 0.0) for c in all_customers_res.data} if all_customers_res.data else {}
-                                
-                                from datetime import datetime
-                                for b2b_cust, b2b_date in affected_b2b_pairs:
-                                    if b2b_cust == "Λιανική / Άγνωστος": continue
-                                    
-                                    today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, lot_cocktail, prod_time").eq("prod_date", b2b_date).eq("customer", b2b_cust).execute()
-                                    
-                                    try: date_iso = datetime.strptime(b2b_date, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                    except ValueError: date_iso = "1900-01-01" 
-                                        
-                                    existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", b2b_cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
-                                    
-                                    if today_logs.data:
-                                        import pandas as pd
-                                        df_logs = pd.DataFrame(today_logs.data).fillna(0)
-                                        df_logs = df_logs.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
-                                        
-                                        unique_cocktails = {}
-                                        for _, row in df_logs.iterrows():
-                                            c_n = row["cocktail_name"]
-                                            if c_n not in unique_cocktails: unique_cocktails[c_n] = {"pcs": 0, "free": 0, "s_pcs": 0, "s_pct": 0.0}
-                                            unique_cocktails[c_n]["pcs"] += int(row.get("pieces") or 0)
-                                            unique_cocktails[c_n]["free"] = max(unique_cocktails[c_n]["free"], int(row.get("free_pieces") or 0))
-                                            unique_cocktails[c_n]["s_pcs"] = max(unique_cocktails[c_n]["s_pcs"], int(row.get("discounted_pieces") or 0))
-                                            unique_cocktails[c_n]["s_pct"] = max(unique_cocktails[c_n]["s_pct"], float(row.get("discount_pct") or 0.0))
-                                            
-                                        total_amount = 0.0
-                                        details_lines = []
-                                        for cockt, data in unique_cocktails.items():
-                                            price = recipe_prices.get(cockt, 0.0)
-                                            t_pcs, f_pcs = data["pcs"], data["free"]
-                                            s_pcs = min(data["s_pcs"], max(0, t_pcs - f_pcs))
-                                            normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
-                                            
-                                            cost_normal = normal_pcs * price
-                                            cost_special = s_pcs * price * (1 - (data["s_pct"] / 100.0))
-                                            total_amount += (cost_normal + cost_special)
-                                            
-                                            line = f"• {t_pcs} τμχ {cockt}"
-                                            if f_pcs > 0 or s_pcs > 0:
-                                                extras = []
-                                                if f_pcs > 0: extras.append(f"{f_pcs} Δώρο")
-                                                if s_pcs > 0: extras.append(f"{s_pcs} με -{data['s_pct']}%")
-                                                line += f" (Εκ των οποίων: {', '.join(extras)})"
-                                            details_lines.append(line)
-                                            
-                                        discount = customer_discounts.get(b2b_cust, 0.0)
-                                        final_total = total_amount * (1 - (discount / 100))
-                                        details_str = "\n".join(details_lines)
-                                        if discount > 0: details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
-                                            
-                                        if existing_order.data:
-                                            # 🚀 ΔΙΟΡΘΩΣΗ: Προστέθηκε το status "ΟΛΟΚΛΗΡΩΘΗΚΕ" στο update
-                                            supabase.table("b2b_orders").update({
-                                                "total_amount": round(final_total, 2), 
-                                                "order_details": details_str,
-                                                "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"
-                                            }).eq("id", existing_order.data[0]["id"]).execute()
-                                        else:
-                                            # 🚀 ΔΙΟΡΘΩΣΗ: Προστέθηκε το status "ΟΛΟΚΛΗΡΩΘΗΚΕ" στο insert
-                                            supabase.table("b2b_orders").insert({
-                                                "customer_name": b2b_cust, 
-                                                "total_amount": round(final_total, 2), 
-                                                "order_details": details_str, 
-                                                "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
-                                                "created_at": f"{date_iso}T12:00:00"
-                                            }).execute()
-                                    else:
-                                        if existing_order.data:
-                                            supabase.table("b2b_orders").delete().eq("id", existing_order.data[0]["id"]).execute()
+                                    # 🚀 Αλλάζει ΑΥΣΤΗΡΑ και ΜΟΝΟ το lot_cocktail. Ούτε B2B πειράζεται, ούτε η Ημερομηνία Χρέωσης!
+                                    supabase.table("production_log").update({"lot_cocktail": new_bulk_lot.strip()}).eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("lot_cocktail", b_old_lot).execute()
                                 
                                 st.session_state.pop('search_data_loaded', None)
-                                st.success("✅ Όλες οι επιλεγμένες παραγγελίες μεταφέρθηκαν και το Πελατολόγιο ενημερώθηκε ως ΟΛΟΚΛΗΡΩΜΕΝΟ!")
+                                st.success("✅ Το LOT Παραγωγής άλλαξε επιτυχώς σε όλες τις επιλεγμένες παραγγελίες!")
                                 import time
                                 time.sleep(1.5)
                                 st.rerun()
                             except Exception as save_err:
                                 st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
                     else:
-                        st.warning("Παρακαλώ επιλέξτε τουλάχιστον μία παραγγελία και γράψτε τη Νέα Ημερομηνία.")
+                        st.warning("Παρακαλώ επιλέξτε τουλάχιστον μία παραγγελία και γράψτε το Νέο LOT.")
             else:
-                st.info("Δεν υπάρχουν αποτελέσματα με τα τρέχοντα φίλτρα για να γίνει μαζική αλλαγή.")
+                st.info("Δεν υπάρχουν αποτελέσματα με τα τρέχοντα φίλτρα.")
 
         # --- 2. ΕΠΙΛΟΓΗ ΠΑΡΑΓΓΕΛΙΑΣ (MASTER) ---
         # --- 2. ΕΠΙΛΟΓΗ ΠΑΡΑΓΓΕΛΙΑΣ (MASTER) ---
