@@ -3370,13 +3370,17 @@ elif page == "📦 Lot Παραγωγής":
         # 🚀 VIRTUAL JOIN: "Ανοίγουμε" το Στοκ για να φαίνονται τα υλικά του στην οθόνη
         original_productions = {}
         
-        # Πέρασμα 1: Αποθηκεύουμε τα αυθεντικά υλικά των κανονικών παραγωγών
+        # Πέρασμα 1: Αποθηκεύουμε τα αυθεντικά υλικά (Με έξυπνο κόφτη διπλοτυπιών!)
         for row in raw_data:
             if row.get("ingredient_name") and "Έτοιμο Προϊόν" not in str(row.get("ingredient_name")):
                 key = (row.get("cocktail_name"), str(row.get("lot_cocktail")).strip())
                 if key not in original_productions:
-                    original_productions[key] = []
-                original_productions[key].append(row)
+                    original_productions[key] = {} # 🚀 Χρησιμοποιούμε Λεξικό (Dict) για να φιλτράρουμε τα διπλά
+                
+                ing_name = row.get("ingredient_name")
+                # Αν το υλικό δεν υπάρχει ήδη στη λίστα για αυτό το LOT, το προσθέτουμε. Αν υπάρχει, το αγνοούμε!
+                if ing_name not in original_productions[key]:
+                    original_productions[key][ing_name] = row
                 
         # Πέρασμα 2: Αντικαθιστούμε το 1 "Στοκ" με τα πραγματικά του υλικά για την προβολή
         display_data = []
@@ -3384,7 +3388,7 @@ elif page == "📦 Lot Παραγωγής":
             if row.get("ingredient_name") == "📦 Έτοιμο Προϊόν (Στοκ)":
                 key = (row.get("cocktail_name"), str(row.get("lot_cocktail")).strip())
                 if key in original_productions and len(original_productions[key]) > 0:
-                    for orig_ing in original_productions[key]:
+                    for orig_ing in original_productions[key].values(): # 🚀 Τραβάει μόνο τα μοναδικά υλικά!
                         new_row = row.copy()
                         new_row["ingredient_name"] = orig_ing.get("ingredient_name")
                         new_row["lot_number"] = orig_ing.get("lot_number")
