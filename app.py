@@ -4368,13 +4368,27 @@ elif page == "👥 Πελατολόγιο":
                                         day_sales = df_sales[df_sales['match_date'] == o_date_raw]
                                         
                                         if not day_sales.empty:
-                                            for _, row in day_sales.iterrows():
+                                            # 🚀 ΝΕΑ ΛΟΓΙΚΗ ΟΜΑΔΟΠΟΙΗΣΗΣ: Αθροίζει ίδιο Cocktail + ίδιο LOT!
+                                            grouped_day_sales = day_sales.groupby(["cocktail_name", "lot_cocktail"]).agg({
+                                                "t_pcs": "sum",
+                                                "f_pcs": "sum",
+                                                "s_pcs": "sum",
+                                                "s_pct": "max",
+                                                "Theoretical_Revenue": "sum",
+                                                "Total_Cost": "sum",
+                                                "Profit": "sum",
+                                                "sum_ml": "sum",
+                                                "price_after_global": "first",
+                                                "ingredient_name": "first"
+                                            }).reset_index()
+
+                                            for _, row in grouped_day_sales.iterrows():
                                                 c_name = row['cocktail_name']
                                                 
-                                                # 🚀 Ο ΝΕΟΣ ΑΠΟΛΥΤΟΣ ΑΙΣΘΗΤΗΡΑΣ ΣΤΟΚ: Αν το άθροισμα των ML είναι 0, είναι Στοκ!
+                                                # 🚀 Ο ΝΕΟΣ ΑΠΟΛΥΤΟΣ ΑΙΣΘΗΤΗΡΑΣ ΣΤΟΚ
                                                 is_stock = float(row.get("sum_ml", 1.0)) == 0.0 or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")))
                                                 
-                                                lot_c = str(row.get('lot_cocktail', '-'))
+                                                lot_c = str(row['lot_cocktail'])
                                                 if lot_c == 'nan' or not lot_c: lot_c = '-'
                                                 
                                                 stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
@@ -4388,7 +4402,7 @@ elif page == "👥 Πελατολόγιο":
                                                 f_pcs = int(row['f_pcs'])
                                                 s_pcs = int(row['s_pcs'])
                                                 s_pct = float(row['s_pct'])
-                                                normal_pcs = int(row['normal_pcs'])
+                                                normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
                                                 
                                                 rev = row['Theoretical_Revenue']
                                                 cost = row['Total_Cost']
@@ -4399,6 +4413,7 @@ elif page == "👥 Πελατολόγιο":
                                                 grand_cost += cost
                                                 grand_prof += prof
                                                 
+                                                # Δημιουργία της ετικέτας των δώρων/εκπτώσεων
                                                 details_arr = []
                                                 if normal_pcs > 0:
                                                     details_arr.append(f"{normal_pcs} κανονικά")
