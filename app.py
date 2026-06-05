@@ -3281,7 +3281,7 @@ elif page == "📦 Lot Παραγωγής":
             sel_prep_date = st.selectbox("📅 Ημερομηνία Παραγωγής:", ["-- Επιλέξτε Ημερομηνία --"] + all_dates)
             
             if sel_prep_date != "-- Επιλέξτε Ημερομηνία --":
-                res_mats = supabase.table("production_log").select("ingredient_name, total_ml, target_g, lot_number, expiry_date, is_from_stock").eq("prod_date", sel_prep_date).execute()
+                res_mats = supabase.table("production_log").select("id, ingredient_name, total_ml, target_g, lot_number, expiry_date, is_from_stock").eq("prod_date", sel_prep_date).execute()
                 
                 if res_mats.data:
                     # 🚀 Φιλτράρουμε πάλι έξυπνα για τα παλιά NULL
