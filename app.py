@@ -3426,31 +3426,33 @@ elif page == "📦 Lot Παραγωγής":
         # --- 1Β. ΜΑΖΙΚΗ ΑΛΛΑΓΗ LOT ΠΑΡΑΓΩΓΗΣ (BULK EDIT) ---
         st.divider()
         with st.expander("⏱️ Μαζική Αλλαγή LOT Παραγωγής", expanded=False):
-            st.info("Επιλέξτε παραγγελίες και αλλάξτε μαζικά το LOT Παραγωγής τους (την ημέρα που φτιάχτηκαν). Τα οικονομικά στο B2B και τα κοκτέιλ από Στοκ προστατεύονται και δεν εμφανίζονται καθόλου εδώ!")
+            st.info("Επιλέξτε ποια ΚΟΚΤΕΙΛ (συνολική παραγωγή ημέρας) θέλετε να ενημερώσετε με νέο LOT. Το σύστημα θα αλλάξει αυτόματα το LOT σε όλες τις επιμέρους παραγγελίες πελατών!")
             
             if not df_filtered.empty:
-                # 🚀 Η ΜΑΓΙΚΗ ΑΣΠΙΔΑ (ΔΙΟΡΘΩΜΕΝΗ): Τα κοκτέιλ από στοκ έχουν ΠΑΝΤΑ 0 ml στην οθόνη. 
-                # Άρα κρατάμε ΑΥΣΤΗΡΑ μόνο όσα έχουν ml > 0 (δηλαδή τις πραγματικές Νέες Παραγωγές)!
+                # 🚀 Η ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Κρατάμε ΑΥΣΤΗΡΑ μόνο όσα έχουν ml > 0 (δηλαδή τις πραγματικές Νέες Παραγωγές)!
                 df_only_new_production = df_filtered[df_filtered["Σύνολο_ML"] > 0]
                 
                 if not df_only_new_production.empty:
-                    # Ομαδοποίηση ΜΟΝΟ για τις πραγματικές νέες παραγωγές
-                    bulk_groups = df_only_new_production.groupby(["Ημερομηνία", "Πελάτης", "Ώρα", "Cocktail", "LOT_Cocktail"])
+                    # 🚀 ΑΛΛΑΓΗ: Ομαδοποίηση ΜΟΝΟ ανά Ημερομηνία, Κοκτέιλ και Παλιό LOT (αγνοούμε Πελάτη/Ώρα)!
+                    bulk_groups = df_only_new_production.groupby(["Ημερομηνία", "Cocktail", "LOT_Cocktail"])
                     bulk_options = []
                     bulk_map = {}
                     
                     for name, group in bulk_groups:
-                        o_date, o_cust, o_time, o_cocktail, o_lot = name
-                        tot_pcs = group["Τεμάχια"].iloc[0]
+                        o_date, o_cocktail, o_lot = name
                         
-                        lbl = f"📅 {o_date} | 👤 {o_cust} | 🍹 {o_cocktail} | LOT: {o_lot} | ({int(tot_pcs)} τμχ)"
+                        # Υπολογίζουμε τα συνολικά τεμάχια της ημέρας για αυτό το κοκτέιλ (αγνοώντας τις διπλές γραμμές υλικών)
+                        tot_pcs = group.drop_duplicates(subset=["Πελάτης", "Ώρα"])["Τεμάχια"].sum()
+                        
+                        lbl = f"📅 {o_date} | 🍹 {o_cocktail} | Παλιό LOT: {o_lot} | ({int(tot_pcs)} συνολικά τμχ)"
                         bulk_options.append(lbl)
                         bulk_map[lbl] = {
-                            "date": o_date, "cust": o_cust, "time": o_time, 
-                            "cocktail": o_cocktail, "old_lot": o_lot
+                            "date": o_date, 
+                            "cocktail": o_cocktail, 
+                            "old_lot": o_lot
                         }
                     
-                    sel_bulk = st.multiselect("Επιλέξτε Παραγγελίες για αλλαγή του LOT Παραγωγής:", bulk_options)
+                    sel_bulk = st.multiselect("Επιλέξτε Κοκτέιλ (Συνολική Παραγωγή) για αλλαγή LOT:", bulk_options)
                     
                     col_b1, col_b2 = st.columns([1.5, 2])
                     new_bulk_lot = col_b1.text_input("Νέο LOT Παραγωγής:", placeholder="π.χ. ZMB-15/06 ή 15/06/2026-31", key="bulk_lot_input")
@@ -3461,23 +3463,21 @@ elif page == "📦 Lot Παραγωγής":
                                 try:
                                     for lbl in sel_bulk:
                                         b_date = bulk_map[lbl]["date"]
-                                        b_cust = bulk_map[lbl]["cust"]
-                                        b_time = bulk_map[lbl]["time"]
                                         b_cocktail = bulk_map[lbl]["cocktail"]
                                         b_old_lot = bulk_map[lbl]["old_lot"]
                                         
-                                        # Αλλάζει ΑΥΣΤΗΡΑ και ΜΟΝΟ το lot_cocktail για το συγκεκριμένο κοκτέιλ νέας παραγωγής
-                                        supabase.table("production_log").update({"lot_cocktail": new_bulk_lot.strip()}).eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_old_lot).execute()
+                                        # 🚀 ΑΛΛΑΓΗ: Ενημερώνει ΑΚΑΡΙΑΙΑ όλες τις γραμμές αυτού του κοκτέιλ ανεξαρτήτως πελάτη!
+                                        supabase.table("production_log").update({"lot_cocktail": new_bulk_lot.strip()}).eq("prod_date", b_date).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_old_lot).execute()
                                     
                                     st.session_state.pop('search_data_loaded', None)
-                                    st.success("✅ Το LOT Παραγωγής άλλαξε επιτυχώς στις επιλεγμένες παραγγελίες!")
+                                    st.success("✅ Το LOT Παραγωγής άλλαξε επιτυχώς σε όλες τις παραγγελίες των επιλεγμένων κοκτέιλ!")
                                     import time
                                     time.sleep(1.5)
                                     st.rerun()
                                 except Exception as save_err:
                                     st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
                         else:
-                            st.warning("Παρακαλώ επιλέξτε τουλάχιστον μία παραγγελία και γράψτε το Νέο LOT.")
+                            st.warning("Παρακαλώ επιλέξτε τουλάχιστον ένα κοκτέιλ και γράψτε το Νέο LOT.")
                 else:
                     st.info("Όλα τα αποτελέσματα της αναζήτησης προέρχονται από έτοιμο Στοκ. Δεν υπάρχει κάποια νέα παραγωγή για αλλαγή LOT.")
             else:
