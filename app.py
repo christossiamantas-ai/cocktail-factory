@@ -2967,9 +2967,8 @@ elif page == "📦 Lot Παραγωγής":
                             ml_u = get_recipe_ml(recipe_row, i)
                             ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * total_qty_for_production)
 
-            st.markdown("### 🔄 2. Συνολικά Υλικά Παραγγελίας & Γρήγορη Εκτύπωση")
-            
-            with st.expander("📋 Πίνακας Μοναδικών Υλικών & Συνολικών Ποσοτήτων", expanded=True):
+            # 🚀 ΟΛΟ ΤΟ ΟΠΤΙΚΟ ΚΟΜΜΑΤΙ (Λίστα & Κουμπί Εκτύπωσης) ΜΠΗΚΕ ΣΕ ΕΝΑ ΚΛΕΙΣΤΟ EXPANDER
+            with st.expander("🔄 2. Συνολικά Υλικά Παραγγελίας & Γρήγορη Εκτύπωση", expanded=False):
                 mh = st.columns([2, 1.5, 1.5, 1.5]) 
                 mh[0].caption("ΠΡΩΤΗ ΥΛΗ")
                 mh[1].caption("ΣΥΝΟΛΟ (ml / g)")
@@ -2992,65 +2991,65 @@ elif page == "📦 Lot Παραγωγής":
                     mr[2].text_input("LOT", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
                     mr[3].text_input("EXP", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
 
-            st.divider()
-            
-            quick_lot_html = f"""
-            <html><head><meta charset='UTF-8'><style>
-                body {{ font-family: sans-serif; padding: 20px; }}
-                .header {{ text-align: center; border-bottom: 3px solid #333; margin-bottom: 30px; padding-bottom: 10px; }}
-                table {{ width: 100%; border-collapse: collapse; }}
-                th {{ background-color: #f0f0f0; border: 2px solid #333; padding: 12px; text-align: left; }}
-                td {{ border: 1px solid #555; padding: 22px 10px; }}
-            </style></head>
-            <body>
-                <div class='header'>
-                    <h2>📝 Φύλλο Καταγραφής LOT (Live Παραγωγή)</h2>
-                    <p>Ημερομηνία: <b>{formatted_date}</b></p>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 40%;">Πρώτη Ύλη</th>
-                            <th style="width: 20%;">Απαιτούμενα (ml / g)</th>
-                            <th style="width: 20%;">LOT Number (Γράψτε)</th>
-                            <th style="width: 20%;">Ημ. Λήξης (Γράψτε)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            """
-            
-            for ing in sorted(ing_totals.keys()):
-                total_ml = ing_totals[ing]
-                weight_g = total_ml 
-                if ing != "Νερό" and ing in ing_weights_map:
-                    pkg_weight = ing_weights_map[ing]["weight"]
-                    pkg_volume = ing_weights_map[ing]["volume"]
-                    if pkg_volume > 0 and pkg_weight > 0:
-                        weight_g = (pkg_weight / pkg_volume) * total_ml
-
-                ml_str = f"{total_ml:.2f}".replace('.', ',')
-                g_str = f"{weight_g:.2f}".replace('.', ',')
-
-                quick_lot_html += f"""
-                    <tr>
-                        <td><b>{ing}</b></td>
-                        <td style="font-size: 16px;"><b>{ml_str} ml</b> <br><span style="font-size: 13px; color: #555;">({g_str} g)</span></td>
-                        <td></td>
-                        <td></td>
-                    </tr>
+                st.divider()
+                
+                quick_lot_html = f"""
+                <html><head><meta charset='UTF-8'><style>
+                    body {{ font-family: sans-serif; padding: 20px; }}
+                    .header {{ text-align: center; border-bottom: 3px solid #333; margin-bottom: 30px; padding-bottom: 10px; }}
+                    table {{ width: 100%; border-collapse: collapse; }}
+                    th {{ background-color: #f0f0f0; border: 2px solid #333; padding: 12px; text-align: left; }}
+                    td {{ border: 1px solid #555; padding: 22px 10px; }}
+                </style></head>
+                <body>
+                    <div class='header'>
+                        <h2>📝 Φύλλο Καταγραφής LOT (Live Παραγωγή)</h2>
+                        <p>Ημερομηνία: <b>{formatted_date}</b></p>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 40%;">Πρώτη Ύλη</th>
+                                <th style="width: 20%;">Απαιτούμενα (ml / g)</th>
+                                <th style="width: 20%;">LOT Number (Γράψτε)</th>
+                                <th style="width: 20%;">Ημ. Λήξης (Γράψτε)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                 """
-            
-            quick_lot_html += "</tbody></table></body></html>"
+                
+                for ing in sorted(ing_totals.keys()):
+                    total_ml = ing_totals[ing]
+                    weight_g = total_ml 
+                    if ing != "Νερό" and ing in ing_weights_map:
+                        pkg_weight = ing_weights_map[ing]["weight"]
+                        pkg_volume = ing_weights_map[ing]["volume"]
+                        if pkg_volume > 0 and pkg_weight > 0:
+                            weight_g = (pkg_weight / pkg_volume) * total_ml
 
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                st.download_button(
-                    label="🖨️ Εκτύπωση Λίστας για Αποθήκη",
-                    data=quick_lot_html,
-                    file_name=f"Live_Prep_Sheet_{datetime.now(greece_tz).strftime('%H%M')}.html",
-                    mime="text/html",
-                    use_container_width=True
-                )
+                    ml_str = f"{total_ml:.2f}".replace('.', ',')
+                    g_str = f"{weight_g:.2f}".replace('.', ',')
+
+                    quick_lot_html += f"""
+                        <tr>
+                            <td><b>{ing}</b></td>
+                            <td style="font-size: 16px;"><b>{ml_str} ml</b> <br><span style="font-size: 13px; color: #555;">({g_str} g)</span></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    """
+                
+                quick_lot_html += "</tbody></table></body></html>"
+
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.download_button(
+                        label="🖨️ Εκτύπωση Λίστας για Αποθήκη",
+                        data=quick_lot_html,
+                        file_name=f"Live_Prep_Sheet_{datetime.now(greece_tz).strftime('%H%M')}.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
                 
             # --- ΒΗΜΑ 3: ΑΝΑΛΥΤΙΚΗ ΦΟΡΜΑ & ΟΡΙΣΤΙΚΟΠΟΙΗΣΗ (ΑΠΛΟΠΟΙΗΜΕΝΟ) ---
             st.markdown("### 🏷️ 3. Σύνοψη & Οριστικοποίηση Παραγγελίας")
