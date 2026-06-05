@@ -3432,54 +3432,59 @@ elif page == "📦 Lot Παραγωγής":
         # --- 1Β. ΜΑΖΙΚΗ ΑΛΛΑΓΗ LOT ΠΑΡΑΓΩΓΗΣ (BULK EDIT) ---
         st.divider()
         with st.expander("⏱️ Μαζική Αλλαγή LOT Παραγωγής", expanded=False):
-            st.info("Επιλέξτε παραγγελίες και αλλάξτε μαζικά το LOT Παραγωγής τους (την ημέρα που φτιάχτηκαν). Τα οικονομικά στο B2B και η ημερομηνία χρέωσης παραμένουν 100% άθικτα!")
+            st.info("Επιλέξτε παραγγελίες και αλλάξτε μαζικά το LOT Παραγωγής τους (την ημέρα που φτιάχτηκαν). Τα οικονομικά στο B2B και τα κοκτέιλ από Στοκ προστατεύονται και δεν εμφανίζονται καθόλου εδώ!")
             
             if not df_filtered.empty:
-                # 🚀 ΣΩΣΤΗ ΟΜΑΔΟΠΟΙΗΣΗ: Βάλαμε και το Cocktail στο Grouping!
-                bulk_groups = df_filtered.groupby(["Ημερομηνία", "Πελάτης", "Ώρα", "Cocktail", "LOT_Cocktail"])
-                bulk_options = []
-                bulk_map = {}
+                # 🚀 Η ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Πετάμε έξω από τη λίστα επιλογών οτιδήποτε είναι Στοκ!
+                df_only_new_production = df_filtered[df_filtered["Υλικό"] != "📦 Έτοιμο Προϊόν (Στοκ)"]
                 
-                for name, group in bulk_groups:
-                    o_date, o_cust, o_time, o_cocktail, o_lot = name
-                    # 🚀 ΣΩΣΤΑ ΤΕΜΑΧΙΑ: Παίρνει την ποσότητα μόνο από την πρώτη γραμμή, δεν αθροίζει τα υλικά!
-                    tot_pcs = group["Τεμάχια"].iloc[0]
+                if not df_only_new_production.empty:
+                    # Ομαδοποίηση ΜΟΝΟ για τις πραγματικές νέες παραγωγές
+                    bulk_groups = df_only_new_production.groupby(["Ημερομηνία", "Πελάτης", "Ώρα", "Cocktail", "LOT_Cocktail"])
+                    bulk_options = []
+                    bulk_map = {}
                     
-                    lbl = f"📅 {o_date} | 👤 {o_cust} | 🍹 {o_cocktail} | LOT: {o_lot} | ({int(tot_pcs)} τμχ)"
-                    bulk_options.append(lbl)
-                    bulk_map[lbl] = {
-                        "date": o_date, "cust": o_cust, "time": o_time, 
-                        "cocktail": o_cocktail, "old_lot": o_lot
-                    }
-                
-                sel_bulk = st.multiselect("Επιλέξτε Παραγγελίες για αλλαγή του LOT Παραγωγής:", bulk_options)
-                
-                col_b1, col_b2 = st.columns([1.5, 2])
-                new_bulk_lot = col_b1.text_input("Νέο LOT Παραγωγής:", placeholder="π.χ. ZMB-15/06 ή 15/06/2026-31", key="bulk_lot_input")
-                
-                if col_b2.button("💾 Εφαρμογή Νέου LOT", type="primary"):
-                    if sel_bulk and new_bulk_lot.strip():
-                        with st.spinner("Ενημέρωση LOT στη βάση δεδομένων..."):
-                            try:
-                                for lbl in sel_bulk:
-                                    b_date = bulk_map[lbl]["date"]
-                                    b_cust = bulk_map[lbl]["cust"]
-                                    b_time = bulk_map[lbl]["time"]
-                                    b_cocktail = bulk_map[lbl]["cocktail"]
-                                    b_old_lot = bulk_map[lbl]["old_lot"]
+                    for name, group in bulk_groups:
+                        o_date, o_cust, o_time, o_cocktail, o_lot = name
+                        tot_pcs = group["Τεμάχια"].iloc[0]
+                        
+                        lbl = f"📅 {o_date} | 👤 {o_cust} | 🍹 {o_cocktail} | LOT: {o_lot} | ({int(tot_pcs)} τμχ)"
+                        bulk_options.append(lbl)
+                        bulk_map[lbl] = {
+                            "date": o_date, "cust": o_cust, "time": o_time, 
+                            "cocktail": o_cocktail, "old_lot": o_lot
+                        }
+                    
+                    sel_bulk = st.multiselect("Επιλέξτε Παραγγελίες για αλλαγή του LOT Παραγωγής:", bulk_options)
+                    
+                    col_b1, col_b2 = st.columns([1.5, 2])
+                    new_bulk_lot = col_b1.text_input("Νέο LOT Παραγωγής:", placeholder="π.χ. ZMB-15/06 ή 15/06/2026-31", key="bulk_lot_input")
+                    
+                    if col_b2.button("💾 Εφαρμογή Νέου LOT", type="primary"):
+                        if sel_bulk and new_bulk_lot.strip():
+                            with st.spinner("Ενημέρωση LOT στη βάση δεδομένων..."):
+                                try:
+                                    for lbl in sel_bulk:
+                                        b_date = bulk_map[lbl]["date"]
+                                        b_cust = bulk_map[lbl]["cust"]
+                                        b_time = bulk_map[lbl]["time"]
+                                        b_cocktail = bulk_map[lbl]["cocktail"]
+                                        b_old_lot = bulk_map[lbl]["old_lot"]
+                                        
+                                        # Αλλάζει ΑΥΣΤΗΡΑ και ΜΟΝΟ το lot_cocktail για το συγκεκριμένο κοκτέιλ νέας παραγωγής
+                                        supabase.table("production_log").update({"lot_cocktail": new_bulk_lot.strip()}).eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_old_lot).execute()
                                     
-                                    # 🚀 Αλλάζει ΑΥΣΤΗΡΑ και ΜΟΝΟ το lot_cocktail για το ΣΥΓΚΕΚΡΙΜΕΝΟ κοκτέιλ.
-                                    supabase.table("production_log").update({"lot_cocktail": new_bulk_lot.strip()}).eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_old_lot).execute()
-                                
-                                st.session_state.pop('search_data_loaded', None)
-                                st.success("✅ Το LOT Παραγωγής άλλαξε επιτυχώς στις επιλεγμένες παραγγελίες!")
-                                import time
-                                time.sleep(1.5)
-                                st.rerun()
-                            except Exception as save_err:
-                                st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
-                    else:
-                        st.warning("Παρακαλώ επιλέξτε τουλάχιστον μία παραγγελία και γράψτε το Νέο LOT.")
+                                    st.session_state.pop('search_data_loaded', None)
+                                    st.success("✅ Το LOT Παραγωγής άλλαξε επιτυχώς στις επιλεγμένες παραγγελίες!")
+                                    import time
+                                    time.sleep(1.5)
+                                    st.rerun()
+                                except Exception as save_err:
+                                    st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
+                        else:
+                            st.warning("Παρακαλώ επιλέξτε τουλάχιστον μία παραγγελία και γράψτε το Νέο LOT.")
+                else:
+                    st.info("Όλα τα αποτελέσματα της αναζήτησης προέρχονται από έτοιμο Στοκ. Δεν υπάρχει κάποια νέα παραγωγή για αλλαγή LOT.")
             else:
                 st.info("Δεν υπάρχουν αποτελέσματα με τα τρέχοντα φίλτρα.")
 
