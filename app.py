@@ -239,10 +239,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# 2. Ο Audio Player για τον Ύμνο
-audio_file = "ymnos.mp3"
-if os.path.exists(audio_file):
-    st.audio(audio_file, format="audio/mp3")
 
 st.divider()
 
