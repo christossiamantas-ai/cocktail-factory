@@ -2755,15 +2755,14 @@ elif page == "📦 Lot Παραγωγής":
                     stock_status = "ΝΑΙ" if is_from_stock else "ΟΧΙ"
                     lot_status = manual_old_lot.strip() if is_from_stock else "-"
                     
-                    # 🚀 ΕΛΕΓΧΟΣ ΜΟΝΟ ΣΤΟ ΤΡΕΧΟΝ ΚΑΛΑΘΙ (Όχι στη Βάση Δεδομένων!)
+                    # 🚀 Βρίσκει το ΣΥΝΟΛΟ όσων υπάρχουν ήδη στο καλάθι (δεν σταματάει στο πρώτο!)
                     cart_qty = 0
                     for item in st.session_state.production_batch_items:
                         if (item["Πελάτης"] == sel_cust and 
                             item["Κοκτέιλ"] == sel_cocktail and 
                             item.get("Στοκ") == stock_status and 
                             item.get("Παλιό_LOT") == lot_status):
-                            cart_qty = item["Τεμάχια"]
-                            break
+                            cart_qty += item["Τεμάχια"] # Προσθέτει όσα κι αν βρει
 
                     if cart_qty > 0:
                         st.session_state['pending_conflict'] = {
@@ -2801,6 +2800,7 @@ elif page == "📦 Lot Παραγωγής":
                 target_lot = "-"
             
             if col_btn1.button(f"➕ Άθροισμα (Σύνολο: {conf['old_pcs'] + conf['new_pcs']} τμχ)", type="primary"):
+                # Καθαρίζει όλες τις παλιές εγγραφές από το καλάθι
                 st.session_state.production_batch_items = [
                     i for i in st.session_state.production_batch_items 
                     if not (str(i.get("Πελάτης")).strip() == str(conf['cust']).strip() and 
@@ -2808,6 +2808,7 @@ elif page == "📦 Lot Παραγωγής":
                             str(i.get("Στοκ", "ΟΧΙ")).strip() == target_stock and 
                             str(i.get("Παλιό_LOT", "-")).strip() == target_lot)
                 ]
+                # Βάζει ΜΙΑ γραμμή με το σωστό άθροισμα
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['old_pcs'] + conf['new_pcs'],
                     "Στοκ": target_stock,
@@ -2815,17 +2816,11 @@ elif page == "📦 Lot Παραγωγής":
                     "Με Κόστος;": conf.get('charge_cost', False)
                 })
                 st.session_state['pending_conflict'] = None
-                st.toast("✅ Η ποσότητα ενημερώθηκε επιτυχώς!")
+                st.toast("✅ Οι ποσότητες αθροίστηκαν επιτυχώς!")
                 st.rerun()
                 
-            if col_btn2.button(f"🔄 Αντικατάσταση (Τελικό: {conf['new_pcs']} τμχ)"):
-                st.session_state.production_batch_items = [
-                    i for i in st.session_state.production_batch_items 
-                    if not (str(i.get("Πελάτης")).strip() == str(conf['cust']).strip() and 
-                            str(i.get("Κοκτέιλ")).strip() == str(conf['cocktail']).strip() and 
-                            str(i.get("Στοκ", "ΟΧΙ")).strip() == target_stock and 
-                            str(i.get("Παλιό_LOT", "-")).strip() == target_lot)
-                ]
+            if col_btn2.button(f"📄 Προσθήκη ως 2η ξεχωριστή εγγραφή ({conf['new_pcs']} τμχ)"):
+                # 🚀 ΔΕΝ διαγράφει τίποτα! Απλά προσθέτει την νέα παραγγελία ως 2η γραμμή!
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['new_pcs'],
                     "Στοκ": target_stock,
@@ -2833,7 +2828,7 @@ elif page == "📦 Lot Παραγωγής":
                     "Με Κόστος;": conf.get('charge_cost', False)
                 })
                 st.session_state['pending_conflict'] = None
-                st.toast("🔄 Η ποσότητα αντικαταστάθηκε!")
+                st.toast("✅ Η νέα παραγγελία προστέθηκε ξεχωριστά!")
                 st.rerun()
                 
             if col_btn3.button("❌ Ακύρωση"):
