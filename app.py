@@ -2963,13 +2963,16 @@ elif page == "📦 Lot Παραγωγής":
                             ml_u = get_recipe_ml(recipe_row, i)
                             ing_totals[ing] = ing_totals.get(ing, 0.0) + (ml_u * total_qty_for_production)
 
-            # 🚀 ΟΛΟ ΤΟ ΟΠΤΙΚΟ ΚΟΜΜΑΤΙ (Λίστα & Κουμπί Εκτύπωσης) ΜΠΗΚΕ ΣΕ ΕΝΑ ΚΛΕΙΣΤΟ EXPANDER
+            # 🚀 ΟΛΟ ΤΟ ΟΠΤΙΚΟ ΚΟΜΜΑΤΙ ΜΠΗΚΕ ΣΕ ΕΝΑ ΚΛΕΙΣΤΟ EXPANDER
             with st.expander("🔄 2. Συνολικά Υλικά Παραγγελίας & Γρήγορη Εκτύπωση", expanded=False):
-                mh = st.columns([2, 1.5, 1.5, 1.5]) 
+                # 🚀 ΑΛΛΑΓΗ: 6 στήλες πλέον, για να χωρέσουν και τα 2 LOT/EXP
+                mh = st.columns([2, 1.2, 1.2, 1, 1.2, 1]) 
                 mh[0].caption("ΠΡΩΤΗ ΥΛΗ")
-                mh[1].caption("ΣΥΝΟΛΟ (ml / g)")
-                mh[2].caption("LOT ΗΜΕΡΑΣ")
-                mh[3].caption("ΛΗΞΗ ΗΜΕΡΑΣ")
+                mh[1].caption("ΣΥΝΟΛΟ")
+                mh[2].caption("LOT 1")
+                mh[3].caption("ΛΗΞΗ 1")
+                mh[4].caption("LOT 2")
+                mh[5].caption("ΛΗΞΗ 2")
                 
                 for ing in sorted(ing_totals.keys()):
                     total_ml = ing_totals[ing]
@@ -2981,11 +2984,14 @@ elif page == "📦 Lot Παραγωγής":
                         if pkg_volume > 0 and pkg_weight > 0:
                             weight_g = (pkg_weight / pkg_volume) * total_ml
 
-                    mr = st.columns([2, 1.5, 1.5, 1.5])
+                    # 🚀 ΑΛΛΑΓΗ: Εμφάνιση 2 πεδίων για LOT (mlot / mlot2) και EXP (mexp / mexp2)
+                    mr = st.columns([2, 1.2, 1.2, 1, 1.2, 1])
                     mr[0].write(f"**{ing}**")
                     mr[1].write(f"**{total_ml:.2f} ml | {weight_g:.2f} g**".replace('.', ','))
-                    mr[2].text_input("LOT", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
-                    mr[3].text_input("EXP", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
+                    mr[2].text_input("LOT 1", key=f"mlot_{ing}_{reset_key}", label_visibility="collapsed")
+                    mr[3].text_input("EXP 1", key=f"mexp_{ing}_{reset_key}", label_visibility="collapsed")
+                    mr[4].text_input("LOT 2", key=f"mlot2_{ing}_{reset_key}", label_visibility="collapsed")
+                    mr[5].text_input("EXP 2", key=f"mexp2_{ing}_{reset_key}", label_visibility="collapsed")
 
                 st.divider()
                 
