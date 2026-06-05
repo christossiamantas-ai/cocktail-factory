@@ -3321,8 +3321,11 @@ elif page == "📦 Lot Παραγωγής":
                                 def_lot = row['lot_number'] if row['lot_number'] and row['lot_number'] != "-" else ""
                                 def_exp = row['expiry_date'] if row['expiry_date'] and row['expiry_date'] != "-" else ""
                                 
-                                n_lot = c3.text_input("LOT", value=def_lot, key=f"blot_{ing}", label_visibility="collapsed")
-                                n_exp = c4.text_input("EXP", value=def_exp, key=f"bexp_{ing}", label_visibility="collapsed")
+                                # 🚀 Η ΔΙΟΡΘΩΣΗ: Φτιάχνουμε ένα μοναδικό κλειδί ανά ημέρα για να καθαρίζει η φόρμα!
+                                safe_date_key = sel_prep_date.replace("/", "_")
+                                
+                                n_lot = c3.text_input("LOT", value=def_lot, key=f"blot_{ing}_{safe_date_key}", label_visibility="collapsed")
+                                n_exp = c4.text_input("EXP", value=def_exp, key=f"bexp_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 
                                 updated_lots[ing] = {"lot": n_lot.strip() if n_lot.strip() else "-", "exp": n_exp.strip() if n_exp.strip() else "-"}
                             
