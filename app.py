@@ -3983,86 +3983,50 @@ elif page == "📦 Lot Παραγωγής":
                         except Exception as save_err:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
 
-        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (ΑΠΟΛΥΤΗ ΛΥΣΗ: ΣΥΜΠΙΕΣΗ ΑΝΑ ΠΑΡΑΓΓΕΛΙΑ ΓΙΑ ΔΙΑΣΩΣΗ ΠΑΛΙΩΝ LOT & ΣΤΟΚ) ---
+        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (ΑΠΕΥΘΕΙΑΣ ΑΠΟ ΤΗ ΒΑΣΗ - ΛΟΓΙΚΗ ΠΕΛΑΤΟΛΟΓΙΟΥ) ---
         st.divider()
         st.markdown("### 🖨️ 4. Συγκεντρωτικές Εκτυπώσεις (Βάσει Φίλτρων Αναζήτησης)")
         
         cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
         file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
-        def safe_int(val):
-            try: return int(float(val)) if pd.notna(val) and str(val).strip() != "" else 0
-            except: return 0
+        # 🚀 ΦΕΡΝΟΥΜΕ ΤΑ ΔΕΔΟΜΕΝΑ ΑΠΕΥΘΕΙΑΣ ΑΠΟ ΤΗ ΒΑΣΗ ΟΠΩΣ ΣΤΟ CRM
+        query_print = supabase.table("production_log").select("*").eq("prod_date", sel_hist_date)
+        if sel_customer != "-- Όλοι οι Πελάτες --":
+            query_print = query_print.eq("customer", sel_customer)
 
-        def safe_float(val):
-            try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
-            except: return 0.0
+        res_print = query_print.execute()
 
-        orders_list = []
-        
-        if not df_past.empty:
-            # 🚀 1. Προστασία από τα κενά που καταστρέφουν την ομαδοποίηση
-            df_past_safe = df_past.copy()
-            for c in ["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail"]:
-                if c in df_past_safe.columns:
-                    df_past_safe[c] = df_past_safe[c].fillna("Άγνωστο")
-                    
-            # 🚀 2. Σαρώνουμε ΑΝΑ ΠΑΡΑΓΓΕΛΙΑ (και όχι ανά υλικό) για να βρούμε τα κρυμμένα LOT
-            for name, group in df_past_safe.groupby(["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail"]):
-                cust, date, time, cock = name
-                
-                t_pcs = safe_int(group["Τεμάχια"].iloc[0]) if "Τεμάχια" in group.columns else 0
-                f_pcs = safe_int(group["free_pieces"].iloc[0]) if "free_pieces" in group.columns else 0
-                d_pcs = safe_int(group["discounted_pieces"].iloc[0]) if "discounted_pieces" in group.columns else 0
-                d_pct = safe_float(group["discount_pct"].iloc[0]) if "discount_pct" in group.columns else 0.0
-                
-                # Έλεγχος Στοκ (Νέος + Παλιός τρόπος)
-                is_stock = False
-                if "is_from_stock" in group.columns and any(str(x).strip().lower() in ['true', '1', 't', 'yes', '1.0'] for x in group["is_from_stock"]):
-                    is_stock = True
-                if "Υλικό" in group.columns and any("Έτοιμο Προϊόν" in str(x) for x in group["Υλικό"]):
-                    is_stock = True
-                    
-                # Διάσωση του αληθινού LOT!
-                actual_lot = "-"
-                cocktail_lot = str(group["LOT_Cocktail"].iloc[0]) if "LOT_Cocktail" in group.columns else ""
-                
-                if cocktail_lot.strip() and cocktail_lot.lower() not in ["nan", "none", "-"]:
-                    actual_lot = cocktail_lot
-                else:
-                    # Ψάχνουμε στα υλικά το LOT του "Έτοιμου Προϊόντος"
-                    if "Υλικό" in group.columns and "Lot Number" in group.columns:
-                        stock_row = group[group["Υλικό"].astype(str).str.contains("Έτοιμο Προϊόν", na=False)]
-                        if not stock_row.empty:
-                            found_lot = str(stock_row["Lot Number"].iloc[0]).strip()
-                            if found_lot and found_lot.lower() not in ["nan", "none", "-"]:
-                                actual_lot = found_lot
-                                
-                orders_list.append({
-                    "Πελάτης": cust,
-                    "Ημερομηνία": date,
-                    "Cocktail": cock,
-                    "LOT_Cocktail": actual_lot,
-                    "Τεμάχια": t_pcs,
-                    "Εκ_Στοκ": is_stock,
-                    "Δώρα": f_pcs,
-                    "Εκπτωμένα": d_pcs,
-                    "Έκπτωση_%": d_pct
-                })
+        if res_print.data:
+            df_sales_raw = pd.DataFrame(res_print.data)
 
-        df_clean_orders = pd.DataFrame(orders_list)
-        
-        # 🚀 3. Τελική ομαδοποίηση ανά Ημέρα για τα HTML
-        if not df_clean_orders.empty:
-            df_daily = df_clean_orders.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
-                "Τεμάχια": "sum",
-                "Εκ_Στοκ": "max",
-                "Δώρα": "sum",
-                "Εκπτωμένα": "sum",
-                "Έκπτωση_%": "first"
+            # 🚀 Η ΛΟΓΙΚΗ ΣΟΥ: Αθροίζουμε τα ML ΠΡΙΝ κάνουμε drop duplicates για το Στοκ
+            df_sales_raw['total_ml'] = pd.to_numeric(df_sales_raw['total_ml'], errors='coerce').fillna(0)
+            df_ml_sum = df_sales_raw.groupby(["customer", "prod_time", "cocktail_name", "lot_cocktail"])['total_ml'].sum().reset_index()
+            df_ml_sum = df_ml_sum.rename(columns={'total_ml': 'sum_ml'})
+
+            # Κρατάμε μια γραμμή ανά παραγγελία
+            df_sales = df_sales_raw.drop_duplicates(subset=["customer", "prod_time", "cocktail_name", "lot_cocktail"]).copy()
+            df_sales = pd.merge(df_sales, df_ml_sum, on=["customer", "prod_time", "cocktail_name", "lot_cocktail"], how="left")
+
+            # Μετατροπές σε νούμερα (όπως στο CRM)
+            df_sales['t_pcs'] = pd.to_numeric(df_sales.get('pieces', 0), errors='coerce').fillna(0)
+            df_sales['f_pcs'] = pd.to_numeric(df_sales.get('free_pieces', 0), errors='coerce').fillna(0)
+            df_sales['s_pcs'] = pd.to_numeric(df_sales.get('discounted_pieces', 0), errors='coerce').fillna(0)
+            df_sales['s_pct'] = pd.to_numeric(df_sales.get('discount_pct', 0), errors='coerce').fillna(0)
+
+            # Ομαδοποίηση ανά Πελάτη και Κοκτέιλ για τις εκτυπώσεις της ημέρας
+            df_daily = df_sales.groupby(["customer", "cocktail_name", "lot_cocktail"], as_index=False).agg({
+                "t_pcs": "sum",
+                "f_pcs": "sum",
+                "s_pcs": "sum",
+                "s_pct": "max",
+                "sum_ml": "sum",
+                "ingredient_name": "first",
+                "is_from_stock": "first"
             })
         else:
-            df_daily = pd.DataFrame(columns=["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"])
+            df_daily = pd.DataFrame(columns=["customer", "cocktail_name", "lot_cocktail", "t_pcs", "f_pcs", "s_pcs", "s_pct", "sum_ml", "ingredient_name", "is_from_stock"])
 
         # ─── ΕΚΤΥΠΩΣΗ 1: ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ ───
         html_pro = f"""<html><head><meta charset='UTF-8'><style>
@@ -4081,32 +4045,37 @@ elif page == "📦 Lot Παραγωγής":
         </style></head><body>
             <div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>📋 ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ</h2><p>Ημερομηνία Φιλτραρίσματος: <b>{sel_hist_date}</b>{cust_label}</p></div>
         """
-        for p in df_daily["Πελάτης"].unique():
-            p_df = df_daily[df_daily["Πελάτης"] == p]
-            actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
-            html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div><table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα / Στοιχεία</th></tr></thead><tbody>"
+        for p in df_daily["customer"].unique():
+            p_df = df_daily[df_daily["customer"] == p]
+            html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {sel_hist_date}</div><table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα / Στοιχεία</th></tr></thead><tbody>"
             for _, row in p_df.iterrows(): 
-                is_stock = bool(row.get('Εκ_Στοκ', False))
+                # 🚀 Ο ΑΠΟΛΥΤΟΣ ΕΛΕΓΧΟΣ ΣΤΟΚ ΤΟΥ CRM
+                is_stock = float(row.get("sum_ml", 1.0)) == 0.0 or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", ""))) or str(row.get("is_from_stock", "")).strip().lower() in ['true', '1', 't', 'yes']
                 stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                 
-                discount_html = ""
-                free_pcs = safe_int(row.get('Δώρα', 0))
-                disc_pcs = safe_int(row.get('Εκπτωμένα', 0))
-                disc_pct = safe_float(row.get('Έκπτωση_%', 0.0))
+                # 🚀 ΑΠΟΛΥΤΟ LOT (Κατευθείαν από τη βάση)
+                lot_c = str(row['lot_cocktail']).strip()
+                if lot_c.lower() in ['nan', 'none', ''] or not lot_c: lot_c = '-'
                 
-                if free_pcs > 0 or disc_pcs > 0:
+                t_pcs = int(row['t_pcs'])
+                f_pcs = int(row['f_pcs'])
+                s_pcs = int(row['s_pcs'])
+                s_pct = float(row['s_pct'])
+                
+                discount_html = ""
+                if f_pcs > 0 or s_pcs > 0:
                     discount_html = "<span class='discount-info'>("
                     parts = []
-                    if free_pcs > 0: parts.append(f"{free_pcs} Δώρο")
-                    if disc_pcs > 0: parts.append(f"{disc_pcs} με -{int(disc_pct)}%")
+                    if f_pcs > 0: parts.append(f"{f_pcs} Δώρο")
+                    if s_pcs > 0: parts.append(f"{s_pcs} με -{int(s_pct)}%")
                     discount_html += " / ".join(parts) + ")</span>"
                     
-                html_pro += f"<tr><td><strong>{row['Cocktail']}</strong>{stock_html}</td><td><span class='badge'>{row['LOT_Cocktail']}</span></td><td><b>{safe_int(row['Τεμάχια'])} τμχ</b>{discount_html}</td></tr>"
+                html_pro += f"<tr><td><strong>{row['cocktail_name']}</strong>{stock_html}</td><td><span class='badge'>{lot_c}</span></td><td><b>{t_pcs} τμχ</b>{discount_html}</td></tr>"
             html_pro += "</tbody></table>"
         html_pro += "</body></html>"
 
-        grand_total_pcs = safe_int(df_daily["Τεμάχια"].sum()) if not df_daily.empty else 0
-        total_different_cocktails = df_daily["Cocktail"].nunique() if not df_daily.empty else 0
+        grand_total_pcs = int(df_daily["t_pcs"].sum()) if not df_daily.empty else 0
+        total_different_cocktails = df_daily["cocktail_name"].nunique() if not df_daily.empty else 0
         total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
         # ─── ΕΚΤΥΠΩΣΗ 2: ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ───
@@ -4125,33 +4094,37 @@ elif page == "📦 Lot Παραγωγής":
         </style></head><body>
             <div class='header'><h1>📋 ΗΜΕΡΗΣΙΟ ΦΥΛΛΟ ΠΑΡΑΓΩΓΗΣ</h1><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
         """
-        for cock in df_daily["Cocktail"].unique():
-            c_data = df_daily[df_daily["Cocktail"] == cock]
+        for cock in df_daily["cocktail_name"].unique():
+            c_data = df_daily[df_daily["cocktail_name"] == cock]
             html_daily += f"<h2 class='cocktail-header'>🍹 {cock}</h2><table><thead><tr><th>LOT Number</th><th>Πελάτης</th><th>Ποσότητα (τμχ) / Στοιχεία</th></tr></thead><tbody>"
             for _, row in c_data.iterrows(): 
-                is_stock = bool(row.get('Εκ_Στοκ', False))
+                is_stock = float(row.get("sum_ml", 1.0)) == 0.0 or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", ""))) or str(row.get("is_from_stock", "")).strip().lower() in ['true', '1', 't', 'yes']
                 stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                 
-                discount_html = ""
-                free_pcs = safe_int(row.get('Δώρα', 0))
-                disc_pcs = safe_int(row.get('Εκπτωμένα', 0))
-                disc_pct = safe_float(row.get('Έκπτωση_%', 0.0))
+                lot_c = str(row['lot_cocktail']).strip()
+                if lot_c.lower() in ['nan', 'none', ''] or not lot_c: lot_c = '-'
                 
-                if free_pcs > 0 or disc_pcs > 0:
+                t_pcs = int(row['t_pcs'])
+                f_pcs = int(row['f_pcs'])
+                s_pcs = int(row['s_pcs'])
+                s_pct = float(row['s_pct'])
+                
+                discount_html = ""
+                if f_pcs > 0 or s_pcs > 0:
                     discount_html = "<span class='discount-info'>("
                     parts = []
-                    if free_pcs > 0: parts.append(f"{free_pcs} Δώρο")
-                    if disc_pcs > 0: parts.append(f"{disc_pcs} με -{int(disc_pct)}%")
+                    if f_pcs > 0: parts.append(f"{f_pcs} Δώρο")
+                    if s_pcs > 0: parts.append(f"{s_pcs} με -{int(s_pct)}%")
                     discount_html += " / ".join(parts) + ")</span>"
                     
-                html_daily += f"<tr><td><b>{row['LOT_Cocktail']}</b>{stock_html}</td><td>{row['Πελάτης']}</td><td><b>{safe_int(row['Τεμάχια'])} τμχ</b>{discount_html}</td></tr>"
+                html_daily += f"<tr><td><b>{lot_c}</b>{stock_html}</td><td>{row['customer']}</td><td><b>{t_pcs} τμχ</b>{discount_html}</td></tr>"
             
-            sub_total = safe_int(c_data['Τεμάχια'].sum())
+            sub_total = int(c_data['t_pcs'].sum())
             html_daily += f"<tr style='background:#f9f9f9; font-weight:bold;'><td colspan='2' style='text-align: right;'>ΜΕΡΙΚΟ ΣΥΝΟΛΟ {cock}:</td><td>{sub_total} τμχ</td></tr></tbody></table>"
 
         html_daily += f"<div class='grand-total'>{total_label_text}<br><b>{grand_total_pcs} Τεμάχια</b><span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span></div></body></html>"
         
-        # ─── ΕΚΤΥΠΩΣΗ 3: ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ ───
+        # ─── ΕΚΤΥΠΩΣΗ 3: ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (Αυτή παραμένει στο df_past γιατί θέλουμε τα υλικά) ───
         if not df_past.empty and "Υλικό" in df_past.columns:
             df_prep = df_past.groupby("Υλικό").agg({
                 "Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum",
@@ -4176,8 +4149,8 @@ elif page == "📦 Lot Παραγωγής":
             display_parts = [p for p in [row.get('Lot Number', ''), row.get('Ημ_Λήξης', '')] if p]
             lot_text = " | ".join(display_parts) if display_parts else "-"
             
-            ml_val = safe_float(row.get('Σύνολο_ML', 0))
-            g_val = safe_float(row.get('Στόχος_Γραμμάρια', 0))
+            ml_val = float(row.get('Σύνολο_ML', 0)) if pd.notna(row.get('Σύνολο_ML')) else 0.0
+            g_val = float(row.get('Στόχος_Γραμμάρια', 0)) if pd.notna(row.get('Στόχος_Γραμμάρια')) else 0.0
             html_prep += f"<tr><td><b>{row.get('Υλικό', '-')}</b></td><td>{ml_val:.0f} ml</td><td>{g_val:.1f} g</td><td class='lot-info'>{lot_text}</td></tr>"
         html_prep += "</tbody></table></body></html>"
 
