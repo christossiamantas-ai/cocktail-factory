@@ -3654,7 +3654,8 @@ elif page == "📦 Lot Παραγωγής":
         else:
             # Ομαδοποιούμε ανά Ημερομηνία, Πελάτη και Ώρα για να φτιάξουμε τις ξεκάθαρες "Παραγγελίες"
             order_groups = df_filtered.groupby(["Ημερομηνία", "Πελάτης", "Ώρα"])
-            order_options = ["-- Επιλέξτε Παραγγελία για Επεξεργασία --"]
+            
+            temp_options = []
             order_map = {}
             
             for name, group in order_groups:
@@ -3663,9 +3664,32 @@ elif page == "📦 Lot Παραγωγής":
                 total_pcs = group.groupby("Cocktail")["Τεμάχια"].first().sum()
                 
                 label = f"📅 {o_date} | 👤 {o_cust} | 🕒 {o_time} | ({unique_cocktails_count} Cocktails, {int(total_pcs)} τμχ)"
-                order_options.append(label)
+                temp_options.append(label)
                 order_map[label] = {"date": o_date, "cust": o_cust, "time": o_time, "df": group}
                 
+            # 🚀 ΕΞΥΠΝΗ ΤΑΞΙΝΟΜΗΣΗ (ΧΡΟΝΟΛΟΓΙΚΑ, ΝΕΟΤΕΡΑ ΠΡΩΤΑ)
+            from datetime import datetime
+            def sort_by_real_date(lbl):
+                try:
+                    # Απομονώνουμε την ημερομηνία και την ώρα από το κείμενο της ετικέτας
+                    parts = lbl.split(" | ")
+                    date_part = parts[0].replace("📅 ", "").strip()
+                    time_part = parts[2].replace("🕒 ", "").strip()
+                    # Μετατροπή σε αληθινό χρόνο (datetime)
+                    return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M:%S")
+                except ValueError:
+                    try:
+                        # Αν η ώρα δεν έχει δευτερόλεπτα (HH:MM)
+                        return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M")
+                    except Exception:
+                        return datetime.min # Αν κάτι πάει στραβά, το πάει στο τέλος
+
+            # Ταξινομούμε την προσωρινή λίστα
+            temp_options.sort(key=sort_by_real_date, reverse=True)
+            
+            # Ενώνουμε την αρχική επιλογή με την ταξινομημένη λίστα
+            order_options = ["-- Επιλέξτε Παραγγελία για Επεξεργασία --"] + temp_options
+            
             sel_order_label = st.selectbox("Βρέθηκαν οι παρακάτω παραγγελίες:", order_options)
             
             # --- 3. ΚΑΡΤΕΛΑ ΕΠΕΞΕΡΓΑΣΙΑΣ (DETAIL) ---
