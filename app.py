@@ -3961,17 +3961,25 @@ elif page == "📦 Lot Παραγωγής":
         cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
         file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
-        # 🚀 Η ΛΥΣΗ ΓΙΑ ΤΟ KEYERROR: 
+        # 🚀 ΝΕΟ: Βοηθητικές συναρτήσεις για απόλυτα ασφαλή μετατροπή αριθμών (αποτρέπουν τα ValueError)
+        def safe_int(val):
+            try: return int(float(val)) if pd.notna(val) and str(val).strip() != "" else 0
+            except: return 0
+
+        def safe_float(val):
+            try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
+            except: return 0.0
+
         # Μεταφράζουμε τις αγγλικές στήλες της βάσης στα ελληνικά (με ασφάλεια αν λείπουν)
         df_past["Εκ_Στοκ"] = df_past["is_from_stock"] if "is_from_stock" in df_past.columns else False
         df_past["Δώρα"] = df_past["free_pieces"] if "free_pieces" in df_past.columns else 0
         df_past["Εκπτωμένα"] = df_past["discounted_pieces"] if "discounted_pieces" in df_past.columns else 0
         df_past["Έκπτωση_%"] = df_past["discount_pct"] if "discount_pct" in df_past.columns else 0.0
 
-        # 🚀 1. Τραβάμε ΟΛΑ τα απαραίτητα πεδία με απόλυτη ασφάλεια πλέον
+        # 1. Τραβάμε ΟΛΑ τα απαραίτητα πεδία με απόλυτη ασφάλεια πλέον
         df_unique_productions = df_past[["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"]].drop_duplicates()
         
-        # 🚀 2. Ομαδοποιούμε κρατώντας τις πληροφορίες Στοκ και Εκπτώσεων
+        # 2. Ομαδοποιούμε κρατώντας τις πληροφορίες Στοκ και Εκπτώσεων
         df_clean_customers = df_unique_productions.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
             "Τεμάχια": "sum",
             "Εκ_Στοκ": "first",
@@ -4004,13 +4012,13 @@ elif page == "📦 Lot Παραγωγής":
             actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
             html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div><table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα / Στοιχεία</th></tr></thead><tbody>"
             for _, row in p_df.iterrows(): 
-                # Υπολογισμός Ενδείξεων
+                # 🚀 Χρήση των ασφαλών συναρτήσεων
                 stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if str(row.get('Εκ_Στοκ', 'False')).lower() == "true" else ""
                 
                 discount_html = ""
-                free_pcs = int(row.get('Δώρα', 0))
-                disc_pcs = int(row.get('Εκπτωμένα', 0))
-                disc_pct = float(row.get('Έκπτωση_%', 0.0))
+                free_pcs = safe_int(row.get('Δώρα', 0))
+                disc_pcs = safe_int(row.get('Εκπτωμένα', 0))
+                disc_pct = safe_float(row.get('Έκπτωση_%', 0.0))
                 
                 if free_pcs > 0 or disc_pcs > 0:
                     discount_html = "<span class='discount-info'>("
@@ -4019,11 +4027,11 @@ elif page == "📦 Lot Παραγωγής":
                     if disc_pcs > 0: parts.append(f"{disc_pcs} με -{int(disc_pct)}%")
                     discount_html += " / ".join(parts) + ")</span>"
                     
-                html_pro += f"<tr><td><strong>{row['Cocktail']}</strong>{stock_html}</td><td><span class='badge'>{row['LOT_Cocktail']}</span></td><td><b>{int(row['Τεμάχια'])} τμχ</b>{discount_html}</td></tr>"
+                html_pro += f"<tr><td><strong>{row['Cocktail']}</strong>{stock_html}</td><td><span class='badge'>{row['LOT_Cocktail']}</span></td><td><b>{safe_int(row['Τεμάχια'])} τμχ</b>{discount_html}</td></tr>"
             html_pro += "</tbody></table>"
         html_pro += "</body></html>"
 
-        grand_total_pcs = df_daily["Τεμάχια"].sum() if not df_daily.empty else 0
+        grand_total_pcs = safe_int(df_daily["Τεμάχια"].sum()) if not df_daily.empty else 0
         total_different_cocktails = df_daily["Cocktail"].nunique() if not df_daily.empty else 0
         total_label_text = f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ({sel_hist_date}):" if sel_customer == "-- Όλοι οι Πελάτες --" else f"ΣΥΝΟΛΙΚΗ ΠΑΡΑΓΩΓΗ ΓΙΑ {sel_customer.upper()} ({sel_hist_date}):"
 
@@ -4047,13 +4055,13 @@ elif page == "📦 Lot Παραγωγής":
             c_data = df_daily[df_daily["Cocktail"] == cock]
             html_daily += f"<h2 class='cocktail-header'>🍹 {cock}</h2><table><thead><tr><th>LOT Number</th><th>Πελάτης</th><th>Ποσότητα (τμχ) / Στοιχεία</th></tr></thead><tbody>"
             for _, row in c_data.iterrows(): 
-                # Υπολογισμός Ενδείξεων
+                # 🚀 Χρήση των ασφαλών συναρτήσεων
                 stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if str(row.get('Εκ_Στοκ', 'False')).lower() == "true" else ""
                 
                 discount_html = ""
-                free_pcs = int(row.get('Δώρα', 0))
-                disc_pcs = int(row.get('Εκπτωμένα', 0))
-                disc_pct = float(row.get('Έκπτωση_%', 0.0))
+                free_pcs = safe_int(row.get('Δώρα', 0))
+                disc_pcs = safe_int(row.get('Εκπτωμένα', 0))
+                disc_pct = safe_float(row.get('Έκπτωση_%', 0.0))
                 
                 if free_pcs > 0 or disc_pcs > 0:
                     discount_html = "<span class='discount-info'>("
@@ -4062,8 +4070,10 @@ elif page == "📦 Lot Παραγωγής":
                     if disc_pcs > 0: parts.append(f"{disc_pcs} με -{int(disc_pct)}%")
                     discount_html += " / ".join(parts) + ")</span>"
                     
-                html_daily += f"<tr><td><b>{row['LOT_Cocktail']}</b>{stock_html}</td><td>{row['Πελάτης']}</td><td><b>{row['Τεμάχια']} τμχ</b>{discount_html}</td></tr>"
-            html_daily += f"<tr style='background:#f9f9f9; font-weight:bold;'><td colspan='2' style='text-align: right;'>ΜΕΡΙΚΟ ΣΥΝΟΛΟ {cock}:</td><td>{c_data['Τεμάχια'].sum()} τμχ</td></tr></tbody></table>"
+                html_daily += f"<tr><td><b>{row['LOT_Cocktail']}</b>{stock_html}</td><td>{row['Πελάτης']}</td><td><b>{safe_int(row['Τεμάχια'])} τμχ</b>{discount_html}</td></tr>"
+            
+            sub_total = safe_int(c_data['Τεμάχια'].sum())
+            html_daily += f"<tr style='background:#f9f9f9; font-weight:bold;'><td colspan='2' style='text-align: right;'>ΜΕΡΙΚΟ ΣΥΝΟΛΟ {cock}:</td><td>{sub_total} τμχ</td></tr></tbody></table>"
 
         html_daily += f"<div class='grand-total'>{total_label_text}<br><b>{grand_total_pcs} Τεμάχια</b><span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span></div></body></html>"
         
@@ -4088,13 +4098,18 @@ elif page == "📦 Lot Παραγωγής":
         for _, row in df_prep.iterrows():
             display_parts = [p for p in [row['Lot Number'], row['Ημ_Λήξης']] if p]
             lot_text = " | ".join(display_parts) if display_parts else "-"
-            html_prep += f"<tr><td><b>{row['Υλικό']}</b></td><td>{row['Σύνολο_ML']:.0f} ml</td><td>{row['Στόχος_Γραμμάρια']:.1f} g</td><td class='lot-info'>{lot_text}</td></tr>"
+            
+            ml_val = safe_float(row['Σύνολο_ML'])
+            g_val = safe_float(row['Στόχος_Γραμμάρια'])
+            html_prep += f"<tr><td><b>{row['Υλικό']}</b></td><td>{ml_val:.0f} ml</td><td>{g_val:.1f} g</td><td class='lot-info'>{lot_text}</td></tr>"
         html_prep += "</tbody></table></body></html>"
 
         col_p1, col_p2, col_p3 = st.columns(3)
         col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
+
+    
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
