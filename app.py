@@ -3265,6 +3265,7 @@ elif page == "📦 Lot Παραγωγής":
         
         if res_dates.data:
             import pandas as pd
+            from datetime import datetime
             
             # 🚀 Φιλτράρουμε έξυπνα μέσω Python: Κρατάμε όσα ΔΕΝ είναι True και ΔΕΝ είναι έτοιμα προϊόντα
             valid_dates = [
@@ -3273,7 +3274,20 @@ elif page == "📦 Lot Παραγωγής":
                 and "Έτοιμο Προϊόν" not in str(r.get("ingredient_name", ""))
             ]
             
-            all_dates = sorted(list(set(valid_dates)), reverse=True)
+            # Καθαρισμός από τυχόν κενά ή παύλες για ασφάλεια
+            valid_dates = [d for d in valid_dates if d and str(d).strip() not in ["-", ""]]
+            
+            # 🚀 ΕΞΥΠΝΗ ΧΡΟΝΟΛΟΓΙΚΗ ΤΑΞΙΝΟΜΗΣΗ (Η ΠΙΟ ΠΡΟΣΦΑΤΗ ΠΡΩΤΗ)
+            try:
+                all_dates = sorted(
+                    list(set(valid_dates)),
+                    key=lambda x: datetime.strptime(str(x).strip(), "%d/%m/%Y"),
+                    reverse=True
+                )
+            except Exception as date_err:
+                # Fallback σε απλό sort αν υπάρχει κάποια τελείως κατεστραμμένη εγγραφή στη βάση
+                all_dates = sorted(list(set(valid_dates)), reverse=True)
+                
             sel_prep_date = st.selectbox("📅 Ημερομηνία Παραγωγής:", ["-- Επιλέξτε Ημερομηνία --"] + all_dates)
             
             if sel_prep_date != "-- Επιλέξτε Ημερομηνία --":
@@ -3301,7 +3315,7 @@ elif page == "📦 Lot Παραγωγής":
                             
                             updated_lots = {}
                             
-                            # 🚀 ΑΛΛΑΓΗ 1: 6 στήλες αντί για 4
+                            # 🚀 6 στήλες για διπλά LOT / EXP
                             h1, h2, h3, h4, h5, h6 = st.columns([2, 1, 1.2, 1, 1.2, 1])
                             h1.caption("Πρώτη Ύλη")
                             h2.caption("Συνολικά ml")
@@ -3326,13 +3340,13 @@ elif page == "📦 Lot Παραγωγής":
                                 
                                 safe_date_key = sel_prep_date.replace("/", "_")
                                 
-                                # 🚀 ΑΛΛΑΓΗ 2: Τα 4 κουτάκια εισαγωγής
+                                # Τα 4 κουτάκια εισαγωγής
                                 n_lot1 = c3.text_input("LOT1", value=def_lot1.strip(), key=f"blot1_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 n_exp1 = c4.text_input("EXP1", value=def_exp1.strip(), key=f"bexp1_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 n_lot2 = c5.text_input("LOT2", value=def_lot2.strip(), key=f"blot2_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 n_exp2 = c6.text_input("EXP2", value=def_exp2.strip(), key=f"bexp2_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 
-                                # 🚀 ΑΛΛΑΓΗ 3: Ένωση των 2 LOT (αν υπάρχει 2ο)
+                                # Ένωση των 2 LOT (αν υπάρχει 2ο)
                                 final_lot = f"{n_lot1.strip()} / {n_lot2.strip()}" if n_lot2.strip() else n_lot1.strip()
                                 final_exp = f"{n_exp1.strip()} / {n_exp2.strip()}" if n_exp2.strip() else n_exp1.strip()
                                 
@@ -3363,6 +3377,10 @@ elif page == "📦 Lot Παραγωγής":
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
+                    else:
+                        st.info("Όλα τα κοκτέιλ αυτής της ημερομηνίας ήταν από Στοκ, δεν υπάρχουν πρώτες ύλες για συμπλήρωση.")
+                else:
+                    st.info("Δεν βρέθηκαν υλικά προς παρασκευή για αυτή την ημερομηνία.")
                             
     # --- 4. ΙΣΤΟΡΙΚΟ & ΔΙΑΧΕΙΡΙΣΗ ---
     st.divider()
