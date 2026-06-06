@@ -3961,7 +3961,7 @@ elif page == "📦 Lot Παραγωγής":
         cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
         file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
-        # 🚀 ΝΕΟ: Βοηθητικές συναρτήσεις για απόλυτα ασφαλή μετατροπή αριθμών (αποτρέπουν τα ValueError)
+        # Βοηθητικές συναρτήσεις
         def safe_int(val):
             try: return int(float(val)) if pd.notna(val) and str(val).strip() != "" else 0
             except: return 0
@@ -3969,27 +3969,30 @@ elif page == "📦 Lot Παραγωγής":
         def safe_float(val):
             try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
             except: return 0.0
+            
+        # 🚀 ΝΕΟ: Έξυπνος αναγνώστης για το Στοκ (πιάνει και κείμενο και λογικές τιμές)
+        def check_stock(val):
+            if val is True: return True
+            if str(val).strip().lower() in ['true', '1', 't', 'yes']: return True
+            return False
 
-        # Μεταφράζουμε τις αγγλικές στήλες της βάσης στα ελληνικά (με ασφάλεια αν λείπουν)
-        df_past["Εκ_Στοκ"] = df_past["is_from_stock"] if "is_from_stock" in df_past.columns else False
+        # Μεταφράζουμε τις αγγλικές στήλες
+        df_past["Εκ_Στοκ"] = df_past["is_from_stock"].apply(check_stock) if "is_from_stock" in df_past.columns else False
         df_past["Δώρα"] = df_past["free_pieces"] if "free_pieces" in df_past.columns else 0
         df_past["Εκπτωμένα"] = df_past["discounted_pieces"] if "discounted_pieces" in df_past.columns else 0
         df_past["Έκπτωση_%"] = df_past["discount_pct"] if "discount_pct" in df_past.columns else 0.0
 
-        # 1. Τραβάμε ΟΛΑ τα απαραίτητα πεδία με απόλυτη ασφάλεια πλέον
         df_unique_productions = df_past[["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"]].drop_duplicates()
         
-        # 2. Ομαδοποιούμε κρατώντας τις πληροφορίες Στοκ και Εκπτώσεων
         df_clean_customers = df_unique_productions.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
             "Τεμάχια": "sum",
-            "Εκ_Στοκ": "first",
+            "Εκ_Στοκ": "max", # 🚀 ΑΛΛΑΓΗ: Το 'max' σε True/False διασφαλίζει ότι αν έστω και ένα είναι True, θα το κρατήσει!
             "Δώρα": "first",
             "Εκπτωμένα": "first",
             "Έκπτωση_%": "first"
         })
         
         df_daily = df_clean_customers.copy()
-
         # ─── ΕΚΤΥΠΩΣΗ 1: ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ ───
         html_pro = f"""<html><head><meta charset='UTF-8'><style>
             body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 20px; line-height: 1.5; }}
