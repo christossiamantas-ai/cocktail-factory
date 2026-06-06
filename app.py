@@ -3954,14 +3954,13 @@ elif page == "📦 Lot Παραγωγής":
                         except Exception as save_err:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
 
-        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (ΔΙΟΡΘΩΜΕΝΕΣ ΓΙΑ ΣΩΣΤΑ ΑΘΡΟΙΣΜΑΤΑ ΚΑΙ ΕΝΔΕΙΞΕΙΣ ΣΤΟΚ/ΕΚΠΤΩΣΕΩΝ) ---
+        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (ΠΛΗΡΩΣ ΑΝΕΞΑΡΤΗΤΕΣ - ΛΟΓΙΚΗ ΠΕΛΑΤΟΛΟΓΙΟΥ) ---
         st.divider()
         st.markdown("### 🖨️ 4. Συγκεντρωτικές Εκτυπώσεις (Βάσει Φίλτρων Αναζήτησης)")
         
         cust_label = f" | Πελάτης: <b>{sel_customer}</b>" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
         file_suffix = f"_{sel_customer.replace(' ', '_')}" if sel_customer != "-- Όλοι οι Πελάτες --" else ""
 
-        # Βοηθητικές συναρτήσεις
         def safe_int(val):
             try: return int(float(val)) if pd.notna(val) and str(val).strip() != "" else 0
             except: return 0
@@ -3970,58 +3969,44 @@ elif page == "📦 Lot Παραγωγής":
             try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
             except: return 0.0
 
-        # 🚀 Η ΑΠΟΛΥΤΗ ΛΥΣΗ: Μιλάμε ΑΠΕΥΘΕΙΑΣ στη βάση (όπως το Πελατολόγιο) αντί να διαβάζουμε την οθόνη!
-        if not df_past.empty:
-            active_dates = df_past["Ημερομηνία"].unique().tolist()
-            active_cocktails = df_past["Cocktail"].unique().tolist()
+        # 🚀 ΛΥΣΗ "ΠΕΛΑΤΟΛΟΓΙΟ": Ρωτάμε τη βάση ΑΠΕΥΘΕΙΑΣ αγνοώντας τα φίλτρα των υλικών
+        query_print = supabase.table("production_log").select("customer, prod_date, prod_time, cocktail_name, lot_cocktail, pieces, is_from_stock, free_pieces, discounted_pieces, discount_pct").eq("prod_date", sel_hist_date)
+        if sel_customer != "-- Όλοι οι Πελάτες --":
+            query_print = query_print.eq("customer", sel_customer)
             
-            # Χτίζουμε το ερώτημα προς τη Supabase: Καθαρές παραγγελίες χωρίς τα άσχετα υλικά
-            query = supabase.table("production_log").select("*").in_("prod_date", active_dates).in_("cocktail_name", active_cocktails)
-            if sel_customer != "-- Όλοι οι Πελάτες --":
-                query = query.eq("customer", sel_customer)
-                
-            res_pure = query.execute()
+        res_print = query_print.execute()
+        
+        if res_print.data:
+            df_print = pd.DataFrame(res_print.data)
             
-            if res_pure.data:
-                df_pure = pd.DataFrame(res_pure.data)
-                
-                # Κρατάμε 1 γραμμή ανά παραγγελία (πετάμε τα πολλαπλά υλικά για να μην μπερδευτεί το Στοκ)
-                df_unique_orders = df_pure.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail", "is_from_stock"])
-                
-                def check_stock_pure(val):
-                    if val is True or val == 1: return True
-                    if pd.notna(val):
-                        if str(val).strip().lower() in ['true', '1', 't', 'yes', '1.0']: return True
-                    return False
-                
-                df_unique_orders["Εκ_Στοκ"] = df_unique_orders["is_from_stock"].apply(check_stock_pure) if "is_from_stock" in df_unique_orders.columns else False
-                
-                # Ομαδοποιούμε τέλεια, κρατώντας όλα τα οικονομικά στοιχεία και το Στοκ
-                df_clean_customers = df_unique_orders.groupby(["customer", "prod_date", "cocktail_name", "lot_cocktail"], as_index=False).agg({
-                    "pieces": "sum",
-                    "Εκ_Στοκ": "max",
-                    "free_pieces": "first",
-                    "discounted_pieces": "first",
-                    "discount_pct": "first"
-                })
-                
-                # Μετονομάζουμε τις στήλες για να δουλέψει ο HTML κώδικας
-                df_clean_customers.rename(columns={
-                    "customer": "Πελάτης",
-                    "prod_date": "Ημερομηνία",
-                    "cocktail_name": "Cocktail",
-                    "lot_cocktail": "LOT_Cocktail",
-                    "pieces": "Τεμάχια",
-                    "free_pieces": "Δώρα",
-                    "discounted_pieces": "Εκπτωμένα",
-                    "discount_pct": "Έκπτωση_%"
-                }, inplace=True)
-            else:
-                df_clean_customers = pd.DataFrame(columns=["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"])
+            # Απόλυτα ασφαλής μετατροπή του Στοκ
+            df_print["is_from_stock"] = df_print["is_from_stock"].apply(lambda x: True if str(x).strip().lower() in ['true', '1', 't', 'yes', '1.0'] else False)
+            
+            # Κρατάμε ΜΟΝΟ 1 γραμμή ανά παραγγελία (για να μην διπλομετράμε λόγω των πολλαπλών υλικών)
+            df_orders = df_print.drop_duplicates(subset=["customer", "prod_date", "prod_time", "cocktail_name", "lot_cocktail", "pieces"])
+            
+            # Ομαδοποιούμε πεντακάθαρα
+            df_daily = df_orders.groupby(["customer", "prod_date", "cocktail_name", "lot_cocktail"], as_index=False).agg({
+                "pieces": "sum",
+                "is_from_stock": "max",
+                "free_pieces": "first",
+                "discounted_pieces": "first",
+                "discount_pct": "first"
+            })
+            
+            df_daily.rename(columns={
+                "customer": "Πελάτης",
+                "prod_date": "Ημερομηνία",
+                "cocktail_name": "Cocktail",
+                "lot_cocktail": "LOT_Cocktail",
+                "pieces": "Τεμάχια",
+                "is_from_stock": "Εκ_Στοκ",
+                "free_pieces": "Δώρα",
+                "discounted_pieces": "Εκπτωμένα",
+                "discount_pct": "Έκπτωση_%"
+            }, inplace=True)
         else:
-             df_clean_customers = pd.DataFrame(columns=["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"])
-
-        df_daily = df_clean_customers.copy()
+            df_daily = pd.DataFrame(columns=["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"])
 
         # ─── ΕΚΤΥΠΩΣΗ 1: ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ ───
         html_pro = f"""<html><head><meta charset='UTF-8'><style>
@@ -4040,8 +4025,8 @@ elif page == "📦 Lot Παραγωγής":
         </style></head><body>
             <div class='document-header'><h1>CABCLUB COCKTAILS</h1><h2>📋 ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ</h2><p>Ημερομηνία Φιλτραρίσματος: <b>{sel_hist_date}</b>{cust_label}</p></div>
         """
-        for p in df_clean_customers["Πελάτης"].unique():
-            p_df = df_clean_customers[df_clean_customers["Πελάτης"] == p]
+        for p in df_daily["Πελάτης"].unique():
+            p_df = df_daily[df_daily["Πελάτης"] == p]
             actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
             html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div><table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα / Στοιχεία</th></tr></thead><tbody>"
             for _, row in p_df.iterrows(): 
@@ -4110,12 +4095,16 @@ elif page == "📦 Lot Παραγωγής":
 
         html_daily += f"<div class='grand-total'>{total_label_text}<br><b>{grand_total_pcs} Τεμάχια</b><span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span></div></body></html>"
         
-        # ─── ΕΚΤΥΠΩΣΗ 3: ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (ΑΘΙΚΤΗ) ───
-        df_prep = df_past.groupby("Υλικό").agg({
-            "Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum",
-            "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan']))),
-            "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan'])))
-        }).reset_index()
+        # ─── ΕΚΤΥΠΩΣΗ 3: ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ ───
+        # (Αυτή συνεχίζει να χρησιμοποιεί το df_past γιατί ΕΔΩ χρειαζόμαστε τα συστατικά!)
+        if not df_past.empty and "Υλικό" in df_past.columns:
+            df_prep = df_past.groupby("Υλικό").agg({
+                "Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum",
+                "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan']))),
+                "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan'])))
+            }).reset_index()
+        else:
+            df_prep = pd.DataFrame(columns=["Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
 
         html_prep = f"""<html><head><meta charset='UTF-8'><style>
             body {{ font-family: sans-serif; padding: 30px; }}
@@ -4129,12 +4118,12 @@ elif page == "📦 Lot Παραγωγής":
             <table><thead><tr><th>Πρώτη Ύλη</th><th>Συνολική Ποσότητα (ml)</th><th>Συνολικό Βάρος (g)</th><th>Lot & Λήξη Πρ. Ύλης</th></tr></thead><tbody>
         """
         for _, row in df_prep.iterrows():
-            display_parts = [p for p in [row['Lot Number'], row['Ημ_Λήξης']] if p]
+            display_parts = [p for p in [row.get('Lot Number', ''), row.get('Ημ_Λήξης', '')] if p]
             lot_text = " | ".join(display_parts) if display_parts else "-"
             
-            ml_val = safe_float(row['Σύνολο_ML'])
-            g_val = safe_float(row['Στόχος_Γραμμάρια'])
-            html_prep += f"<tr><td><b>{row['Υλικό']}</b></td><td>{ml_val:.0f} ml</td><td>{g_val:.1f} g</td><td class='lot-info'>{lot_text}</td></tr>"
+            ml_val = safe_float(row.get('Σύνολο_ML', 0))
+            g_val = safe_float(row.get('Στόχος_Γραμμάρια', 0))
+            html_prep += f"<tr><td><b>{row.get('Υλικό', '-')}</b></td><td>{ml_val:.0f} ml</td><td>{g_val:.1f} g</td><td class='lot-info'>{lot_text}</td></tr>"
         html_prep += "</tbody></table></body></html>"
 
         col_p1, col_p2, col_p3 = st.columns(3)
