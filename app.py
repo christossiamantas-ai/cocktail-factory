@@ -3983,7 +3983,7 @@ elif page == "📦 Lot Παραγωγής":
                         except Exception as save_err:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
 
-        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (Η ΑΠΟΛΥΤΗ ΛΥΣΗ ΓΙΑ ΤΟ ΣΤΟΚ ΚΑΙ ΤΙΣ ΕΚΠΤΩΣΕΙΣ) ---
+        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (Η ΑΠΟΛΥΤΗ ΛΥΣΗ ΓΙΑ ΤΟ ΣΤΟΚ, ΤΑ ΠΑΛΙΑ LOT ΚΑΙ ΤΙΣ ΕΚΠΤΩΣΕΙΣ) ---
         st.divider()
         st.markdown("### 🖨️ 4. Συγκεντρωτικές Εκτυπώσεις (Βάσει Φίλτρων Αναζήτησης)")
         
@@ -3998,30 +3998,54 @@ elif page == "📦 Lot Παραγωγής":
             try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
             except: return 0.0
 
-        # 🚀 ΤΟ ΚΛΕΙΔΙ ΤΗΣ ΥΠΟΘΕΣΗΣ: Αναγνωρίζουμε ΚΑΙ τον νέο διακόπτη ΚΑΙ την παλιά λέξη "Έτοιμο Προϊόν"
+        # 🚀 1. Έξυπνος έλεγχος Στοκ (Πιάνει και το νέο διακόπτη και το παλιό "Έτοιμο Προϊόν")
         def check_stock_smart(row):
-            # Έλεγχος 1: Η νέα στήλη is_from_stock
             val = row.get("is_from_stock", False)
             if val is True or val == 1: return True
             if pd.notna(val) and str(val).strip().lower() in ['true', '1', 't', 'yes', '1.0']: return True
             
-            # Έλεγχος 2: Ο παλιός τρόπος (Αν το υλικό ονομάζεται Έτοιμο Προϊόν)
             ing_en = str(row.get("ingredient_name", ""))
             ing_gr = str(row.get("Υλικό", ""))
             if "Έτοιμο Προϊόν" in ing_en or "Έτοιμο Προϊόν" in ing_gr: return True
-            
             return False
 
-        # Εφαρμόζουμε τον έξυπνο έλεγχο πάνω στο df_past
-        df_past["Εκ_Στοκ"] = df_past.apply(check_stock_smart, axis=1)
-        df_past["Δώρα"] = df_past["free_pieces"] if "free_pieces" in df_past.columns else 0
-        df_past["Εκπτωμένα"] = df_past["discounted_pieces"] if "discounted_pieces" in df_past.columns else 0
-        df_past["Έκπτωση_%"] = df_past["discount_pct"] if "discount_pct" in df_past.columns else 0.0
+        # 🚀 2. Διάσωση παλιών LOT (Ανασύρει το LOT από τα παλιά υλικά αν λείπει από το κοκτέιλ)
+        def rescue_old_lots(row):
+            ing_gr = str(row.get("Υλικό", ""))
+            ing_en = str(row.get("ingredient_name", ""))
+            ing_lot = str(row.get("Lot Number", ""))
+            current_lot = str(row.get("LOT_Cocktail", ""))
+            
+            # Αν ήταν το παλιό σύστημα "Έτοιμο Προϊόν", το LOT βρίσκεται στο υλικό!
+            if ("Έτοιμο Προϊόν" in ing_en or "Έτοιμο Προϊόν" in ing_gr) and ing_lot.strip() and ing_lot.lower() not in ["nan", "none", ""]:
+                return ing_lot
+                
+            # Αν το LOT του κοκτέιλ είναι εντελώς άδειο, βάζουμε μια παύλα (ΟΧΙ κενό) για να μην το διαγράψει η Python
+            if current_lot.strip() == "" or current_lot.lower() in ["nan", "none"]:
+                return "-"
+                
+            return current_lot
+
+        # Δημιουργούμε ένα ασφαλές αντίγραφο του πίνακα για τις εκτυπώσεις
+        df_past_print = df_past.copy()
+
+        # Εφαρμόζουμε τις διορθώσεις Στοκ και LOT
+        df_past_print["Εκ_Στοκ"] = df_past_print.apply(check_stock_smart, axis=1)
+        df_past_print["LOT_Cocktail"] = df_past_print.apply(rescue_old_lots, axis=1)
+        
+        df_past_print["Δώρα"] = df_past_print["free_pieces"] if "free_pieces" in df_past_print.columns else 0
+        df_past_print["Εκπτωμένα"] = df_past_print["discounted_pieces"] if "discounted_pieces" in df_past_print.columns else 0
+        df_past_print["Έκπτωση_%"] = df_past_print["discount_pct"] if "discount_pct" in df_past_print.columns else 0.0
+
+        # 🚀 3. ΠΡΟΣΤΑΣΙΑ GROUPBY: Γεμίζουμε όλα τα κενά (NaN) με παύλες, αλλιώς η Python διαγράφει τις παραγγελίες!
+        for col in ["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail", "LOT_Cocktail"]:
+            if col in df_past_print.columns:
+                df_past_print[col] = df_past_print[col].fillna("-")
 
         # Βήμα 1: Ομαδοποιούμε ανά Παραγγελία (Ώρα) για να βγάλουμε τα διπλά υλικά με ασφάλεια
-        df_orders = df_past.groupby(["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
+        df_orders = df_past_print.groupby(["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
             "Τεμάχια": "first", 
-            "Εκ_Στοκ": "max",   # Αν έστω και 1 γραμμή λέει Έτοιμο Προϊόν, όλη η παραγγελία γίνεται Στοκ!
+            "Εκ_Στοκ": "max",
             "Δώρα": "first",
             "Εκπτωμένα": "first",
             "Έκπτωση_%": "first"
@@ -4124,11 +4148,11 @@ elif page == "📦 Lot Παραγωγής":
         html_daily += f"<div class='grand-total'>{total_label_text}<br><b>{grand_total_pcs} Τεμάχια</b><span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span></div></body></html>"
         
         # ─── ΕΚΤΥΠΩΣΗ 3: ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ ───
-        if not df_past.empty and "Υλικό" in df_past.columns:
-            df_prep = df_past.groupby("Υλικό").agg({
+        if not df_past_print.empty and "Υλικό" in df_past_print.columns:
+            df_prep = df_past_print.groupby("Υλικό").agg({
                 "Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum",
-                "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan']))),
-                "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan'])))
+                "Lot Number": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan', '-']))),
+                "Ημ_Λήξης": lambda x: " / ".join(sorted(set(str(v).strip() for v in x if v and str(v).lower() not in ['none', '', 'nan', '-'])))
             }).reset_index()
         else:
             df_prep = pd.DataFrame(columns=["Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
