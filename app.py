@@ -3970,10 +3970,14 @@ elif page == "📦 Lot Παραγωγής":
             try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
             except: return 0.0
             
-        # 🚀 ΝΕΟ: Έξυπνος αναγνώστης για το Στοκ (πιάνει και κείμενο και λογικές τιμές)
+        # 🚀 Η ΑΠΟΛΥΤΗ ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΟ ΣΤΟΚ
         def check_stock(val):
-            if val is True: return True
-            if str(val).strip().lower() in ['true', '1', 't', 'yes']: return True
+            if val is True or val == 1: 
+                return True
+            if pd.notna(val):
+                v_str = str(val).strip().lower()
+                if v_str in ['true', '1', 't', 'yes', '1.0']: 
+                    return True
             return False
 
         # Μεταφράζουμε τις αγγλικές στήλες
@@ -3986,13 +3990,14 @@ elif page == "📦 Lot Παραγωγής":
         
         df_clean_customers = df_unique_productions.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
             "Τεμάχια": "sum",
-            "Εκ_Στοκ": "max", # 🚀 ΑΛΛΑΓΗ: Το 'max' σε True/False διασφαλίζει ότι αν έστω και ένα είναι True, θα το κρατήσει!
+            "Εκ_Στοκ": "max", # Το 'max' στα boolean (True/False) εξασφαλίζει ότι το True (1) κερδίζει το False (0)
             "Δώρα": "first",
             "Εκπτωμένα": "first",
             "Έκπτωση_%": "first"
         })
         
         df_daily = df_clean_customers.copy()
+        
         # ─── ΕΚΤΥΠΩΣΗ 1: ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ ───
         html_pro = f"""<html><head><meta charset='UTF-8'><style>
             body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 20px; line-height: 1.5; }}
@@ -4015,8 +4020,9 @@ elif page == "📦 Lot Παραγωγής":
             actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
             html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div><table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα / Στοιχεία</th></tr></thead><tbody>"
             for _, row in p_df.iterrows(): 
-                # 🚀 Χρήση των ασφαλών συναρτήσεων
-                stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if str(row.get('Εκ_Στοκ', 'False')).lower() == "true" else ""
+                # Οπτικός έλεγχος για το Στοκ - Αν η στήλη Εκ_Στοκ είναι True (ή 1), βάζει το σηματάκι
+                is_stock = bool(row.get('Εκ_Στοκ', False))
+                stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                 
                 discount_html = ""
                 free_pcs = safe_int(row.get('Δώρα', 0))
@@ -4058,8 +4064,9 @@ elif page == "📦 Lot Παραγωγής":
             c_data = df_daily[df_daily["Cocktail"] == cock]
             html_daily += f"<h2 class='cocktail-header'>🍹 {cock}</h2><table><thead><tr><th>LOT Number</th><th>Πελάτης</th><th>Ποσότητα (τμχ) / Στοιχεία</th></tr></thead><tbody>"
             for _, row in c_data.iterrows(): 
-                # 🚀 Χρήση των ασφαλών συναρτήσεων
-                stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if str(row.get('Εκ_Στοκ', 'False')).lower() == "true" else ""
+                # Οπτικός έλεγχος για το Στοκ
+                is_stock = bool(row.get('Εκ_Στοκ', False))
+                stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                 
                 discount_html = ""
                 free_pcs = safe_int(row.get('Δώρα', 0))
@@ -4111,7 +4118,6 @@ elif page == "📦 Lot Παραγωγής":
         col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
-
     
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
