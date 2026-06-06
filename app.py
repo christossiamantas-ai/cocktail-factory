@@ -4522,15 +4522,12 @@ elif page == "👥 Πελατολόγιο":
             with col_crm_b:
                 st.subheader(f"📊 Οικονομικό Προφίλ & Ιστορικό: {sel_name}")
                 
-                # 🚀 ΑΛΛΑΓΗ 1: Προσθέσαμε τα πεδία των δώρων και εκπτώσεων στο select!
                 res_prod = supabase.table("production_log").select("prod_date, prod_time, cocktail_name, lot_cocktail, pieces, is_from_stock, free_pieces, discounted_pieces, discount_pct").eq("customer", sel_name).order("prod_date", desc=True).execute()
                 
                 if res_prod.data:
                     df_p = pd.DataFrame(res_prod.data)
-                    # Κρατάμε 1 γραμμή ανά παραγγελία για να μην διπλομετράμε λόγω υλικών
                     df_p_clean = df_p.drop_duplicates(subset=["prod_date", "prod_time", "lot_cocktail", "cocktail_name"]).copy()
                     
-                    # --- 🚀 ΑΡΧΗ ΜΑΘΗΜΑΤΙΚΩΝ ΥΠΟΛΟΓΙΣΜΩΝ DASHBOARD ---
                     def safe_int(val):
                         try: return int(float(val)) if pd.notna(val) and str(val).strip() != "" else 0
                         except: return 0
@@ -4539,6 +4536,9 @@ elif page == "👥 Πελατολόγιο":
                         try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
                         except: return 0.0
 
+                    # 🚀 ΤΟ ΚΛΕΙΔΙ: Τραβάμε τη Γενική Έκπτωση του πελάτη από τα στοιχεία του!
+                    global_discount = safe_float(customer_data.get('discount', 0))
+
                     total_turnover = 0.0
                     total_savings = 0.0
                     
@@ -4546,28 +4546,35 @@ elif page == "👥 Πελατολόγιο":
                     total_free = safe_int(df_p_clean["free_pieces"].fillna(0).apply(safe_int).sum())
                     total_discounted = safe_int(df_p_clean["discounted_pieces"].fillna(0).apply(safe_int).sum())
                     
-                    # Υπολογισμός γραμμή-γραμμή με βάση τις τιμές καταλόγου (από το recipe_prices σου!)
                     for _, row in df_p_clean.iterrows():
                         cocktail_name = row["cocktail_name"]
-                        cat_price = float(recipe_prices.get(cocktail_name, 0.0)) # Παίρνει την τιμή από το λεξικό σου
+                        cat_price = float(recipe_prices.get(cocktail_name, 0.0))
                         
-                        pcs = safe_int(row["pieces"])
-                        free_pcs = safe_int(row.get("free_pieces", 0))
-                        disc_pcs = safe_int(row.get("discounted_pieces", 0))
-                        disc_pct = safe_float(row.get("discount_pct", 0.0))
+                        t_pcs = safe_int(row["pieces"])
+                        f_pcs = safe_int(row.get("free_pieces", 0))
+                        s_pcs = safe_int(row.get("discounted_pieces", 0))
+                        s_pct = safe_float(row.get("discount_pct", 0.0))
                         
-                        full_price_pcs = max(0, pcs - free_pcs - disc_pcs)
+                        # Μαθηματικά ολόιδια με το παλιό σου σύστημα
+                        s_pcs = min(s_pcs, max(0, t_pcs - f_pcs))
+                        normal_pcs = t_pcs - f_pcs - s_pcs
                         
-                        # ΤΖΙΡΟΣ: (Κανονικά τμχ * Τιμή) + (Εκπτωμένα τμχ * Τιμή * Πληρωμένο Ποσοστό)
-                        row_turnover = (full_price_pcs * cat_price) + (disc_pcs * cat_price * (1 - (disc_pct / 100.0)))
+                        # 1. Βρίσκουμε την τιμή ΑΦΟΥ εφαρμοστεί η Γενική Έκπτωση του πελάτη
+                        price_after_global = cat_price * (1 - (global_discount / 100.0))
+                        
+                        # 2. Υπολογισμός Εσόδων
+                        rev_normal = normal_pcs * price_after_global
+                        rev_special = s_pcs * price_after_global * (1 - (s_pct / 100.0))
+                        
+                        row_turnover = max(0.0, rev_normal + rev_special)
                         total_turnover += row_turnover
                         
-                        # ΟΦΕΛΟΣ: (Δώρα * Τιμή) + (Εκπτωμένα τμχ * Τιμή * Χαρισμένο Ποσοστό)
-                        row_savings = (free_pcs * cat_price) + (disc_pcs * cat_price * (disc_pct / 100.0))
+                        # 3. Υπολογισμός Οφέλους Πελάτη (Όσα θα πλήρωνε χωρίς ΚΑΜΙΑ έκπτωση - Όσα πλήρωσε τελικά)
+                        row_full_value = t_pcs * cat_price
+                        row_savings = max(0.0, row_full_value - row_turnover)
                         total_savings += row_savings
-                    # --- ΤΕΛΟΣ ΥΠΟΛΟΓΙΣΜΩΝ ---
 
-                    # Εμφάνιση του Ταμπλό με 5 στήλες
+                    # Εμφάνιση του Ταμπλό
                     k1, k2, k3, k4, k5 = st.columns(5)
                     k1.metric("💰 Συνολικός Τζίρος", f"{total_turnover:,.2f} €".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     k2.metric("📦 Συνολικά Τμχ", f"{total_pieces}")
@@ -4577,7 +4584,6 @@ elif page == "👥 Πελατολόγιο":
                     
                     st.divider()
                     
-                    # Εμφάνιση του Πίνακα Ιστορικού (όπως τον είχες)
                     st.markdown("**📜 Αναλυτικό Ιστορικό Παραγγελιών**")
                     st.dataframe(
                         df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
