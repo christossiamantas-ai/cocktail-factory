@@ -3660,10 +3660,15 @@ elif page == "📦 Lot Παραγωγής":
             
             for name, group in order_groups:
                 o_date, o_cust, o_time = name
-                unique_cocktails_count = group["Cocktail"].nunique()
+                
+                # 🚀 Η ΜΑΓΕΙΑ ΕΔΩ: Τραβάμε τα ονόματα των κοκτέιλ και τα ενώνουμε σε μία γραμμή!
+                cocktail_names = group["Cocktail"].unique().tolist()
+                cocktails_str = ", ".join(cocktail_names)
+                
                 total_pcs = group.groupby("Cocktail")["Τεμάχια"].first().sum()
                 
-                label = f"📅 {o_date} | 👤 {o_cust} | 🕒 {o_time} | ({unique_cocktails_count} Cocktails, {int(total_pcs)} τμχ)"
+                # Το label τώρα βγάζει τα ονόματα με το εικονίδιο 🍹
+                label = f"📅 {o_date} | 👤 {o_cust} | 🕒 {o_time} | 🍹 {cocktails_str} ({int(total_pcs)} τμχ)"
                 temp_options.append(label)
                 order_map[label] = {"date": o_date, "cust": o_cust, "time": o_time, "df": group}
                 
@@ -3671,7 +3676,7 @@ elif page == "📦 Lot Παραγωγής":
             from datetime import datetime
             def sort_by_real_date(lbl):
                 try:
-                    # Απομονώνουμε την ημερομηνία και την ώρα από το κείμενο της ετικέτας
+                    # Απομονώνουμε την ημερομηνία και την ώρα από το κείμενο
                     parts = lbl.split(" | ")
                     date_part = parts[0].replace("📅 ", "").strip()
                     time_part = parts[2].replace("🕒 ", "").strip()
@@ -3679,7 +3684,7 @@ elif page == "📦 Lot Παραγωγής":
                     return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M:%S")
                 except ValueError:
                     try:
-                        # Αν η ώρα δεν έχει δευτερόλεπτα (HH:MM)
+                        # Αν η ώρα δεν έχει δευτερόλεπτα
                         return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M")
                     except Exception:
                         return datetime.min # Αν κάτι πάει στραβά, το πάει στο τέλος
