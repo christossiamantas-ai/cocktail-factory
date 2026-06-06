@@ -4161,7 +4161,7 @@ elif page == "📦 Lot Παραγωγής":
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
-    tab_filter, tab_recall_tool = st.tabs(["📋 Αναζήτηση & Φίλτρα", "🚨 Recall Tool (Ανάκληση)"])
+    tab_filter, tab_recall_tool, tab_forward = st.tabs(["📋 Αναζήτηση & Φίλτρα", "🚨 Recall Tool (Ανάκληση Υλικών)", "🔬 Έλεγχος Παρτίδας (Cocktail LOT)"])
 
     with tab_filter:
         with st.expander("⚙️ Ρυθμίσεις Φίλτρων (Πελάτης, Υλικά, Lot) - Πατήστε το κουμπί για φόρτωση"):
@@ -4243,6 +4243,70 @@ elif page == "📦 Lot Παραγωγής":
                 st.download_button(label="📄 Λήψη Έκθεσης Ανάκλησης (Έτοιμο HTML)", data=html_content, file_name=f"RECALL_REPORT_{safe_file_name}.html", mime="text/html", use_container_width=True)
             else:
                 st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot. Το στοκ σας είναι ασφαλές!")
+
+    # ==========================================
+    # TAB 3: ΚΑΝΟΝΙΚΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ (ΕΛΕΓΧΟΣ LOT COCKTAIL)
+    # ==========================================
+    with tab_forward:
+        st.markdown("#### 🔬 Έλεγχος Συγκεκριμένης Παρτίδας Cocktail")
+        st.write("Εισάγετε το **LOT του Έτοιμου Κοκτέιλ** ή την **Ημερομηνία Παραγωγής** για να δείτε ακριβώς από ποια υλικά φτιάχτηκε.")
+        
+        col_fw1, col_fw2 = st.columns(2)
+        search_fw_lot = col_fw1.text_input("🔍 Αναζήτηση με LOT Κοκτέιλ:", placeholder="π.χ. ZMB-1506", key="fw_lot_input")
+        search_fw_date = col_fw2.text_input("📅 Ή/και με Ημερομηνία Παραγωγής (DD/MM/YYYY):", placeholder="π.χ. 15/06/2026", key="fw_date_input")
+        
+        if search_fw_lot or search_fw_date:
+            with st.spinner("Ανάλυση παρτίδας στο Cloud..."):
+                # Χτίσιμο του Query στη βάση
+                query_fw = supabase.table("production_log").select("*")
+                if search_fw_lot:
+                    query_fw = query_fw.eq("lot_cocktail", search_fw_lot.strip())
+                if search_fw_date:
+                    query_fw = query_fw.eq("prod_date", search_fw_date.strip())
+                    
+                res_fw = query_fw.execute()
+                
+            if res_fw.data:
+                df_fw = pd.DataFrame(res_fw.data)
+                
+                # 1. Πληροφορίες Παρτίδας
+                cocktails_found = df_fw["cocktail_name"].unique()
+                st.success(f"✅ Βρέθηκαν δεδομένα παραγωγής για: **{', '.join(cocktails_found)}**")
+                
+                # 2. Τι υλικά μπήκαν μέσα (Ανάλυση Συνταγής & LOT Υλικών)
+                st.markdown("##### 🧪 Ακριβή Υλικά & LOT που καταναλώθηκαν στην παραγωγή:")
+                df_fw['total_ml'] = pd.to_numeric(df_fw['total_ml'], errors='coerce').fillna(0)
+                
+                # Ομαδοποίηση για να αθροίσουμε τα ml ανά υλικό και ανά LOT
+                df_ingredients = df_fw.groupby(["ingredient_name", "lot_number"], dropna=False).agg({
+                    "total_ml": "sum"
+                }).reset_index().rename(columns={
+                    "ingredient_name": "Πρώτη Ύλη", 
+                    "lot_number": "LOT Πρώτης Ύλης", 
+                    "total_ml": "Συνολική Κατανάλωση (ml)"
+                })
+                
+                # Καθαρισμός κενών για ωραία εμφάνιση
+                df_ingredients["LOT Πρώτης Ύλης"] = df_ingredients["LOT Πρώτης Ύλης"].fillna("-").replace("nan", "-").replace("", "-")
+                df_ingredients["Πρώτη Ύλη"] = df_ingredients["Πρώτη Ύλη"].fillna("Άγνωστο Υλικό")
+                
+                st.dataframe(df_ingredients, use_container_width=True, hide_index=True)
+                
+                # 3. Πού πήγε αυτή η παρτίδα (Διανομή)
+                st.markdown("##### 🚚 Πελάτες που παρέλαβαν αυτή την παρτίδα:")
+                df_fw['pieces'] = pd.to_numeric(df_fw['pieces'], errors='coerce').fillna(0)
+                df_distribution = df_fw.groupby(["customer", "prod_date", "cocktail_name", "lot_cocktail"]).agg({
+                    "pieces": "first"
+                }).reset_index().rename(columns={
+                    "customer": "👤 Πελάτης", 
+                    "prod_date": "📅 Ημερομηνία", 
+                    "cocktail_name": "🍹 Cocktail", 
+                    "lot_cocktail": "🔢 LOT Κοκτέιλ", 
+                    "pieces": "📦 Τεμάχια"
+                })
+                st.dataframe(df_distribution, use_container_width=True, hide_index=True)
+            else:
+                st.warning("⚠️ Δεν βρέθηκε καμία καταχωρημένη παραγωγή με αυτά τα στοιχεία.")
     
     # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ ---
     st.divider()
