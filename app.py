@@ -3969,35 +3969,60 @@ elif page == "📦 Lot Παραγωγής":
         def safe_float(val):
             try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
             except: return 0.0
+
+        # 🚀 Η ΑΠΟΛΥΤΗ ΛΥΣΗ: Μιλάμε ΑΠΕΥΘΕΙΑΣ στη βάση (όπως το Πελατολόγιο) αντί να διαβάζουμε την οθόνη!
+        if not df_past.empty:
+            active_dates = df_past["Ημερομηνία"].unique().tolist()
+            active_cocktails = df_past["Cocktail"].unique().tolist()
             
-        # 🚀 Η ΑΠΟΛΥΤΗ ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΟ ΣΤΟΚ
-        def check_stock(val):
-            if val is True or val == 1: 
-                return True
-            if pd.notna(val):
-                v_str = str(val).strip().lower()
-                if v_str in ['true', '1', 't', 'yes', '1.0']: 
-                    return True
-            return False
+            # Χτίζουμε το ερώτημα προς τη Supabase: Καθαρές παραγγελίες χωρίς τα άσχετα υλικά
+            query = supabase.table("production_log").select("*").in_("prod_date", active_dates).in_("cocktail_name", active_cocktails)
+            if sel_customer != "-- Όλοι οι Πελάτες --":
+                query = query.eq("customer", sel_customer)
+                
+            res_pure = query.execute()
+            
+            if res_pure.data:
+                df_pure = pd.DataFrame(res_pure.data)
+                
+                # Κρατάμε 1 γραμμή ανά παραγγελία (πετάμε τα πολλαπλά υλικά για να μην μπερδευτεί το Στοκ)
+                df_unique_orders = df_pure.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail", "is_from_stock"])
+                
+                def check_stock_pure(val):
+                    if val is True or val == 1: return True
+                    if pd.notna(val):
+                        if str(val).strip().lower() in ['true', '1', 't', 'yes', '1.0']: return True
+                    return False
+                
+                df_unique_orders["Εκ_Στοκ"] = df_unique_orders["is_from_stock"].apply(check_stock_pure) if "is_from_stock" in df_unique_orders.columns else False
+                
+                # Ομαδοποιούμε τέλεια, κρατώντας όλα τα οικονομικά στοιχεία και το Στοκ
+                df_clean_customers = df_unique_orders.groupby(["customer", "prod_date", "cocktail_name", "lot_cocktail"], as_index=False).agg({
+                    "pieces": "sum",
+                    "Εκ_Στοκ": "max",
+                    "free_pieces": "first",
+                    "discounted_pieces": "first",
+                    "discount_pct": "first"
+                })
+                
+                # Μετονομάζουμε τις στήλες για να δουλέψει ο HTML κώδικας
+                df_clean_customers.rename(columns={
+                    "customer": "Πελάτης",
+                    "prod_date": "Ημερομηνία",
+                    "cocktail_name": "Cocktail",
+                    "lot_cocktail": "LOT_Cocktail",
+                    "pieces": "Τεμάχια",
+                    "free_pieces": "Δώρα",
+                    "discounted_pieces": "Εκπτωμένα",
+                    "discount_pct": "Έκπτωση_%"
+                }, inplace=True)
+            else:
+                df_clean_customers = pd.DataFrame(columns=["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"])
+        else:
+             df_clean_customers = pd.DataFrame(columns=["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"])
 
-        # Μεταφράζουμε τις αγγλικές στήλες
-        df_past["Εκ_Στοκ"] = df_past["is_from_stock"].apply(check_stock) if "is_from_stock" in df_past.columns else False
-        df_past["Δώρα"] = df_past["free_pieces"] if "free_pieces" in df_past.columns else 0
-        df_past["Εκπτωμένα"] = df_past["discounted_pieces"] if "discounted_pieces" in df_past.columns else 0
-        df_past["Έκπτωση_%"] = df_past["discount_pct"] if "discount_pct" in df_past.columns else 0.0
-
-        df_unique_productions = df_past[["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"]].drop_duplicates()
-        
-        df_clean_customers = df_unique_productions.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
-            "Τεμάχια": "sum",
-            "Εκ_Στοκ": "max", # Το 'max' στα boolean (True/False) εξασφαλίζει ότι το True (1) κερδίζει το False (0)
-            "Δώρα": "first",
-            "Εκπτωμένα": "first",
-            "Έκπτωση_%": "first"
-        })
-        
         df_daily = df_clean_customers.copy()
-        
+
         # ─── ΕΚΤΥΠΩΣΗ 1: ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ ───
         html_pro = f"""<html><head><meta charset='UTF-8'><style>
             body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 20px; line-height: 1.5; }}
@@ -4020,7 +4045,6 @@ elif page == "📦 Lot Παραγωγής":
             actual_prod_date = p_df["Ημερομηνία"].iloc[0] if "Ημερομηνία" in p_df.columns else sel_hist_date
             html_pro += f"<div class='customer-section'><strong>👤 ΠΕΛΑΤΗΣ:</strong> {p} | <strong>ΗΜΕΡΟΜΗΝΙΑ ΠΑΡΑΓΩΓΗΣ:</strong> {actual_prod_date}</div><table><thead><tr><th>🍹 Έτοιμο Cocktail</th><th>🔢 LOT Προϊόντος</th><th>📦 Ποσότητα / Στοιχεία</th></tr></thead><tbody>"
             for _, row in p_df.iterrows(): 
-                # Οπτικός έλεγχος για το Στοκ - Αν η στήλη Εκ_Στοκ είναι True (ή 1), βάζει το σηματάκι
                 is_stock = bool(row.get('Εκ_Στοκ', False))
                 stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                 
@@ -4064,7 +4088,6 @@ elif page == "📦 Lot Παραγωγής":
             c_data = df_daily[df_daily["Cocktail"] == cock]
             html_daily += f"<h2 class='cocktail-header'>🍹 {cock}</h2><table><thead><tr><th>LOT Number</th><th>Πελάτης</th><th>Ποσότητα (τμχ) / Στοιχεία</th></tr></thead><tbody>"
             for _, row in c_data.iterrows(): 
-                # Οπτικός έλεγχος για το Στοκ
                 is_stock = bool(row.get('Εκ_Στοκ', False))
                 stock_html = " <span class='stock-badge'>📦 ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
                 
