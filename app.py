@@ -3954,7 +3954,7 @@ elif page == "📦 Lot Παραγωγής":
                         except Exception as save_err:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
 
-        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (ΠΛΗΡΩΣ ΑΝΕΞΑΡΤΗΤΕΣ - ΛΟΓΙΚΗ ΠΕΛΑΤΟΛΟΓΙΟΥ) ---
+        # --- 4. ΕΚΤΥΠΩΣΕΙΣ (Η ΑΠΟΛΥΤΗ ΛΥΣΗ ΓΙΑ ΤΟ ΣΤΟΚ ΚΑΙ ΤΙΣ ΕΚΠΤΩΣΕΙΣ) ---
         st.divider()
         st.markdown("### 🖨️ 4. Συγκεντρωτικές Εκτυπώσεις (Βάσει Φίλτρων Αναζήτησης)")
         
@@ -3969,44 +3969,43 @@ elif page == "📦 Lot Παραγωγής":
             try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
             except: return 0.0
 
-        # 🚀 ΛΥΣΗ "ΠΕΛΑΤΟΛΟΓΙΟ": Ρωτάμε τη βάση ΑΠΕΥΘΕΙΑΣ αγνοώντας τα φίλτρα των υλικών
-        query_print = supabase.table("production_log").select("customer, prod_date, prod_time, cocktail_name, lot_cocktail, pieces, is_from_stock, free_pieces, discounted_pieces, discount_pct").eq("prod_date", sel_hist_date)
-        if sel_customer != "-- Όλοι οι Πελάτες --":
-            query_print = query_print.eq("customer", sel_customer)
+        # 🚀 ΤΟ ΚΛΕΙΔΙ ΤΗΣ ΥΠΟΘΕΣΗΣ: Αναγνωρίζουμε ΚΑΙ τον νέο διακόπτη ΚΑΙ την παλιά λέξη "Έτοιμο Προϊόν"
+        def check_stock_smart(row):
+            # Έλεγχος 1: Η νέα στήλη is_from_stock
+            val = row.get("is_from_stock", False)
+            if val is True or val == 1: return True
+            if pd.notna(val) and str(val).strip().lower() in ['true', '1', 't', 'yes', '1.0']: return True
             
-        res_print = query_print.execute()
+            # Έλεγχος 2: Ο παλιός τρόπος (Αν το υλικό ονομάζεται Έτοιμο Προϊόν)
+            ing_en = str(row.get("ingredient_name", ""))
+            ing_gr = str(row.get("Υλικό", ""))
+            if "Έτοιμο Προϊόν" in ing_en or "Έτοιμο Προϊόν" in ing_gr: return True
+            
+            return False
+
+        # Εφαρμόζουμε τον έξυπνο έλεγχο πάνω στο df_past
+        df_past["Εκ_Στοκ"] = df_past.apply(check_stock_smart, axis=1)
+        df_past["Δώρα"] = df_past["free_pieces"] if "free_pieces" in df_past.columns else 0
+        df_past["Εκπτωμένα"] = df_past["discounted_pieces"] if "discounted_pieces" in df_past.columns else 0
+        df_past["Έκπτωση_%"] = df_past["discount_pct"] if "discount_pct" in df_past.columns else 0.0
+
+        # Βήμα 1: Ομαδοποιούμε ανά Παραγγελία (Ώρα) για να βγάλουμε τα διπλά υλικά με ασφάλεια
+        df_orders = df_past.groupby(["Πελάτης", "Ημερομηνία", "Ώρα", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
+            "Τεμάχια": "first", 
+            "Εκ_Στοκ": "max",   # Αν έστω και 1 γραμμή λέει Έτοιμο Προϊόν, όλη η παραγγελία γίνεται Στοκ!
+            "Δώρα": "first",
+            "Εκπτωμένα": "first",
+            "Έκπτωση_%": "first"
+        })
         
-        if res_print.data:
-            df_print = pd.DataFrame(res_print.data)
-            
-            # Απόλυτα ασφαλής μετατροπή του Στοκ
-            df_print["is_from_stock"] = df_print["is_from_stock"].apply(lambda x: True if str(x).strip().lower() in ['true', '1', 't', 'yes', '1.0'] else False)
-            
-            # Κρατάμε ΜΟΝΟ 1 γραμμή ανά παραγγελία (για να μην διπλομετράμε λόγω των πολλαπλών υλικών)
-            df_orders = df_print.drop_duplicates(subset=["customer", "prod_date", "prod_time", "cocktail_name", "lot_cocktail", "pieces"])
-            
-            # Ομαδοποιούμε πεντακάθαρα
-            df_daily = df_orders.groupby(["customer", "prod_date", "cocktail_name", "lot_cocktail"], as_index=False).agg({
-                "pieces": "sum",
-                "is_from_stock": "max",
-                "free_pieces": "first",
-                "discounted_pieces": "first",
-                "discount_pct": "first"
-            })
-            
-            df_daily.rename(columns={
-                "customer": "Πελάτης",
-                "prod_date": "Ημερομηνία",
-                "cocktail_name": "Cocktail",
-                "lot_cocktail": "LOT_Cocktail",
-                "pieces": "Τεμάχια",
-                "is_from_stock": "Εκ_Στοκ",
-                "free_pieces": "Δώρα",
-                "discounted_pieces": "Εκπτωμένα",
-                "discount_pct": "Έκπτωση_%"
-            }, inplace=True)
-        else:
-            df_daily = pd.DataFrame(columns=["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail", "Τεμάχια", "Εκ_Στοκ", "Δώρα", "Εκπτωμένα", "Έκπτωση_%"])
+        # Βήμα 2: Ομαδοποιούμε ανά Ημέρα (για να αθροίσουμε τυχόν πολλαπλές παραγγελίες της ίδιας μέρας)
+        df_daily = df_orders.groupby(["Πελάτης", "Ημερομηνία", "Cocktail", "LOT_Cocktail"], as_index=False).agg({
+            "Τεμάχια": "sum",
+            "Εκ_Στοκ": "max",
+            "Δώρα": "sum",
+            "Εκπτωμένα": "sum",
+            "Έκπτωση_%": "first"
+        })
 
         # ─── ΕΚΤΥΠΩΣΗ 1: ΗΜΕΡΗΣΙΑ ΠΑΡΑΓΩΓΗ ΑΝΑ ΠΕΛΑΤΗ ───
         html_pro = f"""<html><head><meta charset='UTF-8'><style>
@@ -4096,7 +4095,6 @@ elif page == "📦 Lot Παραγωγής":
         html_daily += f"<div class='grand-total'>{total_label_text}<br><b>{grand_total_pcs} Τεμάχια</b><span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span></div></body></html>"
         
         # ─── ΕΚΤΥΠΩΣΗ 3: ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ ───
-        # (Αυτή συνεχίζει να χρησιμοποιεί το df_past γιατί ΕΔΩ χρειαζόμαστε τα συστατικά!)
         if not df_past.empty and "Υλικό" in df_past.columns:
             df_prep = df_past.groupby("Υλικό").agg({
                 "Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum",
@@ -4130,7 +4128,6 @@ elif page == "📦 Lot Παραγωγής":
         col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
-    
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
