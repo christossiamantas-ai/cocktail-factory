@@ -4584,11 +4584,11 @@ elif page == "👥 Πελατολόγιο":
                     
                     st.divider()
                     
-                    st.markdown("**📜 Αναλυτικό Ιστορικό Παραγγελιών**")
-                    st.dataframe(
-                        df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
-                        use_container_width=True, hide_index=True
-                    )
+                    with st.expander("📜 Αναλυτικό Ιστορικό Παραγγελιών", expanded=False):
+                        st.dataframe(
+                            df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
+                            use_container_width=True, hide_index=True
+                        )
                 else:
                     st.info("Δεν βρέθηκε ιστορικό παραγωγής για αυτόν τον πελάτη.")
 
