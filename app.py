@@ -4266,68 +4266,67 @@ elif page == "📦 Lot Παραγωγής":
                 st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot. Το στοκ σας είναι ασφαλές!")
 
     # ==========================================
-    # TAB 3: ΚΑΝΟΝΙΚΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ (ΕΛΕΓΧΟΣ LOT COCKTAIL)
-    # ==========================================
-    with tab_forward:
-        st.markdown("#### 🔬 Έλεγχος Συγκεκριμένης Παρτίδας Cocktail")
-        st.write("Εισάγετε το **LOT του Έτοιμου Κοκτέιλ** ή την **Ημερομηνία Παραγωγής** για να δείτε ακριβώς από ποια υλικά φτιάχτηκε.")
-        
-        col_fw1, col_fw2 = st.columns(2)
-        search_fw_lot = col_fw1.text_input("🔍 Αναζήτηση με LOT Κοκτέιλ:", placeholder="π.χ. ZMB-1506", key="fw_lot_input")
-        search_fw_date = col_fw2.text_input("📅 Ή/και με Ημερομηνία Παραγωγής (DD/MM/YYYY):", placeholder="π.χ. 15/06/2026", key="fw_date_input")
-        
-        if search_fw_lot or search_fw_date:
-            with st.spinner("Ανάλυση παρτίδας στο Cloud..."):
-                # Χτίσιμο του Query στη βάση
-                query_fw = supabase.table("production_log").select("*")
-                if search_fw_lot:
-                    query_fw = query_fw.eq("lot_cocktail", search_fw_lot.strip())
-                if search_fw_date:
-                    query_fw = query_fw.eq("prod_date", search_fw_date.strip())
+        # TAB 3: ΑΛΥΣΙΔΩΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ ΠΑΡΤΙΔΑΣ (SUPER RECALL)
+        # ==========================================
+        with tab_forward:
+            st.markdown("#### 🔬 Έλεγχος Αναφοράς Πελάτη & Αλυσιδωτή Ιχνηλασιμότητα")
+            st.write("Καταχωρήστε το κοκτέιλ που ανέφερε ο πελάτης και την ημερομηνία/LOT του. Το σύστημα θα βρει τα υλικά του και θα σαρώσει **όλο το ιστορικό** για να δει ποια άλλα κοκτέιλ επηρεάζονται!")
+            
+            cocktails_in_log = sorted([c for c in df_trace['cocktail_name'].unique() if str(c).strip() not in ['nan', 'None', '']])
+            
+            col_fw1, col_fw2, col_fw3 = st.columns(3)
+            sel_fw_cocktail = col_fw1.selectbox("1. Ελαττωματικό Cocktail:", ["-- Επιλογή --"] + cocktails_in_log)
+            search_fw_date = col_fw2.text_input("2. Ημερομηνία (π.χ. 15/06/2026):", placeholder="DD/MM/YYYY")
+            search_fw_lot = col_fw3.text_input("3. Ή LOT (προαιρετικά):", placeholder="π.χ. ZMB-1506")
+            
+            if sel_fw_cocktail != "-- Επιλογή --" and (search_fw_date or search_fw_lot):
+                with st.spinner("Σάρωση αλυσίδας παραγωγής..."):
+                    # ΒΗΜΑ 1: Βρίσκουμε την προβληματική παρτίδα
+                    df_bad_batch = df_trace[df_trace['cocktail_name'] == sel_fw_cocktail]
+                    if search_fw_date:
+                        df_bad_batch = df_bad_batch[df_bad_batch['prod_date'] == search_fw_date.strip()]
+                    if search_fw_lot:
+                        df_bad_batch = df_bad_batch[df_bad_batch['lot_cocktail'] == search_fw_lot.strip()]
+                        
+                if not df_bad_batch.empty:
+                    # ΒΗΜΑ 2: Απομονώνουμε τα LOT των Πρώτων Υλών που μπήκαν σε αυτό το κοκτέιλ
+                    bad_ingredients = df_bad_batch[~df_bad_batch['Lot Number'].isin(['-', '', 'nan', 'None'])]
+                    bad_ing_lots = bad_ingredients['Lot Number'].unique().tolist()
                     
-                res_fw = query_fw.execute()
-                
-            if res_fw.data:
-                df_fw = pd.DataFrame(res_fw.data)
-                
-                # 1. Πληροφορίες Παρτίδας
-                cocktails_found = df_fw["cocktail_name"].unique()
-                st.success(f"✅ Βρέθηκαν δεδομένα παραγωγής για: **{', '.join(cocktails_found)}**")
-                
-                # 2. Τι υλικά μπήκαν μέσα (Ανάλυση Συνταγής & LOT Υλικών)
-                st.markdown("##### 🧪 Ακριβή Υλικά & LOT που καταναλώθηκαν στην παραγωγή:")
-                df_fw['total_ml'] = pd.to_numeric(df_fw['total_ml'], errors='coerce').fillna(0)
-                
-                # Ομαδοποίηση για να αθροίσουμε τα ml ανά υλικό και ανά LOT
-                df_ingredients = df_fw.groupby(["ingredient_name", "lot_number"], dropna=False).agg({
-                    "total_ml": "sum"
-                }).reset_index().rename(columns={
-                    "ingredient_name": "Πρώτη Ύλη", 
-                    "lot_number": "LOT Πρώτης Ύλης", 
-                    "total_ml": "Συνολική Κατανάλωση (ml)"
-                })
-                
-                # Καθαρισμός κενών για ωραία εμφάνιση
-                df_ingredients["LOT Πρώτης Ύλης"] = df_ingredients["LOT Πρώτης Ύλης"].fillna("-").replace("nan", "-").replace("", "-")
-                df_ingredients["Πρώτη Ύλη"] = df_ingredients["Πρώτη Ύλη"].fillna("Άγνωστο Υλικό")
-                
-                st.dataframe(df_ingredients, use_container_width=True, hide_index=True)
-                
-                # 3. Πού πήγε αυτή η παρτίδα (Διανομή)
-                st.markdown("##### 🚚 Πελάτες που παρέλαβαν αυτή την παρτίδα:")
-                df_fw['pieces'] = pd.to_numeric(df_fw['pieces'], errors='coerce').fillna(0)
-                df_distribution = df_fw.groupby(["customer", "prod_date", "cocktail_name", "lot_cocktail"]).agg({
-                    "pieces": "first"
-                }).reset_index().rename(columns={
-                    "customer": "👤 Πελάτης", 
-                    "prod_date": "📅 Ημερομηνία", 
-                    "cocktail_name": "🍹 Cocktail", 
-                    "lot_cocktail": "🔢 LOT Κοκτέιλ", 
-                    "pieces": "📦 Τεμάχια"
-                })
-                st.dataframe(df_distribution, use_container_width=True, hide_index=True)
-            else:
-                st.warning("⚠️ Δεν βρέθηκε καμία καταχωρημένη παραγωγή με αυτά τα στοιχεία.")
+                    st.success(f"✅ Βρέθηκε η παρτίδα του {sel_fw_cocktail}! Αναγνωρίστηκαν **{len(bad_ing_lots)}** μοναδικά LOT πρώτων υλών σε αυτήν.")
+                    
+                    with st.expander("🧪 Δείτε τα Ύποπτα Υλικά της παρτίδας", expanded=False):
+                        df_suspects = bad_ingredients.groupby(["ingredient_name", "Lot Number"]).agg({"total_ml": "sum"}).reset_index()
+                        df_suspects.columns = ["Πρώτη Ύλη", "LOT Ύλης", "ml που μπήκαν"]
+                        st.dataframe(df_suspects, use_container_width=True, hide_index=True)
+                    
+                    # ΒΗΜΑ 3: ΑΛΥΣΙΔΩΤΗ ΑΝΑΖΗΤΗΣΗ (Πού αλλού μπήκαν αυτά τα υλικά;)
+                    st.markdown("### 🚨 Ακτίνα Ζημιάς (Επηρεαζόμενες Παραγωγές)")
+                    if bad_ing_lots:
+                        df_blast_radius = df_trace[df_trace['Lot Number'].isin(bad_ing_lots)]
+                        
+                        # Φιλτράρουμε την αρχική μας αναζήτηση για να δούμε τα "άλλα" που επηρεάστηκαν
+                        df_blast_summary = df_blast_radius.groupby(["prod_date", "customer", "cocktail_name", "lot_cocktail"]).agg({
+                            "pieces": "first",
+                            "ingredient_name": lambda x: ", ".join(set(x)) # Δείχνει ποιο ύποπτο υλικό υπάρχει μέσα
+                        }).reset_index().rename(columns={
+                            "prod_date": "📅 Ημερομηνία", 
+                            "customer": "👤 Πελάτης", 
+                            "cocktail_name": "🍹 Cocktail", 
+                            "lot_cocktail": "🔢 LOT", 
+                            "pieces": "📦 Τμχ",
+                            "ingredient_name": "⚠️ Κοινό Ύποπτο Υλικό"
+                        })
+                        
+                        st.warning("⚠️ **ΠΡΟΣΟΧΗ:** Τα παρακάτω προϊόντα παρήχθησαν χρησιμοποιώντας τις ίδιες παρτίδες υλικών με το ελαττωματικό κοκτέιλ και πρέπει να ανακληθούν/ελεγχθούν!")
+                        st.dataframe(df_blast_summary, use_container_width=True, hide_index=True)
+                        
+                        affected_customers = df_blast_summary["👤 Πελάτης"].unique().tolist()
+                        st.error(f"📞 Πελάτες προς ενημέρωση: **{', '.join(affected_customers)}**")
+                    else:
+                        st.info("Δεν είχατε καταχωρήσει LOT πρώτων υλών σε εκείνη την παραγωγή, οπότε δεν μπορεί να γίνει αλυσιδωτή αναζήτηση.")
+                else:
+                    st.warning("⚠️ Δεν βρέθηκε παραγωγή για αυτό το κοκτέιλ τη συγκεκριμένη ημερομηνία/LOT.")
     
     # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ ---
     st.divider()
