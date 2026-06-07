@@ -4266,180 +4266,60 @@ elif page == "📦 Lot Παραγωγής":
                 st.success("✅ Καμία παραγωγή δεν βρέθηκε με αυτό το Lot. Το στοκ σας είναι ασφαλές!")
 
     # ==========================================
-        # TAB 3: ΑΛΥΣΙΔΩΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ ΠΑΡΤΙΔΑΣ (SUPER RECALL)
+        # TAB 3: ΑΛΥΣΙΔΩΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & ΔΙΑΣΤΑΥΡΩΣΗ (INTERSECTION ENGINE)
         # ==========================================
         with tab_forward:
-            st.markdown("#### 🔬 Έλεγχος Αναφοράς Πελάτη & Αλυσιδωτή Ιχνηλασιμότητα")
-            st.write("Καταχωρήστε το κοκτέιλ που ανέφερε ο πελάτης και την ημερομηνία/LOT του. Το σύστημα θα βρει τα υλικά του και θα σαρώσει **όλο το ιστορικό** για να δει ποια άλλα κοκτέιλ επηρεάζονται!")
+            st.markdown("#### 🔬 Έλεγχος & Διασταύρωση Παρτίδων")
             
-            with st.spinner("Φόρτωση δεδομένων ιχνηλασιμότητας..."):
-                res_trace = supabase.table("production_log").select("*").execute()
-                df_trace = pd.DataFrame(res_trace.data) if res_trace.data else pd.DataFrame()
-            
-            if not df_trace.empty:
-                # Καθαρισμός των LOT για να μην "σκάει" στα κενά
-                df_trace['Lot Number'] = df_trace.get('lot_number', df_trace.get('Lot Number', '')).fillna('-').astype(str).str.strip()
-                df_trace['lot_cocktail'] = df_trace.get('lot_cocktail', '').fillna('-').astype(str).str.strip()
-                
-                cocktails_in_log = sorted([c for c in df_trace['cocktail_name'].unique() if str(c).strip() not in ['nan', 'None', '']])
-                
-                col_fw1, col_fw2, col_fw3 = st.columns(3)
-                sel_fw_cocktail = col_fw1.selectbox("1. Ελαττωματικό Cocktail:", ["-- Επιλογή --"] + cocktails_in_log)
-                search_fw_date = col_fw2.text_input("2. Ημερομηνία (π.χ. 15/06/2026):", placeholder="DD/MM/YYYY")
-                search_fw_lot = col_fw3.text_input("3. Ή LOT (προαιρετικά):", placeholder="π.χ. ZMB-1506")
-                
-                if sel_fw_cocktail != "-- Επιλογή --" and (search_fw_date or search_fw_lot):
-                    with st.spinner("Σάρωση αλυσίδας παραγωγής..."):
-                        # ΒΗΜΑ 1: Βρίσκουμε την προβληματική παρτίδα
-                        df_bad_batch = df_trace[df_trace['cocktail_name'] == sel_fw_cocktail]
-                        if search_fw_date:
-                            df_bad_batch = df_bad_batch[df_bad_batch['prod_date'] == search_fw_date.strip()]
-                        if search_fw_lot:
-                            df_bad_batch = df_bad_batch[df_bad_batch['lot_cocktail'] == search_fw_lot.strip()]
-                            
-                    if not df_bad_batch.empty:
-                        # ΒΗΜΑ 2: Απομονώνουμε τα LOT των Πρώτων Υλών
-                        bad_ingredients = df_bad_batch[~df_bad_batch['Lot Number'].isin(['-', '', 'nan', 'None'])]
-                        bad_ing_lots = bad_ingredients['Lot Number'].unique().tolist()
-                        
-                        st.success(f"✅ Βρέθηκε η παρτίδα του {sel_fw_cocktail}! Αναγνωρίστηκαν **{len(bad_ing_lots)}** μοναδικά LOT πρώτων υλών σε αυτήν.")
-                        
-                        with st.expander("🧪 Δείτε τα Ύποπτα Υλικά της παρτίδας (Εργαστήριο)", expanded=False):
-                            df_suspects = bad_ingredients.groupby(["ingredient_name", "Lot Number"]).agg({"total_ml": "sum"}).reset_index()
-                            df_suspects.columns = ["Πρώτη Ύλη", "LOT Ύλης", "ml που μπήκαν"]
-                            st.dataframe(df_suspects, use_container_width=True, hide_index=True)
-                        
-                        # ΒΗΜΑ 3: ΑΛΥΣΙΔΩΤΗ ΑΝΑΖΗΤΗΣΗ 
-                        st.markdown("### 🚨 Ακτίνα Ζημιάς (Επηρεαζόμενες Παραγωγές)")
-                        if bad_ing_lots:
-                            df_blast_radius = df_trace[df_trace['Lot Number'].isin(bad_ing_lots)]
-                            
-                            df_blast_summary = df_blast_radius.groupby(["prod_date", "customer", "cocktail_name", "lot_cocktail"]).agg({
-                                "pieces": "first",
-                                "ingredient_name": lambda x: ", ".join(set(x)) 
-                            }).reset_index().rename(columns={
-                                "prod_date": "📅 Ημερομηνία", 
-                                "customer": "👤 Πελάτης", 
-                                "cocktail_name": "🍹 Cocktail", 
-                                "lot_cocktail": "🔢 LOT", 
-                                "pieces": "📦 Τμχ",
-                                "ingredient_name": "⚠️ Κοινό Ύποπτο Υλικό"
-                            })
-                            
-                            st.warning("⚠️ **ΠΡΟΣΟΧΗ:** Τα παρακάτω προϊόντα παρήχθησαν χρησιμοποιώντας τις ίδιες παρτίδες υλικών με το ελαττωματικό κοκτέιλ και πρέπει να ελεγχθούν!")
-                            st.dataframe(df_blast_summary, use_container_width=True, hide_index=True)
-                            
-                            # --- 🚀 ΔΗΜΙΟΥΡΓΙΑ ΕΚΤΥΠΩΣΗΣ ΕΠΙΚΟΙΝΩΝΙΑΣ (ΤΗΛΕΦΩΝΙΚΟΣ ΚΑΤΑΛΟΓΟΣ) ---
-                            st.divider()
-                            st.markdown("### 📞 Λίστα Επικοινωνίας & Ανάκλησης")
-                            
-                            # Τραβάμε τα τηλέφωνα από το Πελατολόγιο
-                            res_phones = supabase.table("customers").select("name, phone").execute()
-                            phone_dict = {c['name']: c.get('phone', 'Μη διαθέσιμο') for c in res_phones.data} if res_phones.data else {}
-                            
-                            try:
-                                now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
-                            except:
-                                now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-                                
-                            html_recall = f"""
-                            <!DOCTYPE html>
-                            <html lang="el">
-                            <head>
-                                <meta charset='UTF-8'>
-                                <title>Λίστα Ανάκλησης</title>
-                                <style>
-                                    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; background-color: #f9f9f9; }}
-                                    .header {{ text-align: center; border-bottom: 4px solid #d32f2f; padding-bottom: 15px; margin-bottom: 30px; }}
-                                    h1 {{ color: #d32f2f; margin: 0; text-transform: uppercase; font-size: 26px; }}
-                                    .meta-info {{ color: #555; font-size: 15px; margin-top: 10px; }}
-                                    .customer-card {{ background: white; border: 1px solid #ddd; padding: 20px; margin-bottom: 25px; border-radius: 8px; border-left: 6px solid #d32f2f; box-shadow: 0 2px 5px rgba(0,0,0,0.05); page-break-inside: avoid; }}
-                                    .cust-header {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }}
-                                    .cust-name {{ font-size: 20px; font-weight: bold; color: #1a1a1a; margin: 0; }}
-                                    .phone {{ font-size: 18px; color: #1976d2; font-weight: bold; background: #e3f2fd; padding: 5px 12px; border-radius: 20px; }}
-                                    table {{ width: 100%; border-collapse: collapse; }}
-                                    th, td {{ border: 1px solid #eee; padding: 10px; text-align: left; font-size: 14px; }}
-                                    th {{ background-color: #f8f9fa; color: #444; }}
-                                    .lot-badge {{ background: #d32f2f; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-family: monospace; letter-spacing: 1px; }}
-                                    .footer {{ text-align: center; color: #999; font-size: 12px; border-top: 1px solid #ccc; padding-top: 10px; margin-top: 40px; }}
-                                </style>
-                            </head>
-                            <body>
-                                <div class="header">
-                                    <h1>🚨 ΛΙΣΤΑ ΕΠΙΚΟΙΝΩΝΙΑΣ ΓΙΑ ΕΠΕΙΓΟΥΣΑ ΑΝΑΚΛΗΣΗ</h1>
-                                    <div class="meta-info">
-                                        <b>Πηγή Προβλήματος:</b> {sel_fw_cocktail} (Ημ: {search_fw_date or '-'} / LOT: {search_fw_lot or '-'})<br>
-                                        <b>Ημερομηνία Εξαγωγής Αναφοράς:</b> {now_str}
-                                    </div>
-                                </div>
-                            """
-                            
-                            # Ομαδοποίηση βάσει Πελάτη για να πάρουμε τηλέφωνα
-                            grouped_blast = df_blast_summary.groupby("👤 Πελάτης")
-                            
-                            for cust_name, group in grouped_blast:
-                                phone = phone_dict.get(cust_name, "Μη διαθέσιμο")
-                                
-                                html_recall += f"""
-                                <div class="customer-card">
-                                    <div class="cust-header">
-                                        <div class="cust-name">👤 {cust_name}</div>
-                                        <div class="phone">📞 {phone}</div>
-                                    </div>
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>Ημερομηνία Παραλαβής</th>
-                                                <th>Cocktail προς Έλεγχο</th>
-                                                <th>Ακριβές LOT</th>
-                                                <th>Ποσότητα</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                """
-                                for _, row in group.iterrows():
-                                    html_recall += f"""
-                                            <tr>
-                                                <td>{row['📅 Ημερομηνία']}</td>
-                                                <td><b>{row['🍹 Cocktail']}</b></td>
-                                                <td><span class="lot-badge">{row['🔢 LOT']}</span></td>
-                                                <td><b>{row['📦 Τμχ']} τμχ</b></td>
-                                            </tr>
-                                    """
-                                html_recall += """
-                                        </tbody>
-                                    </table>
-                                </div>
-                                """
-                                
-                            html_recall += """
-                                <div class="footer">
-                                    Η παρούσα αναφορά εξάγεται από το σύστημα ιχνηλασιμότητας CABCLUB.<br>
-                                    Παρακαλούμε καλέστε άμεσα τους παραπάνω πελάτες για απόσυρση των αναγραφόμενων παρτίδων.
-                                </div>
-                            </body>
-                            </html>
-                            """
-                            
-                            col_btn1, col_btn2 = st.columns([1, 2])
-                            with col_btn1:
-                                st.download_button(
-                                    label="🖨️ Λήψη Λίστας Επικοινωνίας (HTML)",
-                                    data=html_recall,
-                                    file_name=f"Recall_Action_Plan_{datetime.now().strftime('%d%m%Y')}.html",
-                                    mime="text/html",
-                                    type="primary",
-                                    use_container_width=True
-                                )
-                            with col_btn2:
-                                st.info("💡 Τυπώστε αυτή τη λίστα και δώστε τη σε αυτόν που θα κάνει τα τηλέφωνα. Περιέχει μόνο τα στοιχεία που χρειάζεται να διαβάσει στον πελάτη, χωρίς τις πρώτες ύλες.")
+            # Αρχικοποίηση session state για το multi-recall
+            if 'recall_stack' not in st.session_state:
+                st.session_state.recall_stack = []
 
-                        else:
-                            st.info("Δεν είχατε καταχωρήσει LOT πρώτων υλών σε εκείνη την παραγωγή, οπότε δεν μπορεί να γίνει αλυσιδωτή αναζήτηση.")
-                    else:
-                        st.warning("⚠️ Δεν βρέθηκε παραγωγή για αυτό το κοκτέιλ τη συγκεκριμένη ημερομηνία/LOT.")
-            else:
-                st.info("Δεν υπάρχουν δεδομένα παραγωγής στο σύστημα.")
+            # Φόρτωση δεδομένων
+            res_trace = supabase.table("production_log").select("*").execute()
+            df_trace = pd.DataFrame(res_trace.data) if res_trace.data else pd.DataFrame()
+            
+            # Επιλογή Κοκτέιλ για διασταύρωση
+            cocktails_in_log = sorted([c for c in df_trace['cocktail_name'].unique() if str(c).strip() not in ['nan', 'None', '']])
+            
+            c1, c2 = st.columns([2, 1])
+            sel_cocktail = c1.selectbox("Επιλογή ελαττωματικού κοκτέιλ:", ["--"] + cocktails_in_log, key="sel_c")
+            sel_date = c2.text_input("Ημερομηνία:", placeholder="DD/MM/YYYY")
+
+            if st.button("➕ Προσθήκη στην ανάλυση"):
+                # Εύρεση των υλικών αυτού του κοκτέιλ
+                match = df_trace[(df_trace['cocktail_name'] == sel_cocktail) & (df_trace['prod_date'] == sel_date)]
+                if not match.empty:
+                    # Κρατάμε τα LOT των υλικών
+                    lots = set(match['Lot Number'].unique()) - {'-', '', 'nan'}
+                    st.session_state.recall_stack.append({'cocktail': sel_cocktail, 'lots': lots})
+                else:
+                    st.error("Δεν βρέθηκε τέτοια παρτίδα!")
+
+            # Εμφάνιση stack ανάλυσης
+            if st.session_state.recall_stack:
+                st.write("---")
+                st.write("### 🔍 Ενεργή Ανάλυση Διασταύρωσης:")
+                for item in st.session_state.recall_stack:
+                    st.info(f"🍹 {item['cocktail']} | LOT Υλικών: {list(item['lots'])}")
+                
+                # Ο ΑΛΓΟΡΙΘΜΟΣ ΤΗΣ ΔΙΑΣΤΑΥΡΩΣΗΣ (Intersection)
+                # Παίρνουμε τα LOT του πρώτου κοκτέιλ και τα συγκρίνουμε με τα υπόλοιπα
+                common_lots = st.session_state.recall_stack[0]['lots']
+                for item in st.session_state.recall_stack[1:]:
+                    common_lots = common_lots.intersection(item['lots'])
+                
+                if common_lots:
+                    st.success(f"🎯 **ΥΠΟΠΤΟ ΥΛΙΚΟ ΕΝΤΟΠΙΣΤΗΚΕ!** Τα κοκτέιλ σας μοιράζονται τα εξής LOT υλικών: {common_lots}")
+                    # Φιλτράρισμα βάσει των κοινών LOT
+                    df_final_blast = df_trace[df_trace['Lot Number'].isin(common_lots)]
+                    st.dataframe(df_final_blast[["prod_date", "customer", "cocktail_name", "Lot Number"]].drop_duplicates(), use_container_width=True)
+                else:
+                    st.warning("⚠️ Δεν βρέθηκε κοινό υλικό που να συνδέει τα κοκτέιλ. Ίσως δεν φταίνε οι πρώτες ύλες, αλλά το ίδιο το κοκτέιλ!")
+
+                if st.button("🧹 Καθαρισμός ανάλυσης"):
+                    st.session_state.recall_stack = []
+                    st.rerun()
     
     # --- 6. ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΙΣΤΟΡΙΚΟΥ ---
     st.divider()
