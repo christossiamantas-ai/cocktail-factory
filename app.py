@@ -4289,12 +4289,17 @@ elif page == "📦 Lot Παραγωγής":
             if st.button("➕ Προσθήκη στην ανάλυση"):
                 # Εύρεση των υλικών αυτού του κοκτέιλ
                 match = df_trace[(df_trace['cocktail_name'] == sel_cocktail) & (df_trace['prod_date'] == sel_date)]
+                
                 if not match.empty:
+                    # 🚀 ΑΛΛΑΓΗ ΕΔΩ: Ψάχνουμε για 'lot_number' ή 'Lot Number'
+                    lot_col = 'lot_number' if 'lot_number' in match.columns else 'Lot Number'
+                    
                     # Κρατάμε τα LOT των υλικών
-                    lots = set(match['Lot Number'].unique()) - {'-', '', 'nan'}
+                    lots = set(match[lot_col].unique()) - {'-', '', 'nan', 'None'}
                     st.session_state.recall_stack.append({'cocktail': sel_cocktail, 'lots': lots})
+                    st.rerun() # Refresh για να εμφανιστεί το stack
                 else:
-                    st.error("Δεν βρέθηκε τέτοια παρτίδα!")
+                    st.error("Δεν βρέθηκε τέτοια παρτίδα! Ελέγξτε την ημερομηνία (πρέπει να είναι DD/MM/YYYY) και το όνομα του κοκτέιλ.")
 
             # Εμφάνιση stack ανάλυσης
             if st.session_state.recall_stack:
