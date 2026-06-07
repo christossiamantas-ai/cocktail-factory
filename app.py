@@ -4301,24 +4301,28 @@ elif page == "📦 Lot Παραγωγής":
                 else:
                     st.error("Δεν βρέθηκε τέτοια παρτίδα! Ελέγξτε την ημερομηνία (πρέπει να είναι DD/MM/YYYY) και το όνομα του κοκτέιλ.")
 
-            # Εμφάνιση stack ανάλυσης
-            if st.session_state.recall_stack:
-                st.write("---")
-                st.write("### 🔍 Ενεργή Ανάλυση Διασταύρωσης:")
+            # Εμφάνιση των επιλεγμένων κοκτέιλ
                 for item in st.session_state.recall_stack:
                     st.info(f"🍹 {item['cocktail']} | LOT Υλικών: {list(item['lots'])}")
                 
-                # Ο ΑΛΓΟΡΙΘΜΟΣ ΤΗΣ ΔΙΑΣΤΑΥΡΩΣΗΣ (Intersection)
-                # Παίρνουμε τα LOT του πρώτου κοκτέιλ και τα συγκρίνουμε με τα υπόλοιπα
-                common_lots = st.session_state.recall_stack[0]['lots']
-                for item in st.session_state.recall_stack[1:]:
-                    common_lots = common_lots.intersection(item['lots'])
-                
-                if common_lots:
-                    st.success(f"🎯 **ΥΠΟΠΤΟ ΥΛΙΚΟ ΕΝΤΟΠΙΣΤΗΚΕ!** Τα κοκτέιλ σας μοιράζονται τα εξής LOT υλικών: {common_lots}")
-                    # Φιλτράρισμα βάσει των κοινών LOT
-                    df_final_blast = df_trace[df_trace['Lot Number'].isin(common_lots)]
+                # ΛΟΓΙΚΗ: Αν έχουμε 1, δείχνουμε τα πάντα. Αν έχουμε 2+, κάνουμε διασταύρωση.
+                if len(st.session_state.recall_stack) == 1:
+                    st.write("### 🧪 Αναλυτικά Υλικά Παρτίδας")
+                    df_final_blast = df_trace[df_trace['Lot Number'].isin(st.session_state.recall_stack[0]['lots'])]
                     st.dataframe(df_final_blast[["prod_date", "customer", "cocktail_name", "Lot Number"]].drop_duplicates(), use_container_width=True)
+                
+                else:
+                    # ΕΔΩ ΓΙΝΕΤΑΙ Η ΔΙΑΣΤΑΥΡΩΣΗ (Intersection)
+                    common_lots = st.session_state.recall_stack[0]['lots']
+                    for item in st.session_state.recall_stack[1:]:
+                        common_lots = common_lots.intersection(item['lots'])
+                    
+                    if common_lots:
+                        st.success(f"🎯 **ΒΡΕΘΗΚΕ ΤΟ ΚΟΙΝΟ ΥΛΙΚΟ!** Τα κοκτέιλ μοιράζονται αυτά τα LOT: {common_lots}")
+                        df_final_blast = df_trace[df_trace['Lot Number'].isin(common_lots)]
+                        st.dataframe(df_final_blast[["prod_date", "customer", "cocktail_name", "Lot Number"]].drop_duplicates(), use_container_width=True)
+                    else:
+                        st.error("⚠️ Κανένα κοινό υλικό! Τα κοκτέιλ αυτά δεν συνδέονται μεταξύ τους.")
                 else:
                     st.warning("⚠️ Δεν βρέθηκε κοινό υλικό που να συνδέει τα κοκτέιλ. Ίσως δεν φταίνε οι πρώτες ύλες, αλλά το ίδιο το κοκτέιλ!")
 
