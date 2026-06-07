@@ -825,12 +825,15 @@ elif page == "📊 Διαχείριση":
 
                     if submitted:
                         try:
-                            # ΔΙΟΡΘΩΣΗ 1: Χρησιμοποιούμε το rec_row (και το rec_id)
                             current_version = int(rec_row.get("version", 1)) if "version" in rec_row else 1
                             
-                            # 2. ΑΡΧΕΙΟΘΕΤΗΣΗ ΠΑΛΙΑΣ
+                            # 🚀 ΛΥΣΗ ΣΦΑΛΜΑΤΟΣ: Αλλάζουμε το όνομα της παλιάς συνταγής για να "ελευθερωθεί" το κανονικό όνομα!
+                            old_safe_name = f"{rec_row['name']}_OLD_v{current_version}_{rec_id}"
+                            
+                            # 2. ΑΡΧΕΙΟΘΕΤΗΣΗ ΠΑΛΙΑΣ ΚΑΙ ΜΕΤΟΝΟΜΑΣΙΑ
                             supabase.table("recipes").update({
-                                "is_active": False
+                                "is_active": False,
+                                "name": old_safe_name  # <--- Η ΜΑΓΙΚΗ ΛΥΣΗ
                             }).eq("id", rec_id).execute()
                             
                             # 3. ΔΗΜΙΟΥΡΓΙΑ ΝΕΑΣ ΕΚΔΟΣΗΣ
@@ -846,9 +849,7 @@ elif page == "📊 Διαχείριση":
                             
                             # 4. ΑΠΟΘΗΚΕΥΣΗ ΝΕΩΝ ΥΛΙΚΩΝ
                             items_to_insert = []
-                            # ΔΙΟΡΘΩΣΗ 2: Χρησιμοποιούμε το new_ingredients_list που γεμίσαμε μόλις!
                             for item in new_ingredients_list:
-                                # ΔΙΟΡΘΩΣΗ 3: Αποθηκεύουμε ΜΟΝΟ αν το υλικό δεν είναι "ΚΕΝΟ" και τα ml είναι > 0
                                 if item["name"] != "ΚΕΝΟ" and float(item["ml"]) > 0:
                                     items_to_insert.append({
                                         "recipe_id": new_recipe_id,
