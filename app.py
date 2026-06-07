@@ -6271,6 +6271,7 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
                 except: return 0.0
 
             test_results = []
+            grand_total_g = 0.0  # 🚀 ΝΕΟ: Μεταβλητή για το συνολικό βάρος
             
             for i in range(1, 14):
                 ing_name = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
@@ -6299,6 +6300,8 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
                         "Βάρος (g)": total_g,
                         "Φιάλες": total_bottles
                     })
+                    
+                    grand_total_g += total_g  # 🚀 ΝΕΟ: Προσθήκη στο γενικό σύνολο
             
             if test_results:
                 df_results = pd.DataFrame(test_results)
@@ -6314,71 +6317,5 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
                     use_container_width=True
                 )
                 
-                # 2. ΔΗΜΙΟΥΡΓΙΑ HTML ΕΚΤΥΠΩΣΗΣ
-                html_content = f"""
-                <!DOCTYPE html>
-                <html lang="el">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Δοκιμαστική Παραγωγή - {sel_cocktail}</title>
-                    <style>
-                        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; }}
-                        .container {{ max-width: 800px; margin: auto; border: 1px solid #ddd; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }}
-                        .header {{ text-align: center; border-bottom: 3px solid #009b3a; padding-bottom: 15px; margin-bottom: 30px; }}
-                        h1 {{ color: #009b3a; margin: 0; font-size: 26px; }}
-                        p {{ font-size: 16px; color: #555; }}
-                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
-                        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: center; }}
-                        th {{ background-color: #f8f9fa; color: #333; font-weight: bold; }}
-                        .ing-name {{ text-align: left; font-weight: bold; font-size: 15px; }}
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="header">
-                            <h1>🧪 Φύλλο Δοκιμαστικής Παραγωγής</h1>
-                            <p><b>Κοκτέιλ:</b> {sel_cocktail} &nbsp;|&nbsp; <b>Τεμάχια (Στόχος):</b> {sel_pcs} τμχ</p>
-                        </div>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th class="ing-name">Πρώτη Ύλη</th>
-                                    <th>Απαιτούμενα (ml)</th>
-                                    <th>Βάρος Ζύγισης (g)</th>
-                                    <th>Εκτιμώμενες Φιάλες</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                """
-                
-                for row in test_results:
-                    html_content += f"""
-                                <tr>
-                                    <td class="ing-name">{row['Πρώτη Ύλη']}</td>
-                                    <td>{row['Απαιτούμενα (ml)']:.1f}</td>
-                                    <td>{row['Βάρος (g)']:.1f}</td>
-                                    <td>{row['Φιάλες']:.2f}</td>
-                                </tr>
-                    """
-                    
-                html_content += """
-                            </tbody>
-                        </table>
-                        <p style="text-align:center; font-size:11px; color:#999; margin-top: 30px;">Εκτύπωση από το B2B Σύστημα Παραγωγής - Μη Δεσμευτικό Έγγραφο</p>
-                    </div>
-                </body>
-                </html>
-                """
-                
-                st.write("")
-                st.download_button(
-                    label="🖨️ Λήψη Φύλλου Δοκιμής (HTML)",
-                    data=html_content,
-                    file_name=f"Test_Production_{sel_cocktail.replace(' ', '_')}.html",
-                    mime="text/html",
-                    type="primary"
-                )
-            else:
-                st.warning("Το κοκτέιλ δεν περιέχει καταχωρημένα συστατικά.")
-    else:
-        st.info("Παρακαλώ περιμένετε να φορτώσουν τα δεδομένα ή ελέγξτε αν υπάρχουν καταχωρημένες συνταγές.")
+                # 🚀 ΝΕΟ: Εμφάνιση του τελικού συνόλου κάτω από τον πίνακα στην οθόνη
+                st.success(f"⚖️ **ΓΕΝΙΚΟ ΣΥΝΟΛΟ ΖΥΓΙΣΗΣ:** {grand_total_g:.1f} γραμμάρια")
