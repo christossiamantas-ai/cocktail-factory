@@ -4276,13 +4276,13 @@ elif page == "📦 Lot Παραγωγής":
             if 'recall_stack' not in st.session_state:
                 st.session_state.recall_stack = []
 
-            # 🚀 Φόρτωση Δεδομένων
+            # Φόρτωση Δεδομένων
             with st.spinner("Φόρτωση δεδομένων ιχνηλασιμότητας..."):
                 res_trace = supabase.table("production_log").select("*").execute()
                 df_trace = pd.DataFrame(res_trace.data) if res_trace.data else pd.DataFrame()
             
             if not df_trace.empty:
-                # 🚀 ΔΙΟΡΘΩΣΗ ΣΦΑΛΜΑΤΟΣ: Ομαλοποίηση ονομάτων στηλών για το Lot Number
+                # ΔΙΟΡΘΩΣΗ ΣΦΑΛΜΑΤΟΣ: Ομαλοποίηση ονομάτων στηλών για το Lot Number
                 if 'lot_number' in df_trace.columns and 'Lot Number' not in df_trace.columns:
                     df_trace = df_trace.rename(columns={'lot_number': 'Lot Number'})
                 
@@ -4338,7 +4338,7 @@ elif page == "📦 Lot Παραγωγής":
                     
                     st.write("---")
                     
-                    # 🚀 Ο ΑΛΓΟΡΙΘΜΟΣ ΤΗΣ ΔΙΑΣΤΑΥΡΩΣΗΣ
+                    # Ο ΑΛΓΟΡΙΘΜΟΣ ΤΗΣ ΔΙΑΣΤΑΥΡΩΣΗΣ
                     target_lots = set()
                     
                     if len(st.session_state.recall_stack) == 1:
@@ -4352,11 +4352,24 @@ elif page == "📦 Lot Παραγωγής":
                             target_lots = target_lots.intersection(item['lots'])
                         
                         if target_lots:
-                            st.success(f"**ΒΡΕΘΗΚΕ ΤΟ ΚΟΙΝΟ ΥΛΙΚΟ!** Τα κοκτέιλ μοιράζονται αποκλειστικά αυτά τα LOT: {target_lots}")
+                            # 🚀 -------------------------------------------------------------
+                            # 🚀 ΝΕΟ: ΑΝΙΧΝΕΥΣΗ ΟΝΟΜΑΤΟΣ ΠΡΩΤΗΣ ΥΛΗΣ ΑΠΟ ΤΟ ΚΟΙΝΟ LOT
+                            # 🚀 -------------------------------------------------------------
+                            df_matched_ingredients = df_trace[df_trace['Lot Number'].isin(target_lots)]
+                            ing_lot_pairs = []
+                            for lot in target_lots:
+                                # Βρίσκουμε ποια ονόματα υλικών έχουν αυτό το LOT
+                                ing_names = df_matched_ingredients[df_matched_ingredients['Lot Number'] == lot]['ingredient_name'].unique().tolist()
+                                ing_names_str = ", ".join(ing_names)
+                                ing_lot_pairs.append(f"💥 **{ing_names_str}** (LOT: `{lot}`)")
+                            
+                            common_ing_text = " και ".join(ing_lot_pairs)
+                            st.success(f"🎯 **Ο ΕΝΟΧΟΣ ΒΡΕΘΗΚΕ!** Τα κοκτέιλ μοιράζονται το εξής προβληματικό ποτό: {common_ing_text}")
+                            # -------------------------------------------------------------
                         else:
-                            st.error("⚠️ Κανένα κοινό υλικό! Τα κοκτέιλ αυτά δεν συνδέονται μέσω των πρώτων υλών. Το πρόβλημα ίσως βρίσκεται αλλού.")
+                            st.error("⚠️ Κανένα κοινό υλικό στα LOT! Τα κοκτέιλ αυτά δεν συνδέονται μέσω των πρώτων υλών. Το πρόβλημα ίσως βρίσκεται αλλού.")
 
-                    # 🚀 ΕΜΦΑΝΙΣΗ ΑΠΟΤΕΛΕΣΜΑΤΩΝ & ΛΙΣΤΑΣ ΠΕΛΑΤΩΝ
+                    # ΕΜΦΑΝΙΣΗ ΑΠΟΤΕΛΕΣΜΑΤΩΝ & ΛΙΣΤΑΣ ΠΕΛΑΤΩΝ
                     if target_lots:
                         df_blast_radius = df_trace[df_trace['Lot Number'].isin(target_lots)]
                         
@@ -4378,11 +4391,10 @@ elif page == "📦 Lot Παραγωγής":
                         affected_customers = df_blast_summary["👤 Πελάτης"].unique().tolist()
                         st.error(f"📞 Πελάτες προς ενημέρωση: **{', '.join(affected_customers)}**")
                         
-                        # --- 🚀 ΔΗΜΙΟΥΡΓΙΑ ΕΚΤΥΠΩΣΗΣ ΕΠΙΚΟΙΝΩΝΙΑΣ ---
+                        # --- ΔΗΜΙΟΥΡΓΙΑ ΕΚΤΥΠΩΣΗΣ ΕΠΙΚΟΙΝΩΝΙΑΣ ---
                         st.divider()
                         st.markdown("### 📞 Λίστα Επικοινωνίας & Ανάκλησης")
                         
-                        # Τραβάμε τα τηλέφωνα από το Πελατολόγιο
                         res_phones = supabase.table("customers").select("name, phone").execute()
                         phone_dict = {c['name']: c.get('phone', 'Μη διαθέσιμο') for c in res_phones.data} if res_phones.data else {}
                         
