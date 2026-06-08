@@ -3565,7 +3565,21 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
-                        sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", split_options)
+                        # 🚀 ΝΕΑ ΠΡΟΣΘΗΚΗ: Χρονολογική ταξινόμηση της λίστας προς σπάσιμο
+                        import pandas as pd
+                        def sort_orders_by_date(option_text):
+                            if option_text == "-- Επιλέξτε Παραγγελία --":
+                                return pd.to_datetime("2100-01-01") # Κρατάει το placeholder πάντα πρώτο
+                            try:
+                                date_str = option_text.split("|")[0].replace("📅", "").strip()
+                                return pd.to_datetime(date_str, format="%d/%m/%Y")
+                            except:
+                                return pd.to_datetime("1900-01-01")
+                                
+                        sorted_split_options = sorted(split_options, key=sort_orders_by_date, reverse=True)
+
+                        # Τώρα το selectbox διαβάζει την ταξινομημένη λίστα!
+                        sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
                             orig_pcs = split_map[sel_split]["total_pcs"]
