@@ -3571,19 +3571,29 @@ elif page == "📦 Lot Παραγωγής":
                             orig_pcs = split_map[sel_split]["total_pcs"]
                             b_cocktail_selected = split_map[sel_split]["cocktail"]
                             
-                            # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε και τα πεδία ελέγχου χωρίς αυστηρό φίλτρο στη βάση για να μη χάνουμε τα παλιά NULL
-                            hist_lots_res = supabase.table("production_log").select("lot_cocktail, is_from_stock, ingredient_name").eq("cocktail_name", b_cocktail_selected).execute()
+                            # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε ΚΑΙ το prod_date για να κάνουμε σωστή χρονολογική ταξινόμηση
+                            hist_lots_res = supabase.table("production_log").select("lot_cocktail, is_from_stock, ingredient_name, prod_date").eq("cocktail_name", b_cocktail_selected).execute()
                             hist_lots = []
                             
                             if hist_lots_res.data:
-                                # 🚀 Φιλτράρουμε έξυπνα μέσω Python για να εμφανιστούν όλες οι παλιές παραγωγές
-                                valid_lots = [
-                                    r["lot_cocktail"] for r in hist_lots_res.data
-                                    if str(r.get("is_from_stock", "False")).lower() != "true"
-                                    and "Έτοιμο Προϊόν" not in str(r.get("ingredient_name", ""))
-                                    and r.get("lot_cocktail") and r.get("lot_cocktail") != "-"
+                                import pandas as pd
+                                df_hlots = pd.DataFrame(hist_lots_res.data)
+                                
+                                # Φιλτράρουμε τα άκυρα/Στοκ για να κρατήσουμε μόνο καθαρές παραγωγές
+                                df_hlots = df_hlots[
+                                    (df_hlots['is_from_stock'].astype(str).str.lower() != 'true') &
+                                    (~df_hlots['ingredient_name'].astype(str).str.contains('Έτοιμο Προϊόν', na=False)) &
+                                    (df_hlots['lot_cocktail'].notna()) &
+                                    (df_hlots['lot_cocktail'] != '-') &
+                                    (df_hlots['lot_cocktail'] != '')
                                 ]
-                                hist_lots = sorted(list(set(valid_lots)), reverse=True)
+                                
+                                # Μετατροπή σε αληθινή ημερομηνία και ταξινόμηση (Πιο πρόσφατα πρώτα)
+                                df_hlots['sort_date'] = pd.to_datetime(df_hlots['prod_date'], format='%d/%m/%Y', errors='coerce')
+                                df_hlots = df_hlots.sort_values(by='sort_date', ascending=False)
+                                
+                                # Εξαγωγή καθαρής λίστας διατηρώντας την τέλεια χρονολογική σειρά!
+                                hist_lots = df_hlots['lot_cocktail'].drop_duplicates().tolist()
                             
                             c_s1, c_s2, c_s3, c_s4 = st.columns([1.5, 1.5, 1, 1.5])
                             stock_found = c_s1.number_input("Πόσα τμχ βρήκατε σε Στοκ;", min_value=1, max_value=orig_pcs-1, value=1, step=1)
