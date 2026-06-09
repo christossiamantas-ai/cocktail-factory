@@ -3623,7 +3623,13 @@ elif page == "📦 Lot Παραγωγής":
                             c_s4.info(f"Νέα Παραγ.: **{remain_pcs} τμχ**\nΑπό Στοκ: **{stock_found} τμχ**")
                             
                             if st.button("✂️ Εκτέλεση Σπασίματος", type="primary"):
-                                if old_stock_lot and old_stock_lot != "-- Επιλέξτε LOT --" and old_stock_lot.strip():
+                                
+                                # 🚀 ΤΟ "ΜΠΛΟΚΟ" ΑΣΦΑΛΕΙΑΣ: Ελέγχει αν έχει ήδη σπάσει
+                                if split_map[sel_split].get("is_from_stock") == True or str(split_map[sel_split].get("is_from_stock")).lower() == "true":
+                                    st.error("🚫 Προσοχή! Αυτή η παραγγελία έχει ήδη υποστεί σπάσιμο (περιέχει στοκ). Δεν επιτρέπεται δεύτερο σπάσιμο! Για αλλαγές, διαγράψτε την αρχική εγγραφή από το Ιστορικό και καταχωρήστε την ξανά.")
+                                
+                                # Αν όλα είναι καλά, προχωράει κανονικά στο σπάσιμο
+                                elif old_stock_lot and old_stock_lot != "-- Επιλέξτε LOT --" and old_stock_lot.strip():
                                     with st.spinner("Γίνεται σπάσιμο παραγγελίας..."):
                                         try:
                                             b_date = split_map[sel_split]["date"]
@@ -3631,6 +3637,8 @@ elif page == "📦 Lot Παραγωγής":
                                             b_time = split_map[sel_split]["time"]
                                             b_cocktail = split_map[sel_split]["cocktail"]
                                             b_lot = split_map[sel_split]["old_lot"]
+                                            
+                                            # ... (από εδώ και κάτω συνεχίζει ο δικός σου κώδικας αποθήκευσης στη βάση) ...
                                             
                                             # 🚀 Η ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Αν το LOT του στοκ είναι ολόιδιο με της νέας παραγωγής, 
                                             # του κολλάμε ένα "-S" για να τα ξεχωρίζει η Python!
