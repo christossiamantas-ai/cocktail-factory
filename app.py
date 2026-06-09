@@ -3624,21 +3624,32 @@ elif page == "📦 Lot Παραγωγής":
                             
                             if st.button("✂️ Εκτέλεση Σπασίματος", type="primary"):
                                 
-                                # 🚀 ΤΟ "ΜΠΛΟΚΟ" ΑΣΦΑΛΕΙΑΣ: Ελέγχει αν έχει ήδη σπάσει
-                                if split_map[sel_split].get("is_from_stock") == True or str(split_map[sel_split].get("is_from_stock")).lower() == "true":
-                                    st.error("🚫 Προσοχή! Αυτή η παραγγελία έχει ήδη υποστεί σπάσιμο (περιέχει στοκ). Δεν επιτρέπεται δεύτερο σπάσιμο! Για αλλαγές, διαγράψτε την αρχική εγγραφή από το Ιστορικό και καταχωρήστε την ξανά.")
+                                # Τραβάμε πρώτα τα βασικά δεδομένα για να ρωτήσουμε τη βάση
+                                b_date = split_map[sel_split]["date"]
+                                b_cust = split_map[sel_split]["cust"]
+                                b_cocktail = split_map[sel_split]["cocktail"]
                                 
-                                # Αν όλα είναι καλά, προχωράει κανονικά στο σπάσιμο
+                                # 🚀 100% ΣΙΓΟΥΡΟ ΜΠΛΟΚΟ: Ρωτάμε απευθείας τη Supabase!
+                                check_res = supabase.table("production_log").select("is_from_stock, ingredient_name").eq("prod_date", b_date).eq("customer", b_cust).eq("cocktail_name", b_cocktail).execute()
+                                
+                                already_split = False
+                                if check_res.data:
+                                    for row in check_res.data:
+                                        # Αν βρει έστω και μία γραμμή με is_from_stock = True Ή με όνομα "Έτοιμο Προϊόν"
+                                        if str(row.get("is_from_stock")).lower() == "true" or "Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")):
+                                            already_split = True
+                                            break
+                                
+                                # ΕΛΕΓΧΟΣ 1: Έχει ήδη σπάσει;
+                                if already_split:
+                                    st.error("🚫 Προσοχή! Αυτή η παραγγελία έχει ήδη υποστεί σπάσιμο (περιέχει έτοιμο στοκ). Δεν επιτρέπεται δεύτερο σπάσιμο! Για αλλαγές, διαγράψτε την αρχική εγγραφή από το Ιστορικό και καταχωρήστε την ξανά.")
+                                
+                                # ΕΛΕΓΧΟΣ 2: Αν δεν έχει σπάσει, έχουμε επιλέξει LOT;
                                 elif old_stock_lot and old_stock_lot != "-- Επιλέξτε LOT --" and old_stock_lot.strip():
                                     with st.spinner("Γίνεται σπάσιμο παραγγελίας..."):
                                         try:
-                                            b_date = split_map[sel_split]["date"]
-                                            b_cust = split_map[sel_split]["cust"]
                                             b_time = split_map[sel_split]["time"]
-                                            b_cocktail = split_map[sel_split]["cocktail"]
                                             b_lot = split_map[sel_split]["old_lot"]
-                                            
-                                            # ... (από εδώ και κάτω συνεχίζει ο δικός σου κώδικας αποθήκευσης στη βάση) ...
                                             
                                             # 🚀 Η ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Αν το LOT του στοκ είναι ολόιδιο με της νέας παραγωγής, 
                                             # του κολλάμε ένα "-S" για να τα ξεχωρίζει η Python!
@@ -3658,7 +3669,7 @@ elif page == "📦 Lot Παραγωγής":
                                                         "total_ml": round(new_ml, 2),
                                                         "target_g": round(new_g, 2)
                                                     }).eq("id", row["id"]).execute()
-                                                    
+                                                
                                                 first_row = res_orig.data[0]
                                                 final_stock_cost = float(first_row["unit_cost"]) if charge_stock_cost else 0.0
                                                 
