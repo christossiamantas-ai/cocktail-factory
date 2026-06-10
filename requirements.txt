@@ -10,3 +10,4 @@ WooCommerce
 fpdf2
 pytz
 matplotlib
+caldav
