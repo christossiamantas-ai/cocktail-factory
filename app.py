@@ -6612,6 +6612,7 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
         import pandas as pd
         df_fin = pd.DataFrame(res_fin.data) if res_fin.data else pd.DataFrame()
 
+    # ⚠️ ΕΔΩ ΗΤΑΝ ΤΟ ΛΑΘΟΣ! Τώρα η γραμμή έχει 4 κενά και "κλειδώνει" μέσα στο αρχικό if
     if not df_fin.empty:
         df_fin['pieces'] = pd.to_numeric(df_fin['pieces'], errors='coerce').fillna(0)
         df_fin['applied_cost'] = pd.to_numeric(df_fin['applied_cost'], errors='coerce').fillna(0)
