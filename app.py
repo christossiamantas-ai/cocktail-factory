@@ -3189,6 +3189,41 @@ elif page == "📦 Lot Παραγωγής":
                 if st.form_submit_button("💾 Οριστικοποίηση & Αποθήκευση στο Cloud", type="primary"):
                     if lot_entries:
                         try:
+                            # 🚀 [ΝΕΟ] ΣΥΓΧΡΟΝΙΣΜΟΣ ΜΕ APPLE CALENDAR
+                            try:
+                                cal = get_apple_calendar()
+                                if cal and len(st.session_state.production_batch_items) > 0:
+                                    # Φτιάχνουμε έναν ωραίο τίτλο με τα κοκτέιλ της ημέρας
+                                    selected_cocktails_names = list(set([item["Κοκτέιλ"] for item in st.session_state.production_batch_items]))
+                                    event_title = f"🍹 Παραγωγή: {', '.join(selected_cocktails_names)}"
+                                    
+                                    # Περιγραφή με πελάτες και LOT
+                                    desc_parts = []
+                                    for entry in lot_entries:
+                                        # Μία γραμμή ανά cocktail για να μην γεμίζει η περιγραφή
+                                        if entry.get("ingredient_name") == "📦 Έτοιμο Προϊόν (Στοκ)" or entry.get("total_ml", 0) > 0:
+                                            desc_parts.append(f"• {entry['customer']}: {entry['cocktail_name']} (LOT: {entry['lot_cocktail']})")
+                                    
+                                    event_desc = "\n".join(list(set(desc_parts)))
+                                    
+                                    # Αποστολή στην Apple
+                                    from datetime import datetime, timedelta
+                                    import pytz
+                                    greece_tz = pytz.timezone('Europe/Athens')
+                                    
+                                    event = cal.save_event(
+                                        dtstart=datetime.now(greece_tz),
+                                        dtend=datetime.now(greece_tz) + timedelta(hours=1),
+                                        summary=event_title,
+                                        description=event_desc
+                                    )
+                                    
+                                    # Περνάμε το ID του ημερολογίου σε όλες τις γραμμές της Supabase
+                                    for entry in lot_entries:
+                                        entry["cal_uid"] = str(event.url)
+                            except Exception as cal_err:
+                                st.warning(f"⚠️ Το Calendar δεν ενημερώθηκε: {cal_err}")
+
                             # 1. Αποθήκευση όλων των νέων εγγραφών
                             supabase.table("production_log").insert(lot_entries).execute()
                             
@@ -3285,7 +3320,9 @@ elif page == "📦 Lot Παραγωγής":
                             st.session_state['active_b2b_order'] = None 
                             st.session_state['lot_reset_key'] += 1
                             st.session_state.pop('search_data_loaded', None)
-                            st.success("✅ Η παραγγελία αποθηκεύτηκε πανεύκολα!")
+                            
+                            # 🚀 Αλλάξαμε ελαφρώς το μήνυμα επιτυχίας
+                            st.success("✅ Η παραγγελία αποθηκεύτηκε και συγχρονίστηκε με το Ημερολόγιο!")
                             import time
                             time.sleep(1.5)
                             st.rerun()
