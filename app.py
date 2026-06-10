@@ -24,8 +24,8 @@ supabase: Client = create_client(url, key)
 # --- ΣΥΝΔΕΣΗ ΜΕ APPLE CALENDAR (iCLOUD) ---
 import caldav
 
-APPLE_USER = christos.siamantas@hotmail.com
-APPLE_PASSWORD = nqlt-Incp-qrjs-Imzx  # Ο κωδικός μορφής xxxx-xxxx-xxxx-xxxx
+APPLE_USER = "christos.siamantas@hotmail.com"
+APPLE_PASSWORD = "nqlt-Incp-qrjs-Imzx"  # Ο κωδικός μορφής xxxx-xxxx-xxxx-xxxx
 CALENDAR_URL = "https://caldav.icloud.com"
 
 def get_apple_calendar():
