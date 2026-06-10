@@ -33,7 +33,7 @@ def get_apple_calendar():
         client = caldav.DAVClient(url=CALENDAR_URL, username=APPLE_USER, password=APPLE_PASSWORD)
         calendars = client.principal().calendars()
         for cal in calendars:
-            if cal.name == "Παραγωγή":
+            if cal.name == "CabClub":
                 return cal
         if len(calendars) > 0:
             return calendars[0]
