@@ -6597,3 +6597,142 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
                 st.warning("Το κοκτέιλ δεν περιέχει καταχωρημένα συστατικά.")
     else:
         st.info("Παρακαλώ περιμένετε να φορτώσουν τα δεδομένα ή ελέγξτε αν υπάρχουν καταχωρημένες συνταγές.")
+
+
+# ==========================================
+    # TAB 4: ΟΙΚΟΝΟΜΙΚΑ ΣΤΟΙΧΕΙΑ & ΛΟΓΙΣΤΗΡΙΟ
+    # ==========================================
+    with tab_accounting:
+        st.markdown("#### 📊 Οικονομική Ανάλυση & Κοστολόγηση Παραγωγής")
+        st.write("Δείτε αναλυτικά τα κόστη παραγωγής, τα έσοδα και την κερδοφορία σας, με δυνατότητα άμεσης εξαγωγής αρχείου για τον λογιστή.")
+
+        # 🚀 Φόρτωση Δεδομένων
+        with st.spinner("Φόρτωση οικονομικών δεδομένων από το Cloud..."):
+            res_fin = supabase.table("production_log").select("*").execute()
+            df_fin = pd.DataFrame(res_fin.data) if res_fin.data else pd.DataFrame()
+
+        if not df_fin.empty:
+            # Ομαλοποίηση αριθμητικών πεδίων για ασφάλεια
+            df_fin['pieces'] = pd.to_numeric(df_fin['pieces'], errors='coerce').fillna(0)
+            df_fin['applied_cost'] = pd.to_numeric(df_fin['applied_cost'], errors='coerce').fillna(0)
+            df_fin['unit_cost'] = pd.to_numeric(df_fin['unit_cost'], errors='coerce').fillna(0)
+            
+            # Ταξινόμηση βάσει ημερομηνίας
+            df_fin['sort_date'] = pd.to_datetime(df_fin['prod_date'], format='%d/%m/%Y', errors='coerce')
+            df_fin = df_fin.sort_values(by='sort_date', ascending=False)
+            
+            # Δημιουργία Φίλτρου Μήνα
+            df_fin['Μήνας'] = df_fin['sort_date'].dt.strftime('%m/%Y')
+            available_months = ["Όλοι οι μήνες"] + sorted(df_fin['Μήνας'].dropna().unique().tolist(), reverse=True)
+            
+            c_f1, c_f2 = st.columns([1, 2])
+            sel_month = c_f1.selectbox("📅 Επιλογή Περιόδου:", available_months, key="fin_month_sel")
+            
+            # Εφαρμογή Φίλτρου Μήνα
+            if sel_month != "Όλοι οι μήνες":
+                df_filtered = df_fin[df_fin['Μήνας'] == sel_month]
+            else:
+                df_filtered = df_fin.copy()
+
+            # 🚀 ΔΥΝΑΜΙΚΟΣ ΟΡΙΣΜΟΣ ΤΙΜΩΝ ΠΩΛΗΣΗΣ
+            st.divider()
+            st.markdown("##### 💰 Ρύθμιση Μέσης Τιμής Πώλησης ανά Cocktail")
+            unique_cocktails = sorted([c for c in df_filtered['cocktail_name'].dropna().unique() if str(c).strip()])
+            
+            # Expander για να μην πιάνει χώρο στην οθόνη
+            with st.expander("🛠️ Ορίστε Τιμές Χρέωσης ανά Τεμάχιο (Πατήστε για άνοιγμα)"):
+                st.info("Εισάγετε τη μέση τιμή που χρεώνετε τον πελάτη ανά μπουκάλι/τεμάχιο για να υπολογιστούν τα έσοδα:")
+                sale_prices = {}
+                
+                # Σπάμε τις επιλογές σε 4 στήλες για ομορφιά
+                price_cols = st.columns(min(len(unique_cocktails), 4) if unique_cocktails else 1)
+                for idx, cock in enumerate(unique_cocktails):
+                    col_idx = idx % len(price_cols)
+                    # Προκαθορισμένη τιμή τα 10.0€, αλλά αλλάζει ελεύθερα
+                    sale_prices[cock] = price_cols[col_idx].number_input(
+                        f"🍹 {cock} (€):", 
+                        min_value=0.0, 
+                        value=10.0, 
+                        step=0.5, 
+                        key=f"sale_val_{cock}"
+                    )
+
+            # 🚀 ΟΜΑΔΟΠΟΙΗΣΗ ΑΝΑ ΠΑΡΤΙΔΑ (Group by Παραγωγής)
+            # Κάθε μοναδική παραγωγή ορίζεται από ημερομηνία, πελάτη, ώρα, κοκτέιλ και LOT
+            df_batches = df_filtered.groupby(["prod_date", "customer", "prod_time", "cocktail_name", "lot_cocktail"]).agg({
+                "pieces": "first",
+                "applied_cost": "sum"  # Το άθροισμα του κόστους όλων των υλικών της παρτίδας
+            }).reset_index()
+
+            # Υπολογισμός Οικονομικών Δεικτών
+            df_batches['Έσοδα (€)'] = df_batches.apply(lambda r: r['pieces'] * sale_prices.get(r['cocktail_name'], 10.0), axis=1)
+            df_batches['Κόστος Παραγωγής (€)'] = df_batches['applied_cost']
+            df_batches['Καθαρό Κέρδος (€)'] = df_batches['Έσοδα (€)'] - df_batches['Κόστος Παραγωγής (€)']
+            df_batches['Περιθώριο Κέρδους (%)'] = (df_batches['Καθαρό Κέρδος (€)'] / df_batches['Έσοδα (€)'].replace(0, 1)) * 100
+            
+            # Συνολικά Αποτελέσματα (Totals)
+            total_pcs = df_batches['pieces'].sum()
+            total_cost = df_batches['Κόστος Παραγωγής (€)'].sum()
+            total_revenue = df_batches['Έσοδα (€)'].sum()
+            total_profit = total_revenue - total_cost
+            total_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0.0
+
+            # 🚀 ΕΜΦΑΝΙΣΗ ΚΑΡΤΩΝ (METRICS)
+            st.divider()
+            st.markdown("### 📈 Συνολική Εικόνα Περιόδου")
+            m1, m2, m3, m4 = st.columns(4)
+            
+            m1.metric("📦 Συνολικά Τεμάχια", f"{int(total_pcs)} τμχ")
+            m2.metric("📉 Συνολικό Κόστος", f"{total_cost:,.2f} €")
+            m3.metric("📈 Συνολικά Έσοδα", f"{total_revenue:,.2f} €")
+            
+            # Αν το περιθώριο κέρδους πέσει κάτω από 20%, το metric γίνεται κόκκινο προειδοποιητικό
+            if total_margin < 20.0:
+                m4.metric("🚨 Καθαρό Κέρδος", f"{total_profit:,.2f} €", f"{total_margin:.1f}% Margin (Χαμηλό!)", delta_color="inverse")
+            else:
+                m4.metric("🎯 Καθαρό Κέρδος", f"{total_profit:,.2f} €", f"{total_margin:.1f}% Margin")
+
+            # 🚀 ΠΙΝΑΚΑΣ ΓΙΑ ΤΟΝ ΛΟΓΙΣΤΗ
+            st.markdown("### 📋 Αναλυτικό Ιστορικό Παραγωγής & Κερδοφορίας")
+            
+            # Φτιάχνουμε ένα καθαρό DataFrame με ελληνικά headers για την εμφάνιση και το Excel
+            df_accounting_view = df_batches.rename(columns={
+                "prod_date": "📅 Ημερομηνία",
+                "customer": "👤 Πελάτης",
+                "cocktail_name": "🍹 Cocktail",
+                "lot_cocktail": "🔢 LOT Παραγωγής",
+                "pieces": "📦 Τεμάχια"
+            })[[
+                "📅 Ημερομηνία", "👤 Πελάτης", "🍹 Cocktail", "🔢 LOT Παραγωγής", 
+                "📦 Τεμάχια", "Κόστος Παραγωγής (€)", "Έσοδα (€)", "Καθαρό Κέρδος (€)", "Περιθώριο Κέρδους (%)"
+            ]]
+
+            # Εμφάνιση πίνακα με όμορφη μορφοποίηση ευρώ και ποσοστών
+            st.dataframe(
+                df_accounting_view.style.format({
+                    "Κόστος Παραγωγής (€)": "{:,.2f} €",
+                    "Έσοδα (€)": "{:,.2f} €",
+                    "Καθαρό Κέρδος (€)": "{:,.2f} €",
+                    "Περιθώριο Κέρδους (%)": "{:.1f} %"
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # 🚀 ΚΟΥΜΠΙ ΕΞΑΓΩΓΗΣ (ONE-CLICK EXCEL EXPORT)
+            st.divider()
+            
+            # Το μυστικό: utf-8-sig βάζει το BOM (Byte Order Mark) στην αρχή του αρχείου 
+            # ώστε το Excel να καταλαβαίνει αμέσως ότι έχει ελληνικούς χαρακτήρες!
+            csv_data = df_accounting_view.to_csv(index=False, encoding='utf-8-sig')
+            
+            st.download_button(
+                label="📥 Λήψη Οικονομικής Αναφοράς για τον Λογιστή (Excel / CSV)",
+                data=csv_data,
+                file_name=f"Financial_Report_{sel_month.replace('/', '_') if sel_month != 'Όλοι οι μήνες' else 'All_Months'}.csv",
+                mime="text/csv",
+                type="primary",
+                use_container_width=True
+            )
+        else:
+            st.info("Δεν υπάρχουν ακόμα δεδομένα παραγωγής στη βάση για να υπολογιστούν οικονομικά στοιχεία.")
