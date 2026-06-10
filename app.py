@@ -25,7 +25,7 @@ supabase: Client = create_client(url, key)
 import caldav
 
 APPLE_USER = "christos.siamantas@hotmail.com"
-APPLE_PASSWORD = "nqlt-Lncp-qrjs-Lmzx"  # Ο κωδικός μορφής xxxx-xxxx-xxxx-xxxx
+APPLE_PASSWORD = "wizg-rrvl-rjfc-cpov"  # Ο κωδικός μορφής xxxx-xxxx-xxxx-xxxx
 CALENDAR_URL = "https://caldav.icloud.com"
 
 def get_apple_calendar():
