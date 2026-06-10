@@ -3192,7 +3192,7 @@ elif page == "📦 Lot Παραγωγής":
                             # 🚀 [ΝΕΟ] ΣΥΓΧΡΟΝΙΣΜΟΣ ΜΕ APPLE CALENDAR
                             try:
                                 cal = get_apple_calendar()
-                                if cal and len(st.session_state.production_batch_items) > 0:
+                                if cal and lot_entries:
                                     # Φτιάχνουμε έναν ωραίο τίτλο με τα κοκτέιλ της ημέρας
                                     selected_cocktails_names = list(set([item["Κοκτέιλ"] for item in st.session_state.production_batch_items]))
                                     event_title = f"🍹 Παραγωγή: {', '.join(selected_cocktails_names)}"
