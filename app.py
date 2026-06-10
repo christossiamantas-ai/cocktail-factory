@@ -6602,7 +6602,7 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
 # =====================================================================
 # ΝΕΟΣ ΚΩΔΙΚΑΣ: ΑΛΛΑΞΑΜΕ ΤΟ elif ΣΕ if ΓΙΑ ΝΑ ΜΗΝ ΧΤΥΠΑΕΙ!
 # =====================================================================
-if selected == "Οικονομικά":
+    if selected == "Οικονομικά":
     st.markdown("## 📊 Οικονομική Ανάλυση & Κοστολόγηση Παραγωγής")
     st.write("Δείτε αναλυτικά τα κόστη παραγωγής, τα έσοδα και την κερδοφορία σας, με δυνατότητα άμεσης εξαγωγής αρχείου για τον λογιστή.")
 
@@ -6613,16 +6613,13 @@ if selected == "Οικονομικά":
         df_fin = pd.DataFrame(res_fin.data) if res_fin.data else pd.DataFrame()
 
     if not df_fin.empty:
-        # Ομαλοποίηση αριθμητικών πεδίων
         df_fin['pieces'] = pd.to_numeric(df_fin['pieces'], errors='coerce').fillna(0)
         df_fin['applied_cost'] = pd.to_numeric(df_fin['applied_cost'], errors='coerce').fillna(0)
         df_fin['unit_cost'] = pd.to_numeric(df_fin['unit_cost'], errors='coerce').fillna(0)
         
-        # Ταξινόμηση
         df_fin['sort_date'] = pd.to_datetime(df_fin['prod_date'], format='%d/%m/%Y', errors='coerce')
         df_fin = df_fin.sort_values(by='sort_date', ascending=False)
         
-        # Φίλτρο Μήνα
         df_fin['Μήνας'] = df_fin['sort_date'].dt.strftime('%m/%Y')
         available_months = ["Όλοι οι μήνες"] + sorted(df_fin['Μήνας'].dropna().unique().tolist(), reverse=True)
         
@@ -6634,7 +6631,6 @@ if selected == "Οικονομικά":
         else:
             df_filtered = df_fin.copy()
 
-        # ΤΙΜΕΣ ΠΩΛΗΣΗΣ
         st.divider()
         st.markdown("##### 💰 Ρύθμιση Μέσης Τιμής Πώλησης ανά Cocktail")
         unique_cocktails = sorted([c for c in df_filtered['cocktail_name'].dropna().unique() if str(c).strip()])
@@ -6648,7 +6644,6 @@ if selected == "Οικονομικά":
                     f"🍹 {cock} (€):", min_value=0.0, value=10.0, step=0.5, key=f"sale_val_{cock}"
                 )
 
-        # ΟΜΑΔΟΠΟΙΗΣΗ
         df_batches = df_filtered.groupby(["prod_date", "customer", "prod_time", "cocktail_name", "lot_cocktail"]).agg({
             "pieces": "first",
             "applied_cost": "sum"
@@ -6665,7 +6660,6 @@ if selected == "Οικονομικά":
         total_profit = total_revenue - total_cost
         total_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0.0
 
-        # ΚΑΡΤΕΣ
         st.divider()
         st.markdown("### 📈 Συνολική Εικόνα Περιόδου")
         m1, m2, m3, m4 = st.columns(4)
@@ -6678,7 +6672,6 @@ if selected == "Οικονομικά":
         else:
             m4.metric("🎯 Καθαρό Κέρδος", f"{total_profit:,.2f} €", f"{total_margin:.1f}% Margin")
 
-        # ΠΙΝΑΚΑΣ
         st.markdown("### 📋 Αναλυτικό Ιστορικό Παραγωγής & Κερδοφορίας")
         df_accounting_view = df_batches.rename(columns={
             "prod_date": "📅 Ημερομηνία", "customer": "👤 Πελάτης", "cocktail_name": "🍹 Cocktail",
@@ -6693,7 +6686,6 @@ if selected == "Οικονομικά":
             use_container_width=True, hide_index=True
         )
 
-        # ΕΞΑΓΩΓΗ
         st.divider()
         csv_data = df_accounting_view.to_csv(index=False, encoding='utf-8-sig')
         st.download_button(
