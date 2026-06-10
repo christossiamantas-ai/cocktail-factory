@@ -32,16 +32,18 @@ def get_apple_calendar():
     try:
         client = caldav.DAVClient(url=CALENDAR_URL, username=APPLE_USER, password=APPLE_PASSWORD)
         calendars = client.principal().calendars()
+        
+        # Εδώ κάνουμε την αλλαγή:
         for cal in calendars:
-            if cal.name == "CabClub":
+            if cal.name == "CabClub": # <--- ΕΔΩ ΑΛΛΑΞΕ ΤΟ "Παραγωγή" σε "CabClub"
                 return cal
-        if len(calendars) > 0:
+        
+        # Αν δεν το βρει, ας επιστρέψουμε το πρώτο διαθέσιμο για να μην κρασάρει
+        if calendars:
             return calendars[0]
-        else:
-            st.error("⚠️ Το iCloud βρέθηκε, αλλά δεν υπάρχουν ημερολόγια!")
-            return None
+        return None
     except Exception as e:
-        st.error(f"🚨 Αποτυχία σύνδεσης με τη μαμά Apple! Το σφάλμα είναι: {e}")
+        st.error(f"Σφάλμα σύνδεσης: {e}")
         return None
 
 # --- 📌 ΟΔΗΓΙΕΣ ΧΡΗΣΗΣ (ΣΤΗΝ ΑΡΙΣΤΕΡΗ ΠΛΕΥΡΑ) ---
