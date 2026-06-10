@@ -20,6 +20,23 @@ from supabase import create_client, Client
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
+# --- ΣΥΝΔΕΣΗ ΜΕ APPLE CALENDAR (iCLOUD) ---
+import caldav
+
+APPLE_USER = christos.siamantas@hotmail.com
+APPLE_PASSWORD = nqlt-Incp-qrjs-Imzx  # Ο κωδικός μορφής xxxx-xxxx-xxxx-xxxx
+CALENDAR_URL = "https://caldav.icloud.com"
+
+def get_apple_calendar():
+    try:
+        client = caldav.DAVClient(url=CALENDAR_URL, username=APPLE_USER, password=APPLE_PASSWORD)
+        calendars = client.principal().calendars()
+        for cal in calendars:
+            if cal.name == "Παραγωγή":  # Το ακριβές όνομα του ημερολογίου στο iPhone σου
+                return cal
+        return calendars[0]
+    except:
+        return None
 
 # --- 📌 ΟΔΗΓΙΕΣ ΧΡΗΣΗΣ (ΣΤΗΝ ΑΡΙΣΤΕΡΗ ΠΛΕΥΡΑ) ---
 st.sidebar.markdown("---")
