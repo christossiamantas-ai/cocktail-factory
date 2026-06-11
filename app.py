@@ -3600,10 +3600,10 @@ elif page == "📦 Lot Παραγωγής":
                                 total_stock_found = 0
                                 
                                 for i in range(num_splits):
-                                    st.markdown(f"**📦 Σπάσιμο #{i+1}**")
-                                    c_s1, c_s2, c_s3 = st.columns([1.5, 2, 1])
+                                st.markdown(f"**📦 Σπάσιμο #{i+1}**")
+                                c_s1, c_s2, c_s3 = st.columns([1.5, 2, 1])
                                     
-                                    s_pcs = c_s1.number_input(f"Τεμάχια από LOT #{i+1}:", min_value=1, max_value=orig_pcs, value=1, step=1, key=f"split_pcs_{i}")
+                                s_pcs = c_s1.number_input(f"Τεμάχια από LOT #{i+1}:", min_value=1, max_value=orig_pcs, value=1, step=1, key=f"split_pcs_{i}")
                                     
                                     if hist_lots:
                                         s_lot = c_s2.selectbox(f"Επιλογή LOT #{i+1}:", ["-- Επιλέξτε LOT --"] + hist_lots, key=f"split_lot_sel_{i}")
