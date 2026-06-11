@@ -3676,15 +3676,20 @@ elif page == "📦 Lot Παραγωγής":
                                                         if res_orig.data:
                                                             first_row = res_orig.data[0]
                                                             
-                                                            for row in res_orig.data:
-                                                                new_ml = (float(row["total_ml"]) / orig_pcs) * real_remain
-                                                                new_g = (float(row["target_g"]) / orig_pcs) * real_remain
-                                                                
-                                                                supabase.table("production_log").update({
-                                                                    "pieces": real_remain,
-                                                                    "total_ml": round(new_ml, 2),
-                                                                    "target_g": round(new_g, 2)
-                                                                }).eq("id", row["id"]).execute()
+                                                            if real_remain > 0:
+                                                                for row in res_orig.data:
+                                                                    new_ml = (float(row["total_ml"]) / orig_pcs) * real_remain
+                                                                    new_g = (float(row["target_g"]) / orig_pcs) * real_remain
+                                                                    
+                                                                    supabase.table("production_log").update({
+                                                                        "pieces": real_remain,
+                                                                        "total_ml": round(new_ml, 2),
+                                                                        "target_g": round(new_g, 2)
+                                                                    }).eq("id", row["id"]).execute()
+                                                            else:
+                                                                # 🚀 ΑΠΟΛΥΤΟΣ ΚΑΘΑΡΙΣΜΟΣ: Αν το στοκ καλύπτει το 100%, διαγράφουμε τη νέα παραγωγή!
+                                                                ids_to_del = [r["id"] for r in res_orig.data]
+                                                                supabase.table("production_log").delete().in_("id", ids_to_del).execute()
                                                             
                                                             stock_entries_to_insert = []
                                                             for s_data in valid_splits:
