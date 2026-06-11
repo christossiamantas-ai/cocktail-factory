@@ -3948,7 +3948,7 @@ elif page == "📦 Lot Παραγωγής":
                             }
                             
                     st.divider()
-                    submit_edits = st.button("💾 Αποθήκευση Όλων των Αλλαγών Παραγγελίας", type="primary")
+                    submit_edits = st.button("💾 Αποθήκευση Όλων των Αλλαγών Παραγγελίας", type="primary", use_container_width=True)
                     
                     if submit_edits:
                         try:
