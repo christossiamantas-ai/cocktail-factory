@@ -4004,66 +4004,79 @@ elif page == "📦 Lot Παραγωγής":
                                 supabase.table("production_log").insert(new_batch).execute()
                                 
                             # ΑΠΟΛΥΤΟ REBUILD B2B
-                            all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
-                            all_customers_res = supabase.table("customers").select("name, discount").execute()
-                            recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in all_recipes_res.data} if all_recipes_res.data else {}
-                            customer_discounts = {c['name']: float(c.get('discount') or 0.0) for c in all_customers_res.data} if all_customers_res.data else {}
+            all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
+            all_customers_res = supabase.table("customers").select("name, discount").execute()
+            recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in all_recipes_res.data} if all_recipes_res.data else {}
+            customer_discounts = {c['name']: float(c.get('discount') or 0.0) for c in all_customers_res.data} if all_customers_res.data else {}
+            
+            from datetime import datetime
+            for b2b_cust, b2b_date in affected_b2b_pairs:
+                today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, lot_cocktail, prod_time").eq("prod_date", b2b_date).eq("customer", b2b_cust).execute()
+                
+                try: date_iso = datetime.strptime(b2b_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+                except ValueError: date_iso = "1900-01-01" 
+                
+                # 🚀 1. ΣΒΗΝΟΥΜΕ ΠΡΩΤΑ ΤΙΣ ΠΑΛΙΕΣ ΕΓΓΡΑΦΕΣ ΤΗΣ ΗΜΕΡΑΣ ΓΙΑ ΑΥΤΟΝ ΤΟΝ ΠΕΛΑΤΗ
+                supabase.table("b2b_orders").delete().eq("customer_name", b2b_cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
+                
+                # 🚀 2. ΧΤΙΖΟΥΜΕ ΞΑΝΑ ΤΙΣ ΠΑΡΑΓΓΕΛΙΕΣ ΑΝΑ ΞΕΧΩΡΙΣΤΗ ΩΡΑ
+                if today_logs.data:
+                    import pandas as pd
+                    df_all_today = pd.DataFrame(today_logs.data).fillna(0)
+                    
+                    # Απομονώνουμε τις μοναδικές ώρες παραγγελίας για τη συγκεκριμένη μέρα
+                    unique_times = df_all_today["prod_time"].unique().tolist()
+                    
+                    for o_time in unique_times:
+                        df_logs = df_all_today[df_all_today["prod_time"] == o_time]
+                        df_logs = df_logs.drop_duplicates(subset=["cocktail_name", "lot_cocktail"])
+                        
+                        unique_cocktails = {}
+                        for _, row in df_logs.iterrows():
+                            c_n = row["cocktail_name"]
+                            if c_n not in unique_cocktails: unique_cocktails[c_n] = {"pcs": 0, "free": 0, "s_pcs": 0, "s_pct": 0.0}
+                            unique_cocktails[c_n]["pcs"] += int(row.get("pieces") or 0)
+                            unique_cocktails[c_n]["free"] = max(unique_cocktails[c_n]["free"], int(row.get("free_pieces") or 0))
+                            unique_cocktails[c_n]["s_pcs"] = max(unique_cocktails[c_n]["s_pcs"], int(row.get("discounted_pieces") or 0))
+                            unique_cocktails[c_n]["s_pct"] = max(unique_cocktails[c_n]["s_pct"], float(row.get("discount_pct") or 0.0))
                             
-                            from datetime import datetime
-                            for b2b_cust, b2b_date in affected_b2b_pairs:
-                                today_logs = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, lot_cocktail, prod_time").eq("prod_date", b2b_date).eq("customer", b2b_cust).execute()
-                                
-                                try: date_iso = datetime.strptime(b2b_date, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                except ValueError: date_iso = "1900-01-01" 
-                                    
-                                existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", b2b_cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
-                                
-                                if today_logs.data:
-                                    import pandas as pd
-                                    df_logs = pd.DataFrame(today_logs.data).fillna(0)
-                                    df_logs = df_logs.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
-                                    
-                                    unique_cocktails = {}
-                                    for _, row in df_logs.iterrows():
-                                        c_n = row["cocktail_name"]
-                                        if c_n not in unique_cocktails: unique_cocktails[c_n] = {"pcs": 0, "free": 0, "s_pcs": 0, "s_pct": 0.0}
-                                        unique_cocktails[c_n]["pcs"] += int(row.get("pieces") or 0)
-                                        unique_cocktails[c_n]["free"] = max(unique_cocktails[c_n]["free"], int(row.get("free_pieces") or 0))
-                                        unique_cocktails[c_n]["s_pcs"] = max(unique_cocktails[c_n]["s_pcs"], int(row.get("discounted_pieces") or 0))
-                                        unique_cocktails[c_n]["s_pct"] = max(unique_cocktails[c_n]["s_pct"], float(row.get("discount_pct") or 0.0))
-                                        
-                                    total_amount = 0.0
-                                    details_lines = []
-                                    for cockt, data in unique_cocktails.items():
-                                        price = recipe_prices.get(cockt, 0.0)
-                                        t_pcs, f_pcs = data["pcs"], data["free"]
-                                        s_pcs = min(data["s_pcs"], max(0, t_pcs - f_pcs))
-                                        normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
-                                        
-                                        cost_normal = normal_pcs * price
-                                        cost_special = s_pcs * price * (1 - (data["s_pct"] / 100.0))
-                                        total_amount += (cost_normal + cost_special)
-                                        
-                                        line = f"• {t_pcs} τμχ {cockt}"
-                                        if f_pcs > 0 or s_pcs > 0:
-                                            extras = []
-                                            if f_pcs > 0: extras.append(f"{f_pcs} Δώρο")
-                                            if s_pcs > 0: extras.append(f"{s_pcs} με -{data['s_pct']}%")
-                                            line += f" (Εκ των οποίων: {', '.join(extras)})"
-                                        details_lines.append(line)
-                                        
-                                    discount = customer_discounts.get(b2b_cust, 0.0)
-                                    final_total = total_amount * (1 - (discount / 100))
-                                    details_str = "\n".join(details_lines)
-                                    if discount > 0: details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
-                                        
-                                    if existing_order.data:
-                                        supabase.table("b2b_orders").update({"total_amount": round(final_total, 2), "order_details": details_str}).eq("id", existing_order.data[0]["id"]).execute()
-                                    else:
-                                        supabase.table("b2b_orders").insert({"customer_name": b2b_cust, "total_amount": round(final_total, 2), "order_details": details_str, "created_at": f"{date_iso}T12:00:00"}).execute()
-                                else:
-                                    if existing_order.data:
-                                        supabase.table("b2b_orders").delete().eq("id", existing_order.data[0]["id"]).execute()
+                        total_amount = 0.0
+                        details_lines = []
+                        for cockt, data in unique_cocktails.items():
+                            price = recipe_prices.get(cockt, 0.0)
+                            t_pcs, f_pcs = data["pcs"], data["free"]
+                            s_pcs = min(data["s_pcs"], max(0, t_pcs - f_pcs))
+                            normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
+                            
+                            cost_normal = normal_pcs * price
+                            cost_special = s_pcs * price * (1 - (data["s_pct"] / 100.0))
+                            total_amount += (cost_normal + cost_special)
+                            
+                            line = f"• {t_pcs} τμχ {cockt}"
+                            if f_pcs > 0 or s_pcs > 0:
+                                extras = []
+                                if f_pcs > 0: extras.append(f"{f_pcs} Δώρο")
+                                if s_pcs > 0: extras.append(f"{s_pcs} με -{data['s_pct']}%")
+                                line += f" (Εκ των οποίων: {', '.join(extras)})"
+                            details_lines.append(line)
+                            
+                        discount = customer_discounts.get(b2b_cust, 0.0)
+                        final_total = total_amount * (1 - (discount / 100))
+                        details_str = "\n".join(details_lines)
+                        if discount > 0: details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
+                        
+                        # Μορφοποίηση ώρας σε μορφή HH:MM:SS για το ISO timestamp
+                        clean_time = str(o_time).strip()
+                        if len(clean_time) == 5: 
+                            clean_time = f"{clean_time}:00"
+                            
+                        # Εισαγωγή της αυτόνομης παραγγελίας με την ακριβή της ώρα
+                        supabase.table("b2b_orders").insert({
+                            "customer_name": b2b_cust, 
+                            "total_amount": round(final_total, 2), 
+                            "order_details": details_str, 
+                            "created_at": f"{date_iso}T{clean_time}"
+                        }).execute()
                             
                             st.session_state['lot_reset_key'] += 1
                             st.session_state.pop('search_data_loaded', None)
