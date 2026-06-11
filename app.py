@@ -5128,15 +5128,24 @@ elif page == "👥 Πελατολόγιο":
                                     else:
                                         html_content += f"""<tr><td colspan="7" class="text-left" style="color:#666;">{o['order_details']}</td></tr>"""
                                         
+                                # --- ΠΡΟΣΘΗΚΗ ΦΠΑ ΚΑΙ ΓΕΝΙΚΟΥ ΤΖΙΡΟΥ ΣΤΟ HTML ---
                                 html_content += f"""
                                             </tbody>
                                             <tfoot>
                                                 <tr class="total-row">
-                                                    <td colspan="3" style="text-align: right;">ΓΕΝΙΚΑ ΣΥΝΟΛΑ ΙΣΤΟΡΙΚΟΥ:</td>
+                                                    <td colspan="3" style="text-align: right;">ΚΑΘΑΡΑ ΣΥΝΟΛΑ ΙΣΤΟΡΙΚΟΥ:</td>
                                                     <td>{grand_rev:.2f} €</td>
                                                     <td>{grand_cost:.2f} €</td>
                                                     <td>{grand_prof:.2f} €</td>
                                                     <td>{((grand_prof / grand_rev * 100) if grand_rev > 0 else 0):.1f}%</td>
+                                                </tr>
+                                                <tr style="background-color: #e8f4f8; color: #1a3a5f; font-weight: bold;">
+                                                    <td colspan="3" style="text-align: right;">ΣΥΝΟΛΙΚΟΣ ΦΠΑ (24%):</td>
+                                                    <td colspan="4">{(grand_rev * 0.24):.2f} €</td>
+                                                </tr>
+                                                <tr style="background-color: #1a3a5f; color: white; font-weight: bold; font-size: 15px;">
+                                                    <td colspan="3" style="text-align: right;">ΓΕΝΙΚΟΣ ΤΖΙΡΟΣ (ΜΕ ΦΠΑ):</td>
+                                                    <td colspan="4">{(grand_rev * 1.24):.2f} €</td>
                                                 </tr>
                                             </tfoot>
                                         </table>
@@ -5157,9 +5166,12 @@ elif page == "👥 Πελατολόγιο":
                     
                     st.divider()
 
+                    # --- ΛΙΣΤΑ ΠΑΡΑΓΓΕΛΙΩΝ (EXPANDERS) ΜΕ ΦΠΑ ---
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
+                        fpa_amt = current_amt * 0.24
+                        final_with_fpa = current_amt + fpa_amt
                         details = str(order['order_details'])
                         
                         import re
@@ -5168,35 +5180,30 @@ elif page == "👥 Πελατολόγιο":
                         if match_base:
                             base_amt = float(match_base.group(1))
 
-                        with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | {current_amt:.2f}€"):
-                            st.info(f"**Αρχική Αξία:** {base_amt:.2f} €\n\n**Τελική Χρέωση:** {current_amt:.2f} €")
+                        with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | Καθαρή: {current_amt:.2f}€ | Με ΦΠΑ: {final_with_fpa:.2f}€"):
+                            st.info(f"**Αρχική Αξία (προ εκπτώσεων):** {base_amt:.2f} €\n\n**Καθαρή Χρέωση:** {current_amt:.2f} €\n\n**ΦΠΑ (24%):** {fpa_amt:.2f} €\n\n**Τελικό Πληρωτέο:** {final_with_fpa:.2f} €")
                             st.caption(f"Λεπτομέρειες:\n{details}")
                             
                             if st.button("🗑️ Διαγραφή Παραγγελίας", key=f"del_o_{order_id}"):
                                 with st.spinner("Διαγραφή σε εξέλιξη..."):
                                     try:
                                         from datetime import datetime
-                                        # 1. Βρίσκουμε την ημερομηνία της παραγγελίας (π.χ. "2026-06-04")
                                         order_date_iso = str(order['created_at'])[:10]
                                         
-                                        # 2. Σαρώνουμε την αποθήκη για να βρούμε ΟΛΑ τα υλικά αυτού του πελάτη
                                         prod_res = supabase.table("production_log").select("id, prod_date").eq("customer", sel_name).execute()
                                         if prod_res.data:
                                             ids_to_delete = []
                                             for p in prod_res.data:
                                                 try:
-                                                    # Φέρνουμε όλες τις ημερομηνίες στο ίδιο format
                                                     p_iso = datetime.strptime(str(p['prod_date']).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
                                                     if p_iso == order_date_iso:
                                                         ids_to_delete.append(p['id'])
                                                 except Exception:
                                                     pass
                                             
-                                            # 3. Σβήνουμε μαζικά και ακαριαία τα υλικά
                                             if ids_to_delete:
                                                 supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
                                         
-                                        # 4. Σβήνουμε την παραγγελία από το B2B Πελατολόγιο
                                         supabase.table("b2b_orders").delete().eq("id", order_id).execute()
                                         
                                         st.warning("🔄 Η παραγγελία και όλα της τα υλικά διαγράφηκαν οριστικά και πεντακάθαρα!")
