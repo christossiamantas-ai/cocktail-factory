@@ -5298,8 +5298,9 @@ elif page == "👥 Πελατολόγιο":
                 df_orders = pd.DataFrame(res_orders.data)
                 order_dict = {}
                 for _, r in df_orders.iterrows():
-                    dt = pd.to_datetime(r['created_at'])
-                    dt_str = dt.tz_convert('Europe/Athens').strftime('%d/%m %H:%M') if dt.tzinfo else dt.strftime('%d/%m %H:%M')
+                    # 🚀 Η ΔΙΟΡΘΩΣΗ: tz_localize(None) για να αγνοήσει το Timezone της Supabase και να πάρει το καθαρό κείμενο!
+                    dt = pd.to_datetime(r['created_at']).tz_localize(None)
+                    dt_str = dt.strftime('%d/%m %H:%M')
                     order_dict[r['id']] = f"📅 {dt_str} | Αξία: {float(r['total_amount']):.2f}€"
                 
                 sel_order_id = st.selectbox("🛒 Επιλογή Παραγγελίας:", options=list(order_dict.keys()), format_func=lambda x: order_dict[x], key="gift_o")
@@ -5312,7 +5313,8 @@ elif page == "👥 Πελατολόγιο":
                     clean_display_details = str(current_details).split("\n\n--- ΔΩΡΑ")[0].split("\n\n--- ΕΙΔΙΚΕΣ")[0]
                     st.info(f"**Περιεχόμενο Παραγγελίας:**\n{clean_display_details}")
                     
-                    order_dt = pd.to_datetime(selected_order['created_at'])
+                    # 🚀 Η ΔΙΟΡΘΩΣΗ ΚΑΙ ΕΔΩ: Σιγουρεύουμε ότι ψάχνει με τη σωστή ημερομηνία!
+                    order_dt = pd.to_datetime(selected_order['created_at']).tz_localize(None)
                     prod_date_str = order_dt.strftime('%d/%m/%Y')
                     
                     # 🚀 ΦΙΛΤΡΟ ΑΣΦΑΛΕΙΑΣ: Διαβάζουμε ποια κοκτέιλ ανήκουν ΠΡΑΓΜΑΤΙΚΑ σε ΑΥΤΗ την παραγγελία
@@ -5436,7 +5438,6 @@ elif page == "👥 Πελατολόγιο":
                         st.warning("Δεν βρέθηκε γραμμή παραγωγής (υλικά) για τη συγκεκριμένη παραγγελία.")
             else:
                 st.info("Δεν βρέθηκαν προηγούμενες παραγγελίες για αυτόν τον πελάτη.")
-
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Καθολική Αντικατάσταση & Οικονομική Πρόγνωση")
