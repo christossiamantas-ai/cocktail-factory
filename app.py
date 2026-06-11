@@ -3583,14 +3583,20 @@ elif page == "📦 Lot Παραγωγής":
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
                             orig_pcs = split_map[sel_split]["total_pcs"]
+                            b_cocktail_selected = split_map[sel_split]["cocktail"]
                             
                             st.info(f"Επιλεγμένη Παραγγελία: **{orig_pcs} τμχ**")
                             
+                            # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε τα LOT απευθείας από τη Supabase για το συγκεκριμένο κοκτέιλ!
                             hist_lots = []
-                            if 'search_data_loaded' in st.session_state and st.session_state.search_data_loaded:
-                                df_hist = pd.DataFrame(st.session_state.search_data_loaded)
-                                if not df_hist.empty and "lot_cocktail" in df_hist.columns:
-                                    hist_lots = [str(l) for l in df_hist["lot_cocktail"].unique() if str(l) != "nan" and str(l).strip()]
+                            try:
+                                lots_query = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", b_cocktail_selected).execute()
+                                if lots_query.data:
+                                    # Μαζεύουμε όλα τα μοναδικά LOT, αγνοώντας τα κενά
+                                    found_lots = set(str(row["lot_cocktail"]) for row in lots_query.data if row.get("lot_cocktail"))
+                                    hist_lots = sorted([l for l in found_lots if l.strip() and l.lower() != "nan" and l != "-"], reverse=True)
+                            except Exception:
+                                pass
                             
                             # 🚀 ΝΕΑ ΠΡΟΣΘΗΚΗ: ΔΥΝΑΜΙΚΟ ΠΟΛΛΑΠΛΟ ΣΠΑΣΙΜΟ (MULTI-SPLIT)
                             st.markdown("---")
