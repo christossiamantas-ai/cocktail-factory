@@ -2223,8 +2223,7 @@ elif page == "📈 Dashboard":
         total_cost = df_filtered['Total_Cost'].sum()
         total_profit = df_filtered['Profit'].sum()
         total_units = df_filtered['t_pcs'].sum()
-        total_orders_count = df_filtered.groupby(['prod_date', 'customer']).ngroups
-
+        total_orders_count = df_filtered.groupby(['prod_date', 'prod_time', 'customer']).ngroups
         df_mom_grouped = df_filtered.groupby(['customer', 'Month_Year'])['Theoretical_Revenue'].sum().reset_index()
         df_mom_grouped.rename(columns={'Theoretical_Revenue': 'Revenue', 'Month_Year': 'Month'}, inplace=True)
 
