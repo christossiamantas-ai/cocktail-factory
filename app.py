@@ -3582,143 +3582,143 @@ elif page == "📦 Lot Παραγωγής":
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
-                        orig_pcs = split_map[sel_split]["pcs"]
-                        
-                        st.info(f"Επιλεγμένη Παραγγελία: **{orig_pcs} τμχ**")
-                        
-                        hist_lots = []
-                        if 'search_data_loaded' in st.session_state and st.session_state.search_data_loaded:
-                            df_hist = pd.DataFrame(st.session_state.search_data_loaded)
-                            if not df_hist.empty and "lot_cocktail" in df_hist.columns:
-                                hist_lots = [str(l) for l in df_hist["lot_cocktail"].unique() if str(l) != "nan" and str(l).strip()]
-                        
-                        # 🚀 ΝΕΑ ΠΡΟΣΘΗΚΗ: ΔΥΝΑΜΙΚΟ ΠΟΛΛΑΠΛΟ ΣΠΑΣΙΜΟ (MULTI-SPLIT)
-                        st.markdown("---")
-                        num_splits = st.number_input("🔄 Σε πόσα διαφορετικά παλιά LOT θέλετε να σπάσετε την παραγγελία;", min_value=1, max_value=5, value=1, step=1)
-                        
-                        splits_data = []
-                        total_stock_found = 0
-                        
-                        for i in range(num_splits):
-                            st.markdown(f"**📦 Σπάσιμο #{i+1}**")
-                            c_s1, c_s2, c_s3 = st.columns([1.5, 2, 1])
-                            
-                            s_pcs = c_s1.number_input(f"Τεμάχια από LOT #{i+1}:", min_value=1, max_value=orig_pcs, value=1, step=1, key=f"split_pcs_{i}")
-                            
-                            if hist_lots:
-                                s_lot = c_s2.selectbox(f"Επιλογή LOT #{i+1}:", ["-- Επιλέξτε LOT --"] + hist_lots, key=f"split_lot_sel_{i}")
-                            else:
-                                s_lot = c_s2.text_input(f"Πληκτρολόγηση LOT #{i+1}:", placeholder="Δεν βρέθηκε ιστορικό", key=f"split_lot_txt_{i}")
+                                orig_pcs = split_map[sel_split]["pcs"]
                                 
-                            s_cost = c_s3.checkbox("Με Κόστος;", value=False, key=f"split_cost_{i}", help="Υπολογισμός λογιστικού κόστους")
-                            
-                            splits_data.append({"pcs": s_pcs, "lot": s_lot, "charge": s_cost})
-                            total_stock_found += s_pcs
-                            
-                        st.markdown("---")
-                        remain_pcs = orig_pcs - total_stock_found
-                        
-                        if remain_pcs < 0:
-                            st.error(f"🚫 Σφάλμα: Προσπαθείτε να τραβήξετε {total_stock_found} τμχ από το στοκ, αλλά η αρχική παραγγελία είναι μόνο {orig_pcs} τμχ!")
-                        else:
-                            c_info1, c_info2 = st.columns(2)
-                            c_info1.info(f"Συνολικά από Στοκ: **{total_stock_found} τμχ**")
-                            c_info2.success(f"Νέα Παραγωγή: **{remain_pcs} τμχ**")
-                            
-                            if remain_pcs == 0:
-                                st.warning("⚠️ Ολόκληρη η παραγγελία θα καλυφθεί από στοκ (Μηδενική νέα παραγωγή / μηδενική αφαίρεση υλικών).")
-
-                            if st.button("✂️ Εκτέλεση Πολλαπλού Σπασίματος", type="primary"):
-                                valid_splits = []
-                                for s_data in splits_data:
-                                    is_valid_lot = s_data["lot"] and s_data["lot"] != "-- Επιλέξτε LOT --" and s_data["lot"].strip() != ""
-                                    if s_data["pcs"] > 0 and is_valid_lot:
-                                        valid_splits.append(s_data)
-                                        
-                                if len(valid_splits) == 0:
-                                    st.warning("⚠️ Δεν έχετε επιλέξει κανένα έγκυρο LOT για το σπάσιμο.")
-                                else:
-                                    real_total_stock = sum(item["pcs"] for item in valid_splits)
-                                    real_remain = orig_pcs - real_total_stock
+                                st.info(f"Επιλεγμένη Παραγγελία: **{orig_pcs} τμχ**")
+                                
+                                hist_lots = []
+                                if 'search_data_loaded' in st.session_state and st.session_state.search_data_loaded:
+                                    df_hist = pd.DataFrame(st.session_state.search_data_loaded)
+                                    if not df_hist.empty and "lot_cocktail" in df_hist.columns:
+                                        hist_lots = [str(l) for l in df_hist["lot_cocktail"].unique() if str(l) != "nan" and str(l).strip()]
+                                
+                                # 🚀 ΝΕΑ ΠΡΟΣΘΗΚΗ: ΔΥΝΑΜΙΚΟ ΠΟΛΛΑΠΛΟ ΣΠΑΣΙΜΟ (MULTI-SPLIT)
+                                st.markdown("---")
+                                num_splits = st.number_input("🔄 Σε πόσα διαφορετικά παλιά LOT θέλετε να σπάσετε την παραγγελία;", min_value=1, max_value=5, value=1, step=1)
+                                
+                                splits_data = []
+                                total_stock_found = 0
+                                
+                                for i in range(num_splits):
+                                    st.markdown(f"**📦 Σπάσιμο #{i+1}**")
+                                    c_s1, c_s2, c_s3 = st.columns([1.5, 2, 1])
                                     
-                                    if real_remain < 0:
-                                        st.error(f"🚫 Σφάλμα: Προσπαθείτε να τραβήξετε {real_total_stock} τμχ, αλλά η παραγγελία είναι μόνο {orig_pcs} τμχ!")
+                                    s_pcs = c_s1.number_input(f"Τεμάχια από LOT #{i+1}:", min_value=1, max_value=orig_pcs, value=1, step=1, key=f"split_pcs_{i}")
+                                    
+                                    if hist_lots:
+                                        s_lot = c_s2.selectbox(f"Επιλογή LOT #{i+1}:", ["-- Επιλέξτε LOT --"] + hist_lots, key=f"split_lot_sel_{i}")
                                     else:
-                                        b_date = split_map[sel_split]["date"]
-                                        b_cust = split_map[sel_split]["cust"]
-                                        b_cocktail = split_map[sel_split]["cocktail"]
+                                        s_lot = c_s2.text_input(f"Πληκτρολόγηση LOT #{i+1}:", placeholder="Δεν βρέθηκε ιστορικό", key=f"split_lot_txt_{i}")
                                         
-                                        check_res = supabase.table("production_log").select("is_from_stock, ingredient_name").eq("prod_date", b_date).eq("customer", b_cust).eq("cocktail_name", b_cocktail).execute()
-                                        
-                                        already_split = False
-                                        if check_res.data:
-                                            for row in check_res.data:
-                                                if str(row.get("is_from_stock")).lower() == "true" or "Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")):
-                                                    already_split = True
-                                                    break
-                                        
-                                        if already_split:
-                                            st.error("🚫 Προσοχή! Αυτή η παραγγελία έχει ήδη υποστεί σπάσιμο. Δεν επιτρέπεται δεύτερο σπάσιμο! Διαγράψτε την αρχική εγγραφή και καταχωρήστε την ξανά.")
+                                    s_cost = c_s3.checkbox("Με Κόστος;", value=False, key=f"split_cost_{i}", help="Υπολογισμός λογιστικού κόστους")
+                                    
+                                    splits_data.append({"pcs": s_pcs, "lot": s_lot, "charge": s_cost})
+                                    total_stock_found += s_pcs
+                                    
+                                st.markdown("---")
+                                remain_pcs = orig_pcs - total_stock_found
+                                
+                                if remain_pcs < 0:
+                                    st.error(f"🚫 Σφάλμα: Προσπαθείτε να τραβήξετε {total_stock_found} τμχ από το στοκ, αλλά η αρχική παραγγελία είναι μόνο {orig_pcs} τμχ!")
+                                else:
+                                    c_info1, c_info2 = st.columns(2)
+                                    c_info1.info(f"Συνολικά από Στοκ: **{total_stock_found} τμχ**")
+                                    c_info2.success(f"Νέα Παραγωγή: **{remain_pcs} τμχ**")
+                                    
+                                    if remain_pcs == 0:
+                                        st.warning("⚠️ Ολόκληρη η παραγγελία θα καλυφθεί από στοκ (Μηδενική νέα παραγωγή / μηδενική αφαίρεση υλικών).")
+
+                                    if st.button("✂️ Εκτέλεση Πολλαπλού Σπασίματος", type="primary"):
+                                        valid_splits = []
+                                        for s_data in splits_data:
+                                            is_valid_lot = s_data["lot"] and s_data["lot"] != "-- Επιλέξτε LOT --" and s_data["lot"].strip() != ""
+                                            if s_data["pcs"] > 0 and is_valid_lot:
+                                                valid_splits.append(s_data)
+                                                
+                                        if len(valid_splits) == 0:
+                                            st.warning("⚠️ Δεν έχετε επιλέξει κανένα έγκυρο LOT για το σπάσιμο.")
                                         else:
-                                            with st.spinner("Γίνεται έξυπνο πολλαπλό σπάσιμο παραγγελίας..."):
-                                                try:
-                                                    b_time = split_map[sel_split]["time"]
-                                                    b_lot = split_map[sel_split]["old_lot"]
-                                                    
-                                                    res_orig = supabase.table("production_log").select("*").eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_lot).execute()
-                                                    
-                                                    if res_orig.data:
-                                                        first_row = res_orig.data[0]
-                                                        
-                                                        for row in res_orig.data:
-                                                            new_ml = (float(row["total_ml"]) / orig_pcs) * real_remain
-                                                            new_g = (float(row["target_g"]) / orig_pcs) * real_remain
+                                            real_total_stock = sum(item["pcs"] for item in valid_splits)
+                                            real_remain = orig_pcs - real_total_stock
+                                            
+                                            if real_remain < 0:
+                                                st.error(f"🚫 Σφάλμα: Προσπαθείτε να τραβήξετε {real_total_stock} τμχ, αλλά η παραγγελία είναι μόνο {orig_pcs} τμχ!")
+                                            else:
+                                                b_date = split_map[sel_split]["date"]
+                                                b_cust = split_map[sel_split]["cust"]
+                                                b_cocktail = split_map[sel_split]["cocktail"]
+                                                
+                                                check_res = supabase.table("production_log").select("is_from_stock, ingredient_name").eq("prod_date", b_date).eq("customer", b_cust).eq("cocktail_name", b_cocktail).execute()
+                                                
+                                                already_split = False
+                                                if check_res.data:
+                                                    for row in check_res.data:
+                                                        if str(row.get("is_from_stock")).lower() == "true" or "Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")):
+                                                            already_split = True
+                                                            break
+                                                
+                                                if already_split:
+                                                    st.error("🚫 Προσοχή! Αυτή η παραγγελία έχει ήδη υποστεί σπάσιμο. Δεν επιτρέπεται δεύτερο σπάσιμο! Διαγράψτε την αρχική εγγραφή και καταχωρήστε την ξανά.")
+                                                else:
+                                                    with st.spinner("Γίνεται έξυπνο πολλαπλό σπάσιμο παραγγελίας..."):
+                                                        try:
+                                                            b_time = split_map[sel_split]["time"]
+                                                            b_lot = split_map[sel_split]["old_lot"]
                                                             
-                                                            supabase.table("production_log").update({
-                                                                "pieces": real_remain,
-                                                                "total_ml": round(new_ml, 2),
-                                                                "target_g": round(new_g, 2)
-                                                            }).eq("id", row["id"]).execute()
-                                                        
-                                                        stock_entries_to_insert = []
-                                                        for s_data in valid_splits:
-                                                            final_stock_lot = s_data["lot"].strip()
-                                                            if final_stock_lot == b_lot:
-                                                                final_stock_lot = f"{final_stock_lot}-S"
+                                                            res_orig = supabase.table("production_log").select("*").eq("prod_date", b_date).eq("customer", b_cust).eq("prod_time", b_time).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_lot).execute()
+                                                            
+                                                            if res_orig.data:
+                                                                first_row = res_orig.data[0]
                                                                 
-                                                            final_stock_cost = float(first_row["unit_cost"]) if s_data["charge"] else 0.0
-                                                            
-                                                            stock_entry = {
-                                                                "prod_date": first_row["prod_date"],
-                                                                "prod_time": first_row["prod_time"],
-                                                                "customer": first_row["customer"],
-                                                                "cocktail_name": first_row["cocktail_name"],
-                                                                "lot_cocktail": final_stock_lot, 
-                                                                "pieces": s_data["pcs"],
-                                                                "ingredient_name": "📦 Έτοιμο Προϊόν (Στοκ)",
-                                                                "total_ml": 0.0,
-                                                                "target_g": 0.0,
-                                                                "lot_number": final_stock_lot, 
-                                                                "expiry_date": "-",
-                                                                "unit_cost": first_row["unit_cost"],
-                                                                "applied_cost": final_stock_cost,
-                                                                "is_from_stock": True,
-                                                                "free_pieces": 0, 
-                                                                "discounted_pieces": 0,
-                                                                "discount_pct": 0.0,
-                                                                "cal_uid": first_row.get("cal_uid", "")
-                                                            }
-                                                            stock_entries_to_insert.append(stock_entry)
-                                                            
-                                                        supabase.table("production_log").insert(stock_entries_to_insert).execute()
-                                                        
-                                                        st.session_state.pop('search_data_loaded', None)
-                                                        st.success(f"✅ Επιτυχία! Η παραγγελία σπάστηκε σε {len(valid_splits)} παλιά LOT.")
-                                                        import time
-                                                        time.sleep(1.5)
-                                                        st.rerun()
-                                                except Exception as e:
-                                                    st.error(f"Σφάλμα κατά το σπάσιμο: {e}")
+                                                                for row in res_orig.data:
+                                                                    new_ml = (float(row["total_ml"]) / orig_pcs) * real_remain
+                                                                    new_g = (float(row["target_g"]) / orig_pcs) * real_remain
+                                                                    
+                                                                    supabase.table("production_log").update({
+                                                                        "pieces": real_remain,
+                                                                        "total_ml": round(new_ml, 2),
+                                                                        "target_g": round(new_g, 2)
+                                                                    }).eq("id", row["id"]).execute()
+                                                                
+                                                                stock_entries_to_insert = []
+                                                                for s_data in valid_splits:
+                                                                    final_stock_lot = s_data["lot"].strip()
+                                                                    if final_stock_lot == b_lot:
+                                                                        final_stock_lot = f"{final_stock_lot}-S"
+                                                                        
+                                                                    final_stock_cost = float(first_row["unit_cost"]) if s_data["charge"] else 0.0
+                                                                    
+                                                                    stock_entry = {
+                                                                        "prod_date": first_row["prod_date"],
+                                                                        "prod_time": first_row["prod_time"],
+                                                                        "customer": first_row["customer"],
+                                                                        "cocktail_name": first_row["cocktail_name"],
+                                                                        "lot_cocktail": final_stock_lot, 
+                                                                        "pieces": s_data["pcs"],
+                                                                        "ingredient_name": "📦 Έτοιμο Προϊόν (Στοκ)",
+                                                                        "total_ml": 0.0,
+                                                                        "target_g": 0.0,
+                                                                        "lot_number": final_stock_lot, 
+                                                                        "expiry_date": "-",
+                                                                        "unit_cost": first_row["unit_cost"],
+                                                                        "applied_cost": final_stock_cost,
+                                                                        "is_from_stock": True,
+                                                                        "free_pieces": 0, 
+                                                                        "discounted_pieces": 0,
+                                                                        "discount_pct": 0.0,
+                                                                        "cal_uid": first_row.get("cal_uid", "")
+                                                                    }
+                                                                    stock_entries_to_insert.append(stock_entry)
+                                                                    
+                                                                supabase.table("production_log").insert(stock_entries_to_insert).execute()
+                                                                
+                                                                st.session_state.pop('search_data_loaded', None)
+                                                                st.success(f"✅ Επιτυχία! Η παραγγελία σπάστηκε σε {len(valid_splits)} παλιά LOT.")
+                                                                import time
+                                                                time.sleep(1.5)
+                                                                st.rerun()
+                                                        except Exception as e:
+                                                            st.error(f"Σφάλμα κατά το σπάσιμο: {e}")
                     else:
                         st.info("Δεν βρέθηκαν παραγγελίες νέας παραγωγής που να μπορούν να σπαστούν.")
                 else:
