@@ -3751,7 +3751,7 @@ elif page == "📦 Lot Παραγωγής":
                 cocktail_names = group["Cocktail"].unique().tolist()
                 cocktails_str = ", ".join(cocktail_names)
                 
-                total_pcs = group.groupby("Cocktail")["Τεμάχια"].first().sum()
+                total_pcs = group.drop_duplicates(subset=["Cocktail", "LOT_Cocktail"])["Τεμάχια"].astype(float).sum()
                 
                 # Το label τώρα βγάζει τα ονόματα με το εικονίδιο 🍹
                 label = f"📅 {o_date} | 👤 {o_cust} | 🕒 {o_time} | 🍹 {cocktails_str} ({int(total_pcs)} τμχ)"
