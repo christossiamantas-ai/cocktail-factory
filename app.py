@@ -3880,14 +3880,25 @@ elif page == "📦 Lot Παραγωγής":
             for name, group in order_groups:
                 o_date, o_cust, o_time = name
                 
-                # 🚀 Η ΜΑΓΕΙΑ ΕΔΩ: Τραβάμε τα ονόματα των κοκτέιλ και τα ενώνουμε σε μία γραμμή!
+                # 🚀 ΠΡΟΣΘΗΚΗ: Αναζήτηση Ημερομηνίας Καταχώρησης από τη βάση (Supabase)
+                entry_date_str = ""
+                # Ψάχνει στις πιθανές στήλες που δείχνουν πότε δημιουργήθηκε η εγγραφή
+                for col in ["created_at", "Timestamp", "timestamp", "Ημ_Καταχώρησης"]:
+                    if col in group.columns:
+                        raw_val = str(group[col].iloc[0]).strip()
+                        if raw_val and raw_val.lower() not in ["nan", "none"]:
+                            # Κρατάμε μόνο την ημερομηνία (πριν το 'T' ή το κενό της ώρας)
+                            entry_date_str = raw_val.split("T")[0].split(" ")[0] + " "
+                            break
+                
+                # Τραβάμε τα ονόματα των κοκτέιλ και τα ενώνουμε σε μία γραμμή!
                 cocktail_names = group["Cocktail"].unique().tolist()
                 cocktails_str = ", ".join(cocktail_names)
                 
                 total_pcs = group.groupby("Cocktail")["Τεμάχια"].first().sum()
                 
-                # Το label τώρα βγάζει τα ονόματα με το εικονίδιο 🍹
-                label = f"📅 {o_date} | 👤 {o_cust} | 🕒 {o_time} | 🍹 {cocktails_str} ({int(total_pcs)} τμχ)"
+                # 🚀 ΑΛΛΑΓΗ: Το label τώρα βγάζει την entry_date_str ακριβώς πριν την ώρα!
+                label = f"📅 {o_date} | 👤 {o_cust} | 🕒 {entry_date_str}{o_time} | 🍹 {cocktails_str} ({int(total_pcs)} τμχ)"
                 temp_options.append(label)
                 order_map[label] = {"date": o_date, "cust": o_cust, "time": o_time, "df": group}
                 
@@ -3895,18 +3906,17 @@ elif page == "📦 Lot Παραγωγής":
             from datetime import datetime
             def sort_by_real_date(lbl):
                 try:
-                    # Απομονώνουμε την ημερομηνία και την ώρα από το κείμενο
-                    parts = lbl.split(" | ")
-                    date_part = parts[0].replace("📅 ", "").strip()
-                    time_part = parts[2].replace("🕒 ", "").strip()
-                    # Μετατροπή σε αληθινό χρόνο (datetime)
-                    return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M:%S")
-                except ValueError:
-                    try:
-                        # Αν η ώρα δεν έχει δευτερόλεπτα
-                        return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M")
-                    except Exception:
-                        return datetime.min # Αν κάτι πάει στραβά, το πάει στο τέλος
+                    # ΑΛΛΑΓΗ ΑΣΦΑΛΕΙΑΣ: Τραβάμε τα δεδομένα από το order_map αντί να κόβουμε το κείμενο!
+                    # Έτσι δεν μπερδεύεται από την έξτρα ημερομηνία καταχώρησης που βάλαμε στο label.
+                    d_part = str(order_map[lbl]["date"]).strip()
+                    t_part = str(order_map[lbl]["time"]).strip()
+                    
+                    if t_part.count(":") == 2:
+                        return datetime.strptime(f"{d_part} {t_part}", "%d/%m/%Y %H:%M:%S")
+                    else:
+                        return datetime.strptime(f"{d_part} {t_part}", "%d/%m/%Y %H:%M")
+                except Exception:
+                    return datetime.min # Αν κάτι πάει στραβά, το πάει στο τέλος
 
             # Ταξινομούμε την προσωρινή λίστα
             temp_options.sort(key=sort_by_real_date, reverse=True)
