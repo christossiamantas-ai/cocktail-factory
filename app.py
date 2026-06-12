@@ -1294,188 +1294,273 @@ elif page == "🔍 Ανάλυση":
                     key="html_report_download"
                 )
 
-            # --- 🖨️ ΕΚΤΥΠΩΣΗ ΠΛΗΡΟΥΣ ΒΙΒΛΙΟΥ ΣΥΝΤΑΓΩΝ (Yellow Theme + Logo) ---
+            # =========================================================================
+            # 🖨️ ΚΕΝΤΡΟ ΕΚΤΥΠΩΣΕΩΝ: ΕΡΓΑΣΤΗΡΙΟ & ΚΑΤΑΛΟΓΟΣ ΠΕΛΑΤΩΝ
+            # =========================================================================
             st.divider()
-            st.subheader("🖨️ Εκτύπωση Βιβλίου Συνταγών")
-
-            import base64
-
-            def get_base64_image(image_path):
-                try:
-                    with open(image_path, "rb") as img_file:
-                        return base64.b64encode(img_file.read()).decode()
-                except:
-                    return ""
-
-            logo_base64 = get_base64_image("logo.png") 
-
-            html_book = f"""
-            <html>
-            <head>
-                <meta charset='UTF-8'>
-                <style>
-                    body {{ font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; background-color: #f9f9f9; }}
-                    .main-title {{ text-align: center; border-bottom: 5px solid #ffcc00; padding-bottom: 10px; margin-bottom: 50px; }}
-                    .logo-img {{ max-width: 150px; margin-bottom: 10px; }}
-                    .recipe-card {{ 
-                        background-color: white; 
-                        border: 1px solid #ddd; 
-                        border-radius: 12px; 
-                        padding: 25px; 
-                        margin-bottom: 40px; 
-                        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-                        page-break-inside: avoid;
-                    }}
-                    .recipe-header {{ 
-                        background-color: #ffcc00; 
-                        color: #1a1a1a; 
-                        padding: 15px; 
-                        border-radius: 8px 8px 0 0; 
-                        margin: -25px -25px 20px -25px; 
-                    }}
-                    .recipe-name {{ margin: 0; font-size: 26px; text-transform: uppercase; }}
-                    .barcode-label {{ font-size: 14px; opacity: 0.8; font-weight: bold; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-                    th {{ background-color: #fff9e6; text-align: left; padding: 12px; border-bottom: 2px solid #ffcc00; color: #444; }}
-                    td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 15px; }}
-                    .ing-name {{ font-weight: bold; color: #2c3e50; }}
-                    .footer {{ text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 60px; border-top: 1px solid #ccc; padding-top: 10px; }}
-                    .analysis-box {{ 
-                        margin-top:20px; 
-                        padding:12px; 
-                        background:#fffdf2; 
-                        border-top:3px solid #ffcc00; 
-                        border-radius: 0 0 8px 8px; 
-                    }}
-                </style>
-            </head>
-            <body>
-                <div class='main-title'>
-                    {f'<img src="data:image/png;base64,{logo_base64}" class="logo-img"><br>' if logo_base64 else ''}
-                    <h1>CABCLUB COCKTAILS</h1>
-                    <h2>ΟΛΟΚΛΗΡΩΜΕΝΟ ΒΙΒΛΙΟ ΣΥΝΤΑΓΩΝ</h2>
-                    <p>Σύνολο Συνταγών: {len(df_rec)}</p>
-                </div>
-            """
-
-            for _, recipe in df_rec.iterrows():
-                name = recipe.get("Ονομα", "Χωρίς Όνομα")
-                bc = recipe.get("Barcode", "-")
+            st.subheader("🖨️ Κέντρο Εκτυπώσεων")
+            
+            if 'df_rec' in locals() and not df_rec.empty:
+                # 1. Κοινή Επιλογή Κοκτέιλ (Ισχύει και για τα δύο βιβλία!)
+                available_cocktails_print = sorted(df_rec['Ονομα'].astype(str).unique().tolist())
+                selected_to_print = st.multiselect(
+                    "🍸 Επιλέξτε τα Κοκτέιλ που θέλετε να συμπεριληφθούν στις εκτυπώσεις:",
+                    options=available_cocktails_print,
+                    default=available_cocktails_print
+                )
                 
-                # 🚀 LOGIC: Προσδιορισμός ποσοτήτων (12/24 για ειδικά, 24/48 για τα υπόλοιπα)
-                name_upper = str(name).strip().upper()
-                is_special = "PINA COLADA" in name_upper or "ZOMBIE" in name_upper
-                qty1 = 12 if is_special else 24
-                qty2 = 24 if is_special else 48
-                
-                html_book += f"""
-                <div class='recipe-card'>
-                    <div class='recipe-header'>
-                        <h2 class='recipe-name'>{name}</h2>
-                        <span class='barcode-label'>Shop ID: {bc}</span>
-                    </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Συστατικό Συνταγής</th>
-                                <th>Ποσότητα (ml)</th>
-                                <th>Βάρος (g)</th>
-                                <th>Βάρος για {qty1} τμχ (g)</th>
-                                <th>Βάρος για {qty2} τμχ (g)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                """
-                
-                r_total_ml = 0
-                r_total_alc = 0
-                r_total_weight = 0 
-                r_found_ing = 0
-                
-                for i in range(1, 14):
-                    raw_ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
-                    try:
-                        ml_str = str(recipe.get(f"ML{i}", 0)).replace(',', '.')
-                        ml = float(ml_str)
-                    except:
-                        ml = 0
+                # Φιλτράρισμα του πίνακα βάσει επιλογής
+                df_print = df_rec[df_rec['Ονομα'].isin(selected_to_print)]
+
+                col_print1, col_print2 = st.columns(2)
+
+                # -------------------------------------------------------------------------
+                # ΣΤΗΛΗ 1: ΚΙΤΡΙΝΟ ΒΙΒΛΙΟ (Εσωτερική Χρήση)
+                # -------------------------------------------------------------------------
+                with col_print1:
+                    st.markdown("#### 📒 Εσωτερικό Συνταγολόγιο")
+                    st.caption("Αναλυτικά βάρη, ml, μέθοδοι & κιβώτια.")
                     
-                    ing_clean = raw_ing.strip()
-                    ing_check = ing_clean.upper()
-                    
-                    if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"] and ml > 0:
+                    import base64
+
+                    def get_base64_image(image_path):
+                        try:
+                            with open(image_path, "rb") as img_file:
+                                return base64.b64encode(img_file.read()).decode()
+                        except:
+                            return ""
+
+                    logo_base64 = get_base64_image("logo.png") 
+
+                    html_book = f"""
+                    <html>
+                    <head>
+                        <meta charset='UTF-8'>
+                        <style>
+                            body {{ font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; background-color: #f9f9f9; }}
+                            .main-title {{ text-align: center; border-bottom: 5px solid #ffcc00; padding-bottom: 10px; margin-bottom: 50px; }}
+                            .logo-img {{ max-width: 150px; margin-bottom: 10px; }}
+                            .recipe-card {{ background-color: white; border: 1px solid #ddd; border-radius: 12px; padding: 25px; margin-bottom: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); page-break-inside: avoid; }}
+                            .recipe-header {{ background-color: #ffcc00; color: #1a1a1a; padding: 15px; border-radius: 8px 8px 0 0; margin: -25px -25px 20px -25px; }}
+                            .recipe-name {{ margin: 0; font-size: 26px; text-transform: uppercase; }}
+                            .barcode-label {{ font-size: 14px; opacity: 0.8; font-weight: bold; }}
+                            table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+                            th {{ background-color: #fff9e6; text-align: left; padding: 12px; border-bottom: 2px solid #ffcc00; color: #444; }}
+                            td {{ padding: 10px; border-bottom: 1px solid #eee; font-size: 15px; }}
+                            .ing-name {{ font-weight: bold; color: #2c3e50; }}
+                            .footer {{ text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 60px; border-top: 1px solid #ccc; padding-top: 10px; }}
+                            .analysis-box {{ margin-top:20px; padding:12px; background:#fffdf2; border-top:3px solid #ffcc00; border-radius: 0 0 8px 8px; }}
+                        </style>
+                    </head>
+                    <body>
+                        <div class='main-title'>
+                            {f'<img src="data:image/png;base64,{logo_base64}" class="logo-img"><br>' if logo_base64 else ''}
+                            <h1>CABCLUB COCKTAILS</h1>
+                            <h2>ΟΛΟΚΛΗΡΩΜΕΝΟ ΒΙΒΛΙΟ ΣΥΝΤΑΓΩΝ</h2>
+                            <p>Σύνολο Συνταγών: {len(df_print)}</p>
+                        </div>
+                    """
+
+                    for _, recipe in df_print.iterrows():
+                        name = recipe.get("Ονομα", "Χωρίς Όνομα")
+                        bc = recipe.get("Barcode", "-")
                         
-                        # --- Υπολογισμός Βάρους για 1 τμχ ---
-                        ing_weight = ml
-                        if ing_clean == "Νερό":
-                            ing_weight = ml
-                        elif not df_ing.empty and ing_clean in df_ing["Name"].values:
-                            ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
-                            pkg_weight = float(ing_row.get("weight_full", 0) or 0)
-                            pkg_volume = float(ing_row.get("Volume", 0) or 0)
-                            if pkg_volume > 0 and pkg_weight > 0:
-                                ing_weight = (pkg_weight / pkg_volume) * ml
-                        
-                        # --- 🚀 Υπολογισμός Βάρους για τα Κιβώτια (Μαζική Παραγωγή) ---
-                        weight_qty1 = ing_weight * qty1
-                        weight_qty2 = ing_weight * qty2
+                        name_upper = str(name).strip().upper()
+                        is_special = "PINA COLADA" in name_upper or "ZOMBIE" in name_upper
+                        qty1 = 12 if is_special else 24
+                        qty2 = 24 if is_special else 48
                         
                         html_book += f"""
-                            <tr>
-                                <td class='ing-name'>{ing_clean}</td>
-                                <td>{ml:.2f} ml</td>
-                                <td>{ing_weight:.1f} g</td>
-                                <td style='font-weight:bold; color:#d32f2f;'>{weight_qty1:.1f} g</td>
-                                <td style='font-weight:bold; color:#d32f2f;'>{weight_qty2:.1f} g</td>
-                            </tr>
+                        <div class='recipe-card'>
+                            <div class='recipe-header'>
+                                <h2 class='recipe-name'>{name}</h2>
+                                <span class='barcode-label'>Shop ID: {bc}</span>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Συστατικό Συνταγής</th>
+                                        <th>Ποσότητα (ml)</th>
+                                        <th>Βάρος (g)</th>
+                                        <th>Βάρος για {qty1} τμχ (g)</th>
+                                        <th>Βάρος για {qty2} τμχ (g)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
                         """
-                        r_found_ing += 1
-                        r_total_ml += ml
-                        r_total_weight += ing_weight
                         
-                        if not df_ing.empty and ing_clean in df_ing["Name"].values:
-                            ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
+                        r_total_ml = 0
+                        r_total_alc = 0
+                        r_total_weight = 0 
+                        r_found_ing = 0
+                        
+                        for i in range(1, 14):
+                            raw_ing = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", ""))
                             try:
-                                raw_abv = str(ing_row.get("ABV", ing_row.get("Αλκοόλ", 0)))
-                                clean_abv = raw_abv.replace(',', '.').replace('%', '').strip()
-                                abv = float(clean_abv)
-                                if 0 < abv <= 1.0:
-                                    abv = abv * 100
+                                ml_str = str(recipe.get(f"ML{i}", 0)).replace(',', '.')
+                                ml = float(ml_str)
                             except:
-                                abv = 0
-                            r_total_alc += ml * (abv / 100)
-                
-                if r_found_ing == 0:
-                    html_book += "<tr><td colspan='5'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
+                                ml = 0
+                            
+                            ing_clean = raw_ing.strip()
+                            ing_check = ing_clean.upper()
+                            
+                            if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"] and ml > 0:
+                                ing_weight = ml
+                                if ing_clean == "Νερό":
+                                    ing_weight = ml
+                                elif not df_ing.empty and ing_clean in df_ing["Name"].values:
+                                    ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
+                                    pkg_weight = float(ing_row.get("weight_full", 0) or 0)
+                                    pkg_volume = float(ing_row.get("Volume", 0) or 0)
+                                    if pkg_volume > 0 and pkg_weight > 0:
+                                        ing_weight = (pkg_weight / pkg_volume) * ml
+                                
+                                weight_qty1 = ing_weight * qty1
+                                weight_qty2 = ing_weight * qty2
+                                
+                                html_book += f"""
+                                    <tr>
+                                        <td class='ing-name'>{ing_clean}</td>
+                                        <td>{ml:.2f} ml</td>
+                                        <td>{ing_weight:.1f} g</td>
+                                        <td style='font-weight:bold; color:#d32f2f;'>{weight_qty1:.1f} g</td>
+                                        <td style='font-weight:bold; color:#d32f2f;'>{weight_qty2:.1f} g</td>
+                                    </tr>
+                                """
+                                r_found_ing += 1
+                                r_total_ml += ml
+                                r_total_weight += ing_weight
+                                
+                                if not df_ing.empty and ing_clean in df_ing["Name"].values:
+                                    ing_row = df_ing[df_ing["Name"] == ing_clean].iloc[0]
+                                    try:
+                                        raw_abv = str(ing_row.get("ABV", ing_row.get("Αλκοόλ", 0)))
+                                        clean_abv = raw_abv.replace(',', '.').replace('%', '').strip()
+                                        abv = float(clean_abv)
+                                        if 0 < abv <= 1.0:
+                                            abv = abv * 100
+                                    except:
+                                        abv = 0
+                                    r_total_alc += ml * (abv / 100)
+                        
+                        if r_found_ing == 0:
+                            html_book += "<tr><td colspan='5'><i>Δεν έχουν καταχωρηθεί συστατικά.</i></td></tr>"
 
-                r_final_abv = (r_total_alc / r_total_ml * 100) if r_total_ml > 0 else 0
-                r_sugg_price = float(str(recipe.get("Τιμή Καταλόγου", 0.0)).replace(',', '.'))
+                        r_final_abv = (r_total_alc / r_total_ml * 100) if r_total_ml > 0 else 0
+                        r_sugg_price = float(str(recipe.get("Τιμή Καταλόγου", 0.0)).replace(',', '.'))
 
-                html_book += f"""
-                        </tbody>
-                    </table>
-                    <div class='analysis-box'>
-                        <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{r_final_abv:.2f}%</b></span> | 
-                        <span style='font-size:16px;'>Συνολικό Βάρος (1 τμχ): <b>{r_total_weight:.1f} g</b></span>
-                        <span style='float:right; font-size:18px; color:#b38f00;'>Προτεινόμενη Λιανική: <b>{r_sugg_price:.2f} €</b></span>
-                    </div>
-                </div>
-                """
-            html_book += f"""
-                <div class='footer'>
-                    Αυτόματη εξαγωγή από το σύστημα διαχείρισης CABCLUB: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}
-                </div>
-            </body>
-            </html>
-            """
+                        html_book += f"""
+                                </tbody>
+                            </table>
+                            <div class='analysis-box'>
+                                <span style='font-size:16px;'>Αλκοόλ (ABV): <b>{r_final_abv:.2f}%</b></span> | 
+                                <span style='font-size:16px;'>Συνολικό Βάρος (1 τμχ): <b>{r_total_weight:.1f} g</b></span>
+                                <span style='float:right; font-size:18px; color:#b38f00;'>Προτεινόμενη Λιανική: <b>{r_sugg_price:.2f} €</b></span>
+                            </div>
+                        </div>
+                        """
+                    
+                    html_book += f"""
+                        <div class='footer'>
+                            Αυτόματη εξαγωγή από το σύστημα διαχείρισης CABCLUB: {datetime.now(greece_tz).strftime('%d/%m/%Y %H:%M')}
+                        </div>
+                    </body>
+                    </html>
+                    """
 
-            st.download_button(
-                label="📑 Λήψη Κίτρινου Βιβλίου Συνταγών (με Logo & Κιβώτια)",
-                data=html_book,
-                file_name=f"Recipe_Book_Yellow_{datetime.now(greece_tz).strftime('%d_%m_%Y')}.html",
-                mime="text/html",
-                use_container_width=True
-            )
+                    st.download_button(
+                        label="📑 Λήψη Συνταγολογίου (Εργαστήριο)",
+                        data=html_book,
+                        file_name=f"Recipe_Book_Yellow_{datetime.now(greece_tz).strftime('%d_%m_%Y')}.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+
+                # -------------------------------------------------------------------------
+                # ΣΤΗΛΗ 2: ΚΩΔΙΚΟΛΟΓΙΟ (Για Πελάτες)
+                # -------------------------------------------------------------------------
+                with col_print2:
+                    st.markdown("#### 📜 Κωδικολόγιο Πελατών")
+                    st.caption("Όνομα, καθαρά συστατικά & τιμή.")
+                    show_prices = st.checkbox("Εμφάνιση Τιμών Λιανικής;", value=True)
+                    
+                    cocktails_html = ""
+                    for _, recipe in df_print.iterrows():
+                        c_name = str(recipe.get("Ονομα", "Χωρίς Όνομα")).strip()
+                        
+                        # Εύρεση Τιμής
+                        c_price = 0.0
+                        try:
+                            if 'recipe_prices' in globals() or 'recipe_prices' in locals():
+                                c_price = float(recipe_prices.get(c_name, 0.0))
+                            if c_price == 0.0:
+                                c_price = float(str(recipe.get("Τιμή Καταλόγου", 0.0)).replace(',', '.'))
+                        except:
+                            pass
+                        
+                        price_html = f"<div class='cocktail-price'>{c_price:.2f} €</div>" if show_prices and c_price > 0 else ""
+                        
+                        # Εύρεση Πεντακάθαρων Συστατικών (χωρίς ml)
+                        clean_ing_list = []
+                        for i in range(1, 14):
+                            ing_clean = str(recipe.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "")).strip()
+                            ing_check = ing_clean.upper()
+                            if ing_clean and ing_check not in ["NAN", "ΚΕΝΟ", "ΚΕΝΟ.", "-", "NONE", "0", "NULL"]:
+                                clean_ing_list.append(ing_clean)
+                        
+                        final_ingredients = ", ".join(clean_ing_list) if clean_ing_list else "Μυστική Συνταγή"
+                        
+                        cocktails_html += f"""
+                        <div class="cocktail-item">
+                            <div class="cocktail-header">
+                                <div class="cocktail-title">{c_name}</div>
+                                {price_html}
+                            </div>
+                            <p class="cocktail-desc"><em>Συστατικά:</em> {final_ingredients}</p>
+                        </div>
+                        """
+                        
+                    html_menu = """
+                    <!DOCTYPE html>
+                    <html lang="el">
+                    <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        *, *::before, *::after { box-sizing: border-box; }
+                        @page { size: A4; margin: 15mm 15mm 20mm 15mm; background-color: #fcfbfa; }
+                        body { margin: 0; padding: 20px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #2c3e50; background-color: #fcfbfa; max-width: 800px; margin: auto; }
+                        .header-banner { margin-bottom: 30px; padding: 20px; background-color: #1b2a4a; color: white; text-align: center; border-bottom: 4px solid #c59b27; border-radius: 5px; }
+                        .header-banner h1 { margin: 0; font-size: 24pt; letter-spacing: 2px; text-transform: uppercase; font-weight: 300; }
+                        .header-banner p { margin: 5px 0 0 0; font-size: 11pt; color: #d4ac0d; font-style: italic; }
+                        .cocktail-container { display: flex; flex-direction: column; gap: 15px; }
+                        .cocktail-item { background-color: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 15px; border-left: 5px solid #1b2a4a; box-shadow: 0 2px 4px rgba(0,0,0,0.05); page-break-inside: avoid; }
+                        .cocktail-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 1px dashed #ecf0f1; padding-bottom: 5px; }
+                        .cocktail-title { font-size: 14pt; font-weight: bold; color: #1b2a4a; margin: 0; }
+                        .cocktail-price { font-size: 13pt; font-weight: bold; color: #c59b27; margin: 0; }
+                        .cocktail-desc { font-size: 10pt; color: #555; line-height: 1.5; margin: 0; }
+                        @media print { body { padding: 0; background-color: white; } .cocktail-item { box-shadow: none; border: 1px solid #ccc; border-left: 5px solid #1b2a4a; } }
+                    </style>
+                    </head>
+                    <body>
+                        <div class="header-banner">
+                            <h1>ΚΩΔΙΚΟΛΟΓΙΟ</h1>
+                            <p>Premium Cocktail Collection</p>
+                        </div>
+                        <div class="cocktail-container">
+                            """ + cocktails_html + """
+                        </div>
+                    </body>
+                    </html>
+                    """
+                    
+                    st.download_button(
+                        label="📥 Λήψη Κωδικολογίου (Πελάτες)",
+                        data=html_menu.encode('utf-8'),
+                        file_name=f"Menu_Pelaton_{datetime.now(greece_tz).strftime('%d_%m_%Y')}.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
 
         # =========================================================================
         # TAB 2: ΝΕΑ ΕΙΣ ΒΑΘΟΣ ΑΝΑΛΥΣΗ ΠΡΩΤΩΝ ΥΛΩΝ (ΑΠΟΛΥΤΗ ΤΑΥΤΙΣΗ ΜΕ DASHBOARD)
