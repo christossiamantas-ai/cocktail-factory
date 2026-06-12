@@ -1760,7 +1760,7 @@ elif page == "🔍 Ανάλυση":
         st.write("Δημιουργήστε έναν κομψό κατάλογο (PDF) για να τον στείλετε στους πελάτες σας ή να τον εκτυπώσετε.")
 
         # Φέρνουμε τα ονόματα των κοκτέιλ και τις τιμές τους
-        if not df_recipes.empty:
+         if not df_recipes.empty:
             available_cocktails = sorted(df_recipes['name'].unique().tolist())
             
             with st.form("catalog_print_form"):
