@@ -3651,14 +3651,21 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
-                        # 🚀 ΝΕΑ ΠΡΟΣΘΗΚΗ: Χρονολογική ταξινόμηση της λίστας προς σπάσιμο
                         import pandas as pd
+                        
+                        # 🚀 ΝΕΑ & ΑΣΦΑΛΗΣ ΠΡΟΣΘΗΚΗ: Ταξινόμηση με χρήση της πραγματικής ημερομηνίας/ώρας από το λεξικό
                         def sort_orders_by_date(option_text):
                             if option_text == "-- Επιλέξτε Παραγγελία --":
-                                return pd.to_datetime("2100-01-01") # Κρατάει το placeholder πάντα πρώτο
+                                # Δίνουμε μια τεράστια ημερομηνία στο μέλλον για να μένει ΠΑΝΤΑ πρώτο το placeholder
+                                return pd.to_datetime("2100-01-01") 
+                            
+                            # Τραβάμε την ημερομηνία και την ώρα κατευθείαν από τα καθαρά δεδομένα του χάρτη
+                            raw_date = split_map[option_text]["date"]
+                            raw_time = split_map[option_text]["time"]
+                            
                             try:
-                                date_str = option_text.split("|")[0].replace("📅", "").strip()
-                                return pd.to_datetime(date_str, format="%d/%m/%Y")
+                                # Χρησιμοποιούμε dayfirst=True ώστε να καταλαβαίνει σωστά τις Ελληνικές ημερομηνίες (π.χ. 15/06/2026)
+                                return pd.to_datetime(f"{raw_date} {raw_time}", dayfirst=True)
                             except:
                                 return pd.to_datetime("1900-01-01")
                                 
