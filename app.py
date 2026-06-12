@@ -3703,9 +3703,31 @@ elif page == "📦 Lot Παραγωγής":
                             try:
                                 lots_query = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", b_cocktail_selected).execute()
                                 if lots_query.data:
+                                    import re
+                                    from datetime import datetime
+                                    
                                     # Μαζεύουμε όλα τα μοναδικά LOT, αγνοώντας τα κενά
                                     found_lots = set(str(row["lot_cocktail"]) for row in lots_query.data if row.get("lot_cocktail"))
-                                    hist_lots = sorted([l for l in found_lots if l.strip() and l.lower() != "nan" and l != "-"], reverse=True)
+                                    clean_lots = [l for l in found_lots if l.strip() and l.lower() != "nan" and l != "-"]
+                                    
+                                    # 🚀 ΤΟ ΜΥΣΤΙΚΟ: Ταξινομούμε τα LOT σαν πραγματικές ημερομηνίες!
+                                    def sort_lot_as_date(lot_str):
+                                        try:
+                                            # Ψάχνει για ημερομηνία μέσα στο όνομα του LOT
+                                            match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', lot_str)
+                                            if match:
+                                                d = int(match.group(1))
+                                                m = int(match.group(2))
+                                                y = int(match.group(3))
+                                                if y < 100:
+                                                    y += 2000
+                                                return datetime(y, m, d)
+                                            return datetime.min # Αν το LOT δεν είναι ημερομηνία, πάει κάτω
+                                        except:
+                                            return datetime.min
+                                            
+                                    # Ταξινομούμε χρησιμοποιώντας την έξυπνη συνάρτηση!
+                                    hist_lots = sorted(clean_lots, key=sort_lot_as_date, reverse=True)
                             except Exception:
                                 pass
                             
