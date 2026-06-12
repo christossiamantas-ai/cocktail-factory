@@ -3651,47 +3651,30 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
-                        # 🚀 Ο ΑΠΟΛΥΤΟΣ ΧΕΙΡΟΚΙΝΗΤΟΣ ΤΑΞΙΝΟΜΗΤΗΣ (Χωρίς Βιβλιοθήκες)
-                        def extract_sort_key(lbl):
-                            if "-- Επιλέξτε" in lbl:
-                                return "99999999_999999" # Το μεγαλύτερο νούμερο για να μένει πάντα πρώτο
-                            
-                            try:
-                                # Παίρνουμε τα καθαρά δεδομένα από το λεξικό μας
-                                raw_date = str(split_map[lbl]["date"]).strip()
-                                raw_time = str(split_map[lbl]["time"]).strip()
-                                
-                                # Μετατροπή Ημερομηνίας σε μορφή ΕΤΟΣ-ΜΗΝΑΣ-ΗΜΕΡΑ (π.χ. 20260615)
-                                if "/" in raw_date:
-                                    parts = raw_date.split("/")
-                                    # Αν ξεκινάει από έτος (πχ 2026/06/15)
-                                    if len(parts[0]) == 4:
-                                        sort_date = f"{parts[0]}{parts[1].zfill(2)}{parts[2].zfill(2)}"
-                                    # Αν ξεκινάει από μέρα (πχ 15/06/2026)
-                                    else:
-                                        sort_date = f"{parts[2]}{parts[1].zfill(2)}{parts[0].zfill(2)}"
-                                        
-                                elif "-" in raw_date:
-                                    parts = raw_date.split("-")
-                                    if len(parts[0]) == 4:
-                                        sort_date = f"{parts[0]}{parts[1].zfill(2)}{parts[2].zfill(2)}"
-                                    else:
-                                        sort_date = f"{parts[2]}{parts[1].zfill(2)}{parts[0].zfill(2)}"
-                                else:
-                                    sort_date = "00000000"
-                                    
-                                # Καθαρισμός της ώρας (από 14:30:00 σε 143000)
-                                time_clean = raw_time.replace(":", "")
-                                
-                                # Ενώνουμε την ημερομηνία με την ώρα για τέλεια ταξινόμηση
-                                return f"{sort_date}_{time_clean}"
-                                
-                            except Exception:
-                                return "00000000_000000"
-
-                        # Εφαρμόζουμε τον χειροκίνητο ταξινομητή!
-                        sorted_split_options = sorted(split_options, key=extract_sort_key, reverse=True)
+                        # 🚀 ΕΞΥΠΝΗ ΤΑΞΙΝΟΜΗΣΗ (Με την ίδια ακριβώς λογική του Master!)
+                        from datetime import datetime
                         
+                        def sort_by_real_date_split(lbl):
+                            if lbl == "-- Επιλέξτε Παραγγελία --":
+                                return datetime.max # Για να μένει ΠΑΝΤΑ πρώτο το placeholder
+                                
+                            try:
+                                # Απομονώνουμε την ημερομηνία από το κείμενο
+                                parts = lbl.split(" | ")
+                                date_part = parts[0].replace("📅", "").strip()
+                                
+                                # Μετατροπή σε αληθινό χρόνο (datetime) με το ίδιο format του Master
+                                return datetime.strptime(date_part, "%d/%m/%Y")
+                            except Exception:
+                                return datetime.min # Αν κάτι πάει στραβά, το πάει στο τέλος
+
+                        # Αφαιρούμε την πρώτη επιλογή, ταξινομούμε και τα ενώνουμε πάλι
+                        temp_options = split_options[1:]
+                        temp_options.sort(key=sort_by_real_date_split, reverse=True)
+                        
+                        sorted_split_options = [split_options[0]] + temp_options
+
+                        # Τώρα το selectbox διαβάζει την ταξινομημένη λίστα!
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
