@@ -3651,24 +3651,38 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
-                        import pandas as pd
                         import re
+                        from datetime import datetime
                         
-                        def sort_by_extracted_date(lbl):
-                            if lbl == "-- Επιλέξτε Παραγγελία --":
-                                return pd.Timestamp("2100-01-01")
+                        # 🚀 ΑΠΟΛΥΤΟΣ ΧΕΙΡΟΚΙΝΗΤΟΣ ΚΑΤΑΣΚΕΥΑΣΤΗΣ ΗΜΕΡΟΜΗΝΙΩΝ
+                        def sort_by_exact_date(lbl):
+                            if "-- Επιλέξτε" in lbl:
+                                return datetime(2100, 1, 1) # Πάντα πρώτο
                             
                             try:
-                                match = re.search(r'(\d{2}/\d{2}/\d{4})|(\d{4}-\d{2}-\d{2})', lbl)
-                                if match:
-                                    date_found = match.group(0)
-                                    return pd.to_datetime(date_found, dayfirst=True)
-                                else:
-                                    return pd.Timestamp("1900-01-01")
+                                # 1. Ψάχνει για μορφή ΗΜΕΡΑ/ΜΗΝΑΣ/ΕΤΟΣ (π.χ. 15/06/2024 ή 2/6/2024)
+                                match1 = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', lbl)
+                                if match1:
+                                    d = int(match1.group(1))
+                                    m = int(match1.group(2))
+                                    y = int(match1.group(3))
+                                    return datetime(y, m, d)
+                                
+                                # 2. Αν είναι ανάποδα: ΕΤΟΣ-ΜΗΝΑΣ-ΗΜΕΡΑ (π.χ. 2024-06-15)
+                                match2 = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', lbl)
+                                if match2:
+                                    y = int(match2.group(1))
+                                    m = int(match2.group(2))
+                                    d = int(match2.group(3))
+                                    return datetime(y, m, d)
+                                
+                                return datetime(1900, 1, 1)
                             except Exception:
-                                return pd.Timestamp("1900-01-01")
+                                return datetime(1900, 1, 1)
 
-                        sorted_split_options = sorted(split_options, key=sort_by_extracted_date, reverse=True)
+                        # Ταξινομούμε! (Το reverse=True βάζει τις πιο πρόσφατες πάνω)
+                        sorted_split_options = sorted(split_options, key=sort_by_exact_date, reverse=True)
+                        
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
