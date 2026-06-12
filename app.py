@@ -1901,7 +1901,7 @@ elif page == "🔍 Ανάλυση":
                         )
                         st.success("✅ Το PDF σας είναι έτοιμο!")
                     
-                 except Exception as e:
+                  except Exception as e:
                         st.error(f"Προέκυψε σφάλμα κατά τη δημιουργία του PDF: {e}")
 
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH MULTISELECT, NET PROFIT & HTML EXPORT) ---
