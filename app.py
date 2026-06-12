@@ -3651,37 +3651,46 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
-                        import re
-                        from datetime import datetime
-                        
-                        # 🚀 ΑΠΟΛΥΤΟΣ ΧΕΙΡΟΚΙΝΗΤΟΣ ΚΑΤΑΣΚΕΥΑΣΤΗΣ ΗΜΕΡΟΜΗΝΙΩΝ
-                        def sort_by_exact_date(lbl):
+                        # 🚀 Ο ΑΠΟΛΥΤΟΣ ΧΕΙΡΟΚΙΝΗΤΟΣ ΤΑΞΙΝΟΜΗΤΗΣ (Χωρίς Βιβλιοθήκες)
+                        def extract_sort_key(lbl):
                             if "-- Επιλέξτε" in lbl:
-                                return datetime(2100, 1, 1) # Πάντα πρώτο
+                                return "99999999_999999" # Το μεγαλύτερο νούμερο για να μένει πάντα πρώτο
                             
                             try:
-                                # 1. Ψάχνει για μορφή ΗΜΕΡΑ/ΜΗΝΑΣ/ΕΤΟΣ (π.χ. 15/06/2024 ή 2/6/2024)
-                                match1 = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', lbl)
-                                if match1:
-                                    d = int(match1.group(1))
-                                    m = int(match1.group(2))
-                                    y = int(match1.group(3))
-                                    return datetime(y, m, d)
+                                # Παίρνουμε τα καθαρά δεδομένα από το λεξικό μας
+                                raw_date = str(split_map[lbl]["date"]).strip()
+                                raw_time = str(split_map[lbl]["time"]).strip()
                                 
-                                # 2. Αν είναι ανάποδα: ΕΤΟΣ-ΜΗΝΑΣ-ΗΜΕΡΑ (π.χ. 2024-06-15)
-                                match2 = re.search(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', lbl)
-                                if match2:
-                                    y = int(match2.group(1))
-                                    m = int(match2.group(2))
-                                    d = int(match2.group(3))
-                                    return datetime(y, m, d)
+                                # Μετατροπή Ημερομηνίας σε μορφή ΕΤΟΣ-ΜΗΝΑΣ-ΗΜΕΡΑ (π.χ. 20260615)
+                                if "/" in raw_date:
+                                    parts = raw_date.split("/")
+                                    # Αν ξεκινάει από έτος (πχ 2026/06/15)
+                                    if len(parts[0]) == 4:
+                                        sort_date = f"{parts[0]}{parts[1].zfill(2)}{parts[2].zfill(2)}"
+                                    # Αν ξεκινάει από μέρα (πχ 15/06/2026)
+                                    else:
+                                        sort_date = f"{parts[2]}{parts[1].zfill(2)}{parts[0].zfill(2)}"
+                                        
+                                elif "-" in raw_date:
+                                    parts = raw_date.split("-")
+                                    if len(parts[0]) == 4:
+                                        sort_date = f"{parts[0]}{parts[1].zfill(2)}{parts[2].zfill(2)}"
+                                    else:
+                                        sort_date = f"{parts[2]}{parts[1].zfill(2)}{parts[0].zfill(2)}"
+                                else:
+                                    sort_date = "00000000"
+                                    
+                                # Καθαρισμός της ώρας (από 14:30:00 σε 143000)
+                                time_clean = raw_time.replace(":", "")
                                 
-                                return datetime(1900, 1, 1)
+                                # Ενώνουμε την ημερομηνία με την ώρα για τέλεια ταξινόμηση
+                                return f"{sort_date}_{time_clean}"
+                                
                             except Exception:
-                                return datetime(1900, 1, 1)
+                                return "00000000_000000"
 
-                        # Ταξινομούμε! (Το reverse=True βάζει τις πιο πρόσφατες πάνω)
-                        sorted_split_options = sorted(split_options, key=sort_by_exact_date, reverse=True)
+                        # Εφαρμόζουμε τον χειροκίνητο ταξινομητή!
+                        sorted_split_options = sorted(split_options, key=extract_sort_key, reverse=True)
                         
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
