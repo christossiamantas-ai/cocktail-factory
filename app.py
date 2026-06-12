@@ -1516,22 +1516,30 @@ elif page == "🔍 Ανάλυση":
                             for _, row in cat_df.iterrows():
                                 c_name = str(row[col_name])
                                 
+                                # 🚀 ΕΞΥΠΝΗ ΕΥΡΕΣΗ ΤΙΜΗΣ ΑΠΟ ΤΟ ΛΕΞΙΚΟ recipe_prices
                                 c_price = 0.0
-                                if 'catalog_price' in row:
-                                    c_price = float(row.get('catalog_price', 0.0) or 0.0)
-                                elif 'Τιμή' in row:
-                                    c_price = float(row.get('Τιμή', 0.0) or 0.0)
+                                try:
+                                    if 'recipe_prices' in globals() or 'recipe_prices' in locals():
+                                        c_price = float(recipe_prices.get(c_name, 0.0))
+                                    
+                                    # Fallback αν δεν βρει το λεξικό
+                                    if c_price == 0.0 and 'catalog_price' in target_df.columns:
+                                        c_price = float(row['catalog_price'])
+                                    if c_price == 0.0 and 'Τιμή' in target_df.columns:
+                                        c_price = float(row['Τιμή'])
+                                except:
+                                    pass
                                     
                                 c_desc = ""
-                                if 'description' in row:
-                                    c_desc = str(row.get('description', ''))
-                                elif 'Περιγραφή' in row:
-                                    c_desc = str(row.get('Περιγραφή', ''))
+                                if 'description' in target_df.columns:
+                                    c_desc = str(row['description'])
+                                elif 'Περιγραφή' in target_df.columns:
+                                    c_desc = str(row['Περιγραφή'])
                                     
                                 if not c_desc or c_desc == 'nan':
                                     c_desc = f"Premium {c_name} βασισμένο σε αυθεντική συνταγή."
                                     
-                                price_html = f"<div class='cocktail-price'>{c_price:.2f} €</div>" if show_prices and c_price > 0 else ""
+                                price_html = f"<div class='cocktail-price'>{c_price:.2f} €</div>" if show_prices else ""
                                 
                                 cocktails_html += f"""
                                 <div class="cocktail-item">
