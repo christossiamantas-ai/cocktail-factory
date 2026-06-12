@@ -3654,29 +3654,21 @@ elif page == "📦 Lot Παραγωγής":
                         import pandas as pd
                         import re
                         
-                        # 🚀 ΑΠΟΛΥΤΟΣ ΑΝΙΧΝΕΥΤΗΣ ΗΜΕΡΟΜΗΝΙΑΣ ΜΕ REGEX
                         def sort_by_extracted_date(lbl):
                             if lbl == "-- Επιλέξτε Παραγγελία --":
-                                # Τεράστια ημερομηνία για να μένει πάντα πρώτο στην κορυφή
                                 return pd.Timestamp("2100-01-01")
                             
                             try:
-                                # Ψάχνει ΑΥΤΟΜΑΤΑ μέσα στο κείμενο για ημερομηνία (είτε είναι 12/06/2026 είτε 2026-06-12)
                                 match = re.search(r'(\d{2}/\d{2}/\d{4})|(\d{4}-\d{2}-\d{2})', lbl)
-                                
                                 if match:
                                     date_found = match.group(0)
-                                    # Το dayfirst=True διασφαλίζει ότι το 12/06 είναι 12 Ιουνίου
                                     return pd.to_datetime(date_found, dayfirst=True)
                                 else:
-                                    # Αν για κάποιο λόγο δεν βρει ημερομηνία, το βάζει στο τέλος
                                     return pd.Timestamp("1900-01-01")
-                            except:
+                            except Exception:
                                 return pd.Timestamp("1900-01-01")
 
-                        # Ταξινομούμε απευθείας ολόκληρη τη λίστα
                         sorted_split_options = sorted(split_options, key=sort_by_extracted_date, reverse=True)
-
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
