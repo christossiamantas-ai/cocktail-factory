@@ -1482,19 +1482,19 @@ elif page == "🔍 Ανάλυση":
             st.header("🖨️ Εκτύπωση Κωδικολογίου (PDF)")
             st.write("Δημιουργήστε έναν κομψό κατάλογο (PDF) για να τον στείλετε στους πελάτες σας ή να τον εκτυπώσετε.")
 
-            # 🚀 ΕΞΥΠΝΗ ΕΥΡΕΣΗ ΔΕΔΟΜΕΝΩΝ: Ψάχνει το σωστό DataFrame της σελίδας
-            catalog_df = None
+            # 🚀 ΕΞΥΠΝΗ ΕΥΡΕΣΗ: Ψάχνει να βρει πώς λέγεται ο πίνακας και η στήλη σε αυτή την καρτέλα!
+            target_df = None
             if 'df_rec' in locals() and not df_rec.empty:
-                catalog_df = df_rec.copy()
+                target_df = df_rec.copy()
             elif 'df_recipes' in locals() and not df_recipes.empty:
-                catalog_df = df_recipes.copy()
+                target_df = df_recipes.copy()
                 
-            if catalog_df is not None:
-                # Βρίσκει αν η στήλη λέγεται "Ονομα" (Ελληνικά) ή "name"
-                name_col = 'Ονομα' if 'Ονομα' in catalog_df.columns else 'name'
+            if target_df is not None:
+                # Βρίσκει αν η στήλη με τα ονόματα λέγεται "Ονομα" ή "name"
+                col_name = 'Ονομα' if 'Ονομα' in target_df.columns else 'name'
                 
-                if name_col in catalog_df.columns:
-                    available_cocktails = sorted(catalog_df[name_col].astype(str).unique().tolist())
+                if col_name in target_df.columns:
+                    available_cocktails = sorted(target_df[col_name].astype(str).unique().tolist())
                     
                     with st.form("catalog_print_form"):
                         col_cat1, col_cat2 = st.columns([2, 1])
@@ -1516,12 +1516,12 @@ elif page == "🔍 Ανάλυση":
                                 from weasyprint import HTML
                                 import io
                                 
-                                # Φιλτράρουμε τον πίνακα των συνταγών
-                                cat_df = catalog_df[catalog_df[name_col].isin(selected_cocktails_print)].sort_values(name_col)
+                                # Φιλτράρουμε τον πίνακα
+                                cat_df = target_df[target_df[col_name].isin(selected_cocktails_print)].sort_values(col_name)
                                 
                                 cocktails_html = ""
                                 for _, row in cat_df.iterrows():
-                                    c_name = str(row[name_col])
+                                    c_name = str(row[col_name])
                                     
                                     # Ψάχνουμε έξυπνα για τιμή
                                     c_price = 0.0
@@ -1601,7 +1601,6 @@ elif page == "🔍 Ανάλυση":
                                 
                             except Exception as e:
                                 st.error(f"Προέκυψε σφάλμα κατά τη δημιουργία του PDF: {e}")
-
         # =========================================================================
         # TAB 2: ΝΕΑ ΕΙΣ ΒΑΘΟΣ ΑΝΑΛΥΣΗ ΠΡΩΤΩΝ ΥΛΩΝ (ΑΠΟΛΥΤΗ ΤΑΥΤΙΣΗ ΜΕ DASHBOARD)
         # =========================================================================
