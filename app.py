@@ -1515,21 +1515,31 @@ elif page == "🔍 Ανάλυση":
                             cocktails_html = ""
                             for _, row in cat_df.iterrows():
                                 c_name = str(row[col_name])
+                                c_name_clean = c_name.strip()
                                 
-                                # 🚀 ΕΞΥΠΝΗ ΕΥΡΕΣΗ ΤΙΜΗΣ ΑΠΟ ΤΟ ΛΕΞΙΚΟ recipe_prices
+                                # 🚀 ΑΠΟΛΥΤΟΣ ΑΝΙΧΝΕΥΤΗΣ ΤΙΜΗΣ
                                 c_price = 0.0
+                                
+                                # Βήμα 1: Ψάχνουμε στο λεξικό αγνοώντας τα πιθανά Scope Errors
                                 try:
-                                    if 'recipe_prices' in globals() or 'recipe_prices' in locals():
-                                        c_price = float(recipe_prices.get(c_name, 0.0))
-                                    
-                                    # Fallback αν δεν βρει το λεξικό
-                                    if c_price == 0.0 and 'catalog_price' in target_df.columns:
-                                        c_price = float(row['catalog_price'])
-                                    if c_price == 0.0 and 'Τιμή' in target_df.columns:
-                                        c_price = float(row['Τιμή'])
-                                except:
+                                    c_price = float(recipe_prices.get(c_name_clean, 0.0))
+                                except NameError:
                                     pass
+                                
+                                # Βήμα 2: Αν παραμένει 0.0, σαρώνουμε ΔΥΝΑΜΙΚΑ όλες τις στήλες του πίνακα!
+                                if c_price == 0.0:
+                                    for col in row.index:
+                                        col_str = str(col).lower()
+                                        if 'τιμή' in col_str or 'price' in col_str:
+                                            try:
+                                                val = float(row[col])
+                                                if val > 0:
+                                                    c_price = val
+                                                    break # Βρήκαμε την τιμή, σταματάμε το ψάξιμο!
+                                            except:
+                                                pass
                                     
+                                # Εύρεση Περιγραφής
                                 c_desc = ""
                                 if 'description' in target_df.columns:
                                     c_desc = str(row['description'])
@@ -1539,7 +1549,7 @@ elif page == "🔍 Ανάλυση":
                                 if not c_desc or c_desc == 'nan':
                                     c_desc = f"Premium {c_name} βασισμένο σε αυθεντική συνταγή."
                                     
-                                price_html = f"<div class='cocktail-price'>{c_price:.2f} €</div>" if show_prices else ""
+                                price_html = f"<div class='cocktail-price'>{c_price:.2f} €</div>" if show_prices and c_price > 0 else ""
                                 
                                 cocktails_html += f"""
                                 <div class="cocktail-item">
