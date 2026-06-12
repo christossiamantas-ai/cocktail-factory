@@ -3651,32 +3651,44 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
+                        import re
                         from datetime import datetime
                         
-                        def sort_by_real_date_split(lbl):
-                            if lbl == "-- Επιλέξτε Παραγγελία --":
-                                return datetime.max # Μένει πάντα πρώτο
+                        # 🚀 Ο ΑΠΟΛΥΤΟΣ & ΕΥΕΛΙΚΤΟΣ ΑΝΙΧΝΕΥΤΗΣ 
+                        def flexible_date_sorter(lbl):
+                            if "-- Επιλέξτε" in lbl:
+                                return datetime.max # Για να μένει ΠΑΝΤΑ πρώτο
                                 
                             try:
-                                # Κόβουμε το κείμενο και παίρνουμε την ημερομηνία (π.χ. "15/06/26")
-                                parts = lbl.split(" | ")
-                                date_part = parts[0].replace("📅", "").strip()
+                                # Ψάχνει ΑΥΤΟΜΑΤΑ για ΗΗ/ΜΜ/ΕΕΕΕ *Ή* ΗΗ/ΜΜ/ΕΕ
+                                # Το \d{2,4} σημαίνει "από 2 έως 4 ψηφία" για το έτος!
+                                match = re.search(r'(\d{1,2})/(\d{1,2})/(\d{2,4})', lbl)
                                 
-                                # 🚀 ΕΠΙΤΕΛΟΥΣ: %y (μικρό y) για ΔΙΨΗΦΙΟ ΕΤΟΣ ("εε")
-                                return datetime.strptime(date_part, "%d/%m/%y")
+                                if match:
+                                    d = int(match.group(1))
+                                    m = int(match.group(2))
+                                    y = int(match.group(3))
+                                    
+                                    # Αν το έτος είναι "26", το κάνει "2026"
+                                    if y < 100:
+                                        y += 2000
+                                        
+                                    return datetime(y, m, d)
                                 
-                            except ValueError:
-                                try:
-                                    # Σε περίπτωση που κάποιες παλιές είναι με 4 ψηφία (π.χ. "15/06/2026")
-                                    return datetime.strptime(date_part, "%d/%m/%Y")
-                                except Exception:
-                                    return datetime.min
+                                # Δικλείδα ασφαλείας αν τυχόν μπει ΕΕΕΕ-ΜΜ-ΗΗ
+                                match2 = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', lbl)
+                                if match2:
+                                    return datetime(int(match2.group(1)), int(match2.group(2)), int(match2.group(3)))
+                                    
+                                return datetime.min
+                            except Exception:
+                                return datetime.min
 
-                        # Αφαιρούμε την πρώτη επιλογή, ταξινομούμε και τα ενώνουμε πάλι
-                        temp_options = split_options[1:]
-                        temp_options.sort(key=sort_by_real_date_split, reverse=True)
+                        # Αφαιρούμε το πρώτο, ταξινομούμε, και τα ξαναενώνουμε
+                        temp_splits = split_options[1:]
+                        temp_splits.sort(key=flexible_date_sorter, reverse=True)
                         
-                        sorted_split_options = [split_options[0]] + temp_options
+                        sorted_split_options = [split_options[0]] + temp_splits
 
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
