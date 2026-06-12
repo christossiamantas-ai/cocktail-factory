@@ -1552,26 +1552,26 @@ elif page == "🔍 Ανάλυση":
                                     </div>
                                     """
 
-                                # Το CSS και HTML του Εγγράφου
-                                html_template = f"""
+                                # Το CSS και HTML του Εγγράφου (χωρίς f-string για να μην μπερδεύονται τα άγκιστρα του CSS)
+                                html_template = """
                                 <!DOCTYPE html>
                                 <html lang="el">
                                 <head>
                                 <meta charset="UTF-8">
                                 <style>
-                                    *, *::before, *::after {{ box-sizing: border-box; }}
-                                    @page {{ size: A4; margin: 15mm 15mm 20mm 15mm; background-color: #fcfbfa; @bottom-right {{ content: "Σελίδα " counter(page) " από " counter(pages); font-size: 9pt; color: #7f8c8d; font-family: sans-serif; }} }}
-                                    body {{ margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #2c3e50; }}
-                                    .header-banner {{ margin: -15mm -15mm 10mm -15mm; padding: 15mm 15mm; background-color: #1b2a4a; color: white; text-align: center; border-bottom: 4px solid #c59b27; }}
-                                    .header-banner h1 {{ margin: 0; font-size: 24pt; letter-spacing: 2px; text-transform: uppercase; font-weight: 300; }}
-                                    .header-banner p {{ margin: 5px 0 0 0; font-size: 11pt; color: #d4ac0d; font-style: italic; }}
-                                    .intro-text {{ font-size: 10.5pt; line-height: 1.6; text-align: center; margin-bottom: 20px; color: #555; }}
-                                    .cocktail-container {{ display: block; width: 100%; }}
-                                    .cocktail-item {{ display: block; margin-bottom: 15px; background-color: white; border: 1px solid #e0e0e0; border-radius: 4px; page-break-inside: avoid; padding: 12px; border-left: 5px solid #1b2a4a; }}
-                                    .cocktail-header {{ display: table; width: 100%; margin-bottom: 8px; border-bottom: 1px dashed #ecf0f1; padding-bottom: 5px; }}
-                                    .cocktail-title {{ display: table-cell; font-size: 14pt; font-weight: bold; color: #1b2a4a; vertical-align: bottom; }}
-                                    .cocktail-price {{ display: table-cell; font-size: 13pt; font-weight: bold; color: #c59b27; text-align: right; vertical-align: bottom; width: 80px; }}
-                                    .cocktail-desc {{ font-size: 10pt; color: #555; line-height: 1.5; margin: 0; }}
+                                    *, *::before, *::after { box-sizing: border-box; }
+                                    @page { size: A4; margin: 15mm 15mm 20mm 15mm; background-color: #fcfbfa; @bottom-right { content: "Σελίδα " counter(page) " από " counter(pages); font-size: 9pt; color: #7f8c8d; font-family: sans-serif; } }
+                                    body { margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #2c3e50; }
+                                    .header-banner { margin: -15mm -15mm 10mm -15mm; padding: 15mm 15mm; background-color: #1b2a4a; color: white; text-align: center; border-bottom: 4px solid #c59b27; }
+                                    .header-banner h1 { margin: 0; font-size: 24pt; letter-spacing: 2px; text-transform: uppercase; font-weight: 300; }
+                                    .header-banner p { margin: 5px 0 0 0; font-size: 11pt; color: #d4ac0d; font-style: italic; }
+                                    .intro-text { font-size: 10.5pt; line-height: 1.6; text-align: center; margin-bottom: 20px; color: #555; }
+                                    .cocktail-container { display: block; width: 100%; }
+                                    .cocktail-item { display: block; margin-bottom: 15px; background-color: white; border: 1px solid #e0e0e0; border-radius: 4px; page-break-inside: avoid; padding: 12px; border-left: 5px solid #1b2a4a; }
+                                    .cocktail-header { display: table; width: 100%; margin-bottom: 8px; border-bottom: 1px dashed #ecf0f1; padding-bottom: 5px; }
+                                    .cocktail-title { display: table-cell; font-size: 14pt; font-weight: bold; color: #1b2a4a; vertical-align: bottom; }
+                                    .cocktail-price { display: table-cell; font-size: 13pt; font-weight: bold; color: #c59b27; text-align: right; vertical-align: bottom; width: 80px; }
+                                    .cocktail-desc { font-size: 10pt; color: #555; line-height: 1.5; margin: 0; }
                                 </style>
                                 </head>
                                 <body>
@@ -1581,7 +1581,7 @@ elif page == "🔍 Ανάλυση":
                                     </div>
                                     <div class="intro-text">Η επιλογή των κοκτέιλ μας είναι σχεδιασμένη για να προσφέρει μια μοναδική εμπειρία απόλαυσης με αγνά υλικά και εκλεπτυσμένες συνταγές.</div>
                                     <div class="cocktail-container">
-                                        {cocktails_html}
+                                        """ + cocktails_html + """
                                     </div>
                                 </body>
                                 </html>
