@@ -3651,22 +3651,26 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
-                        # 🚀 ΕΞΥΠΝΗ ΤΑΞΙΝΟΜΗΣΗ (Με την ίδια ακριβώς λογική του Master!)
                         from datetime import datetime
                         
                         def sort_by_real_date_split(lbl):
                             if lbl == "-- Επιλέξτε Παραγγελία --":
-                                return datetime.max # Για να μένει ΠΑΝΤΑ πρώτο το placeholder
+                                return datetime.max # Μένει πάντα πρώτο
                                 
                             try:
-                                # Απομονώνουμε την ημερομηνία από το κείμενο
+                                # Κόβουμε το κείμενο και παίρνουμε την ημερομηνία (π.χ. "15/06/26")
                                 parts = lbl.split(" | ")
                                 date_part = parts[0].replace("📅", "").strip()
                                 
-                                # Μετατροπή σε αληθινό χρόνο (datetime) με το ίδιο format του Master
-                                return datetime.strptime(date_part, "%d/%m/%Y")
-                            except Exception:
-                                return datetime.min # Αν κάτι πάει στραβά, το πάει στο τέλος
+                                # 🚀 ΕΠΙΤΕΛΟΥΣ: %y (μικρό y) για ΔΙΨΗΦΙΟ ΕΤΟΣ ("εε")
+                                return datetime.strptime(date_part, "%d/%m/%y")
+                                
+                            except ValueError:
+                                try:
+                                    # Σε περίπτωση που κάποιες παλιές είναι με 4 ψηφία (π.χ. "15/06/2026")
+                                    return datetime.strptime(date_part, "%d/%m/%Y")
+                                except Exception:
+                                    return datetime.min
 
                         # Αφαιρούμε την πρώτη επιλογή, ταξινομούμε και τα ενώνουμε πάλι
                         temp_options = split_options[1:]
@@ -3674,7 +3678,6 @@ elif page == "📦 Lot Παραγωγής":
                         
                         sorted_split_options = [split_options[0]] + temp_options
 
-                        # Τώρα το selectbox διαβάζει την ταξινομημένη λίστα!
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
