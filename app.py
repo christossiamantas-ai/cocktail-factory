@@ -3651,27 +3651,32 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
-                        import pandas as pd
+                        # 🚀 ΕΞΥΠΝΗ ΤΑΞΙΝΟΜΗΣΗ (Όπως ακριβώς στην αναζήτηση, αλλά διαβάζοντας από το λεξικό!)
+                        from datetime import datetime
                         
-                        # 🚀 ΝΕΑ & ΑΣΦΑΛΗΣ ΠΡΟΣΘΗΚΗ: Ταξινόμηση με χρήση της πραγματικής ημερομηνίας/ώρας από το λεξικό
-                        def sort_orders_by_date(option_text):
-                            if option_text == "-- Επιλέξτε Παραγγελία --":
-                                # Δίνουμε μια τεράστια ημερομηνία στο μέλλον για να μένει ΠΑΝΤΑ πρώτο το placeholder
-                                return pd.to_datetime("2100-01-01") 
-                            
-                            # Τραβάμε την ημερομηνία και την ώρα κατευθείαν από τα καθαρά δεδομένα του χάρτη
-                            raw_date = split_map[option_text]["date"]
-                            raw_time = split_map[option_text]["time"]
-                            
+                        def sort_by_real_date_split(lbl):
                             try:
-                                # Χρησιμοποιούμε dayfirst=True ώστε να καταλαβαίνει σωστά τις Ελληνικές ημερομηνίες (π.χ. 15/06/2026)
-                                return pd.to_datetime(f"{raw_date} {raw_time}", dayfirst=True)
-                            except:
-                                return pd.to_datetime("1900-01-01")
+                                # Διαβάζουμε την ημερομηνία και ώρα από τα κρυφά δεδομένα του split_map
+                                date_part = str(split_map[lbl]["date"]).strip()
+                                time_part = str(split_map[lbl]["time"]).strip()
                                 
-                        sorted_split_options = sorted(split_options, key=sort_orders_by_date, reverse=True)
+                                # Μετατροπή σε αληθινό χρόνο (datetime) - Δοκιμή με δευτερόλεπτα
+                                return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M:%S")
+                            except ValueError:
+                                try:
+                                    # Αν η ώρα δεν έχει δευτερόλεπτα
+                                    return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M")
+                                except Exception:
+                                    return datetime.min # Αν κάτι πάει στραβά, το πάει στο τέλος
 
-                        # Τώρα το selectbox διαβάζει την ταξινομημένη λίστα!
+                        # Αφαιρούμε το placeholder ("-- Επιλέξτε Παραγγελία --") για να ταξινομήσουμε τα υπόλοιπα
+                        temp_splits = split_options[1:]
+                        temp_splits.sort(key=sort_by_real_date_split, reverse=True)
+                        
+                        # Ενώνουμε ξανά την αρχική επιλογή με την ταξινομημένη λίστα
+                        sorted_split_options = [split_options[0]] + temp_splits
+
+                        # Τώρα το selectbox διαβάζει την τέλεια ταξινομημένη λίστα!
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
