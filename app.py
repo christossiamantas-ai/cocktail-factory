@@ -1751,6 +1751,158 @@ elif page == "🔍 Ανάλυση":
                         use_container_width=True
                     )
 
+# =========================================================================
+        # 🖨️ ΕΚΤΥΠΩΣΗ ΚΩΔΙΚΟΛΟΓΙΟΥ / MENU ΚΟΚΤΕΙΛ
+        # =========================================================================
+        st.divider()
+        st.header("🖨️ Εκτύπωση Κωδικολογίου (PDF)")
+        st.write("Δημιουργήστε έναν κομψό κατάλογο (PDF) για να τον στείλετε στους πελάτες σας ή να τον εκτυπώσετε.")
+
+        # Φέρνουμε τα ονόματα των κοκτέιλ και τις τιμές τους
+        if not df_recipes.empty:
+            available_cocktails = sorted(df_recipes['name'].unique().tolist())
+            
+            with st.form("catalog_print_form"):
+                col_cat1, col_cat2 = st.columns([2, 1])
+                
+                selected_cocktails_print = col_cat1.multiselect(
+                    "Επιλέξτε Κοκτέιλ για Εκτύπωση:",
+                    options=available_cocktails,
+                    default=available_cocktails,
+                    help="Αφαιρέστε όσα κοκτέιλ δεν θέλετε να εμφανίζονται στον κατάλογο."
+                )
+                
+                show_prices = col_cat2.checkbox("Εμφάνιση Τιμών Λιανικής;", value=True)
+                
+                generate_catalog_btn = st.form_submit_button("⚙️ Δημιουργία PDF Κωδικολογίου", type="primary")
+
+            if generate_catalog_btn and selected_cocktails_print:
+                with st.spinner("Δημιουργία Premium PDF..."):
+                    try:
+                        from weasyprint import HTML
+                        import io
+                        
+                        # Φιλτράρουμε τον πίνακα των συνταγών βάσει των επιλογών μας
+                        cat_df = df_recipes[df_recipes['name'].isin(selected_cocktails_print)].sort_values('name')
+                        
+                        # Χτίζουμε δυναμικά το HTML του καταλόγου
+                        cocktails_html = ""
+                        for _, row in cat_df.iterrows():
+                            c_name = row['name']
+                            c_price = float(row.get('catalog_price', 0.0))
+                            
+                            # Εάν υπάρχει πεδίο 'description' στη βάση σου, άλλαξέ το. Εδώ βάζω ένα placeholder.
+                            c_desc = row.get('description', f"Premium {c_name} βασισμένο σε αυθεντική συνταγή.")
+                            
+                            price_html = f"<div class='cocktail-price'>{c_price:.2f} €</div>" if show_prices else ""
+                            
+                            cocktails_html += f"""
+                            <div class="cocktail-item">
+                                <div class="cocktail-header">
+                                    <div class="cocktail-title">{c_name}</div>
+                                    {price_html}
+                                </div>
+                                <p class="cocktail-desc">{c_desc}</p>
+                            </div>
+                            """
+
+                        # Το CSS και HTML του Εγγράφου
+                        html_template = f"""
+                        <!DOCTYPE html>
+                        <html lang="el">
+                        <head>
+                        <meta charset="UTF-8">
+                        <style>
+                            *, *::before, *::after {{ box-sizing: border-box; }}
+                            @page {{
+                                size: A4;
+                                margin: 15mm 15mm 20mm 15mm;
+                                background-color: #fcfbfa;
+                                @bottom-right {{
+                                    content: "Σελίδα " counter(page) " από " counter(pages);
+                                    font-size: 9pt; color: #7f8c8d; font-family: sans-serif;
+                                }}
+                            }}
+                            body {{
+                                margin: 0; padding: 0;
+                                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                                color: #2c3e50;
+                            }}
+                            .header-banner {{
+                                margin: -15mm -15mm 10mm -15mm;
+                                padding: 15mm 15mm;
+                                background-color: #1b2a4a;
+                                color: white;
+                                text-align: center;
+                                border-bottom: 4px solid #c59b27;
+                            }}
+                            .header-banner h1 {{
+                                margin: 0; font-size: 24pt; letter-spacing: 2px;
+                                text-transform: uppercase; font-weight: 300;
+                            }}
+                            .header-banner p {{
+                                margin: 5px 0 0 0; font-size: 11pt;
+                                color: #d4ac0d; font-style: italic;
+                            }}
+                            .intro-text {{
+                                font-size: 10.5pt; line-height: 1.6; text-align: center;
+                                margin-bottom: 20px; color: #555;
+                            }}
+                            .cocktail-container {{ display: block; width: 100%; }}
+                            .cocktail-item {{
+                                display: block; margin-bottom: 15px; background-color: white;
+                                border: 1px solid #e0e0e0; border-radius: 4px;
+                                page-break-inside: avoid; padding: 12px;
+                                border-left: 5px solid #1b2a4a;
+                            }}
+                            .cocktail-header {{
+                                display: table; width: 100%; margin-bottom: 8px;
+                                border-bottom: 1px dashed #ecf0f1; padding-bottom: 5px;
+                            }}
+                            .cocktail-title {{
+                                display: table-cell; font-size: 14pt; font-weight: bold;
+                                color: #1b2a4a; vertical-align: bottom;
+                            }}
+                            .cocktail-price {{
+                                display: table-cell; font-size: 13pt; font-weight: bold;
+                                color: #c59b27; text-align: right; vertical-align: bottom; width: 80px;
+                            }}
+                            .cocktail-desc {{ font-size: 10pt; color: #555; line-height: 1.5; margin: 0; }}
+                        </style>
+                        </head>
+                        <body>
+                            <div class="header-banner">
+                                <h1>ΚΩΔΙΚΟΛΟΓΙΟ</h1>
+                                <p>Premium Cocktail Collection</p>
+                            </div>
+                            
+                            <div class="intro-text">
+                                Η επιλογή των κοκτέιλ μας είναι σχεδιασμένη για να προσφέρει
+                                μια μοναδική εμπειρία απόλαυσης με αγνά υλικά και εκλεπτυσμένες συνταγές.
+                            </div>
+
+                            <div class="cocktail-container">
+                                {cocktails_html}
+                            </div>
+                        </body>
+                        </html>
+                        """
+                        
+                        pdf_io = io.BytesIO()
+                        HTML(string=html_template).write_pdf(pdf_io)
+                        
+                        st.download_button(
+                            label="📥 Κατέβασμα Κωδικολογίου (PDF)",
+                            data=pdf_io.getvalue(),
+                            file_name="Kodikologio_Cocktails.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                        st.success("✅ Το PDF σας είναι έτοιμο!")
+                    
+                    except Exception as e:
+                        st.error(f"Προέκυψε σφάλμα κατά τη δημιουργία του PDF: {e}")
+
 
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH MULTISELECT, NET PROFIT & HTML EXPORT) ---
 elif page == "📊 Εμπορική Πολιτική":
