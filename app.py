@@ -3685,16 +3685,29 @@ elif page == "📦 Lot Παραγωγής":
                             
                             st.info(f"Επιλεγμένη Παραγγελία: **{orig_pcs} τμχ**")
                             
-                            # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε τα LOT απευθείας από τη Supabase για το συγκεκριμένο κοκτέιλ!
+                            # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε τα LOT ΚΑΙ τις ημερομηνίες τους για να τα ταξινομήσουμε σωστά!
                             hist_lots = []
                             try:
-                                lots_query = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", b_cocktail_selected).execute()
+                                # Ζητάμε από τη Supabase να φέρει και το prod_date
+                                lots_query = supabase.table("production_log").select("lot_cocktail, prod_date").eq("cocktail_name", b_cocktail_selected).execute()
+                                
                                 if lots_query.data:
-                                    # Μαζεύουμε όλα τα μοναδικά LOT, αγνοώντας τα κενά
-                                    found_lots = set(str(row["lot_cocktail"]) for row in lots_query.data if row.get("lot_cocktail"))
-                                    hist_lots = sorted([l for l in found_lots if l.strip() and l.lower() != "nan" and l != "-"], reverse=True)
-                            except Exception:
-                                pass
+                                    import pandas as pd
+                                    
+                                    lot_dates = {}
+                                    for row in lots_query.data:
+                                        lot = str(row.get("lot_cocktail", "")).strip()
+                                        d_str = str(row.get("prod_date", "")).strip()
+                                        
+                                        if lot and lot.lower() != "nan" and lot != "-":
+                                            # Μετατρέπουμε την ημερομηνία για να μπορούμε να τη συγκρίνουμε
+                                            parsed_date = pd.to_datetime(d_str, dayfirst=True, errors='coerce')
+                                            if pd.isnull(parsed_date):
+                                                parsed_date = pd.Timestamp("1900-01-01")
+                                            
+                                            # Κρατάμε την πιο πρόσφατη ημερομηνία που εμφανίστηκε αυτό το LOT
+                                            if lot not in lot_dates or parsed_date > lot_dates[lot]:
+                                                lot_dates[lot]
                             
                             # 🚀 ΝΕΑ ΠΡΟΣΘΗΚΗ: ΔΥΝΑΜΙΚΟ ΠΟΛΛΑΠΛΟ ΣΠΑΣΙΜΟ (MULTI-SPLIT)
                             st.markdown("---")
