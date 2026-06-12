@@ -3651,32 +3651,32 @@ elif page == "📦 Lot Παραγωγής":
                             }
                     
                     if len(split_options) > 1:
-                        # 🚀 ΕΞΥΠΝΗ ΤΑΞΙΝΟΜΗΣΗ (Όπως ακριβώς στην αναζήτηση, αλλά διαβάζοντας από το λεξικό!)
-                        from datetime import datetime
+                        import pandas as pd
                         
-                        def sort_by_real_date_split(lbl):
+                        # 🚀 ΑΛΕΞΙΣΦΑΙΡΗ ΤΑΞΙΝΟΜΗΣΗ (Διαβάζει κατευθείαν το κείμενο που βλέπεις!)
+                        def sort_by_date_only(lbl):
                             try:
-                                # Διαβάζουμε την ημερομηνία και ώρα από τα κρυφά δεδομένα του split_map
-                                date_part = str(split_map[lbl]["date"]).strip()
-                                time_part = str(split_map[lbl]["time"]).strip()
+                                # Κόβουμε το κείμενο στην πρώτη κάθετο "|" και κρατάμε την ημερομηνία
+                                # Π.χ. από "📅 15/06/2026 | 👤 Πελάτης..." παίρνουμε το "15/06/2026"
+                                date_str = lbl.split("|")[0].replace("📅", "").strip()
                                 
-                                # Μετατροπή σε αληθινό χρόνο (datetime) - Δοκιμή με δευτερόλεπτα
-                                return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M:%S")
-                            except ValueError:
-                                try:
-                                    # Αν η ώρα δεν έχει δευτερόλεπτα
-                                    return datetime.strptime(f"{date_part} {time_part}", "%d/%m/%Y %H:%M")
-                                except Exception:
-                                    return datetime.min # Αν κάτι πάει στραβά, το πάει στο τέλος
+                                # Το pandas διαβάζει τα ΠΑΝΤΑ (είτε έχει παύλες π.χ. 2026-05-12 είτε κάθετες 12/05/2026)
+                                return pd.to_datetime(date_str, dayfirst=True)
+                            except:
+                                # Αν κάτι πάει στραβά, το πάει στο τέλος της λίστας
+                                return pd.Timestamp("1900-01-01")
 
-                        # Αφαιρούμε το placeholder ("-- Επιλέξτε Παραγγελία --") για να ταξινομήσουμε τα υπόλοιπα
+                        # Κρατάμε το "-- Επιλέξτε Παραγγελία --" στην άκρη
+                        first_option = split_options[0]
                         temp_splits = split_options[1:]
-                        temp_splits.sort(key=sort_by_real_date_split, reverse=True)
                         
-                        # Ενώνουμε ξανά την αρχική επιλογή με την ταξινομημένη λίστα
-                        sorted_split_options = [split_options[0]] + temp_splits
+                        # Ταξινομούμε!
+                        temp_splits.sort(key=sort_by_date_only, reverse=True)
+                        
+                        # Τα ξαναενώνουμε
+                        sorted_split_options = [first_option] + temp_splits
 
-                        # Τώρα το selectbox διαβάζει την τέλεια ταξινομημένη λίστα!
+                        # Το selectbox πλέον είναι ΑΠΟΛΥΤΑ ταξινομημένο!
                         sel_split = st.selectbox("Επιλέξτε Παραγγελία για Σπάσιμο:", sorted_split_options)
                         
                         if sel_split != "-- Επιλέξτε Παραγγελία --":
