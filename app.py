@@ -3882,13 +3882,20 @@ elif page == "📦 Lot Παραγωγής":
                 
                 # 🚀 ΠΡΟΣΘΗΚΗ: Αναζήτηση Ημερομηνίας Καταχώρησης από τη βάση (Supabase)
                 entry_date_str = ""
-                # Ψάχνει στις πιθανές στήλες που δείχνουν πότε δημιουργήθηκε η εγγραφή
                 for col in ["created_at", "Timestamp", "timestamp", "Ημ_Καταχώρησης"]:
                     if col in group.columns:
                         raw_val = str(group[col].iloc[0]).strip()
                         if raw_val and raw_val.lower() not in ["nan", "none"]:
-                            # Κρατάμε μόνο την ημερομηνία (πριν το 'T' ή το κενό της ώρας)
-                            entry_date_str = raw_val.split("T")[0].split(" ")[0] + " "
+                            # Κρατάμε μόνο την ημερομηνία
+                            date_only = raw_val.split("T")[0].split(" ")[0]
+                            
+                            # 🚀 ΝΕΟ: Μετατροπή από ΕΕΕΕ-ΜΜ-ΗΗ σε ΗΗ/ΜΜ/ΕΕΕΕ
+                            if "-" in date_only:
+                                parts = date_only.split("-")
+                                if len(parts) == 3 and len(parts[0]) == 4:
+                                    date_only = f"{parts[2]}/{parts[1]}/{parts[0]}"
+                                    
+                            entry_date_str = date_only + " "
                             break
                 
                 # Τραβάμε τα ονόματα των κοκτέιλ και τα ενώνουμε σε μία γραμμή!
@@ -3897,7 +3904,7 @@ elif page == "📦 Lot Παραγωγής":
                 
                 total_pcs = group.groupby("Cocktail")["Τεμάχια"].first().sum()
                 
-                # 🚀 ΑΛΛΑΓΗ: Το label τώρα βγάζει την entry_date_str ακριβώς πριν την ώρα!
+                # Το label τώρα βγάζει την entry_date_str (σε ΗΗ/ΜΜ/ΕΕΕΕ) ακριβώς πριν την ώρα!
                 label = f"📅 {o_date} | 👤 {o_cust} | 🕒 {entry_date_str}{o_time} | 🍹 {cocktails_str} ({int(total_pcs)} τμχ)"
                 temp_options.append(label)
                 order_map[label] = {"date": o_date, "cust": o_cust, "time": o_time, "df": group}
