@@ -5125,8 +5125,7 @@ elif page == "👥 Πελατολόγιο":
                                 global_discount = float(customer_data.get('discount', 0))
                                 
                                 if not df_sales_raw.empty:
-                                    # 🚀 ΝΕΑ ΛΟΓΙΚΗ ΑΝΙΧΝΕΥΣΗΣ ΣΤΟΚ: ΠΡΙΝ κάνουμε drop duplicates, αθροίζουμε τα ml κάθε κοκτέιλ!
-                                    # Αν τα συνολικά ML ενός κοκτέιλ είναι 0, τότε είναι Στοκ.
+                                    # 🚀 ΝΕΑ ΛΟΓΙΚΗ ΑΝΙΧΝΕΥΣΗΣ ΣΤΟΚ
                                     df_sales_raw['total_ml'] = pd.to_numeric(df_sales_raw['total_ml'], errors='coerce').fillna(0)
                                     df_ml_sum = df_sales_raw.groupby(["prod_date", "prod_time", "cocktail_name", "lot_cocktail"])['total_ml'].sum().reset_index()
                                     df_ml_sum = df_ml_sum.rename(columns={'total_ml': 'sum_ml'})
@@ -5157,6 +5156,47 @@ elif page == "👥 Πελατολόγιο":
                                     df_sales['Final_Unit_Cost'] = df_sales.apply(get_actual_cost, axis=1)
                                     df_sales['Total_Cost'] = df_sales['t_pcs'] * df_sales['Final_Unit_Cost']
                                     df_sales['Profit'] = df_sales['Theoretical_Revenue'] - df_sales['Total_Cost']
+                                    
+                                    # --- 3. ΟΜΑΔΟΠΟΙΗΣΗ & ΠΑΡΟΥΣΙΑΣΗ ΑΝΑ ΜΗΝΑ ΣΕ EXPANDERS ---
+                                    df_sales['month_year'] = pd.to_datetime(df_sales['match_date'], errors='coerce').dt.strftime('%B %Y')
+                                    
+                                    month_translations = {
+                                        "January": "Ιανουάριος", "February": "Φεβρουάριος", "March": "Μάρτιος",
+                                        "April": "Απρίλιος", "May": "Μάιος", "June": "Ιούνιος",
+                                        "July": "Ιούλιος", "August": "Αύγουστος", "September": "Σεπτέμβριος",
+                                        "October": "Οκτώβριος", "November": "Νοέμβριος", "December": "Δεκέμβριος"
+                                    }
+                                    df_sales['month_year_el'] = df_sales['month_year'].replace(month_translations, regex=True)
+
+                                    df_sales_sorted = df_sales.sort_values(by='match_date', ascending=False)
+                                    # Κρατάμε τους μοναδικούς μήνες χωρίς τα κενά (NaN)
+                                    unique_months = df_sales_sorted['month_year_el'].dropna().unique()
+
+                                    st.markdown("### 📊 Αναλυτικό Ιστορικό ανά Μήνα")
+                                    
+                                    for month in unique_months:
+                                        df_month = df_sales_sorted[df_sales_sorted['month_year_el'] == month]
+                                        
+                                        total_revenue_month = df_month['Theoretical_Revenue'].sum()
+                                        total_cost_month = df_month['Total_Cost'].sum()
+                                        total_profit_month = df_month['Profit'].sum()
+                                        
+                                        expander_title = f"📅 {month} | Έσοδα: {total_revenue_month:.2f}€ | Κόστος: {total_cost_month:.2f}€ | Κέρδος: {total_profit_month:.2f}€"
+                                        
+                                        with st.expander(expander_title, expanded=False):
+                                            display_cols = ['prod_date', 'cocktail_name', 't_pcs', 'Final_Unit_Cost', 'Total_Cost', 'Theoretical_Revenue', 'Profit']
+                                            df_display = df_month[display_cols].copy()
+                                            
+                                            df_display.columns = ['Ημερομηνία', 'Κοκτέιλ', 'Τεμάχια', 'Κόστος/Τμχ (€)', 'Συνολικό Κόστος (€)', 'Έσοδα (€)', 'Κέρδος (€)']
+                                            
+                                            st.dataframe(df_display.style.format({
+                                                'Κόστος/Τμχ (€)': '{:.2f}',
+                                                'Συνολικό Κόστος (€)': '{:.2f}',
+                                                'Έσοδα (€)': '{:.2f}',
+                                                'Κέρδος (€)': '{:.2f}'
+                                            }), hide_index=True)
+                                else:
+                                    st.info("Δεν βρέθηκαν δεδομένα για να δημιουργηθεί αναφορά.")
                                 
                                 # --- 3. ΔΗΜΙΟΥΡΓΙΑ HTML ---
                                 now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
