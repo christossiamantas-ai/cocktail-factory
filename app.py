@@ -5220,89 +5220,90 @@ elif page == "👥 Πελατολόγιο":
                                 
                                 grand_rev, grand_cost, grand_prof = 0, 0, 0
                                 
-                                for o in orders_to_export:
-                                    o_date_raw = str(o['created_at'])[:10]
-                                    date_formatted = datetime.strptime(o_date_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+                                # 🚀 ΔΙΟΡΘΩΣΗ ΔΙΠΛΟΜΕΤΡΗΣΗΣ: Διαβάζουμε ΜΟΝΟ τις μοναδικές ημερομηνίες από την παραγωγή
+                                if not df_sales.empty:
+                                    unique_dates = sorted(df_sales['match_date'].dropna().unique().tolist(), reverse=True)
                                     
-                                    html_content += f"""<tr class="order-date-row"><td colspan="7">📅 Παραγγελία: {date_formatted}</td></tr>"""
-                                    
-                                    if not df_sales.empty:
+                                    for o_date_raw in unique_dates:
+                                        date_formatted = datetime.strptime(o_date_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+                                        
+                                        html_content += f"""<tr class="order-date-row"><td colspan="7">📅 Ημερομηνία Παραγωγής: {date_formatted}</td></tr>"""
+                                        
                                         day_sales = df_sales[df_sales['match_date'] == o_date_raw]
                                         
-                                        if not day_sales.empty:
-                                            # 🚀 ΝΕΑ ΛΟΓΙΚΗ ΟΜΑΔΟΠΟΙΗΣΗΣ: Αθροίζει ίδιο Cocktail + ίδιο LOT!
-                                            grouped_day_sales = day_sales.groupby(["cocktail_name", "lot_cocktail"]).agg({
-                                                "t_pcs": "sum",
-                                                "f_pcs": "sum",
-                                                "s_pcs": "sum",
-                                                "s_pct": "max",
-                                                "Theoretical_Revenue": "sum",
-                                                "Total_Cost": "sum",
-                                                "Profit": "sum",
-                                                "sum_ml": "sum",
-                                                "price_after_global": "first",
-                                                "ingredient_name": "first"
-                                            }).reset_index()
+                                        # 🚀 ΝΕΑ ΛΟΓΙΚΗ ΟΜΑΔΟΠΟΙΗΣΗΣ: Αθροίζει ίδιο Cocktail + ίδιο LOT!
+                                        grouped_day_sales = day_sales.groupby(["cocktail_name", "lot_cocktail"]).agg({
+                                            "t_pcs": "sum",
+                                            "f_pcs": "sum",
+                                            "s_pcs": "sum",
+                                            "s_pct": "max",
+                                            "Theoretical_Revenue": "sum",
+                                            "Total_Cost": "sum",
+                                            "Profit": "sum",
+                                            "sum_ml": "sum",
+                                            "price_after_global": "first",
+                                            "ingredient_name": "first"
+                                        }).reset_index()
 
-                                            for _, row in grouped_day_sales.iterrows():
-                                                c_name = row['cocktail_name']
+                                        for _, row in grouped_day_sales.iterrows():
+                                            c_name = row['cocktail_name']
+                                            
+                                            # Ο ΝΕΟΣ ΑΠΟΛΥΤΟΣ ΑΙΣΘΗΤΗΡΑΣ ΣΤΟΚ
+                                            is_stock = float(row.get("sum_ml", 1.0)) == 0.0 or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")))
+                                            
+                                            lot_c = str(row['lot_cocktail'])
+                                            if lot_c == 'nan' or not lot_c: lot_c = '-'
+                                            
+                                            stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
+                                            row_class = "stock-row" if is_stock else ""
+                                            
+                                            display_name = f"{c_name} {stock_label}<br><span style='font-size:11px; color:#777;'>↳ LOT: {lot_c}</span>"
+                                            
+                                            p_price = row['price_after_global']
+                                            
+                                            t_pcs = int(row['t_pcs'])
+                                            f_pcs = int(row['f_pcs'])
+                                            s_pcs = int(row['s_pcs'])
+                                            s_pct = float(row['s_pct'])
+                                            normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
+                                            
+                                            rev = row['Theoretical_Revenue']
+                                            cost = row['Total_Cost']
+                                            prof = row['Profit']
+                                            margin = (prof / rev * 100) if rev > 0 else 0
+                                            
+                                            grand_rev += rev
+                                            grand_cost += cost
+                                            grand_prof += prof
+                                            
+                                            # Δημιουργία της ετικέτας των δώρων/εκπτώσεων
+                                            details_arr = []
+                                            if normal_pcs > 0:
+                                                details_arr.append(f"{normal_pcs} κανονικά")
+                                            if s_pcs > 0:
+                                                details_arr.append(f"<span style='color:#1976d2; font-weight:bold;'>{s_pcs} με έκπτ. -{s_pct:g}%</span>")
+                                            if f_pcs > 0:
+                                                details_arr.append(f"<span class='free-badge'>{f_pcs} δώρα</span>")
                                                 
-                                                # 🚀 Ο ΝΕΟΣ ΑΠΟΛΥΤΟΣ ΑΙΣΘΗΤΗΡΑΣ ΣΤΟΚ
-                                                is_stock = float(row.get("sum_ml", 1.0)) == 0.0 or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")))
+                                            if details_arr:
+                                                details_html = " / ".join(details_arr)
+                                                pcs_str = f"<b>{t_pcs} τμχ</b><br><span style='font-size:11px; color:#555;'>({details_html})</span>"
+                                            else:
+                                                pcs_str = f"<b>{t_pcs} τμχ</b>"
                                                 
-                                                lot_c = str(row['lot_cocktail'])
-                                                if lot_c == 'nan' or not lot_c: lot_c = '-'
-                                                
-                                                stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
-                                                row_class = "stock-row" if is_stock else ""
-                                                
-                                                display_name = f"{c_name} {stock_label}<br><span style='font-size:11px; color:#777;'>↳ LOT: {lot_c}</span>"
-                                                
-                                                p_price = row['price_after_global']
-                                                
-                                                t_pcs = int(row['t_pcs'])
-                                                f_pcs = int(row['f_pcs'])
-                                                s_pcs = int(row['s_pcs'])
-                                                s_pct = float(row['s_pct'])
-                                                normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
-                                                
-                                                rev = row['Theoretical_Revenue']
-                                                cost = row['Total_Cost']
-                                                prof = row['Profit']
-                                                margin = (prof / rev * 100) if rev > 0 else 0
-                                                
-                                                grand_rev += rev
-                                                grand_cost += cost
-                                                grand_prof += prof
-                                                
-                                                # Δημιουργία της ετικέτας των δώρων/εκπτώσεων
-                                                details_arr = []
-                                                if normal_pcs > 0:
-                                                    details_arr.append(f"{normal_pcs} κανονικά")
-                                                if s_pcs > 0:
-                                                    details_arr.append(f"<span style='color:#1976d2; font-weight:bold;'>{s_pcs} με έκπτ. -{s_pct:g}%</span>")
-                                                if f_pcs > 0:
-                                                    details_arr.append(f"<span class='free-badge'>{f_pcs} δώρα</span>")
-                                                    
-                                                if details_arr:
-                                                    details_html = " / ".join(details_arr)
-                                                    pcs_str = f"<b>{t_pcs} τμχ</b><br><span style='font-size:11px; color:#555;'>({details_html})</span>"
-                                                else:
-                                                    pcs_str = f"<b>{t_pcs} τμχ</b>"
-                                                    
-                                                prof_class = "profit-pos" if prof >= 0 else "profit-neg"
-                                                
-                                                html_content += f"""
-                                                <tr class="{row_class}">
-                                                    <td class="text-left">{display_name}</td>
-                                                    <td>{p_price:.2f} €</td>
-                                                    <td>{pcs_str}</td>
-                                                    <td><b>{rev:.2f} €</b></td>
-                                                    <td>{cost:.2f} €</td>
-                                                    <td class="{prof_class}">{prof:.2f} €</td>
-                                                    <td class="{prof_class}">{margin:.1f}%</td>
-                                                </tr>
-                                                """
+                                            prof_class = "profit-pos" if prof >= 0 else "profit-neg"
+                                            
+                                            html_content += f"""
+                                            <tr class="{row_class}">
+                                                <td class="text-left">{display_name}</td>
+                                                <td>{p_price:.2f} €</td>
+                                                <td>{pcs_str}</td>
+                                                <td><b>{rev:.2f} €</b></td>
+                                                <td>{cost:.2f} €</td>
+                                                <td class="{prof_class}">{prof:.2f} €</td>
+                                                <td class="{prof_class}">{margin:.1f}%</td>
+                                            </tr>
+                                            """
                                         else:
                                             html_content += f"""<tr><td colspan="7" class="text-left" style="color:#666;">{o['order_details']}</td></tr>"""
                                     else:
