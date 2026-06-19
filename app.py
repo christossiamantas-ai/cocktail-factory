@@ -5346,10 +5346,48 @@ elif page == "👥 Πελατολόγιο":
     df_b2b = pd.DataFrame(res_orders.data)
     
     if not df_b2b.empty:
-        # Καθαρισμός και διαμόρφωση ημερομηνιών
         df_b2b['clean_date'] = pd.to_datetime(df_b2b['created_at'], errors='coerce')
         df_b2b['month_year'] = df_b2b['clean_date'].dt.strftime('%B %Y')
         
+        # 🚀 ΜΑΓΙΚΗ ΛΥΣΗ: Υπολογισμός του ΠΡΑΓΜΑΤΙΚΟΥ, σημερινού τζίρου ανά ημέρα 
+        # (για να αγνοήσουμε τα παλιά, λάθος αποθηκευμένα ποσά του b2b_orders)
+        correct_revenue_per_date = {}
+        if 'df_p_clean' in locals() and not df_p_clean.empty:
+            for _, row in df_p_clean.iterrows():
+                c_name = row["cocktail_name"]
+                c_price = float(recipe_prices.get(c_name, 0.0))
+                
+                t_pcs = int(row["pieces"]) if pd.notna(row["pieces"]) else 0
+                f_pcs = int(row.get("free_pieces", 0)) if pd.notna(row.get("free_pieces")) else 0
+                s_pcs = int(row.get("discounted_pieces", 0)) if pd.notna(row.get("discounted_pieces")) else 0
+                s_pct = float(row.get("discount_pct", 0.0)) if pd.notna(row.get("discount_pct")) else 0.0
+                
+                s_pcs = min(s_pcs, max(0, t_pcs - f_pcs))
+                normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
+                
+                global_disc = float(customer_data.get('discount', 0)) if 'customer_data' in locals() else 0.0
+                price_after_global = c_price * (1 - (global_disc / 100.0))
+                
+                rev_normal = normal_pcs * price_after_global
+                rev_special = s_pcs * price_after_global * (1 - (s_pct / 100.0))
+                
+                p_date = str(row["prod_date"]).strip()
+                try:
+                    iso_date = pd.to_datetime(p_date, format="%d/%m/%Y").strftime("%Y-%m-%d")
+                except:
+                    iso_date = p_date
+                    
+                correct_revenue_per_date[iso_date] = correct_revenue_per_date.get(iso_date, 0.0) + max(0.0, rev_normal + rev_special)
+
+        # Αντικαθιστούμε τα ποσά της βάσης με τα Πραγματικά Live Ποσά της 1ης φωτογραφίας!
+        def get_true_amount(row):
+            iso_d = row['clean_date'].strftime("%Y-%m-%d") if pd.notna(row['clean_date']) else ""
+            if iso_d in correct_revenue_per_date:
+                return correct_revenue_per_date[iso_d]
+            return float(row['total_amount'])
+
+        df_b2b['total_amount'] = df_b2b.apply(get_true_amount, axis=1)
+
         # Λεξικό μετάφρασης μηνών στα ελληνικά
         month_translations = {
             "January": "Ιανουάριος", "February": "Φεβρουάριος", "March": "Μάρτιος",
@@ -5364,21 +5402,19 @@ elif page == "👥 Πελατολόγιο":
         
         # Δημιουργία Expander για κάθε Μήνα (Το κεντρικό συρτάρι)
         for month in unique_months:
-            # Παίρνουμε τις παραγγελίες του συγκεκριμένου μήνα
             df_month = df_b2b[df_b2b['month_year_el'] == month].sort_values(by='clean_date', ascending=False)
             
-            # Υπολογισμός συνολικού καθαρού τζίρου του μήνα
+            # Υπολογισμός συνολικού καθαρού τζίρου του μήνα ΜΕ ΤΑ ΣΩΣΤΑ ΠΟΣΑ
             month_total = pd.to_numeric(df_month['total_amount'], errors='coerce').sum()
             
             exp_title = f"📅 {month} | Σύνολο Μήνα (Καθαρή Αξία): {month_total:.2f}€ ({len(df_month)} παραγγελίες)"
             
             with st.expander(exp_title, expanded=False):
-                # --- ΕΔΩ ΜΠΑΙΝΕΙ Ο ΔΙΚΟΣ ΣΟΥ ΚΩΔΙΚΑΣ ΓΙΑ ΤΙΣ ΠΑΡΑΓΓΕΛΙΕΣ ΤΟΥ ΜΗΝΑ ---
-                # Τρέχουμε το loop μόνο για τις εγγραφές του συγκεκριμένου μήνα (μετατρέπουμε το dataframe ξανά σε dicts)
                 month_orders_data = df_month.to_dict('records')
                 
                 for order in month_orders_data:
                     order_id = order['id']
+                    # Το current_amt είναι πλέον το 100% διορθωμένο Live νούμερο
                     current_amt = float(order['total_amount'])
                     fpa_amt = current_amt * 0.24
                     final_with_fpa = current_amt + fpa_amt
@@ -5388,9 +5424,12 @@ elif page == "👥 Πελατολόγιο":
                     base_amt = current_amt
                     match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
                     if match_base:
-                        base_amt = float(match_base.group(1))
+                        # Αν υπάρχει γενική έκπτωση, ανασυνθέτουμε την αρχική αξία σωστά
+                        if 'customer_data' in locals() and float(customer_data.get('discount', 0)) > 0:
+                            base_amt = current_amt / (1 - float(customer_data.get('discount', 0))/100)
+                        else:
+                            base_amt = float(match_base.group(1))
 
-                    # Το εσωτερικό expander της κάθε παραγγελίας
                     with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | Καθαρή: {current_amt:.2f}€ | Με ΦΠΑ: {final_with_fpa:.2f}€"):
                         st.info(f"**Αρχική Αξία (προ εκπτώσεων):** {base_amt:.2f} €\n\n**Καθαρή Χρέωση:** {current_amt:.2f} €\n\n**ΦΠΑ (24%):** {fpa_amt:.2f} €\n\n**Τελικό Πληρωτέο:** {final_with_fpa:.2f} €")
                         st.caption(f"Λεπτομέρειες:\n{details}")
@@ -5417,7 +5456,7 @@ elif page == "👥 Πελατολόγιο":
                                     
                                     supabase.table("b2b_orders").delete().eq("id", order_id).execute()
                                     
-                                    st.warning("🔄 Η παραγγελία και όλα της τα υλικά διαγράφηκαν οριστικά και πεντακάθαρα!")
+                                    st.warning("🔄 Η παραγγελία και όλα της τα υλικά διαγράφηκαν οριστικά!")
                                     import time
                                     time.sleep(1)
                                     st.rerun()
