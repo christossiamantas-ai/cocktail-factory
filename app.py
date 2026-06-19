@@ -5062,13 +5062,21 @@ elif page == "👥 Πελατολόγιο":
                         row_savings = max(0.0, row_full_value - row_turnover)
                         total_savings += row_savings
 
+                    # 🚀 ΝΕΟ: Τραβάμε τον πραγματικό (κλειδωμένο) τζίρο από τις παραγγελίες (b2b_orders)
+                    real_res = supabase.table("b2b_orders").select("total_amount").eq("customer_name", sel_name).execute()
+                    real_turnover = sum(float(x['total_amount']) for x in real_res.data) if real_res.data else total_turnover
+                    
+                    # Προσαρμόζουμε το πραγματικό όφελος του πελάτη ώστε να ταιριάζει με τον πραγματικό τζίρο
+                    total_full_value = total_turnover + total_savings
+                    real_savings = max(0.0, total_full_value - real_turnover)
+
                     # Εμφάνιση του Ταμπλό
                     k1, k2, k3, k4, k5 = st.columns(5)
-                    k1.metric("💰 Συνολικός Τζίρος", f"{total_turnover:,.2f} €".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                    k1.metric("💰 Συνολικός Τζίρος", f"{real_turnover:,.2f} €".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     k2.metric("📦 Συνολικά Τμχ", f"{total_pieces}")
                     k3.metric("🎁 Δώρα (100%)", f"{total_free}")
                     k4.metric("🏷️ Εκπτωμένα Τμχ", f"{total_discounted}")
-                    k5.metric("💸 Όφελος Πελάτη", f"{total_savings:,.2f} €".replace(',', 'X').replace('.', ',').replace('X', '.'), "+ Κέρδος", delta_color="normal")
+                    k5.metric("💸 Όφελος Πελάτη", f"{real_savings:,.2f} €".replace(',', 'X').replace('.', ',').replace('X', '.'), "+ Κέρδος", delta_color="normal")
                     
                     st.divider()
                     
