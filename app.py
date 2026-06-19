@@ -5338,54 +5338,93 @@ elif page == "👥 Πελατολόγιο":
                     
                     st.divider()
 
-                    # --- ΛΙΣΤΑ ΠΑΡΑΓΓΕΛΙΩΝ (EXPANDERS) ΜΕ ΦΠΑ ---
-                    for order in res_orders.data:
-                        order_id = order['id']
-                        current_amt = float(order['total_amount'])
-                        fpa_amt = current_amt * 0.24
-                        final_with_fpa = current_amt + fpa_amt
-                        details = str(order['order_details'])
-                        
-                        import re
-                        base_amt = current_amt
-                        match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
-                        if match_base:
-                            base_amt = float(match_base.group(1))
+                    # --- 🚀 2. ΝΕΟ: ΕΔΩ ΜΠΑΙΝΕΙ Η ΣΥΜΜΑΖΕΜΕΝΗ ΚΥΡΙΑ ΛΙΣΤΑ ΠΑΡΑΓΓΕΛΙΩΝ ΑΝΑ ΜΗΝΑ ---
+    st.markdown("---")
+    st.markdown("### 📋 Ιστορικό Παραγγελιών Πελάτη")
+    
+    import pandas as pd
+    df_b2b = pd.DataFrame(res_orders.data)
+    
+    if not df_b2b.empty:
+        # Καθαρισμός και διαμόρφωση ημερομηνιών
+        df_b2b['clean_date'] = pd.to_datetime(df_b2b['created_at'], errors='coerce')
+        df_b2b['month_year'] = df_b2b['clean_date'].dt.strftime('%B %Y')
+        
+        # Λεξικό μετάφρασης μηνών στα ελληνικά
+        month_translations = {
+            "January": "Ιανουάριος", "February": "Φεβρουάριος", "March": "Μάρτιος",
+            "April": "Απρίλιος", "May": "Μάιος", "June": "Ιούνιος",
+            "July": "Ιούλιος", "August": "Αύγουστος", "September": "Σεπτέμβριος",
+            "October": "Οκτώβριος", "November": "Νοέμβριος", "December": "Δεκέμβριος"
+        }
+        df_b2b['month_year_el'] = df_b2b['month_year'].replace(month_translations, regex=True)
+        
+        # Εξαγωγή μοναδικών μηνών με ταξινόμηση (νεότερα πρώτα)
+        unique_months = df_b2b.sort_values(by='clean_date', ascending=False)['month_year_el'].dropna().unique()
+        
+        # Δημιουργία Expander για κάθε Μήνα (Το κεντρικό συρτάρι)
+        for month in unique_months:
+            # Παίρνουμε τις παραγγελίες του συγκεκριμένου μήνα
+            df_month = df_b2b[df_b2b['month_year_el'] == month].sort_values(by='clean_date', ascending=False)
+            
+            # Υπολογισμός συνολικού καθαρού τζίρου του μήνα
+            month_total = pd.to_numeric(df_month['total_amount'], errors='coerce').sum()
+            
+            exp_title = f"📅 {month} | Σύνολο Μήνα (Καθαρή Αξία): {month_total:.2f}€ ({len(df_month)} παραγγελίες)"
+            
+            with st.expander(exp_title, expanded=False):
+                # --- ΕΔΩ ΜΠΑΙΝΕΙ Ο ΔΙΚΟΣ ΣΟΥ ΚΩΔΙΚΑΣ ΓΙΑ ΤΙΣ ΠΑΡΑΓΓΕΛΙΕΣ ΤΟΥ ΜΗΝΑ ---
+                # Τρέχουμε το loop μόνο για τις εγγραφές του συγκεκριμένου μήνα (μετατρέπουμε το dataframe ξανά σε dicts)
+                month_orders_data = df_month.to_dict('records')
+                
+                for order in month_orders_data:
+                    order_id = order['id']
+                    current_amt = float(order['total_amount'])
+                    fpa_amt = current_amt * 0.24
+                    final_with_fpa = current_amt + fpa_amt
+                    details = str(order['order_details'])
+                    
+                    import re
+                    base_amt = current_amt
+                    match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
+                    if match_base:
+                        base_amt = float(match_base.group(1))
 
-                        with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | Καθαρή: {current_amt:.2f}€ | Με ΦΠΑ: {final_with_fpa:.2f}€"):
-                            st.info(f"**Αρχική Αξία (προ εκπτώσεων):** {base_amt:.2f} €\n\n**Καθαρή Χρέωση:** {current_amt:.2f} €\n\n**ΦΠΑ (24%):** {fpa_amt:.2f} €\n\n**Τελικό Πληρωτέο:** {final_with_fpa:.2f} €")
-                            st.caption(f"Λεπτομέρειες:\n{details}")
-                            
-                            if st.button("🗑️ Διαγραφή Παραγγελίας", key=f"del_o_{order_id}"):
-                                with st.spinner("Διαγραφή σε εξέλιξη..."):
-                                    try:
-                                        from datetime import datetime
-                                        order_date_iso = str(order['created_at'])[:10]
+                    # Το εσωτερικό expander της κάθε παραγγελίας
+                    with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | Καθαρή: {current_amt:.2f}€ | Με ΦΠΑ: {final_with_fpa:.2f}€"):
+                        st.info(f"**Αρχική Αξία (προ εκπτώσεων):** {base_amt:.2f} €\n\n**Καθαρή Χρέωση:** {current_amt:.2f} €\n\n**ΦΠΑ (24%):** {fpa_amt:.2f} €\n\n**Τελικό Πληρωτέο:** {final_with_fpa:.2f} €")
+                        st.caption(f"Λεπτομέρειες:\n{details}")
+                        
+                        if st.button("🗑️ Διαγραφή Παραγγελίας", key=f"del_o_{order_id}"):
+                            with st.spinner("Διαγραφή σε εξέλιξη..."):
+                                try:
+                                    from datetime import datetime
+                                    order_date_iso = str(order['created_at'])[:10]
+                                    
+                                    prod_res = supabase.table("production_log").select("id, prod_date").eq("customer", sel_name).execute()
+                                    if prod_res.data:
+                                        ids_to_delete = []
+                                        for p in prod_res.data:
+                                            try:
+                                                p_iso = datetime.strptime(str(p['prod_date']).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
+                                                if p_iso == order_date_iso:
+                                                    ids_to_delete.append(p['id'])
+                                            except Exception:
+                                                pass
                                         
-                                        prod_res = supabase.table("production_log").select("id, prod_date").eq("customer", sel_name).execute()
-                                        if prod_res.data:
-                                            ids_to_delete = []
-                                            for p in prod_res.data:
-                                                try:
-                                                    p_iso = datetime.strptime(str(p['prod_date']).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
-                                                    if p_iso == order_date_iso:
-                                                        ids_to_delete.append(p['id'])
-                                                except Exception:
-                                                    pass
-                                            
-                                            if ids_to_delete:
-                                                supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
-                                        
-                                        supabase.table("b2b_orders").delete().eq("id", order_id).execute()
-                                        
-                                        st.warning("🔄 Η παραγγελία και όλα της τα υλικά διαγράφηκαν οριστικά και πεντακάθαρα!")
-                                        import time
-                                        time.sleep(1)
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
-                else:
-                    st.info("Δεν έχουν δημιουργηθεί ακόμα οικονομικές εγγραφές.")
+                                        if ids_to_delete:
+                                            supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
+                                    
+                                    supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                    
+                                    st.warning("🔄 Η παραγγελία και όλα της τα υλικά διαγράφηκαν οριστικά και πεντακάθαρα!")
+                                    import time
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
+    else:
+        st.info("Δεν έχουν δημιουργηθεί ακόμα οικονομικές εγγραφές.")
     # =========================================================================
     # TAB 2: ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΠΕΛΑΤΗ
     # =========================================================================
