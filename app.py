@@ -3660,8 +3660,6 @@ elif page == "📦 Lot Παραγωγής":
                                 return datetime.max # Για να μένει ΠΑΝΤΑ πρώτο
                                 
                             try:
-                                # Ψάχνει ΑΥΤΟΜΑΤΑ για ΗΗ/ΜΜ/ΕΕΕΕ *Ή* ΗΗ/ΜΜ/ΕΕ
-                                # Το \d{2,4} σημαίνει "από 2 έως 4 ψηφία" για το έτος!
                                 match = re.search(r'(\d{1,2})/(\d{1,2})/(\d{2,4})', lbl)
                                 
                                 if match:
@@ -3669,13 +3667,11 @@ elif page == "📦 Lot Παραγωγής":
                                     m = int(match.group(2))
                                     y = int(match.group(3))
                                     
-                                    # Αν το έτος είναι "26", το κάνει "2026"
                                     if y < 100:
                                         y += 2000
                                         
                                     return datetime(y, m, d)
                                 
-                                # Δικλείδα ασφαλείας αν τυχόν μπει ΕΕΕΕ-ΜΜ-ΗΗ
                                 match2 = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', lbl)
                                 if match2:
                                     return datetime(int(match2.group(1)), int(match2.group(2)), int(match2.group(3)))
@@ -3698,7 +3694,6 @@ elif page == "📦 Lot Παραγωγής":
                             
                             st.info(f"Επιλεγμένη Παραγγελία: **{orig_pcs} τμχ**")
                             
-                            # 🚀 ΔΙΟΡΘΩΣΗ: Τραβάμε τα LOT απευθείας από τη Supabase για το συγκεκριμένο κοκτέιλ!
                             hist_lots = []
                             try:
                                 lots_query = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", b_cocktail_selected).execute()
@@ -3706,14 +3701,11 @@ elif page == "📦 Lot Παραγωγής":
                                     import re
                                     from datetime import datetime
                                     
-                                    # Μαζεύουμε όλα τα μοναδικά LOT, αγνοώντας τα κενά
                                     found_lots = set(str(row["lot_cocktail"]) for row in lots_query.data if row.get("lot_cocktail"))
                                     clean_lots = [l for l in found_lots if l.strip() and l.lower() != "nan" and l != "-"]
                                     
-                                    # 🚀 ΤΟ ΜΥΣΤΙΚΟ: Ταξινομούμε τα LOT σαν πραγματικές ημερομηνίες!
                                     def sort_lot_as_date(lot_str):
                                         try:
-                                            # Ψάχνει για ημερομηνία μέσα στο όνομα του LOT
                                             match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', lot_str)
                                             if match:
                                                 d = int(match.group(1))
@@ -3722,16 +3714,14 @@ elif page == "📦 Lot Παραγωγής":
                                                 if y < 100:
                                                     y += 2000
                                                 return datetime(y, m, d)
-                                            return datetime.min # Αν το LOT δεν είναι ημερομηνία, πάει κάτω
+                                            return datetime.min
                                         except:
                                             return datetime.min
                                             
-                                    # Ταξινομούμε χρησιμοποιώντας την έξυπνη συνάρτηση!
                                     hist_lots = sorted(clean_lots, key=sort_lot_as_date, reverse=True)
                             except Exception:
                                 pass
                             
-                            # 🚀 ΝΕΑ ΠΡΟΣΘΗΚΗ: ΔΥΝΑΜΙΚΟ ΠΟΛΛΑΠΛΟ ΣΠΑΣΙΜΟ (MULTI-SPLIT)
                             st.markdown("---")
                             num_splits = st.number_input("🔄 Σε πόσα διαφορετικά παλιά LOT θέλετε να σπάσετε την παραγγελία;", min_value=1, max_value=5, value=1, step=1)
                             
@@ -3759,13 +3749,13 @@ elif page == "📦 Lot Παραγωγής":
                             
                             if remain_pcs < 0:
                                 st.error(f"🚫 Σφάλμα: Προσπαθείτε να τραβήξετε {total_stock_found} τμχ από το στοκ, αλλά η αρχική παραγγελία είναι μόνο {orig_pcs} τμχ!")
+                            # 🚀 ΕΔΩ ΜΠΑΙΝΕΙ Η ΝΕΑ "ΑΣΠΙΔΑ" 🚀
+                            elif remain_pcs == 0:
+                                st.error(f"🚫 Σφάλμα: Προσπαθείτε να τραβήξετε όλη την ποσότητα ({total_stock_found} τμχ) από το στοκ. Σε αυτήν την περίπτωση δεν κάνετε 'Σπάσιμο'. Πηγαίνετε στο 'Ιστορικό & Επεξεργασία Παραγωγής' και αλλάξτε απλά το LOT της αρχικής παραγγελίας!")
                             else:
                                 c_info1, c_info2 = st.columns(2)
                                 c_info1.info(f"Συνολικά από Στοκ: **{total_stock_found} τμχ**")
                                 c_info2.success(f"Νέα Παραγωγή: **{remain_pcs} τμχ**")
-                                
-                                if remain_pcs == 0:
-                                    st.warning("⚠️ Ολόκληρη η παραγγελία θα καλυφθεί από στοκ (Μηδενική νέα παραγωγή / μηδενική αφαίρεση υλικών).")
 
                                 if st.button("✂️ Εκτέλεση Πολλαπλού Σπασίματος", type="primary"):
                                     valid_splits = []
@@ -3782,6 +3772,9 @@ elif page == "📦 Lot Παραγωγής":
                                         
                                         if real_remain < 0:
                                             st.error(f"🚫 Σφάλμα: Προσπαθείτε να τραβήξετε {real_total_stock} τμχ, αλλά η παραγγελία είναι μόνο {orig_pcs} τμχ!")
+                                        # 🚀 Η "ΑΣΠΙΔΑ" ΠΡΟΣΤΑΤΕΥΕΙ ΚΑΙ ΤΟ ΚΟΥΜΠΙ 🚀
+                                        elif real_remain == 0:
+                                            st.error("🚫 Σφάλμα: Η πράξη ακυρώθηκε. Δεν μπορείτε να σπάσετε το 100% της παραγγελίας.")
                                         else:
                                             b_date = split_map[sel_split]["date"]
                                             b_cust = split_map[sel_split]["cust"]
