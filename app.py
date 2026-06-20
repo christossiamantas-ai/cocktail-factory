@@ -5495,8 +5495,9 @@ elif page == "👥 Πελατολόγιο":
                         # 1. Πετάμε τις πολλαπλές γραμμές των υλικών
                         df_prod = df_prod.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
                         
-                        # 2. 🚀 ΟΜΑΔΟΠΟΙΗΣΗ: Ενώνει ίδιες παραγγελίες της ημέρας (ανά Κοκτέιλ και LOT)
-                        df_grouped = df_prod.groupby(["cocktail_name", "lot_cocktail"], as_index=False).agg({
+                        # 2. 🚀 ΟΜΑΔΟΠΟΙΗΣΗ: ΠΡΟΣΘΗΚΗ ΤΟΥ prod_time (ΩΡΑ ΠΑΡΑΓΓΕΛΙΑΣ)
+                        # Πλέον δεν ζουλάει μαζί παραγγελίες με ίδιο όνομα/LOT αν έγιναν άλλη ώρα (δηλαδή αν είναι άλλη παραγγελία)
+                        df_grouped = df_prod.groupby(["cocktail_name", "lot_cocktail", "prod_time"], as_index=False).agg({
                             "pieces": "sum",
                             "free_pieces": "sum",
                             "discounted_pieces": "sum",
@@ -5516,22 +5517,25 @@ elif page == "👥 Πελατολόγιο":
                             for _, prow in df_grouped.iterrows():
                                 c_name = prow['cocktail_name']
                                 lot_c = prow['lot_cocktail']
+                                p_time = prow['prod_time']  # <--- Τραβάμε και την ώρα!
                                 t_pcs = int(prow['pieces'])
                                 curr_free = int(prow['free_pieces'])
                                 curr_s_pcs = int(prow['discounted_pieces'])
                                 curr_s_pct = float(prow['discount_pct'])
                                 
-                                # Ασφαλή κλειδιά
-                                safe_key_suffix = f"{c_name}_{lot_c}".replace("/", "_").replace("-", "_").replace(" ", "")
+                                # Ασφαλή κλειδιά - ΠΡΟΣΘΕΣΑΜΕ ΚΑΙ ΤΗΝ ΩΡΑ ΓΙΑ ΝΑ ΕΙΝΑΙ 100% ΜΟΝΑΔΙΚΑ
+                                safe_key_suffix = f"{c_name}_{lot_c}_{p_time}".replace("/", "_").replace("-", "_").replace(":", "_").replace(" ", "")
                                 
                                 c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1])
-                                c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ) <br><span style='font-size:11px; color:gray;'>LOT: {lot_c}</span>", unsafe_allow_html=True)
+                                # Εμφανίζουμε και την ώρα για να ξέρεις ποιο είναι ποιο
+                                c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ) <br><span style='font-size:11px; color:gray;'>LOT: {lot_c} | Ώρα: {p_time}</span>", unsafe_allow_html=True)
                                 
                                 f_pcs = c2.number_input("Δώρο", min_value=0, max_value=t_pcs, value=curr_free, step=1, key=f"f_{safe_key_suffix}", label_visibility="collapsed")
                                 s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{safe_key_suffix}", label_visibility="collapsed")
                                 s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{safe_key_suffix}", label_visibility="collapsed")
                                 
-                                inputs[(c_name, lot_c)] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
+                                # Βάζουμε ΚΑΙ την ώρα στο κλειδί του λεξικού, για να ξέρει το "Save" πού να πάει
+                                inputs[(c_name, lot_c, p_time)] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
                                 
                             if st.form_submit_button("💾 Εφαρμογή & Επανυπολογισμός Παραγγελίας", type="primary"):
                                 new_total = 0.0
@@ -5542,7 +5546,7 @@ elif page == "👥 Πελατολόγιο":
                                 
                                 with st.spinner("Επανυπολογισμός αξιών..."):
                                     for key, vals in inputs.items():
-                                        c_name, lot_c = key
+                                        c_name, lot_c, p_time = key # <--- Διαβάζουμε και την ώρα!
                                         t_pcs = vals["t_pcs"]
                                         f_pcs = vals["f_pcs"]
                                         s_pcs = vals["s_pcs"]
@@ -5553,11 +5557,12 @@ elif page == "👥 Πελατολόγιο":
                                             
                                         normal_pcs = t_pcs - f_pcs - s_pcs
                                         
+                                        # 🚀 Η ΤΕΛΙΚΗ ΣΤΟΧΕΥΣΗ: Το update χτυπάει ΠΛΕΟΝ ΚΑΙ ΜΕ ΤΗΝ ΩΡΑ!
                                         supabase.table("production_log").update({
                                             "free_pieces": f_pcs,
                                             "discounted_pieces": s_pcs,
                                             "discount_pct": s_pct
-                                        }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).execute()
+                                        }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).eq("prod_time", p_time).execute()
                                         
                                         catalog_p = float(recipe_prices.get(c_name, 0.0))
                                         
