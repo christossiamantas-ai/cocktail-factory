@@ -5548,17 +5548,20 @@ elif page == "👥 Πελατολόγιο":
                                         s_pcs = vals["s_pcs"]
                                         s_pct = vals["s_pct"]
                                         
+                                        # Ασφάλεια: Μην βάζεις περισσότερες εκπτώσεις από τα συνολικά τεμάχια
                                         if f_pcs + s_pcs > t_pcs:
                                             s_pcs = t_pcs - f_pcs 
                                             
                                         normal_pcs = t_pcs - f_pcs - s_pcs
                                         
+                                        # 🚀 Η ΛΥΣΗ: Ενημερώνουμε ΤΑΥΤΟΧΡΟΝΑ όλες τις γραμμές (υλικά) για αυτό το κοκτέιλ/LOT
                                         supabase.table("production_log").update({
                                             "free_pieces": f_pcs,
                                             "discounted_pieces": s_pcs,
                                             "discount_pct": s_pct
                                         }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).execute()
                                         
+                                        # Υπολογισμός Οικονομικών
                                         catalog_p = float(recipe_prices.get(c_name, 0.0))
                                         
                                         price_after_global = catalog_p * (1 - (cust_discount / 100))
@@ -5567,6 +5570,7 @@ elif page == "👥 Πελατολόγιο":
                                         
                                         new_total += (cost_normal + cost_spec)
                                         
+                                        # Κείμενο για το History
                                         if f_pcs > 0:
                                             gift_text += f"🎁 {f_pcs}x {c_name} (ΔΩΡΟ - LOT: {lot_c})\n"
                                         if s_pcs > 0:
