@@ -5448,7 +5448,6 @@ elif page == "👥 Πελατολόγιο":
                 df_orders = pd.DataFrame(res_orders.data)
                 order_dict = {}
                 for _, r in df_orders.iterrows():
-                    # 🚀 Η ΔΙΟΡΘΩΣΗ: tz_localize(None) για να αγνοήσει το Timezone της Supabase και να πάρει το καθαρό κείμενο!
                     dt = pd.to_datetime(r['created_at']).tz_localize(None)
                     dt_str = dt.strftime('%d/%m %H:%M')
                     order_dict[r['id']] = f"📅 {dt_str} | Αξία: {float(r['total_amount']):.2f}€"
@@ -5463,41 +5462,60 @@ elif page == "👥 Πελατολόγιο":
                     clean_display_details = str(current_details).split("\n\n--- ΔΩΡΑ")[0].split("\n\n--- ΕΙΔΙΚΕΣ")[0]
                     st.info(f"**Περιεχόμενο Παραγγελίας:**\n{clean_display_details}")
                     
-                    # 🚀 Η ΔΙΟΡΘΩΣΗ ΚΑΙ ΕΔΩ: Σιγουρεύουμε ότι ψάχνει με τη σωστή ημερομηνία!
                     order_dt = pd.to_datetime(selected_order['created_at']).tz_localize(None)
                     prod_date_str = order_dt.strftime('%d/%m/%Y')
+                    order_time_str = order_dt.strftime('%H:%M')
                     
-                    # 🚀 ΦΙΛΤΡΟ ΑΣΦΑΛΕΙΑΣ: Διαβάζουμε ποια κοκτέιλ ανήκουν ΠΡΑΓΜΑΤΙΚΑ σε ΑΥΤΗ την παραγγελία
+                    # Ανασύνθεση των κωδικών από το κείμενο της παραγγελίας για διασταύρωση
                     valid_cocktails = []
+                    order_items_parsed = []
                     for line in clean_display_details.split('\n'):
-                        if line.strip().startswith('•') or 'τμχ' in line:
+                        if 'τμχ' in line:
                             try:
-                                # Κόβει το "• X τμχ " και κρατάει το καθαρό όνομα του κοκτέιλ
-                                c_name_ext = line.replace('•', '').split(' τμχ ')[1].split(' (Εκ των οποίων:')[0].strip()
+                                line_clean = line.replace('•', '').strip()
+                                parts = line_clean.split(' τμχ ')
+                                pcs = int(parts[0].strip())
+                                c_name_ext = parts[1].split(' (Εκ των οποίων:')[0].split(' (LOT:')[0].strip()
                                 valid_cocktails.append(c_name_ext)
+                                order_items_parsed.append((c_name_ext, pcs))
                             except:
                                 pass
 
-                    # Τραβάμε τα δεδομένα από τη βάση
+                    # Τραβάμε τα δεδομένα από τη βάση για τη συγκεκριμένη μέρα
                     res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, prod_time, lot_cocktail").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
                     
                     if res_prod.data:
                         import pandas as pd
-                        df_prod = pd.DataFrame(res_prod.data)
+                        df_prod = pd.DataFrame(res_prod.data).fillna(0)
                         
-                        # 🚀 ΜΑΓΙΚΗ ΑΣΠΙΔΑ: Γεμίζουμε τα κενά με 0
-                        df_prod = df_prod.fillna(0)
-                        
-                        # 🚀 ΕΦΑΡΜΟΓΗ ΦΙΛΤΡΟΥ: Κόβουμε ό,τι άσχετο βρήκε από άλλες ώρες/παραγγελίες!
                         if valid_cocktails:
                             df_prod = df_prod[df_prod['cocktail_name'].isin(valid_cocktails)]
                             
-                        # 1. Πετάμε τις πολλαπλές γραμμές των υλικών
-                        df_prod = df_prod.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time"])
+                        df_prod = df_prod.drop_duplicates(subset=["cocktail_name", "lot_cocktail", "prod_time", "pieces"])
                         
-                        # 2. 🚀 ΟΜΑΔΟΠΟΙΗΣΗ: ΠΡΟΣΘΗΚΗ ΤΟΥ prod_time (ΩΡΑ ΠΑΡΑΓΓΕΛΙΑΣ)
-                        # Πλέον δεν ζουλάει μαζί παραγγελίες με ίδιο όνομα/LOT αν έγιναν άλλη ώρα (δηλαδή αν είναι άλλη παραγγελία)
-                        df_grouped = df_prod.groupby(["cocktail_name", "lot_cocktail", "prod_time"], as_index=False).agg({
+                        # 🚀 ΧΕΙΡΟΥΡΓΙΚΟ ΦΙΛΤΡΟ: Απομονώνουμε ΜΟΝΟ τις γραμμές της συγκεκριμένης παραγγελίας
+                        df_filtered_order = df_prod[df_prod['prod_time'] == order_time_str]
+                        
+                        # Fallback σε περίπτωση που η καταγραφή στην παραγωγή έχει απόκλιση 1 λεπτού
+                        if df_filtered_order.empty and order_items_parsed:
+                            matched_indices = []
+                            for c_name, pcs in order_items_parsed:
+                                candidates = df_prod[(df_prod['cocktail_name'] == c_name) & (df_prod['pieces'] == pcs)]
+                                if not candidates.empty:
+                                    matched_indices.append(candidates.index[0])
+                                else:
+                                    cand_name = df_prod[df_prod['cocktail_name'] == c_name]
+                                    if not cand_name.empty:
+                                        matched_indices.append(cand_name.index[0])
+                            if matched_indices:
+                                df_filtered_order = df_prod.loc[matched_indices].drop_duplicates()
+                        
+                        # Αν όλα αποτύχουν, δείχνει την ημέρα (ασφάλεια)
+                        if df_filtered_order.empty:
+                            df_filtered_order = df_prod
+
+                        # Ομαδοποιούμε αυστηρά τις γραμμές της συγκεκριμένης παραγγελίας
+                        df_grouped = df_filtered_order.groupby(["cocktail_name", "lot_cocktail", "prod_time"], as_index=False).agg({
                             "pieces": "sum",
                             "free_pieces": "sum",
                             "discounted_pieces": "sum",
@@ -5517,36 +5535,32 @@ elif page == "👥 Πελατολόγιο":
                             for _, prow in df_grouped.iterrows():
                                 c_name = prow['cocktail_name']
                                 lot_c = prow['lot_cocktail']
-                                p_time = prow['prod_time']  # <--- Τραβάμε και την ώρα!
+                                p_time = prow['prod_time']
                                 t_pcs = int(prow['pieces'])
                                 curr_free = int(prow['free_pieces'])
                                 curr_s_pcs = int(prow['discounted_pieces'])
                                 curr_s_pct = float(prow['discount_pct'])
                                 
-                                # Ασφαλή κλειδιά - ΠΡΟΣΘΕΣΑΜΕ ΚΑΙ ΤΗΝ ΩΡΑ ΓΙΑ ΝΑ ΕΙΝΑΙ 100% ΜΟΝΑΔΙΚΑ
                                 safe_key_suffix = f"{c_name}_{lot_c}_{p_time}".replace("/", "_").replace("-", "_").replace(":", "_").replace(" ", "")
                                 
                                 c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1])
-                                # Εμφανίζουμε και την ώρα για να ξέρεις ποιο είναι ποιο
-                                c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ) <br><span style='font-size:11px; color:gray;'>LOT: {lot_c} | Ώρα: {p_time}</span>", unsafe_allow_html=True)
+                                c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ) <br><span style='font-size:11px; color:gray;'>LOT: {lot_c}</span>", unsafe_allow_html=True)
                                 
                                 f_pcs = c2.number_input("Δώρο", min_value=0, max_value=t_pcs, value=curr_free, step=1, key=f"f_{safe_key_suffix}", label_visibility="collapsed")
                                 s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{safe_key_suffix}", label_visibility="collapsed")
                                 s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{safe_key_suffix}", label_visibility="collapsed")
                                 
-                                # Βάζουμε ΚΑΙ την ώρα στο κλειδί του λεξικού, για να ξέρει το "Save" πού να πάει
                                 inputs[(c_name, lot_c, p_time)] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
                                 
                             if st.form_submit_button("💾 Εφαρμογή & Επανυπολογισμός Παραγγελίας", type="primary"):
                                 new_total = 0.0
                                 gift_text = ""
                                 disc_text = ""
-                                
                                 cust_discount = float(current_discount)
                                 
                                 with st.spinner("Επανυπολογισμός αξιών..."):
                                     for key, vals in inputs.items():
-                                        c_name, lot_c, p_time = key # <--- Διαβάζουμε και την ώρα!
+                                        c_name, lot_c, p_time = key
                                         t_pcs = vals["t_pcs"]
                                         f_pcs = vals["f_pcs"]
                                         s_pcs = vals["s_pcs"]
@@ -5557,7 +5571,6 @@ elif page == "👥 Πελατολόγιο":
                                             
                                         normal_pcs = t_pcs - f_pcs - s_pcs
                                         
-                                        # 🚀 Η ΤΕΛΙΚΗ ΣΤΟΧΕΥΣΗ: Το update χτυπάει ΠΛΕΟΝ ΚΑΙ ΜΕ ΤΗΝ ΩΡΑ!
                                         supabase.table("production_log").update({
                                             "free_pieces": f_pcs,
                                             "discounted_pieces": s_pcs,
@@ -5565,7 +5578,6 @@ elif page == "👥 Πελατολόγιο":
                                         }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).eq("prod_time", p_time).execute()
                                         
                                         catalog_p = float(recipe_prices.get(c_name, 0.0))
-                                        
                                         price_after_global = catalog_p * (1 - (cust_discount / 100))
                                         cost_normal = normal_pcs * price_after_global
                                         cost_spec = s_pcs * price_after_global * (1 - (s_pct / 100))
