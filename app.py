@@ -5573,7 +5573,7 @@ elif page == "👥 Πελατολόγιο":
     with tab_crm3:
         st.subheader("🏷️ Κεντρική Διαχείριση Προσφορών & Εκπτώσεων")
         
-        sel_cust_offers = st.selectbox("👤 Επιλέξτε Πελάτη για διαχείριση:", options=["-- Επιλέξτε --"] + sorted(df_cust["name"].tolist()) if not df_cust.empty else ["-- Επιλέξτε --"], key="offers_c"_new)
+        sel_cust_offers = st.selectbox("👤 Επιλέξτε Πελάτη για διαχείριση:", options=["-- Επιλέξτε --"] + sorted(df_cust["name"].tolist()) if not df_cust.empty else ["-- Επιλέξτε --"], key="offers_c_new")
         
         if sel_cust_offers != "-- Επιλέξτε --":
             st.divider()
