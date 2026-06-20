@@ -4943,7 +4943,6 @@ elif page == "👥 Πελατολόγιο":
     import re
     from datetime import datetime
 
-    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ & ΣΥΝΤΑΓΩΝ
     res_cust = supabase.table("customers").select("*").order("name").execute()
     df_cust = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
 
@@ -4951,7 +4950,6 @@ elif page == "👥 Πελατολόγιο":
     df_recipes = pd.DataFrame(res_rec.data) if res_rec.data else pd.DataFrame()
     recipe_prices = dict(zip(df_recipes['name'], df_recipes['catalog_price'])) if not df_recipes.empty else {}
 
-    # ΠΡΟΣΘΗΚΗ 3ου TAB ΓΙΑ ΤΟ ΙΣΤΟΡΙΚΟ ΤΩΝ ΔΩΡΩΝ ΚΑΙ ΤΙΣ ΕΚΠΤΩΣΕΙΣ
     tab_crm1, tab_crm2, tab_crm3 = st.tabs([
         "📋 Καρτέλα & Ιστορικό Αγορών", 
         "➕ Προσθήκη Νέου Πελάτη", 
@@ -5019,17 +5017,13 @@ elif page == "👥 Πελατολόγιο":
                     def safe_int(val):
                         try: return int(float(val)) if pd.notna(val) and str(val).strip() != "" else 0
                         except: return 0
-
                     def safe_float(val):
                         try: return float(val) if pd.notna(val) and str(val).strip() != "" else 0.0
                         except: return 0.0
 
-                    # 🚀 ΤΟ ΚΛΕΙΔΙ: Τραβάμε τη Γενική Έκπτωση του πελάτη από τα στοιχεία του!
                     global_discount = safe_float(customer_data.get('discount', 0))
 
-                    total_turnover = 0.0
-                    total_savings = 0.0
-                    
+                    total_turnover, total_savings = 0.0, 0.0
                     total_pieces = safe_int(df_p_clean["pieces"].sum())
                     total_free = safe_int(df_p_clean["free_pieces"].fillna(0).apply(safe_int).sum())
                     total_discounted = safe_int(df_p_clean["discounted_pieces"].fillna(0).apply(safe_int).sum())
@@ -5043,26 +5037,18 @@ elif page == "👥 Πελατολόγιο":
                         s_pcs = safe_int(row.get("discounted_pieces", 0))
                         s_pct = safe_float(row.get("discount_pct", 0.0))
                         
-                        # Μαθηματικά ολόιδια με το παλιό σου σύστημα
                         s_pcs = min(s_pcs, max(0, t_pcs - f_pcs))
                         normal_pcs = t_pcs - f_pcs - s_pcs
                         
-                        # 1. Βρίσκουμε την τιμή ΑΦΟΥ εφαρμοστεί η Γενική Έκπτωση του πελάτη
                         price_after_global = cat_price * (1 - (global_discount / 100.0))
-                        
-                        # 2. Υπολογισμός Εσόδων
                         rev_normal = normal_pcs * price_after_global
                         rev_special = s_pcs * price_after_global * (1 - (s_pct / 100.0))
                         
                         row_turnover = max(0.0, rev_normal + rev_special)
                         total_turnover += row_turnover
-                        
-                        # 3. Υπολογισμός Οφέλους Πελάτη (Όσα θα πλήρωνε χωρίς ΚΑΜΙΑ έκπτωση - Όσα πλήρωσε τελικά)
-                        row_full_value = t_pcs * cat_price
-                        row_savings = max(0.0, row_full_value - row_turnover)
+                        row_savings = max(0.0, (t_pcs * cat_price) - row_turnover)
                         total_savings += row_savings
 
-                    # Εμφάνιση του Ταμπλό
                     k1, k2, k3, k4, k5 = st.columns(5)
                     k1.metric("💰 Συνολικός Τζίρος", f"{total_turnover:,.2f} €".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     k2.metric("📦 Συνολικά Τμχ", f"{total_pieces}")
@@ -5074,7 +5060,7 @@ elif page == "👥 Πελατολόγιο":
                     
                     with st.expander("📜 Αναλυτικό Ιστορικό Παραγγελιών", expanded=False):
                         st.dataframe(
-                            df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
+                            df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "prod_time": "Ώρα", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Ώρα", "Cocktail", "Τεμάχια"]],
                             use_container_width=True, hide_index=True
                         )
                 else:
@@ -5093,7 +5079,7 @@ elif page == "👥 Πελατολόγιο":
                         
                         orders_to_export = []
                         if export_mode == "Συγκεκριμένη Παραγγελία":
-                            order_dict = {o['id']: f"{str(o['created_at'])[:10]} | Αξία: {float(o['total_amount']):.2f}€" for o in res_orders.data}
+                            order_dict = {o['id']: f"{pd.to_datetime(o['created_at']).tz_localize(None).strftime('%d/%m/%Y %H:%M')} | Αξία: {float(o['total_amount']):.2f}€" for o in res_orders.data}
                             sel_export_id = st.selectbox("Επιλέξτε Παραγγελία για εξαγωγή:", options=list(order_dict.keys()), format_func=lambda x: order_dict[x])
                             orders_to_export = [o for o in res_orders.data if o['id'] == sel_export_id]
                         else:
@@ -5101,14 +5087,10 @@ elif page == "👥 Πελατολόγιο":
                             
                         if st.button("📄 Δημιουργία Απόλυτης Αναφοράς"):
                             with st.spinner("Υπολογισμός Κόστους & Κέρδους..."):
-                                # --- 1. ΦΟΡΤΩΣΗ "ΕΞΥΠΝΩΝ" ΔΕΔΟΜΕΝΩΝ ΟΠΩΣ ΣΤΟ DASHBOARD ---
                                 df_ing = pd.DataFrame(supabase.table("ingredients").select("name, price, volume").execute().data)
                                 df_items = pd.DataFrame(supabase.table("recipe_items").select("recipe_id, ingredient_name, ml_per_unit").execute().data)
                                 df_recipes = pd.DataFrame(supabase.table("recipes").select("id, name, catalog_price").execute().data)
-                                res_log_full = supabase.table("production_log").select("*").eq("customer", sel_name).execute()
-                                df_sales_raw = pd.DataFrame(res_log_full.data)
                                 
-                                # --- 2. ΜΑΘΗΜΑΤΙΚΑ ΚΟΣΤΟΥΣ & ΕΣΟΔΩΝ ---
                                 FIXED_COST = 0.22
                                 df_ing['cost_per_ml'] = pd.to_numeric(df_ing.get('price', 0), errors='coerce') / pd.to_numeric(df_ing.get('volume', 1), errors='coerce')
                                 ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
@@ -5121,44 +5103,12 @@ elif page == "👥 Πελατολόγιο":
                                     
                                 name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], FIXED_COST) for _, r in df_recipes.iterrows()}
                                 recipe_price_dict = dict(zip(df_recipes['name'], pd.to_numeric(df_recipes.get('catalog_price', 0), errors='coerce')))
-                                
                                 global_discount = float(customer_data.get('discount', 0))
                                 
-                                if not df_sales_raw.empty:
-                                    # 🚀 ΝΕΑ ΛΟΓΙΚΗ ΑΝΙΧΝΕΥΣΗΣ ΣΤΟΚ: ΠΡΙΝ κάνουμε drop duplicates, αθροίζουμε τα ml κάθε κοκτέιλ!
-                                    # Αν τα συνολικά ML ενός κοκτέιλ είναι 0, τότε είναι Στοκ.
-                                    df_sales_raw['total_ml'] = pd.to_numeric(df_sales_raw['total_ml'], errors='coerce').fillna(0)
-                                    df_ml_sum = df_sales_raw.groupby(["prod_date", "prod_time", "cocktail_name", "lot_cocktail"])['total_ml'].sum().reset_index()
-                                    df_ml_sum = df_ml_sum.rename(columns={'total_ml': 'sum_ml'})
-                                    
-                                    df_sales = df_sales_raw.drop_duplicates(subset=["prod_date", "prod_time", "cocktail_name", "lot_cocktail"]).copy()
-                                    df_sales = pd.merge(df_sales, df_ml_sum, on=["prod_date", "prod_time", "cocktail_name", "lot_cocktail"], how="left")
-                                    
-                                    df_sales['match_date'] = pd.to_datetime(df_sales['prod_date'], format='%d/%m/%Y', errors='coerce').dt.strftime('%Y-%m-%d')
-                                    
-                                    df_sales['t_pcs'] = pd.to_numeric(df_sales.get('pieces', 0), errors='coerce').fillna(0)
-                                    df_sales['f_pcs'] = pd.to_numeric(df_sales.get('free_pieces', 0), errors='coerce').fillna(0)
-                                    df_sales['s_pcs'] = pd.to_numeric(df_sales.get('discounted_pieces', 0), errors='coerce').fillna(0)
-                                    df_sales['s_pct'] = pd.to_numeric(df_sales.get('discount_pct', 0), errors='coerce').fillna(0)
-                                    df_sales['s_pcs'] = df_sales.apply(lambda r: min(r['s_pcs'], max(0, r['t_pcs'] - r['f_pcs'])), axis=1)
-                                    df_sales['normal_pcs'] = df_sales['t_pcs'] - df_sales['f_pcs'] - df_sales['s_pcs']
-                                    
-                                    df_sales['catalog_price'] = df_sales['cocktail_name'].map(recipe_price_dict).fillna(0)
-                                    df_sales['price_after_global'] = df_sales['catalog_price'] * (1 - (global_discount / 100))
-                                    df_sales['rev_normal'] = df_sales['normal_pcs'] * df_sales['price_after_global']
-                                    df_sales['rev_special'] = df_sales['s_pcs'] * df_sales['price_after_global'] * (1 - (df_sales['s_pct'] / 100))
-                                    df_sales['Theoretical_Revenue'] = (df_sales['rev_normal'] + df_sales['rev_special']).clip(lower=0)
-                                    
-                                    def get_actual_cost(row):
-                                        catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
-                                        if 'applied_cost' in row and pd.notna(row['applied_cost']): return float(row['applied_cost'])
-                                        return catalog_c
-
-                                    df_sales['Final_Unit_Cost'] = df_sales.apply(get_actual_cost, axis=1)
-                                    df_sales['Total_Cost'] = df_sales['t_pcs'] * df_sales['Final_Unit_Cost']
-                                    df_sales['Profit'] = df_sales['Theoretical_Revenue'] - df_sales['Total_Cost']
+                                # Βοηθητικό για να βλέπουμε αν είναι από Στοκ (Χωρίς να επηρεάζει τα ποσά)
+                                res_log_full = supabase.table("production_log").select("cocktail_name, lot_cocktail, total_ml, ingredient_name").eq("customer", sel_name).execute()
+                                df_stock_check = pd.DataFrame(res_log_full.data)
                                 
-                                # --- 3. ΔΗΜΙΟΥΡΓΙΑ HTML ---
                                 now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
                                 
                                 html_content = f"""
@@ -5213,94 +5163,108 @@ elif page == "👥 Πελατολόγιο":
                                 grand_rev, grand_cost, grand_prof = 0, 0, 0
                                 
                                 for o in orders_to_export:
-                                    o_date_raw = str(o['created_at'])[:10]
-                                    date_formatted = datetime.strptime(o_date_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+                                    dt_parsed = pd.to_datetime(o['created_at']).tz_localize(None)
+                                    date_formatted = dt_parsed.strftime("%d/%m/%Y %H:%M")
                                     
                                     html_content += f"""<tr class="order-date-row"><td colspan="7">📅 Παραγγελία: {date_formatted}</td></tr>"""
                                     
-                                    if not df_sales.empty:
-                                        day_sales = df_sales[df_sales['match_date'] == o_date_raw]
-                                        
-                                        if not day_sales.empty:
-                                            # 🚀 ΝΕΑ ΛΟΓΙΚΗ ΟΜΑΔΟΠΟΙΗΣΗΣ: Αθροίζει ίδιο Cocktail + ίδιο LOT!
-                                            grouped_day_sales = day_sales.groupby(["cocktail_name", "lot_cocktail"]).agg({
-                                                "t_pcs": "sum",
-                                                "f_pcs": "sum",
-                                                "s_pcs": "sum",
-                                                "s_pct": "max",
-                                                "Theoretical_Revenue": "sum",
-                                                "Total_Cost": "sum",
-                                                "Profit": "sum",
-                                                "sum_ml": "sum",
-                                                "price_after_global": "first",
-                                                "ingredient_name": "first"
-                                            }).reset_index()
+                                    details = str(o['order_details'])
+                                    parsed_items = {} # (cname, lot) -> {t_pcs, f_pcs, s_pcs, s_pct}
+                                    
+                                    # 🚀 ΑΠΟΛΥΤΗ ΜΕΘΟΔΟΣ: Διαβάζουμε το PDF απευθείας από το κείμενο της απόδειξης!
+                                    clean_part = details.split("--- ΔΩΡΑ")[0].split("--- ΕΙΔΙΚΕΣ")[0]
+                                    for line in clean_part.split("\n"):
+                                        if 'τμχ' in line and '•' in line:
+                                            try:
+                                                line_c = line.replace('•', '').strip()
+                                                pcs = int(line_c.split(' τμχ ')[0])
+                                                rest = line_c.split(' τμχ ')[1]
+                                                cname = rest.split(' (LOT:')[0].split(' (Εκ των')[0].strip()
+                                                lot = rest.split('(LOT:')[1].split(')')[0].strip() if '(LOT:' in rest else '-'
+                                                parsed_items[(cname, lot)] = {"t_pcs": pcs, "f_pcs": 0, "s_pcs": 0, "s_pct": 0.0}
+                                            except: pass
+                                            
+                                    if "--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---" in details:
+                                        gift_part = details.split("--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---")[1].split("--- ΕΙΔΙΚΕΣ")[0]
+                                        for line in gift_part.split("\n"):
+                                            if 'x ' in line and 'ΔΩΡΟ' in line:
+                                                try:
+                                                    pcs = int(line.split('x ')[0].replace('🎁', '').strip())
+                                                    rest = line.split('x ')[1]
+                                                    cname = rest.split(' (ΔΩΡΟ')[0].strip()
+                                                    lot = rest.split('LOT: ')[1].split(')')[0].strip() if 'LOT: ' in rest else '-'
+                                                    if (cname, lot) in parsed_items: parsed_items[(cname, lot)]['f_pcs'] = pcs
+                                                except: pass
 
-                                            for _, row in grouped_day_sales.iterrows():
-                                                c_name = row['cocktail_name']
-                                                
-                                                # 🚀 Ο ΝΕΟΣ ΑΠΟΛΥΤΟΣ ΑΙΣΘΗΤΗΡΑΣ ΣΤΟΚ
-                                                is_stock = float(row.get("sum_ml", 1.0)) == 0.0 or ("Έτοιμο Προϊόν" in str(row.get("ingredient_name", "")))
-                                                
-                                                lot_c = str(row['lot_cocktail'])
-                                                if lot_c == 'nan' or not lot_c: lot_c = '-'
-                                                
-                                                stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
-                                                row_class = "stock-row" if is_stock else ""
-                                                
-                                                display_name = f"{c_name} {stock_label}<br><span style='font-size:11px; color:#777;'>↳ LOT: {lot_c}</span>"
-                                                
-                                                p_price = row['price_after_global']
-                                                
-                                                t_pcs = int(row['t_pcs'])
-                                                f_pcs = int(row['f_pcs'])
-                                                s_pcs = int(row['s_pcs'])
-                                                s_pct = float(row['s_pct'])
-                                                normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
-                                                
-                                                rev = row['Theoretical_Revenue']
-                                                cost = row['Total_Cost']
-                                                prof = row['Profit']
-                                                margin = (prof / rev * 100) if rev > 0 else 0
-                                                
-                                                grand_rev += rev
-                                                grand_cost += cost
-                                                grand_prof += prof
-                                                
-                                                # Δημιουργία της ετικέτας των δώρων/εκπτώσεων
-                                                details_arr = []
-                                                if normal_pcs > 0:
-                                                    details_arr.append(f"{normal_pcs} κανονικά")
-                                                if s_pcs > 0:
-                                                    details_arr.append(f"<span style='color:#1976d2; font-weight:bold;'>{s_pcs} με έκπτ. -{s_pct:g}%</span>")
-                                                if f_pcs > 0:
-                                                    details_arr.append(f"<span class='free-badge'>{f_pcs} δώρα</span>")
-                                                    
-                                                if details_arr:
-                                                    details_html = " / ".join(details_arr)
-                                                    pcs_str = f"<b>{t_pcs} τμχ</b><br><span style='font-size:11px; color:#555;'>({details_html})</span>"
-                                                else:
-                                                    pcs_str = f"<b>{t_pcs} τμχ</b>"
-                                                    
-                                                prof_class = "profit-pos" if prof >= 0 else "profit-neg"
-                                                
-                                                html_content += f"""
-                                                <tr class="{row_class}">
-                                                    <td class="text-left">{display_name}</td>
-                                                    <td>{p_price:.2f} €</td>
-                                                    <td>{pcs_str}</td>
-                                                    <td><b>{rev:.2f} €</b></td>
-                                                    <td>{cost:.2f} €</td>
-                                                    <td class="{prof_class}">{prof:.2f} €</td>
-                                                    <td class="{prof_class}">{margin:.1f}%</td>
-                                                </tr>
-                                                """
-                                        else:
-                                            html_content += f"""<tr><td colspan="7" class="text-left" style="color:#666;">{o['order_details']}</td></tr>"""
-                                    else:
-                                        html_content += f"""<tr><td colspan="7" class="text-left" style="color:#666;">{o['order_details']}</td></tr>"""
+                                    if "--- ΕΙΔΙΚΕΣ ΕΚΠΤΩΣΕΙΣ ΚΩΔΙΚΩΝ ---" in details:
+                                        disc_part = details.split("--- ΕΙΔΙΚΕΣ ΕΚΠΤΩΣΕΙΣ ΚΩΔΙΚΩΝ ---")[1]
+                                        for line in disc_part.split("\n"):
+                                            if 'x ' in line and 'Έκπτωση' in line:
+                                                try:
+                                                    pcs = int(line.split('x ')[0].replace('📉', '').strip())
+                                                    rest = line.split('x ')[1]
+                                                    cname = rest.split(' (Έκπτωση')[0].strip()
+                                                    pct = float(rest.split('Έκπτωση ')[1].split('%')[0].strip())
+                                                    lot = rest.split('LOT: ')[1].split(')')[0].strip() if 'LOT: ' in rest else '-'
+                                                    if (cname, lot) in parsed_items:
+                                                        parsed_items[(cname, lot)]['s_pcs'] = pcs
+                                                        parsed_items[(cname, lot)]['s_pct'] = pct
+                                                except: pass
+
+                                    # Τώρα τυπώνουμε το PDF χρησιμοποιώντας ΑΥΣΤΗΡΑ ό,τι διαβάσαμε, χωρίς να αθροίζουμε υλικά
+                                    for (c_name, lot_c), data in parsed_items.items():
+                                        t_pcs = data['t_pcs']
+                                        f_pcs = data['f_pcs']
+                                        s_pcs = data['s_pcs']
+                                        s_pct = data['s_pct']
                                         
-                                # --- ΠΡΟΣΘΗΚΗ ΦΠΑ ΚΑΙ ΓΕΝΙΚΟΥ ΤΖΙΡΟΥ ΣΤΟ HTML ---
+                                        # Check if it's stock
+                                        is_stock = False
+                                        if not df_stock_check.empty:
+                                            match = df_stock_check[(df_stock_check['cocktail_name'] == c_name) & (df_stock_check['lot_cocktail'] == lot_c)]
+                                            if not match.empty:
+                                                is_stock = float(match.iloc[0].get("total_ml", 1.0)) == 0.0 or "Έτοιμο Προϊόν" in str(match.iloc[0].get("ingredient_name", ""))
+                                        
+                                        stock_label = "<span class='stock-badge'>ΑΠΟ ΣΤΟΚ</span>" if is_stock else ""
+                                        row_class = "stock-row" if is_stock else ""
+                                        display_name = f"{c_name} {stock_label}<br><span style='font-size:11px; color:#777;'>↳ LOT: {lot_c}</span>"
+                                        
+                                        catalog_p = float(recipe_prices.get(c_name, 0.0))
+                                        p_price = catalog_p * (1 - (global_discount / 100))
+                                        
+                                        normal_pcs = max(0, t_pcs - f_pcs - s_pcs)
+                                        rev = (normal_pcs * p_price) + (s_pcs * p_price * (1 - (s_pct / 100)))
+                                        
+                                        unit_cost = 0.0 if is_stock else name_to_cost.get(c_name, FIXED_COST)
+                                        cost = t_pcs * unit_cost
+                                        prof = rev - cost
+                                        margin = (prof / rev * 100) if rev > 0 else 0
+                                        
+                                        grand_rev += rev
+                                        grand_cost += cost
+                                        grand_prof += prof
+                                        
+                                        details_arr = []
+                                        if normal_pcs > 0: details_arr.append(f"{normal_pcs} κανονικά")
+                                        if s_pcs > 0: details_arr.append(f"<span style='color:#1976d2; font-weight:bold;'>{s_pcs} με έκπτ. -{s_pct:g}%</span>")
+                                        if f_pcs > 0: details_arr.append(f"<span class='free-badge'>{f_pcs} δώρα</span>")
+                                        
+                                        details_html = " / ".join(details_arr) if details_arr else ""
+                                        pcs_str = f"<b>{t_pcs} τμχ</b><br><span style='font-size:11px; color:#555;'>({details_html})</span>" if details_html else f"<b>{t_pcs} τμχ</b>"
+                                        prof_class = "profit-pos" if prof >= 0 else "profit-neg"
+                                        
+                                        html_content += f"""
+                                        <tr class="{row_class}">
+                                            <td class="text-left">{display_name}</td>
+                                            <td>{p_price:.2f} €</td>
+                                            <td>{pcs_str}</td>
+                                            <td><b>{rev:.2f} €</b></td>
+                                            <td>{cost:.2f} €</td>
+                                            <td class="{prof_class}">{prof:.2f} €</td>
+                                            <td class="{prof_class}">{margin:.1f}%</td>
+                                        </tr>
+                                        """
+                                
                                 html_content += f"""
                                             </tbody>
                                             <tfoot>
@@ -5321,24 +5285,22 @@ elif page == "👥 Πελατολόγιο":
                                                 </tr>
                                             </tfoot>
                                         </table>
-                                        <p style="text-align:center; font-size:11px; color:#999;">Αυτόματοι υπολογισμοί βάσει τρέχοντος κοστολογίου συνταγών.</p>
                                     </div>
                                 </body>
                                 </html>
                                 """
                                 
                             st.download_button(
-                                label="📥 Λήψη Αναλυτικής Αναφοράς Κερδοφορίας (HTML / PDF)",
+                                label="📥 Λήψη Αναλυτικής Αναφοράς Κερδοφορίας (HTML)",
                                 data=html_content,
                                 file_name=f"Profit_Report_{sel_name.replace(' ', '_')}.html",
                                 mime="text/html",
                                 type="primary"
                             )
-                            st.info("💡 **Οδηγία:** Ανοίξτε το αρχείο στον browser σας και πατήστε **Ctrl+P** (Print) για να το αποθηκεύσετε ως ένα τέλειο PDF!")
                     
                     st.divider()
 
-                    # --- ΛΙΣΤΑ ΠΑΡΑΓΓΕΛΙΩΝ (EXPANDERS) ΜΕ ΦΠΑ ---
+                    # --- ΛΙΣΤΑ ΠΑΡΑΓΓΕΛΙΩΝ (EXPANDERS) ---
                     for order in res_orders.data:
                         order_id = order['id']
                         current_amt = float(order['total_amount'])
@@ -5346,73 +5308,71 @@ elif page == "👥 Πελατολόγιο":
                         final_with_fpa = current_amt + fpa_amt
                         details = str(order['order_details'])
                         
-                        import re
                         base_amt = current_amt
                         match_base = re.search(r"Αρχική Αξία:\s*([\d\.]+)", details)
                         if match_base:
                             base_amt = float(match_base.group(1))
 
-                        with st.expander(f"🛒 Παραγγελία {str(order['created_at'])[:10]} | Καθαρή: {current_amt:.2f}€ | Με ΦΠΑ: {final_with_fpa:.2f}€"):
+                        order_dt_display = pd.to_datetime(order['created_at']).tz_localize(None).strftime('%d/%m/%Y %H:%M')
+
+                        with st.expander(f"🛒 Παραγγελία {order_dt_display} | Καθαρή: {current_amt:.2f}€ | Με ΦΠΑ: {final_with_fpa:.2f}€"):
                             st.info(f"**Αρχική Αξία (προ εκπτώσεων):** {base_amt:.2f} €\n\n**Καθαρή Χρέωση:** {current_amt:.2f} €\n\n**ΦΠΑ (24%):** {fpa_amt:.2f} €\n\n**Τελικό Πληρωτέο:** {final_with_fpa:.2f} €")
                             st.caption(f"Λεπτομέρειες:\n{details}")
                             
                             if st.button("🗑️ Διαγραφή Παραγγελίας", key=f"del_o_{order_id}"):
                                 with st.spinner("Διαγραφή σε εξέλιξη..."):
                                     try:
-                                        from datetime import datetime
                                         order_date_iso = str(order['created_at'])[:10]
-                                        
                                         prod_res = supabase.table("production_log").select("id, prod_date").eq("customer", sel_name).execute()
                                         if prod_res.data:
                                             ids_to_delete = []
                                             for p in prod_res.data:
                                                 try:
                                                     p_iso = datetime.strptime(str(p['prod_date']).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
-                                                    if p_iso == order_date_iso:
-                                                        ids_to_delete.append(p['id'])
-                                                except Exception:
-                                                    pass
-                                            
+                                                    if p_iso == order_date_iso: ids_to_delete.append(p['id'])
+                                                except Exception: pass
                                             if ids_to_delete:
                                                 supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
                                         
                                         supabase.table("b2b_orders").delete().eq("id", order_id).execute()
-                                        
-                                        st.warning("🔄 Η παραγγελία και όλα της τα υλικά διαγράφηκαν οριστικά και πεντακάθαρα!")
-                                        import time
+                                        st.warning("🔄 Η παραγγελία διαγράφηκε οριστικά!")
                                         time.sleep(1)
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
                 else:
                     st.info("Δεν έχουν δημιουργηθεί ακόμα οικονομικές εγγραφές.")
+
     # =========================================================================
     # TAB 2: ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΠΕΛΑΤΗ
     # =========================================================================
     with tab_crm2:
-        st.subheader("➕ Καταχώρηση Νέου Πελάτη")
-        with st.form("new_customer_form_final", clear_on_submit=True):
-            n_name = st.text_input("Όνομα / Επωνυμία *")
-            n_afm = st.text_input("ΑΦΜ")
-            n_discount = st.text_input("Αρχική Γενική Έκπτωση (%)", value="0")
-            n_phone = st.text_input("Τηλέφωνο")
-            n_email = st.text_input("Email")
-            n_addr = st.text_area("Διεύθυνση")
-            n_notes = st.text_area("Σημειώσεις")
+        st.subheader("➕ Προσθήκη Νέου Πελάτη στο Σύστημα")
+        with st.form("add_new_customer_form"):
+            new_c_name = st.text_input("Όνομα / Επωνυμία Επιχείρησης *")
+            new_c_afm = st.text_input("ΑΦΜ")
+            new_c_phone = st.text_input("Τηλέφωνο")
+            new_c_email = st.text_input("Email")
+            new_c_addr = st.text_area("Διεύθυνση")
+            new_c_notes = st.text_area("Σημειώσεις / Ειδικές οδηγίες")
             
-            if st.form_submit_button("💾 Αποθήκευση"):
-                if n_name:
-                    supabase.table("customers").insert({
-                        "name": n_name, "afm": n_afm, "discount": n_discount,
-                        "phone": n_phone, "email": n_email, "address": n_addr, "notes": n_notes
-                    }).execute()
-                    st.success("✅ Ο πελάτης προστέθηκε επιτυχώς!")
-                    st.rerun()
+            if st.form_submit_button("➕ Καταχώρηση Πελάτη", type="primary"):
+                if new_c_name.strip() == "":
+                    st.error("❌ Το πεδίο 'Όνομα / Επωνυμία' είναι υποχρεωτικό!")
                 else:
-                    st.error("Το όνομα είναι υποχρεωτικό!")
+                    supabase.table("customers").insert({
+                        "name": new_c_name.strip(), "afm": new_c_afm.strip(),
+                        "phone": new_c_phone.strip(), "email": new_c_email.strip(),
+                        "address": new_c_addr.strip(), "notes": new_c_notes.strip(),
+                        "discount": 0.0
+                    }).execute()
+                    st.success(f"✅ Ο πελάτης '{new_c_name}' δημιουργήθηκε επιτυχώς!")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
 
     # =========================================================================
-    # 🌟 TAB 3: ΤΟ ΣΤΡΑΤΗΓΕΙΟ ΤΩΝ ΕΚΠΤΩΣΕΩΝ & ΠΡΟΣΦΟΡΩΝ
+    # TAB 3: ΤΟ ΣΤΡΑΤΗΓΕΙΟ ΤΩΝ ΕΚΠΤΩΣΕΩΝ & ΠΡΟΣΦΟΡΩΝ
     # =========================================================================
     with tab_crm3:
         st.subheader("🏷️ Κεντρική Διαχείριση Προσφορών & Εκπτώσεων")
@@ -5422,7 +5382,6 @@ elif page == "👥 Πελατολόγιο":
         if sel_cust_offers != "-- Επιλέξτε --":
             st.divider()
             
-            # --- ΕΝΟΤΗΤΑ 1: ΓΕΝΙΚΗ ΕΚΠΤΩΣΗ ---
             st.markdown("### 📉 1. Γενική Έκπτωση Πελάτη")
             current_discount = df_cust[df_cust["name"] == sel_cust_offers].iloc[0].get('discount', 0)
             if pd.isna(current_discount) or not current_discount: current_discount = 0.0
@@ -5439,9 +5398,8 @@ elif page == "👥 Πελατολόγιο":
             
             st.divider()
 
-            # --- ΕΝΟΤΗΤΑ 2: ΕΜΠΟΡΙΚΗ ΠΑΡΕΜΒΑΣΗ ΣΕ ΠΑΡΑΓΓΕΛΙΑ ---
             st.markdown("### 🎁 2. Εφαρμογή Δώρων & Ειδικών Εκπτώσεων σε Παραγγελία")
-            st.write("Επιλέξτε μια συγκεκριμένη παραγγελία για να ρυθμίσετε δώρα ή εκπτώσεις.")
+            st.write("Επιλέξτε μια παραγγελία. Η φόρμα διαβάζει τα κοκτέιλ απευθείας από την απόδειξη για να μην χάνει ούτε ένα!")
 
             res_orders = supabase.table("b2b_orders").select("*").eq("customer_name", sel_cust_offers).order("created_at", desc=True).limit(50).execute()
             if res_orders.data:
@@ -5449,141 +5407,126 @@ elif page == "👥 Πελατολόγιο":
                 order_dict = {}
                 for _, r in df_orders.iterrows():
                     dt = pd.to_datetime(r['created_at']).tz_localize(None)
-                    dt_str = dt.strftime('%d/%m %H:%M')
-                    order_dict[r['id']] = f"🛒 Παραγγελία 📅 {dt_str} | Αξία: {float(r['total_amount']):.2f}€"
+                    order_dict[r['id']] = f"🛒 Παραγγελία 📅 {dt.strftime('%d/%m %H:%M')} | Αξία: {float(r['total_amount']):.2f}€"
                 
                 sel_order_id = st.selectbox("🛒 Επιλογή Παραγγελίας:", options=list(order_dict.keys()), format_func=lambda x: order_dict[x], key="gift_o")
                 
                 if sel_order_id:
                     selected_order = df_orders[df_orders['id'] == sel_order_id].iloc[0]
-                    current_details = selected_order['order_details']
+                    current_details = str(selected_order['order_details'])
                     
-                    clean_display_details = str(current_details).split("\n\n--- ΔΩΡΑ")[0].split("\n\n--- ΕΙΔΙΚΕΣ")[0]
+                    clean_display_details = current_details.split("\n\n--- ΔΩΡΑ")[0].split("\n\n--- ΕΙΔΙΚΕΣ")[0]
                     st.info(f"**Περιεχόμενο Παραγγελίας:**\n{clean_display_details}")
                     
-                    order_dt = pd.to_datetime(selected_order['created_at']).tz_localize(None)
-                    prod_date_str = order_dt.strftime('%d/%m/%Y')
-                    order_time_str = order_dt.strftime('%H:%M')
+                    prod_date_str = pd.to_datetime(selected_order['created_at']).tz_localize(None).strftime('%d/%m/%Y')
                     
-                    # Ανασύνθεση των κωδικών από το κείμενο της παραγγελίας
-                    valid_cocktails = []
+                    # 🚀 Ο "ΣΑΡΩΤΗΣ" : Διαβάζει ΑΚΡΙΒΩΣ τι λέει η απόδειξη. Τέλος τα χαμένα κοκτέιλ!
+                    parsed_items = {}
                     for line in clean_display_details.split('\n'):
-                        if 'τμχ' in line:
+                        if 'τμχ' in line and '•' in line:
                             try:
-                                c_name_ext = line.replace('•', '').split(' τμχ ')[1].split(' (Εκ των')[0].split(' (LOT:')[0].strip()
-                                valid_cocktails.append(c_name_ext)
-                            except:
-                                pass
-
-                    # Τραβάμε τα δεδομένα παραγωγής για τη συγκεκριμένη ημέρα
-                    res_prod = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, discounted_pieces, discount_pct, prod_time, lot_cocktail").eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).execute()
-                    
-                    if res_prod.data:
-                        df_prod = pd.DataFrame(res_prod.data).fillna(0)
-                        df_prod['pieces'] = pd.to_numeric(df_prod['pieces'], errors='coerce').fillna(0).astype(int)
-                        
-                        # Φιλτράρισμα βάσει της ώρας παραγγελίας (αν υπάρχει)
-                        df_filtered_time = df_prod[df_prod['prod_time'] == order_time_str]
-                        if not df_filtered_time.empty:
-                            df_prod = df_filtered_time
-                        
-                        # Φιλτράρισμα βάσει των κοκτέιλ της παραγγελίας
-                        if valid_cocktails:
-                             df_prod = df_prod[df_prod['cocktail_name'].isin(valid_cocktails)]
-
-                        # Ομαδοποίηση ανά Κοκτέιλ και LOT για την εμφάνιση (για να μην βλέπουμε τα υλικά)
-                        df_grouped = df_prod.groupby(["cocktail_name", "lot_cocktail"], as_index=False).agg({
-                            "pieces": "first", # Ήταν sum(), το αλλάζουμε σε first() γιατί αλλιώς αν έχει 4 υλικά από 48 τμχ, θα τα έκανε 192!
-                            "free_pieces": "first",
-                            "discounted_pieces": "first",
-                            "discount_pct": "max"
-                        })
-                        
-                        with st.form("apply_gifts_and_discounts_form"):
-                            inputs = {}
-                            st.markdown("##### ⚙️ Ρυθμίσεις ανά Κωδικό Παραγγελίας & LOT")
+                                line_c = line.replace('•', '').strip()
+                                pcs = int(line_c.split(' τμχ ')[0])
+                                rest = line_c.split(' τμχ ')[1]
+                                cname = rest.split(' (LOT:')[0].split(' (Εκ των')[0].strip()
+                                lot = rest.split('(LOT:')[1].split(')')[0].strip() if '(LOT:' in rest else '-'
+                                parsed_items[(cname, lot)] = {"t_pcs": pcs, "f_pcs": 0, "s_pcs": 0, "s_pct": 0.0}
+                            except: pass
                             
-                            h1, h2, h3, h4 = st.columns([2.5, 1, 1.2, 1])
-                            h1.caption("Κοκτέιλ (Σύνολο Τμχ)")
-                            h2.caption("Δωρεάν Τμχ")
-                            h3.caption("Τμχ με Έκπτωση")
-                            h4.caption("Έκπτωση (%)")
+                    # Βρίσκουμε τις τρέχουσες εκπτώσεις που έχουν ήδη περαστεί (από το string)
+                    if "--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---" in current_details:
+                        gift_part = current_details.split("--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---")[1].split("--- ΕΙΔΙΚΕΣ")[0]
+                        for line in gift_part.split("\n"):
+                            if 'x ' in line and 'ΔΩΡΟ' in line:
+                                try:
+                                    pcs = int(line.split('x ')[0].replace('🎁', '').strip())
+                                    rest = line.split('x ')[1]
+                                    cname = rest.split(' (ΔΩΡΟ')[0].strip()
+                                    lot = rest.split('LOT: ')[1].split(')')[0].strip() if 'LOT: ' in rest else '-'
+                                    if (cname, lot) in parsed_items: parsed_items[(cname, lot)]['f_pcs'] = pcs
+                                except: pass
+
+                    if "--- ΕΙΔΙΚΕΣ ΕΚΠΤΩΣΕΙΣ ΚΩΔΙΚΩΝ ---" in current_details:
+                        disc_part = current_details.split("--- ΕΙΔΙΚΕΣ ΕΚΠΤΩΣΕΙΣ ΚΩΔΙΚΩΝ ---")[1]
+                        for line in disc_part.split("\n"):
+                            if 'x ' in line and 'Έκπτωση' in line:
+                                try:
+                                    pcs = int(line.split('x ')[0].replace('📉', '').strip())
+                                    rest = line.split('x ')[1]
+                                    cname = rest.split(' (Έκπτωση')[0].strip()
+                                    pct = float(rest.split('Έκπτωση ')[1].split('%')[0].strip())
+                                    lot = rest.split('LOT: ')[1].split(')')[0].strip() if 'LOT: ' in rest else '-'
+                                    if (cname, lot) in parsed_items:
+                                        parsed_items[(cname, lot)]['s_pcs'] = pcs
+                                        parsed_items[(cname, lot)]['s_pct'] = pct
+                                except: pass
+
+                        
+                    with st.form("apply_gifts_and_discounts_form"):
+                        inputs = {}
+                        st.markdown("##### ⚙️ Ρυθμίσεις ανά Κωδικό Παραγγελίας & LOT")
+                        
+                        h1, h2, h3, h4 = st.columns([2.5, 1, 1.2, 1])
+                        h1.caption("Κοκτέιλ (Σύνολο Τμχ)")
+                        h2.caption("Δωρεάν Τμχ")
+                        h3.caption("Τμχ με Έκπτωση")
+                        h4.caption("Έκπτωση (%)")
+                        
+                        for (c_name, lot_c), vals in parsed_items.items():
+                            t_pcs = vals['t_pcs']
+                            curr_free = vals['f_pcs']
+                            curr_s_pcs = vals['s_pcs']
+                            curr_s_pct = vals['s_pct']
                             
-                            for _, prow in df_grouped.iterrows():
-                                c_name = prow['cocktail_name']
-                                lot_c = prow['lot_cocktail']
-                                t_pcs = int(prow['pieces'])
-                                curr_free = int(prow['free_pieces'])
-                                curr_s_pcs = int(prow['discounted_pieces'])
-                                curr_s_pct = float(prow['discount_pct'])
-                                
-                                safe_key_suffix = f"{c_name}_{lot_c}".replace("/", "_").replace("-", "_").replace(" ", "")
-                                
-                                c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1])
-                                c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ) <br><span style='font-size:11px; color:gray;'>LOT: {lot_c}</span>", unsafe_allow_html=True)
-                                
-                                f_pcs = c2.number_input("Δώρο", min_value=0, max_value=t_pcs, value=curr_free, step=1, key=f"f_{safe_key_suffix}", label_visibility="collapsed")
-                                s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{safe_key_suffix}", label_visibility="collapsed")
-                                s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{safe_key_suffix}", label_visibility="collapsed")
-                                
-                                inputs[(c_name, lot_c)] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
-                                
-                            if st.form_submit_button("💾 Εφαρμογή & Επανυπολογισμός Παραγγελίας", type="primary"):
-                                new_total = 0.0
-                                gift_text = ""
-                                disc_text = ""
-                                cust_discount = float(current_discount)
-                                
-                                with st.spinner("Επανυπολογισμός αξιών..."):
-                                    for key, vals in inputs.items():
-                                        c_name, lot_c = key
-                                        t_pcs = vals["t_pcs"]
-                                        f_pcs = vals["f_pcs"]
-                                        s_pcs = vals["s_pcs"]
-                                        s_pct = vals["s_pct"]
-                                        
-                                        if f_pcs + s_pcs > t_pcs:
-                                            s_pcs = t_pcs - f_pcs 
-                                            
-                                        normal_pcs = t_pcs - f_pcs - s_pcs
-                                        
-                                        # Ενημέρωση στη βάση: Εδώ θα ενημερωθούν όλα τα υλικά του κοκτέιλ.
-                                        # Προσθέτουμε την ώρα (order_time_str) για να πιάσει μόνο τα υλικά ΑΥΤΗΣ της παραγγελίας.
-                                        supabase.table("production_log").update({
-                                            "free_pieces": f_pcs,
-                                            "discounted_pieces": s_pcs,
-                                            "discount_pct": s_pct
-                                        }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("prod_time", order_time_str).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).execute()
-                                        
-                                        # Υπολογισμός Αξίας (γίνεται ΜΙΑ φορά ανά κοκτέιλ)
-                                        catalog_p = float(recipe_prices.get(c_name, 0.0))
-                                        price_after_global = catalog_p * (1 - (cust_discount / 100))
-                                        
-                                        cost_normal = normal_pcs * price_after_global
-                                        cost_spec = s_pcs * price_after_global * (1 - (s_pct / 100))
-                                        
-                                        new_total += (cost_normal + cost_spec)
-                                        
-                                        if f_pcs > 0:
-                                            gift_text += f"🎁 {f_pcs}x {c_name} (ΔΩΡΟ - LOT: {lot_c})\n"
-                                        if s_pcs > 0:
-                                            disc_text += f"📉 {s_pcs}x {c_name} (Έκπτωση {s_pct}% - LOT: {lot_c})\n"
-                                            
-                                    # Ανασύνθεση Κειμένου Παραγγελίας
-                                    final_details = clean_display_details
-                                    if gift_text:
-                                        final_details += f"\n\n--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---\n{gift_text}"
-                                    if disc_text:
-                                        final_details += f"\n\n--- ΕΙΔΙΚΕΣ ΕΚΠΤΩΣΕΙΣ ΚΩΔΙΚΩΝ ---\n{disc_text}"
-                                        
-                                    supabase.table("b2b_orders").update({"total_amount": new_total, "order_details": final_details}).eq("id", sel_order_id).execute()
+                            safe_key_suffix = f"{c_name}_{lot_c}".replace("/", "_").replace("-", "_").replace(" ", "")
+                            
+                            c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1])
+                            c1.write(f"🍹 **{c_name}** ({t_pcs} τμχ) <br><span style='font-size:11px; color:gray;'>LOT: {lot_c}</span>", unsafe_allow_html=True)
+                            
+                            f_pcs = c2.number_input("Δώρο", min_value=0, max_value=t_pcs, value=curr_free, step=1, key=f"f_{safe_key_suffix}", label_visibility="collapsed")
+                            s_pcs = c3.number_input("Τμχ Έκπτωσης", min_value=0, max_value=t_pcs, value=curr_s_pcs, step=1, key=f"s_{safe_key_suffix}", label_visibility="collapsed")
+                            s_pct = c4.number_input("% Έκπτωσης", min_value=0.0, max_value=100.0, value=curr_s_pct, step=1.0, key=f"p_{safe_key_suffix}", label_visibility="collapsed")
+                            
+                            inputs[(c_name, lot_c)] = {"t_pcs": t_pcs, "f_pcs": f_pcs, "s_pcs": s_pcs, "s_pct": s_pct}
+                            
+                        if st.form_submit_button("💾 Εφαρμογή & Επανυπολογισμός Παραγγελίας", type="primary"):
+                            new_total = 0.0
+                            gift_text, disc_text = "", ""
+                            cust_discount = float(current_discount)
+                            
+                            with st.spinner("Επανυπολογισμός αξιών..."):
+                                for key, vals in inputs.items():
+                                    c_name, lot_c = key
+                                    t_pcs, f_pcs, s_pcs, s_pct = vals["t_pcs"], vals["f_pcs"], vals["s_pcs"], vals["s_pct"]
                                     
-                                    st.success(f"✅ Επιτυχία! Η νέα αξία της παραγγελίας διαμορφώθηκε στα {new_total:.2f} €")
-                                    st.cache_data.clear()
-                                    time.sleep(1.5)
-                                    st.rerun()
-                    else:
-                        st.warning("Δεν βρέθηκε γραμμή παραγωγής για τη συγκεκριμένη παραγγελία.")
+                                    if f_pcs + s_pcs > t_pcs: s_pcs = t_pcs - f_pcs 
+                                    normal_pcs = t_pcs - f_pcs - s_pcs
+                                    
+                                    # Ενημερώνουμε τη βάση παραγωγής (ώστε να ταιριάζουν τα γενικά νούμερα)
+                                    supabase.table("production_log").update({
+                                        "free_pieces": f_pcs, "discounted_pieces": s_pcs, "discount_pct": s_pct
+                                    }).eq("customer", sel_cust_offers).eq("prod_date", prod_date_str).eq("cocktail_name", c_name).eq("lot_cocktail", lot_c).execute()
+                                    
+                                    catalog_p = float(recipe_prices.get(c_name, 0.0))
+                                    price_after_global = catalog_p * (1 - (cust_discount / 100))
+                                    cost_normal = normal_pcs * price_after_global
+                                    cost_spec = s_pcs * price_after_global * (1 - (s_pct / 100))
+                                    
+                                    new_total += (cost_normal + cost_spec)
+                                    
+                                    if f_pcs > 0: gift_text += f"🎁 {f_pcs}x {c_name} (ΔΩΡΟ - LOT: {lot_c})\n"
+                                    if s_pcs > 0: disc_text += f"📉 {s_pcs}x {c_name} (Έκπτωση {s_pct}% - LOT: {lot_c})\n"
+                                        
+                                final_details = clean_display_details
+                                if gift_text: final_details += f"\n\n--- ΔΩΡΑ ΠΟΥ ΕΦΑΡΜΟΣΤΗΚΑΝ ---\n{gift_text}"
+                                if disc_text: final_details += f"\n\n--- ΕΙΔΙΚΕΣ ΕΚΠΤΩΣΕΙΣ ΚΩΔΙΚΩΝ ---\n{disc_text}"
+                                    
+                                supabase.table("b2b_orders").update({"total_amount": new_total, "order_details": final_details}).eq("id", sel_order_id).execute()
+                                
+                                st.success(f"✅ Επιτυχία! Η νέα αξία της παραγγελίας διαμορφώθηκε στα {new_total:.2f} €")
+                                st.cache_data.clear()
+                                time.sleep(1.5)
+                                st.rerun()
             else:
                 st.info("Δεν βρέθηκαν προηγούμενες παραγγελίες για αυτόν τον πελάτη.")
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL VERSION - CUSTOM PRICES & CLEAN NUMBERS) ---
