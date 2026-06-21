@@ -5781,7 +5781,17 @@ elif page == "📦 Παραγγελίες B2B":
                 with st.expander(f"{icon} {row['customer_name']} - {row['total_amount']:.2f} €"):
                     c1, c2 = st.columns([2, 1])
                     with c1:
-                        st.code(row['order_details'])
+                        # 🚀 ΚΑΘΑΡΙΣΜΟΣ ΚΕΙΜΕΝΟΥ (Αφαίρεση παρενθέσεων)
+                        raw_details = str(row['order_details'])
+                        clean_lines = []
+                        for line in raw_details.split('\n'):
+                            if ' (Εκ των' in line:
+                                clean_lines.append(line.split(' (Εκ των')[0].strip())
+                            else:
+                                clean_lines.append(line)
+                        clean_details = '\n'.join(clean_lines)
+
+                        st.code(clean_details)
                         if row['notes']: st.info(f"📝 {row['notes']}")
                         st.caption(f"ID: {row['id']} | WooID: {row.get('woo_id','-')} | Ημερομηνία: {row['created_at']}")
                     
@@ -5854,12 +5864,16 @@ elif page == "📦 Παραγγελίες B2B":
                         with col_h1:
                             st.markdown(f"**Κατάσταση:** {row['status']}")
                             
-                            # Προβολή των κοκτέιλ (χωρίς δυνατότητα διαγραφής)
+                            # Προβολή των κοκτέιλ (ΧΩΡΙΣ ΤΙΣ ΠΑΡΕΝΘΕΣΕΙΣ)
                             items = str(row['order_details']).split('\n')
                             
                             for i, item in enumerate(items):
                                 if item.strip(): # Μόνο αν δεν είναι κενή γραμμή
-                                    # Εμφανίζουμε απλώς το κείμενο, χωρίς στήλες και κουμπιά
+                                    # 🚀 Αν έχει παρένθεση "Εκ των", την κόβουμε!
+                                    if ' (Εκ των' in item:
+                                        item = item.split(' (Εκ των')[0].strip()
+                                    
+                                    # Εμφανίζουμε το καθαρό πλέον κείμενο
                                     st.text(item)
                                     
                         with col_h2:
