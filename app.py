@@ -3960,9 +3960,19 @@ elif page == "📦 Lot Παραγωγής":
                         with st.expander(f"🍹 {c_name} | LOT: {c_lot} | {base_pcs} τμχ", expanded=False):
                             
                             c1, c2, c3, c4 = st.columns(4)
-                            new_date = c1.text_input("Ημερομηνία", value=o_date, key=f"d_{safe_key}")
-                            new_cust = c2.text_input("Πελάτης", value=o_cust, key=f"c_{safe_key}")
-                            new_pcs = c3.number_input("Τεμάχια", value=base_pcs, min_value=0, key=f"p_{safe_key}")
+new_date = c1.text_input("Ημερομηνία", value=o_date, key=f"d_{safe_key}")
+
+# --- ΝΕΟ: Dropdown για ασφαλή αλλαγή πελάτη ---
+try:
+    # Βρίσκει τη θέση του τρέχοντος πελάτη στη λίστα για να τον δείχνει προεπιλεγμένο
+    cust_idx = customer_options.index(o_cust)
+except ValueError:
+    cust_idx = 0
+
+new_cust = c2.selectbox("Πελάτης", options=customer_options, index=cust_idx, key=f"c_{safe_key}")
+# ----------------------------------------------
+
+new_pcs = c3.number_input("Τεμάχια", value=base_pcs, min_value=0, key=f"p_{safe_key}")
                             
                             # Επιστρέψαμε στην απλή μορφή, γιατί τώρα το αναλαμβάνει η συνάρτηση sync_lot!
                             new_lot = c4.text_input("LOT Παραγωγής", value=c_lot, key=f"l_{safe_key}")
