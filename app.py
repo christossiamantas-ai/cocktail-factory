@@ -4375,18 +4375,41 @@ elif page == "📦 Lot Παραγωγής":
             table {{ width: 100%; border-collapse: collapse; }}
             th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
             td {{ border: 1px solid #bdc3c7; padding: 10px; }}
-            .lot-info {{ font-size: 0.9em; color: #555; }}
+            .lot-info {{ font-size: 0.9em; color: #555; line-height: 1.8; }}
         </style></head><body>
             <div class='header'><h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
-            <table><thead><tr><th>Πρώτη Ύλη</th><th>Συνολική Ποσότητα (ml)</th><th>Συνολικό Βάρος (g)</th><th>Lot & Λήξη Πρ. Ύλης</th></tr></thead><tbody>
+            <table><thead><tr>
+                <th>Πρώτη Ύλη</th>
+                <th>Συνολική Ποσότητα (ml)</th>
+                <th>Συνολικό Βάρος (g)</th>
+                <th>LOT 1 & Λήξη 1</th>
+                <th>LOT 2 & Λήξη 2</th>
+            </tr></thead><tbody>
         """
+        
         for _, row in df_prep.iterrows():
-            display_parts = [p for p in [row.get('Lot Number', ''), row.get('Ημ_Λήξης', '')] if p]
-            lot_text = " | ".join(display_parts) if display_parts else "-"
-            
             ml_val = float(row.get('Σύνολο_ML', 0)) if pd.notna(row.get('Σύνολο_ML')) else 0.0
             g_val = float(row.get('Στόχος_Γραμμάρια', 0)) if pd.notna(row.get('Στόχος_Γραμμάρια')) else 0.0
-            html_prep += f"<tr><td><b>{row.get('Υλικό', '-')}</b></td><td>{ml_val:.0f} ml</td><td>{g_val:.1f} g</td><td class='lot-info'>{lot_text}</td></tr>"
+            
+            # Σπάμε τα string σε λίστες αν υπάρχουν πολλαπλά LOT (διαχωρισμένα με " / ")
+            lots = str(row.get('Lot Number', '')).split(" / ") if row.get('Lot Number') else []
+            exps = str(row.get('Ημ_Λήξης', '')).split(" / ") if row.get('Ημ_Λήξης') else []
+            
+            # Αν υπάρχει το βρίσκει, αλλιώς βάζει τελείες για χειρόγραφη συμπλήρωση
+            l1 = lots[0] if len(lots) > 0 and lots[0] else "...................."
+            e1 = exps[0] if len(exps) > 0 and exps[0] else "...................."
+            
+            l2 = lots[1] if len(lots) > 1 and lots[1] else "...................."
+            e2 = exps[1] if len(exps) > 1 and exps[1] else "...................."
+            
+            html_prep += f"""<tr>
+                <td><b>{row.get('Υλικό', '-')}</b></td>
+                <td>{ml_val:.0f} ml</td>
+                <td>{g_val:.1f} g</td>
+                <td class='lot-info'><b>L1:</b> {l1}<br><b>E1:</b> {e1}</td>
+                <td class='lot-info'><b>L2:</b> {l2}<br><b>E2:</b> {e2}</td>
+            </tr>"""
+            
         html_prep += "</tbody></table></body></html>"
 
         col_p1, col_p2, col_p3 = st.columns(3)
