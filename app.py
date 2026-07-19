@@ -2715,7 +2715,7 @@ elif page == "📦 Lot Παραγωγής":
         pcs_col = next((c for c in ["pcs", "τεμάχια", "quantity", "Quantity", "pieces"] if c in cols), None)
         
         # ΛΙΣΤΑ ΕΞΑΙΡΕΣΕΩΝ: Προαιρετικά, υλικά που δεν παίρνουν ποτέ ούτε LOT ούτε Λήξη
-        exempt_ingredients = ["Νερό", "Αλάτι"]
+        exempt_ingredients = ["Κιτρικό Οξύ", "ΡΑΚΙ ΧΥΜΑ1000ML"]
         
         # 1. Κρατάμε τα υλικά που λογικά θέλουν ιχνηλασιμότητα
         df_needs = df_all[
