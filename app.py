@@ -2715,29 +2715,30 @@ elif page == "📦 Lot Παραγωγής":
         pcs_col = next((c for c in ["pcs", "τεμάχια", "quantity", "Quantity", "pieces"] if c in cols), None)
         
         # ΛΙΣΤΑ ΕΞΑΙΡΕΣΕΩΝ: Προαιρετικά, υλικά που δεν παίρνουν ποτέ ούτε LOT ούτε Λήξη
-        exempt_ingredients = ["Κιτρικό Οξύ", "ΡΑΚΙ ΧΥΜΑ1000ML", "SMUSHED CARDAMON", "ΔΕΝΤΡΟΛΙΒΑΝΟ 0,5gr", "ΔΥΟΣΜΟΣ 0,5gr", "ΤΣΑΙ ΤΟΥ ΒΟΥΝΟΥ"]
+        exempt_ingredients = ["Νερό", "Αλάτι"]
+        
+        # 🚀 ΔΙΟΡΘΩΣΗ: Πιάνουμε το "ΝΑΙ", το "True", το "1" για το Στοκ!
+        stock_mask = df_all.get("is_from_stock", "False").astype(str).str.strip().str.upper().isin(["TRUE", "ΝΑΙ", "YES", "1", "T"])
         
         # 1. Κρατάμε τα υλικά που λογικά θέλουν ιχνηλασιμότητα
         df_needs = df_all[
-            (df_all.get("is_from_stock", "False").astype(str).str.lower() != "true") & 
+            (~stock_mask) & 
             (~df_all.get("ingredient_name", "").astype(str).str.contains("Έτοιμο Προϊόν", na=False)) &
-            (~df_all.get("ingredient_name", "").isin(exempt_ingredients))
+            (~df_all.get("ingredient_name", "").isin(exempt_ingredients)) &
+            (df_all.get("ingredient_name", "").astype(str).str.strip() != "") # Αγνοούμε εντελώς κενές γραμμές
         ]
         
-        # 2. Ελέγχουμε ΠΟΤΕ λείπουν τα στοιχεία (Πρέπει να λείπουν ΚΑΙ τα δύο για να είναι εκκρεμότητα)
+        # 2. Ελέγχουμε ΠΟΤΕ λείπουν τα στοιχεία (Πρέπει να λείπουν ΚΑΙ τα δύο)
         if not df_needs.empty:
             missing_lot = df_needs["lot_number"].isna() | df_needs["lot_number"].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
             
-            # Ελέγχουμε πώς λέγεται η στήλη της λήξης στη βάση (συνήθως expiry_date)
             exp_col = "expiry_date" if "expiry_date" in cols else "Ημ_Λήξης"
             if exp_col in cols:
                 missing_exp = df_needs[exp_col].isna() | df_needs[exp_col].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
             else:
-                missing_exp = True # Αν δεν υπάρχει καθόλου στήλη λήξης, βασιζόμαστε μόνο στο LOT
+                missing_exp = True
                 
-            # Μια γραμμή εκκρεμεί ΜΟΝΟ αν λείπει ΚΑΙ το LOT ΚΑΙ η Λήξη
             df_missing = df_needs[missing_lot & missing_exp]
-            
             pending_dates = df_missing["prod_date"].dropna().unique().tolist()
         else:
             pending_dates = []
