@@ -2703,51 +2703,49 @@ elif page == "📦 Lot Παραγωγής":
     reset_key = st.session_state['lot_reset_key']
 
     # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΑΡΑΓΩΓΗΣ (ΜΗ ΕΚΤΕΛΕΣΜΕΝΕΣ ΛΟΓΩ ΕΛΛΕΙΨΗΣ LOT) ---
-    st.subheader("🚨 Εκκρεμείς Ημέρες Παραγωγής (Μη Εκτελεσμένες)")
-    
-    # Τραβάμε τα δεδομένα από τη βάση για να βρούμε τι λείπει
     res_pending = supabase.table("production_log").select("prod_date, is_from_stock, ingredient_name, lot_number").execute()
     
     if res_pending.data:
         import pandas as pd
         df_all = pd.DataFrame(res_pending.data)
         
-        # 1. Φιλτράρουμε: Κρατάμε μόνο τις πραγματικές πρώτες ύλες (όχι Στοκ, όχι Έτοιμα Προϊόντα)
+        # 1. Κρατάμε μόνο τις πραγματικές πρώτες ύλες
         df_needs = df_all[
             (df_all.get("is_from_stock", "False").astype(str).str.lower() != "true") & 
             (~df_all.get("ingredient_name", "").astype(str).str.contains("Έτοιμο Προϊόν", na=False))
         ]
         
-        # 2. Ψάχνουμε για κενά LOT (παύλες, None, nan κλπ)
-        df_missing = df_needs[
-            df_needs["lot_number"].isna() | 
-            df_needs["lot_number"].astype(str).str.strip().isin(['', '-', 'None', 'nan'])
-        ]
+        pending_dates = []
         
-        if not df_missing.empty:
-            # Βρίσκουμε τις μοναδικές ημερομηνίες που έχουν πρόβλημα, ταξινομημένες (πιο πρόσφατη πρώτα)
+        if not df_needs.empty:
+            # 2. Ομαδοποιούμε ανά ημέρα
+            grouped = df_needs.groupby("prod_date")
+            
+            for p_date, group in grouped:
+                # Ελέγχουμε αν υπάρχει έστω και ΕΝΑ υλικό με κανονικό LOT (όχι κενό ή παύλα)
+                has_real_lot = group["lot_number"].astype(str).str.strip().apply(
+                    lambda x: x not in ['', '-', 'None', 'nan']
+                ).any()
+                
+                # Αν ΟΛΑ τα υλικά έχουν παύλα/κενό, τότε σίγουρα δεν έχει γίνει η μαζική καταχώρηση
+                if not has_real_lot:
+                    pending_dates.append(p_date)
+                    
+        if pending_dates:
             try:
                 from datetime import datetime
-                pending_dates = sorted(
-                    df_missing["prod_date"].dropna().unique().tolist(), 
-                    key=lambda x: datetime.strptime(str(x).strip(), "%d/%m/%Y"), 
-                    reverse=True
-                )
+                pending_dates = sorted(list(set(pending_dates)), key=lambda x: datetime.strptime(str(x).strip(), "%d/%m/%Y"), reverse=True)
             except Exception:
-                pending_dates = sorted(df_missing["prod_date"].dropna().unique().tolist(), reverse=True)
-            
-            if pending_dates:
-                st.warning(f"**ΠΡΟΣΟΧΗ:** Έχετε {len(pending_dates)} ημέρα/ες με μη εκτελεσμένη παραγωγή! Πρέπει να καταχωρήσετε τα LOT στο εργαστήριο.")
+                pending_dates = sorted(list(set(pending_dates)), reverse=True)
                 
+            # 3. Εμφάνιση μέσα σε Expander για εξοικονόμηση χώρου
+            with st.expander(f"🚨 Εκκρεμούν LOT για {len(pending_dates)} ημέρα/ες Παραγωγής!", expanded=False):
                 for p_date in pending_dates:
                     col_a, col_b = st.columns([4, 1])
                     with col_a:
-                        count_mats = len(df_missing[df_missing["prod_date"] == p_date])
-                        st.markdown(f"🗓️ **Ημερομηνία:** {p_date} | *Εκκρεμούν LOT για {count_mats} πρώτες ύλες*")
+                        st.markdown(f"🗓️ **Ημερομηνία:** {p_date}")
                     with col_b:
-                        st.info("Προς Συμπλήρωση ⬇️") 
-            else:
-                st.success("✅ Όλες οι παραγωγές είναι πλήρως εκτελεσμένες και ιχνηλάσιμες!")
+                        st.info("Σε αναμονή")
         else:
             st.success("✅ Όλες οι παραγωγές είναι πλήρως εκτελεσμένες και ιχνηλάσιμες!")
     else:
