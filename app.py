@@ -4542,7 +4542,6 @@ elif page == "📦 Lot Παραγωγής":
 
         if st.button("📥 Παραγωγή Report LOT", type="primary"):
             with st.spinner("Άντληση δεδομένων από το ιστορικό..."):
-                # Τραβάμε τις τελευταίες 100.000 γραμμές για σιγουριά
                 res_report = supabase.table("production_log").select("prod_date, ingredient_name, lot_number, expiry_date, is_from_stock").order("id", desc=True).limit(100000).execute()
                 
                 if res_report.data:
@@ -4567,22 +4566,74 @@ elif page == "📦 Lot Παραγωγής":
                         df_rep = df_rep[["ingredient_name", "lot_number", "expiry_date", "prod_date"]]
                         df_rep.columns = ["Πρώτη Ύλη", "LOT Number", "Ημ. Λήξης", "Ημ. Παραγωγής"]
                         
-                        # 4. Αφαίρεση διπλότυπων (αν το Ρούμι μπήκε σε 5 κοκτέιλ την ίδια μέρα, το θέλουμε 1 φορά στο report)
+                        # 4. Αφαίρεση διπλότυπων
                         df_unique = df_rep.drop_duplicates().sort_values(by=["Πρώτη Ύλη", "Ημ. Παραγωγής"], ascending=[True, False])
                         
                         st.success(f"✅ Βρέθηκαν {len(df_unique)} μοναδικές καταγραφές LOT!")
-                        
-                        # 5. Εμφάνιση του πίνακα στην οθόνη
                         st.dataframe(df_unique, use_container_width=True, hide_index=True)
                         
-                        # 6. Κουμπί για Download σε CSV (Excel)
-                        csv = df_unique.to_csv(index=False).encode('utf-8-sig') # utf-8-sig για να διαβάζει σωστά τα Ελληνικά το Excel
-                        st.download_button(
-                            label="💾 Λήψη Report (Αρχείο Excel / CSV)",
-                            data=csv,
-                            file_name="Traceability_LOT_Report.csv",
-                            mime="text/csv",
-                        )
+                        # --- ΝΕΟ: ΔΗΜΙΟΥΡΓΙΑ HTML ΓΙΑ PDF / ΕΚΤΥΠΩΣΗ ---
+                        import datetime
+                        current_time = datetime.datetime.now().strftime('%d/%m/%Y %H:%M')
+                        
+                        html_report = f"""<html><head><meta charset='UTF-8'><style>
+                            body {{ font-family: sans-serif; padding: 20px; font-size: 12px; }}
+                            .header {{ text-align: center; border-bottom: 2px solid #2980b9; margin-bottom: 20px; padding-bottom: 10px; }}
+                            .header h1 {{ margin: 0; font-size: 18px; color: #2c3e50; }}
+                            .header p {{ margin: 5px 0 0 0; color: #7f8c8d; }}
+                            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                            th {{ background-color: #2980b9; color: white; padding: 8px; text-align: left; font-size: 12px; border: 1px solid #bdc3c7; }}
+                            td {{ border: 1px solid #bdc3c7; padding: 6px; color: #333; }}
+                            tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                            @media print {{
+                                body {{ padding: 0; margin: 0; }}
+                                @page {{ margin: 1cm; }}
+                                table {{ page-break-inside: auto; }}
+                                tr {{ page-break-inside: avoid; page-break-after: auto; }}
+                            }}
+                        </style></head><body>
+                            <div class='header'>
+                                <h1>📊 ΣΥΓΚΕΝΤΡΩΤΙΚΟ ΙΣΤΟΡΙΚΟ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑΣ (LOT)</h1>
+                                <p>Ημερομηνία Εξαγωγής: <b>{current_time}</b></p>
+                            </div>
+                            <table><thead><tr>
+                                <th>Πρώτη Ύλη</th>
+                                <th>LOT Number</th>
+                                <th>Ημ. Λήξης</th>
+                                <th>Ημ. Παραγωγής</th>
+                            </tr></thead><tbody>
+                        """
+                        
+                        for _, row in df_unique.iterrows():
+                            # Αντικαθιστούμε τα 'nan' με κενό για να φαίνεται πιο όμορφο
+                            lot_val = row['LOT Number'] if pd.notna(row['LOT Number']) else '-'
+                            exp_val = row['Ημ. Λήξης'] if pd.notna(row['Ημ. Λήξης']) else '-'
+                            html_report += f"<tr><td><b>{row['Πρώτη Ύλη']}</b></td><td>{lot_val}</td><td>{exp_val}</td><td>{row['Ημ. Παραγωγής']}</td></tr>"
+                            
+                        html_report += "</tbody></table></body></html>"
+                        # -----------------------------------------------
+                        
+                        st.markdown("### 📥 Επιλογές Εξαγωγής")
+                        col_dl1, col_dl2 = st.columns(2)
+                        
+                        with col_dl1:
+                            csv = df_unique.to_csv(index=False).encode('utf-8-sig')
+                            st.download_button(
+                                label="💾 Λήψη σε Excel (CSV)",
+                                data=csv,
+                                file_name="Traceability_LOT_Report.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                            
+                        with col_dl2:
+                            st.download_button(
+                                label="🖨️ Λήψη για Εκτύπωση / PDF",
+                                data=html_report,
+                                file_name="Traceability_LOT_Report.html",
+                                mime="text/html",
+                                use_container_width=True
+                            )
                     else:
                         st.warning("Δεν βρέθηκαν καταχωρημένα LOT στις πρώτες ύλες.")
                 else:
