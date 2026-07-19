@@ -3551,8 +3551,9 @@ elif page == "📦 Lot Παραγωγής":
                                     old_lot_full = historical_lots[ing]["lot"]
                                     old_exp_full = historical_lots[ing]["exp"]
                                 
-                                def_lot1, def_lot2 = (old_lot_full.split("/", 1) + [""])[:2] if "/" in old_lot_full else (old_lot_full, "")
-                                def_exp1, def_exp2 = (old_exp_full.split("/", 1) + [""])[:2] if "/" in old_exp_full else (old_exp_full, "")
+                                # 🚀 ΔΙΟΡΘΩΣΗ: Πλέον σπάει ΜΟΝΟ όταν υπάρχει κενό γύρω από την κάθετο (" / ")
+                                def_lot1, def_lot2 = (old_lot_full.split(" / ", 1) + [""])[:2] if " / " in old_lot_full else (old_lot_full, "")
+                                def_exp1, def_exp2 = (old_exp_full.split(" / ", 1) + [""])[:2] if " / " in old_exp_full else (old_exp_full, "")
                                 
                                 safe_date_key = sel_prep_date.replace("/", "_")
                                 
