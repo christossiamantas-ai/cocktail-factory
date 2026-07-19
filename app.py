@@ -4532,6 +4532,61 @@ elif page == "📦 Lot Παραγωγής":
         col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
+
+    # =========================================================================
+    # 📊 REPORT: ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ LOT ΠΡΩΤΩΝ ΥΛΩΝ
+    # =========================================================================
+    st.divider()
+    with st.expander("📊 Report: Συγκεντρωτικό Ιστορικό LOT Πρώτων Υλών", expanded=False):
+        st.info("Εξαγωγή όλων των LOT που έχουν χρησιμοποιηθεί στην παραγωγή (Ιχνηλασιμότητα).")
+
+        if st.button("📥 Παραγωγή Report LOT", type="primary"):
+            with st.spinner("Άντληση δεδομένων από το ιστορικό..."):
+                # Τραβάμε τις τελευταίες 100.000 γραμμές για σιγουριά
+                res_report = supabase.table("production_log").select("prod_date, ingredient_name, lot_number, expiry_date, is_from_stock").order("id", desc=True).limit(100000).execute()
+                
+                if res_report.data:
+                    import pandas as pd
+                    df_rep = pd.DataFrame(res_report.data)
+                    
+                    # 1. Φιλτράρισμα: Αγνοούμε Στοκ και Έτοιμα Προϊόντα
+                    stock_mask = df_rep.get("is_from_stock", "False").astype(str).str.strip().str.upper().isin(["TRUE", "ΝΑΙ", "YES", "1", "T"])
+                    df_rep = df_rep[
+                        (~stock_mask) & 
+                        (~df_rep.get("ingredient_name", "").astype(str).str.contains("Έτοιμο Προϊόν", na=False))
+                    ]
+                    
+                    # 2. Φιλτράρισμα: Κρατάμε ΜΟΝΟ όσα έχουν πραγματικό LOT
+                    df_rep = df_rep[
+                        df_rep["lot_number"].notna() & 
+                        ~df_rep["lot_number"].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
+                    ]
+                    
+                    if not df_rep.empty:
+                        # 3. Καθαρισμός και μετονομασία στηλών
+                        df_rep = df_rep[["ingredient_name", "lot_number", "expiry_date", "prod_date"]]
+                        df_rep.columns = ["Πρώτη Ύλη", "LOT Number", "Ημ. Λήξης", "Ημ. Παραγωγής"]
+                        
+                        # 4. Αφαίρεση διπλότυπων (αν το Ρούμι μπήκε σε 5 κοκτέιλ την ίδια μέρα, το θέλουμε 1 φορά στο report)
+                        df_unique = df_rep.drop_duplicates().sort_values(by=["Πρώτη Ύλη", "Ημ. Παραγωγής"], ascending=[True, False])
+                        
+                        st.success(f"✅ Βρέθηκαν {len(df_unique)} μοναδικές καταγραφές LOT!")
+                        
+                        # 5. Εμφάνιση του πίνακα στην οθόνη
+                        st.dataframe(df_unique, use_container_width=True, hide_index=True)
+                        
+                        # 6. Κουμπί για Download σε CSV (Excel)
+                        csv = df_unique.to_csv(index=False).encode('utf-8-sig') # utf-8-sig για να διαβάζει σωστά τα Ελληνικά το Excel
+                        st.download_button(
+                            label="💾 Λήψη Report (Αρχείο Excel / CSV)",
+                            data=csv,
+                            file_name="Traceability_LOT_Report.csv",
+                            mime="text/csv",
+                        )
+                    else:
+                        st.warning("Δεν βρέθηκαν καταχωρημένα LOT στις πρώτες ύλες.")
+                else:
+                    st.error("Δεν υπάρχουν δεδομένα στη βάση.")
     # --- 5. ΣΥΝΘΕΤΗ ΙΧΝΗΛΑΣΙΜΟΤΗΤΑ & RECALL TOOL ---
     st.divider()
     st.subheader("🔍 Έλεγχος & Ιχνηλασιμότητα")
