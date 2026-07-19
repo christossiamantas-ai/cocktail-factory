@@ -2818,9 +2818,12 @@ elif page == "📦 Lot Παραγωγής":
         st.markdown("### 🛒 1. Καταχώρηση Παραγγελιών ανά Πελάτη")
         c_col1, c_col2, c_col3, c_col4 = st.columns([2, 2, 1, 1.2])
         
-        sel_cust = c_col1.selectbox("👤 1. Επιλέξτε Πελάτη:", customer_options, key=f"batch_cust_{reset_key}")
+        sel_cust = c_col1.selectbox("👤 1. Επιλέξτε Πελάτη:", customer_options, index=None, placeholder="Αναζήτηση Πελάτη...", key=f"batch_cust_{reset_key}")
+        
         recipe_options = list(df_rec["Ονομα"].unique())
-        sel_cocktail = c_col2.selectbox("🍹 2. Επιλέξτε Κοκτέιλ:", recipe_options, key=f"batch_cocktail_{reset_key}")
+        
+        sel_cocktail = c_col2.selectbox("🍹 2. Επιλέξτε Κοκτέιλ:", recipe_options, index=None, placeholder="Αναζήτηση Κοκτέιλ...", key=f"batch_cocktail_{reset_key}")
+        
         sel_pcs = c_col3.number_input("📦 3. Τεμάχια:", min_value=1, step=1, value=1, key=f"batch_pcs_{reset_key}")
         
         # --- 🚀 ΝΕΟΣ ΔΙΑΚΟΠΤΗΣ ΣΤΟΚ ---
