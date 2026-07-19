@@ -210,7 +210,7 @@ def get_who_is_online():
 # --- Σύστημα Password ---
 def check_password():
     def password_entered():
-        if st.session_state["password"] == "pornstar":
+        if st.session_state["password"] == "panatha1908":
             st.session_state["password_correct"] = True
             del st.session_state["password"]  
         else:
