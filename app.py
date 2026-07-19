@@ -2702,7 +2702,7 @@ elif page == "📦 Lot Παραγωγής":
     active_order = st.session_state.get('active_b2b_order')
     reset_key = st.session_state['lot_reset_key']
 
-    # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΑΡΑΓΩΓΗΣ (ΜΗ ΕΚΤΕΛΕΣΜΕΝΕΣ ΛΟΓΩ ΕΛΛΕΙΨΗΣ LOT) ---
+    # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΑΡΑΓΩΓΗΣ (ΕΛΕΓΧΟΣ LOT Ή ΗΜΕΡΟΜΗΝΙΑΣ ΛΗΞΗΣ) ---
     res_pending = supabase.table("production_log").select("*").order("id", desc=True).limit(100000).execute()
     
     if res_pending.data:
@@ -2714,24 +2714,33 @@ elif page == "📦 Lot Παραγωγής":
         cocktail_col = next((c for c in ["cocktail_name", "cocktail", "Ονομα", "Cocktail"] if c in cols), None)
         pcs_col = next((c for c in ["pcs", "τεμάχια", "quantity", "Quantity", "pieces"] if c in cols), None)
         
-        # 🚀 ΒΗΜΑ 1: ΜΑΘΑΙΝΟΥΜΕ ΑΠΟ ΤΟ ΙΣΤΟΡΙΚΟ (Ποια υλικά παίρνουν όντως LOT;)
-        valid_lots_mask = ~df_all["lot_number"].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
-        traceable_ingredients = df_all[valid_lots_mask]["ingredient_name"].unique().tolist()
+        # ΛΙΣΤΑ ΕΞΑΙΡΕΣΕΩΝ: Προαιρετικά, υλικά που δεν παίρνουν ποτέ ούτε LOT ούτε Λήξη
+        exempt_ingredients = ["Νερό", "Αλάτι"]
         
-        # 🚀 ΒΗΜΑ 2: Κρατάμε μόνο τα υλικά που: δεν είναι στοκ, δεν είναι έτοιμα ΚΑΙ ανήκουν στα "ιχνηλάσιμα"
+        # 1. Κρατάμε τα υλικά που λογικά θέλουν ιχνηλασιμότητα
         df_needs = df_all[
             (df_all.get("is_from_stock", "False").astype(str).str.lower() != "true") & 
             (~df_all.get("ingredient_name", "").astype(str).str.contains("Έτοιμο Προϊόν", na=False)) &
-            (df_all["ingredient_name"].isin(traceable_ingredients))
+            (~df_all.get("ingredient_name", "").isin(exempt_ingredients))
         ]
         
-        # 🚀 ΒΗΜΑ 3: Μια μέρα εκκρεμεί αν ΕΣΤΩ ΚΑΙ ΕΝΑ ιχνηλάσιμο υλικό της έχει κενό/παύλα LOT
-        df_missing = df_needs[
-            df_needs["lot_number"].isna() | 
-            df_needs["lot_number"].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
-        ]
-        
-        pending_dates = df_missing["prod_date"].dropna().unique().tolist()
+        # 2. Ελέγχουμε ΠΟΤΕ λείπουν τα στοιχεία (Πρέπει να λείπουν ΚΑΙ τα δύο για να είναι εκκρεμότητα)
+        if not df_needs.empty:
+            missing_lot = df_needs["lot_number"].isna() | df_needs["lot_number"].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
+            
+            # Ελέγχουμε πώς λέγεται η στήλη της λήξης στη βάση (συνήθως expiry_date)
+            exp_col = "expiry_date" if "expiry_date" in cols else "Ημ_Λήξης"
+            if exp_col in cols:
+                missing_exp = df_needs[exp_col].isna() | df_needs[exp_col].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
+            else:
+                missing_exp = True # Αν δεν υπάρχει καθόλου στήλη λήξης, βασιζόμαστε μόνο στο LOT
+                
+            # Μια γραμμή εκκρεμεί ΜΟΝΟ αν λείπει ΚΑΙ το LOT ΚΑΙ η Λήξη
+            df_missing = df_needs[missing_lot & missing_exp]
+            
+            pending_dates = df_missing["prod_date"].dropna().unique().tolist()
+        else:
+            pending_dates = []
         
         if pending_dates:
             try:
@@ -2740,8 +2749,8 @@ elif page == "📦 Lot Παραγωγής":
             except Exception:
                 pending_dates = sorted(list(set(pending_dates)), reverse=True)
                 
-            # 3. Εμφάνιση μέσα σε Expander με Αναλυτικές Παραγγελίες
-            with st.expander(f"🚨 Εκκρεμούν LOT για {len(pending_dates)} ημέρα/ες Παραγωγής!", expanded=False):
+            # 3. Εμφάνιση μέσα σε Expander
+            with st.expander(f"🚨 Εκκρεμούν LOT ή Ημ. Λήξης για {len(pending_dates)} ημέρα/ες Παραγωγής!", expanded=False):
                 for p_date in pending_dates:
                     st.markdown(f"### 🗓️ Παραγωγή: {p_date}")
                     
@@ -2792,6 +2801,8 @@ elif page == "📦 Lot Παραγωγής":
             st.success("✅ Όλες οι παραγωγές είναι πλήρως εκτελεσμένες και ιχνηλάσιμες!")
     else:
         st.success("✅ Καμία εκκρεμής παραγωγή στο σύστημα.")
+
+    st.divider()
 
     st.divider()
     # 1. ΚΕΝΤΡΙΚΟΣ ΟΡΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ & LOT
