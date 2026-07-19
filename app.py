@@ -3571,24 +3571,32 @@ elif page == "📦 Lot Παραγωγής":
                                 }
                             
                             if st.form_submit_button("💾 Αποθήκευση LOT στην Παραγωγή", type="primary"):
-                                with st.spinner("Γίνεται μαζική ενημέρωση..."):
+                                with st.spinner("Γίνεται αστραπιαία μαζική ενημέρωση..."):
                                     try:
-                                        for ing_name, vals in updated_lots.items():
-                                            target_rows = [
-                                                r["id"] for r in res_mats.data 
-                                                if r.get("ingredient_name") == ing_name 
-                                                and str(r.get("is_from_stock", "False")).lower() != "true"
-                                            ]
-                                            
-                                            if target_rows:
-                                                supabase.table("production_log").update({
-                                                    "lot_number": vals["lot"],
-                                                    "expiry_date": vals["exp"]
-                                                }).in_("id", target_rows).execute()
+                                        # ΒΗΜΑ 1: Τραβάμε ολόκληρες τις γραμμές της σημερινής παραγωγής
+                                        full_rows_res = supabase.table("production_log").select("*").eq("prod_date", sel_prep_date).execute()
                                         
-                                        st.success("✅ Όλα τα LOT των πρώτων υλών καταχωρήθηκαν επιτυχώς!")
+                                        if full_rows_res.data:
+                                            bulk_data = []
+                                            for r in full_rows_res.data:
+                                                ing_name = r.get("ingredient_name")
+                                                
+                                                # Αγνοούμε το Στοκ. Αν το υλικό είναι στη λίστα των ενημερώσεων, το αλλάζουμε.
+                                                if str(r.get("is_from_stock", "False")).lower() != "true" and ing_name in updated_lots:
+                                                    updated_row = r.copy() # Κάνουμε αντίγραφο της γραμμής
+                                                    updated_row["lot_number"] = updated_lots[ing_name]["lot"]
+                                                    updated_row["expiry_date"] = updated_lots[ing_name]["exp"]
+                                                    
+                                                    # Προσθέτουμε την έτοιμη γραμμή στο "καλάθι"
+                                                    bulk_data.append(updated_row)
+                                            
+                                            # ΒΗΜΑ 2: Στέλνουμε όλο το "καλάθι" με ΜΙΑ κίνηση! (Μαζικό Upsert)
+                                            if bulk_data:
+                                                supabase.table("production_log").upsert(bulk_data).execute()
+                                        
+                                        st.success("✅ Όλα τα LOT καταχωρήθηκαν επιτυχώς σε κλάσματα δευτερολέπτου!")
                                         import time
-                                        time.sleep(1.5)
+                                        time.sleep(1)
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Σφάλμα κατά την αποθήκευση: {e}")
