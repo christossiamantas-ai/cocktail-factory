@@ -2703,12 +2703,18 @@ elif page == "📦 Lot Παραγωγής":
     reset_key = st.session_state['lot_reset_key']
 
     # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΑΡΑΓΩΓΗΣ (ΜΗ ΕΚΤΕΛΕΣΜΕΝΕΣ ΛΟΓΩ ΕΛΛΕΙΨΗΣ LOT) ---
-    # Ζητάμε όλα τα πεδία (*) για να έχουμε πρόσβαση στον Πελάτη, το Κοκτέιλ και τα Τεμάχια
-    res_pending = supabase.table("production_log").select("*").execute()
+    # 🚀 ΠΡΟΣΘΗΚΗ: order by id desc & limit 3000 για να μην χάνουμε τις νέες ημέρες λόγω ορίου 1000 γραμμών
+    res_pending = supabase.table("production_log").select("*").order("id", desc=True).limit(100000).execute()
     
     if res_pending.data:
         import pandas as pd
         df_all = pd.DataFrame(res_pending.data)
+        
+        # 🚀 ΠΡΟΣΘΗΚΗ: Δυναμική αναζήτηση στηλών ανεξαρτήτως ονομασίας
+        cols = df_all.columns.tolist()
+        cust_col = next((c for c in ["customer_name", "customer", "Πελάτης", "Customer"] if c in cols), None)
+        cocktail_col = next((c for c in ["cocktail_name", "cocktail", "Ονομα", "Cocktail"] if c in cols), None)
+        pcs_col = next((c for c in ["pcs", "τεμάχια", "quantity", "Quantity", "pieces"] if c in cols), None)
         
         # 1. Κρατάμε μόνο τις πραγματικές πρώτες ύλες
         df_needs = df_all[
@@ -2719,12 +2725,11 @@ elif page == "📦 Lot Παραγωγής":
         pending_dates = []
         
         if not df_needs.empty:
-            # 2. Ομαδοποιούμε ανά ημέρα για να ελέγξουμε τα LOT
             grouped = df_needs.groupby("prod_date")
             
             for p_date, group in grouped:
                 has_real_lot = group["lot_number"].astype(str).str.strip().apply(
-                    lambda x: x not in ['', '-', 'None', 'nan']
+                    lambda x: x not in ['', '-', 'None', 'nan', 'null']
                 ).any()
                 
                 if not has_real_lot:
@@ -2742,35 +2747,49 @@ elif page == "📦 Lot Παραγωγής":
                 for p_date in pending_dates:
                     st.markdown(f"### 🗓️ Παραγωγή: {p_date}")
                     
-                    # Απομονώνουμε τα δεδομένα αυτής της ημέρας
                     df_day = df_all[df_all["prod_date"] == p_date]
                     
-                    # Ελέγχουμε πώς ονομάζονται οι στήλες στη βάση σου (συνήθως είναι αυτές)
-                    cust_col = "customer_name" if "customer_name" in df_day.columns else None
-                    cocktail_col = "cocktail_name" if "cocktail_name" in df_day.columns else None
-                    pcs_col = "pcs" if "pcs" in df_day.columns else None
-                    
-                    if cust_col and cocktail_col:
-                        # Κρατάμε τα μοναδικά ζευγάρια Πελάτη - Κοκτέιλ (αφού τα υλικά επαναλαμβάνονται)
-                        cols_to_keep = [cust_col, cocktail_col]
-                        if pcs_col:
-                            cols_to_keep.append(pcs_col)
+                    if cocktail_col:
+                        if cust_col:
+                            # Αν υπάρχει στήλη Πελάτη, γκρουπάρουμε ανά Πελάτη
+                            cols_to_keep = [cust_col, cocktail_col]
+                            if pcs_col: cols_to_keep.append(pcs_col)
+                                
+                            df_orders = df_day[cols_to_keep].drop_duplicates()
                             
-                        df_orders = df_day[cols_to_keep].drop_duplicates()
-                        
-                        # Ομαδοποιούμε ανά Πελάτη για την οπτική εμφάνιση
-                        for cust, cust_group in df_orders.groupby(cust_col):
-                            orders_list = []
-                            for _, row in cust_group.iterrows():
+                            for cust, cust_group in df_orders.groupby(cust_col):
+                                orders_list = []
+                                for _, row in cust_group.iterrows():
+                                    if pcs_col and pd.notna(row[pcs_col]):
+                                        try:
+                                            pcs_val = int(float(row[pcs_col]))
+                                            orders_list.append(f"{row[cocktail_col]} ({pcs_val} τμχ)")
+                                        except:
+                                            orders_list.append(str(row[cocktail_col]))
+                                    else:
+                                        orders_list.append(str(row[cocktail_col]))
+                                        
+                                st.markdown(f"👤 **{cust}**: {', '.join(orders_list)}")
+                        else:
+                            # Αν δεν υπάρχει πελάτης, δείχνουμε μόνο τα κοκτέιλ
+                            cols_to_keep = [cocktail_col]
+                            if pcs_col: cols_to_keep.append(pcs_col)
+                                
+                            df_orders = df_day[cols_to_keep].drop_duplicates()
+                            cocktails_list = []
+                            for _, row in df_orders.iterrows():
                                 if pcs_col and pd.notna(row[pcs_col]):
-                                    orders_list.append(f"{row[cocktail_col]} ({int(row[pcs_col])} τμχ)")
+                                    try:
+                                        pcs_val = int(float(row[pcs_col]))
+                                        cocktails_list.append(f"{row[cocktail_col]} ({pcs_val} τμχ)")
+                                    except:
+                                        cocktails_list.append(str(row[cocktail_col]))
                                 else:
-                                    orders_list.append(str(row[cocktail_col]))
+                                    cocktails_list.append(str(row[cocktail_col]))
                                     
-                            # Εκτύπωση Πελάτη και δίπλα των Κοκτέιλ του
-                            st.markdown(f"👤 **{cust}**: {', '.join(orders_list)}")
+                            st.markdown(f"🍹 **Προϊόντα:** {', '.join(cocktails_list)}")
                     else:
-                        st.info("Δεν βρέθηκαν αναλυτικά στοιχεία πελατών για αυτή την ημέρα.")
+                        st.info("Δεν βρέθηκαν ονόματα κοκτέιλ στη βάση για αυτή την ημέρα.")
                         
                     st.divider()
         else:
