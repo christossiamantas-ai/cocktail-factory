@@ -2703,38 +2703,36 @@ elif page == "📦 Lot Παραγωγής":
     reset_key = st.session_state['lot_reset_key']
 
     # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΑΡΑΓΩΓΗΣ (ΜΗ ΕΚΤΕΛΕΣΜΕΝΕΣ ΛΟΓΩ ΕΛΛΕΙΨΗΣ LOT) ---
-    # 🚀 ΠΡΟΣΘΗΚΗ: order by id desc & limit 3000 για να μην χάνουμε τις νέες ημέρες λόγω ορίου 1000 γραμμών
     res_pending = supabase.table("production_log").select("*").order("id", desc=True).limit(100000).execute()
     
     if res_pending.data:
         import pandas as pd
         df_all = pd.DataFrame(res_pending.data)
         
-        # 🚀 ΠΡΟΣΘΗΚΗ: Δυναμική αναζήτηση στηλών ανεξαρτήτως ονομασίας
         cols = df_all.columns.tolist()
         cust_col = next((c for c in ["customer_name", "customer", "Πελάτης", "Customer"] if c in cols), None)
         cocktail_col = next((c for c in ["cocktail_name", "cocktail", "Ονομα", "Cocktail"] if c in cols), None)
         pcs_col = next((c for c in ["pcs", "τεμάχια", "quantity", "Quantity", "pieces"] if c in cols), None)
         
-        # 1. Κρατάμε μόνο τις πραγματικές πρώτες ύλες
+        # 🚀 ΒΗΜΑ 1: ΜΑΘΑΙΝΟΥΜΕ ΑΠΟ ΤΟ ΙΣΤΟΡΙΚΟ (Ποια υλικά παίρνουν όντως LOT;)
+        valid_lots_mask = ~df_all["lot_number"].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
+        traceable_ingredients = df_all[valid_lots_mask]["ingredient_name"].unique().tolist()
+        
+        # 🚀 ΒΗΜΑ 2: Κρατάμε μόνο τα υλικά που: δεν είναι στοκ, δεν είναι έτοιμα ΚΑΙ ανήκουν στα "ιχνηλάσιμα"
         df_needs = df_all[
             (df_all.get("is_from_stock", "False").astype(str).str.lower() != "true") & 
-            (~df_all.get("ingredient_name", "").astype(str).str.contains("Έτοιμο Προϊόν", na=False))
+            (~df_all.get("ingredient_name", "").astype(str).str.contains("Έτοιμο Προϊόν", na=False)) &
+            (df_all["ingredient_name"].isin(traceable_ingredients))
         ]
         
-        pending_dates = []
+        # 🚀 ΒΗΜΑ 3: Μια μέρα εκκρεμεί αν ΕΣΤΩ ΚΑΙ ΕΝΑ ιχνηλάσιμο υλικό της έχει κενό/παύλα LOT
+        df_missing = df_needs[
+            df_needs["lot_number"].isna() | 
+            df_needs["lot_number"].astype(str).str.strip().isin(['', '-', 'None', 'nan', 'null'])
+        ]
         
-        if not df_needs.empty:
-            grouped = df_needs.groupby("prod_date")
-            
-            for p_date, group in grouped:
-                has_real_lot = group["lot_number"].astype(str).str.strip().apply(
-                    lambda x: x not in ['', '-', 'None', 'nan', 'null']
-                ).any()
-                
-                if not has_real_lot:
-                    pending_dates.append(p_date)
-                    
+        pending_dates = df_missing["prod_date"].dropna().unique().tolist()
+        
         if pending_dates:
             try:
                 from datetime import datetime
@@ -2751,7 +2749,6 @@ elif page == "📦 Lot Παραγωγής":
                     
                     if cocktail_col:
                         if cust_col:
-                            # Αν υπάρχει στήλη Πελάτη, γκρουπάρουμε ανά Πελάτη
                             cols_to_keep = [cust_col, cocktail_col]
                             if pcs_col: cols_to_keep.append(pcs_col)
                                 
@@ -2771,7 +2768,6 @@ elif page == "📦 Lot Παραγωγής":
                                         
                                 st.markdown(f"👤 **{cust}**: {', '.join(orders_list)}")
                         else:
-                            # Αν δεν υπάρχει πελάτης, δείχνουμε μόνο τα κοκτέιλ
                             cols_to_keep = [cocktail_col]
                             if pcs_col: cols_to_keep.append(pcs_col)
                                 
@@ -2798,7 +2794,6 @@ elif page == "📦 Lot Παραγωγής":
         st.success("✅ Καμία εκκρεμής παραγωγή στο σύστημα.")
 
     st.divider()
-
     # 1. ΚΕΝΤΡΙΚΟΣ ΟΡΙΣΜΟΣ ΗΜΕΡΟΜΗΝΙΑΣ & LOT
     col_date1, col_date2 = st.columns([2, 1])
     with col_date1:
