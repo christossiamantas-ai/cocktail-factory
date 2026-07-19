@@ -3370,32 +3370,27 @@ elif page == "📦 Lot Παραγωγής":
     with st.expander("🧪 Εργαστήριο: Μαζική Καταχώρηση LOT Πρώτων Υλών", expanded=False):
         st.info("Επιλέξτε την ημέρα παραγωγής για να καταχωρήσετε μαζικά τα LOT των υλικών που χρησιμοποιήσατε. (Τα κοκτέιλ από Στοκ προστατεύονται και δεν επηρεάζονται).")
 
-        # 🚀 Φέρνουμε όλες τις ημερομηνίες χωρίς αυστηρό φίλτρο στη βάση για να μην χάσουμε τα παλιά (NULL)
         res_dates = supabase.table("production_log").select("prod_date, is_from_stock, ingredient_name").execute()
         
         if res_dates.data:
             import pandas as pd
             from datetime import datetime
             
-            # 🚀 Φιλτράρουμε έξυπνα μέσω Python: Κρατάμε όσα ΔΕΝ είναι True και ΔΕΝ είναι έτοιμα προϊόντα
             valid_dates = [
                 r["prod_date"] for r in res_dates.data 
                 if str(r.get("is_from_stock", "False")).lower() != "true" 
                 and "Έτοιμο Προϊόν" not in str(r.get("ingredient_name", ""))
             ]
             
-            # Καθαρισμός από τυχόν κενά ή παύλες για ασφάλεια
             valid_dates = [d for d in valid_dates if d and str(d).strip() not in ["-", ""]]
             
-            # 🚀 ΕΞΥΠΝΗ ΧΡΟΝΟΛΟΓΙΚΗ ΤΑΞΙΝΟΜΗΣΗ (Η ΠΙΟ ΠΡΟΣΦΑΤΗ ΠΡΩΤΗ)
             try:
                 all_dates = sorted(
                     list(set(valid_dates)),
                     key=lambda x: datetime.strptime(str(x).strip(), "%d/%m/%Y"),
                     reverse=True
                 )
-            except Exception as date_err:
-                # Fallback σε απλό sort αν υπάρχει κάποια τελείως κατεστραμμένη εγγραφή στη βάση
+            except Exception:
                 all_dates = sorted(list(set(valid_dates)), reverse=True)
                 
             sel_prep_date = st.selectbox("📅 Ημερομηνία Παραγωγής:", ["-- Επιλέξτε Ημερομηνία --"] + all_dates)
@@ -3404,7 +3399,6 @@ elif page == "📦 Lot Παραγωγής":
                 res_mats = supabase.table("production_log").select("id, ingredient_name, total_ml, target_g, lot_number, expiry_date, is_from_stock").eq("prod_date", sel_prep_date).execute()
                 
                 if res_mats.data:
-                    # 🚀 Φιλτράρουμε πάλι έξυπνα για τα παλιά NULL
                     valid_mats = [
                         r for r in res_mats.data 
                         if str(r.get("is_from_stock", "False")).lower() != "true" 
@@ -3420,12 +3414,42 @@ elif page == "📦 Lot Παραγωγής":
                             "expiry_date": "first"
                         }).reset_index()
                         
+                        # --- 🚀 ΝΕΟ: ΕΞΥΠΝΗ ΑΝΑΖΗΤΗΣΗ ΤΕΛΕΥΤΑΙΟΥ ΠΡΑΓΜΑΤΙΚΟΥ LOT ΜΕΣΩ PYTHON ---
+                        historical_lots = {}
+                        try:
+                            ing_names = df_grouped["ingredient_name"].tolist()
+                            
+                            # Τραβάμε μεγάλο ιστορικό, ταξινομημένο από το πιο πρόσφατο προς το παλαιότερο
+                            hist_res = supabase.table("production_log") \
+                                .select("id, ingredient_name, lot_number, expiry_date") \
+                                .in_("ingredient_name", ing_names) \
+                                .order("id", desc=True) \
+                                .limit(2000) \
+                                .execute()
+                            
+                            if hist_res.data:
+                                for r in hist_res.data:
+                                    ing_hist = r["ingredient_name"]
+                                    lot_hist = str(r.get("lot_number", "")).strip()
+                                    exp_hist = str(r.get("expiry_date", "")).strip()
+                                    
+                                    # Αν δεν έχουμε βρει ακόμα το σωστό LOT για αυτό το υλικό
+                                    if ing_hist not in historical_lots:
+                                        # Απορρίπτουμε τα κενά ή τις παύλες της σημερινής ημέρας
+                                        if lot_hist and lot_hist.lower() not in ("-", "none", "nan", "", "null"):
+                                            historical_lots[ing_hist] = {
+                                                "lot": lot_hist,
+                                                "exp": exp_hist
+                                            }
+                        except Exception as e:
+                            pass # Σε περίπτωση σφάλματος, απλά δεν θα βάλει προεπιλογές
+                        # ---------------------------------------------------------
+
                         with st.form("bulk_lot_entry_form"):
                             st.write(f"### Συγκεντρωτικά Υλικά για την παραγωγή της {sel_prep_date}")
                             
                             updated_lots = {}
                             
-                            # 🚀 6 στήλες για διπλά LOT / EXP
                             h1, h2, h3, h4, h5, h6 = st.columns([2, 1, 1.2, 1, 1.2, 1])
                             h1.caption("Πρώτη Ύλη")
                             h2.caption("Συνολικά ml")
@@ -3441,22 +3465,24 @@ elif page == "📦 Lot Παραγωγής":
                                 c1.write(f"**{ing}**")
                                 c2.write(f"{row['total_ml']:.0f} ml")
                                 
-                                # Διάσπαση των υπαρχόντων LOT/EXP αν είχαν ήδη κάθετο (/)
-                                old_lot_full = str(row['lot_number']) if row['lot_number'] and row['lot_number'] != "-" else ""
-                                old_exp_full = str(row['expiry_date']) if row['expiry_date'] and row['expiry_date'] != "-" else ""
+                                old_lot_full = str(row['lot_number']) if row['lot_number'] and str(row['lot_number']).strip() not in ("-", "None", "nan") else ""
+                                old_exp_full = str(row['expiry_date']) if row['expiry_date'] and str(row['expiry_date']).strip() not in ("-", "None", "nan") else ""
+                                
+                                # Εδώ κουμπώνει το ιστορικό! Αν το σημερινό είναι άδειο, ρίχνει το τελευταίο πραγματικό.
+                                if not old_lot_full and ing in historical_lots:
+                                    old_lot_full = historical_lots[ing]["lot"]
+                                    old_exp_full = historical_lots[ing]["exp"]
                                 
                                 def_lot1, def_lot2 = (old_lot_full.split("/", 1) + [""])[:2] if "/" in old_lot_full else (old_lot_full, "")
                                 def_exp1, def_exp2 = (old_exp_full.split("/", 1) + [""])[:2] if "/" in old_exp_full else (old_exp_full, "")
                                 
                                 safe_date_key = sel_prep_date.replace("/", "_")
                                 
-                                # Τα 4 κουτάκια εισαγωγής
                                 n_lot1 = c3.text_input("LOT1", value=def_lot1.strip(), key=f"blot1_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 n_exp1 = c4.text_input("EXP1", value=def_exp1.strip(), key=f"bexp1_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 n_lot2 = c5.text_input("LOT2", value=def_lot2.strip(), key=f"blot2_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 n_exp2 = c6.text_input("EXP2", value=def_exp2.strip(), key=f"bexp2_{ing}_{safe_date_key}", label_visibility="collapsed")
                                 
-                                # Ένωση των 2 LOT (αν υπάρχει 2ο)
                                 final_lot = f"{n_lot1.strip()} / {n_lot2.strip()}" if n_lot2.strip() else n_lot1.strip()
                                 final_exp = f"{n_exp1.strip()} / {n_exp2.strip()}" if n_exp2.strip() else n_exp1.strip()
                                 
