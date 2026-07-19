@@ -4476,19 +4476,28 @@ elif page == "📦 Lot Παραγωγής":
         else:
             df_prep = pd.DataFrame(columns=["Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
 
+        # ΣΥΜΠΙΕΣΜΕΝΟ CSS ΓΙΑ ΕΞΟΙΚΟΝΟΜΗΣΗ ΧΑΡΤΙΟΥ
         html_prep = f"""<html><head><meta charset='UTF-8'><style>
-            body {{ font-family: sans-serif; padding: 30px; }}
-            .header {{ text-align: center; border-bottom: 4px solid #2980b9; margin-bottom: 30px; }}
+            body {{ font-family: sans-serif; padding: 10px; font-size: 12px; }}
+            .header {{ text-align: center; border-bottom: 2px solid #2980b9; margin-bottom: 10px; padding-bottom: 5px; }}
+            .header h1 {{ margin: 5px 0; font-size: 16px; }}
+            .header p {{ margin: 0; font-size: 13px; }}
             table {{ width: 100%; border-collapse: collapse; }}
-            th {{ background-color: #2980b9; color: white; padding: 12px; text-align: left; }}
-            td {{ border: 1px solid #bdc3c7; padding: 10px; }}
-            .lot-info {{ font-size: 0.9em; color: #555; line-height: 1.8; }}
+            th {{ background-color: #2980b9; color: white; padding: 4px; text-align: left; font-size: 12px; }}
+            td {{ border: 1px solid #bdc3c7; padding: 3px 5px; }}
+            .lot-info {{ font-size: 0.9em; color: #333; line-height: 1.1; }}
+            @media print {{
+                body {{ padding: 0; margin: 0; }}
+                @page {{ margin: 0.5cm; }}
+                table {{ page-break-inside: auto; }}
+                tr {{ page-break-inside: avoid; page-break-after: auto; }}
+            }}
         </style></head><body>
             <div class='header'><h1>🧪 ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ</h1><p>Ημερομηνία: <b>{sel_hist_date}</b>{cust_label}</p></div>
             <table><thead><tr>
                 <th>Πρώτη Ύλη</th>
-                <th>Συνολική Ποσότητα (ml)</th>
-                <th>Συνολικό Βάρος (g)</th>
+                <th>Ποσότητα (ml)</th>
+                <th>Βάρος (g)</th>
                 <th>LOT 1 & Λήξη 1</th>
                 <th>LOT 2 & Λήξη 2</th>
             </tr></thead><tbody>
@@ -4502,12 +4511,12 @@ elif page == "📦 Lot Παραγωγής":
             lots = str(row.get('Lot Number', '')).split(" / ") if row.get('Lot Number') else []
             exps = str(row.get('Ημ_Λήξης', '')).split(" / ") if row.get('Ημ_Λήξης') else []
             
-            # Αν υπάρχει το βρίσκει, αλλιώς βάζει τελείες για χειρόγραφη συμπλήρωση
-            l1 = lots[0] if len(lots) > 0 and lots[0] else "...................."
-            e1 = exps[0] if len(exps) > 0 and exps[0] else "...................."
+            # Αν υπάρχει το βρίσκει, αλλιώς βάζει τελείες για χειρόγραφη συμπλήρωση (μειωμένες τελείες για εξοικονόμηση χώρου)
+            l1 = lots[0] if len(lots) > 0 and lots[0] else "............"
+            e1 = exps[0] if len(exps) > 0 and exps[0] else "............"
             
-            l2 = lots[1] if len(lots) > 1 and lots[1] else "...................."
-            e2 = exps[1] if len(exps) > 1 and exps[1] else "...................."
+            l2 = lots[1] if len(lots) > 1 and lots[1] else "............"
+            e2 = exps[1] if len(exps) > 1 and exps[1] else "............"
             
             html_prep += f"""<tr>
                 <td><b>{row.get('Υλικό', '-')}</b></td>
