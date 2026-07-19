@@ -2715,7 +2715,7 @@ elif page == "📦 Lot Παραγωγής":
         pcs_col = next((c for c in ["pcs", "τεμάχια", "quantity", "Quantity", "pieces"] if c in cols), None)
         
         # ΛΙΣΤΑ ΕΞΑΙΡΕΣΕΩΝ: Προαιρετικά, υλικά που δεν παίρνουν ποτέ ούτε LOT ούτε Λήξη
-        exempt_ingredients = ["Νερό", "Αλάτι"]
+        exempt_ingredients = ["Κιτρικό Οξύ", "ΡΑΚΙ ΧΥΜΑ1000ML", "SMUSHED CARDAMON", "ΔΕΝΤΡΟΛΙΒΑΝΟ 0,5gr", "ΔΥΟΣΜΟΣ 0,5gr", "ΤΣΑΙ ΤΟΥ ΒΟΥΝΟΥ"]
         
         # 🚀 ΔΙΟΡΘΩΣΗ: Πιάνουμε το "ΝΑΙ", το "True", το "1" για το Στοκ!
         stock_mask = df_all.get("is_from_stock", "False").astype(str).str.strip().str.upper().isin(["TRUE", "ΝΑΙ", "YES", "1", "T"])
