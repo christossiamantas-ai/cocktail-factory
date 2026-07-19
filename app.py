@@ -2703,7 +2703,8 @@ elif page == "📦 Lot Παραγωγής":
     reset_key = st.session_state['lot_reset_key']
 
     # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΑΡΑΓΩΓΗΣ (ΜΗ ΕΚΤΕΛΕΣΜΕΝΕΣ ΛΟΓΩ ΕΛΛΕΙΨΗΣ LOT) ---
-    res_pending = supabase.table("production_log").select("prod_date, is_from_stock, ingredient_name, lot_number").execute()
+    # Ζητάμε όλα τα πεδία (*) για να έχουμε πρόσβαση στον Πελάτη, το Κοκτέιλ και τα Τεμάχια
+    res_pending = supabase.table("production_log").select("*").execute()
     
     if res_pending.data:
         import pandas as pd
@@ -2718,16 +2719,14 @@ elif page == "📦 Lot Παραγωγής":
         pending_dates = []
         
         if not df_needs.empty:
-            # 2. Ομαδοποιούμε ανά ημέρα
+            # 2. Ομαδοποιούμε ανά ημέρα για να ελέγξουμε τα LOT
             grouped = df_needs.groupby("prod_date")
             
             for p_date, group in grouped:
-                # Ελέγχουμε αν υπάρχει έστω και ΕΝΑ υλικό με κανονικό LOT (όχι κενό ή παύλα)
                 has_real_lot = group["lot_number"].astype(str).str.strip().apply(
                     lambda x: x not in ['', '-', 'None', 'nan']
                 ).any()
                 
-                # Αν ΟΛΑ τα υλικά έχουν παύλα/κενό, τότε σίγουρα δεν έχει γίνει η μαζική καταχώρηση
                 if not has_real_lot:
                     pending_dates.append(p_date)
                     
@@ -2738,14 +2737,42 @@ elif page == "📦 Lot Παραγωγής":
             except Exception:
                 pending_dates = sorted(list(set(pending_dates)), reverse=True)
                 
-            # 3. Εμφάνιση μέσα σε Expander για εξοικονόμηση χώρου
+            # 3. Εμφάνιση μέσα σε Expander με Αναλυτικές Παραγγελίες
             with st.expander(f"🚨 Εκκρεμούν LOT για {len(pending_dates)} ημέρα/ες Παραγωγής!", expanded=False):
                 for p_date in pending_dates:
-                    col_a, col_b = st.columns([4, 1])
-                    with col_a:
-                        st.markdown(f"🗓️ **Ημερομηνία:** {p_date}")
-                    with col_b:
-                        st.info("Σε αναμονή")
+                    st.markdown(f"### 🗓️ Παραγωγή: {p_date}")
+                    
+                    # Απομονώνουμε τα δεδομένα αυτής της ημέρας
+                    df_day = df_all[df_all["prod_date"] == p_date]
+                    
+                    # Ελέγχουμε πώς ονομάζονται οι στήλες στη βάση σου (συνήθως είναι αυτές)
+                    cust_col = "customer_name" if "customer_name" in df_day.columns else None
+                    cocktail_col = "cocktail_name" if "cocktail_name" in df_day.columns else None
+                    pcs_col = "pcs" if "pcs" in df_day.columns else None
+                    
+                    if cust_col and cocktail_col:
+                        # Κρατάμε τα μοναδικά ζευγάρια Πελάτη - Κοκτέιλ (αφού τα υλικά επαναλαμβάνονται)
+                        cols_to_keep = [cust_col, cocktail_col]
+                        if pcs_col:
+                            cols_to_keep.append(pcs_col)
+                            
+                        df_orders = df_day[cols_to_keep].drop_duplicates()
+                        
+                        # Ομαδοποιούμε ανά Πελάτη για την οπτική εμφάνιση
+                        for cust, cust_group in df_orders.groupby(cust_col):
+                            orders_list = []
+                            for _, row in cust_group.iterrows():
+                                if pcs_col and pd.notna(row[pcs_col]):
+                                    orders_list.append(f"{row[cocktail_col]} ({int(row[pcs_col])} τμχ)")
+                                else:
+                                    orders_list.append(str(row[cocktail_col]))
+                                    
+                            # Εκτύπωση Πελάτη και δίπλα των Κοκτέιλ του
+                            st.markdown(f"👤 **{cust}**: {', '.join(orders_list)}")
+                    else:
+                        st.info("Δεν βρέθηκαν αναλυτικά στοιχεία πελατών για αυτή την ημέρα.")
+                        
+                    st.divider()
         else:
             st.success("✅ Όλες οι παραγωγές είναι πλήρως εκτελεσμένες και ιχνηλάσιμες!")
     else:
