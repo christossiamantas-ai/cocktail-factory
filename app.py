@@ -3523,6 +3523,33 @@ elif page == "📦 Lot Παραγωγής":
                             pass # Σε περίπτωση σφάλματος, απλά δεν θα βάλει προεπιλογές
                         # ---------------------------------------------------------
 
+                        # =========================================================
+                        # 📱 ΝΕΟ ΚΟΜΜΑΤΙ: ΚΑΜΕΡΑ AI ΓΙΑ ΣΚΑΝΑΡΙΣΜΑ (ΠΡΙΝ ΤΗ ΦΟΡΜΑ)
+                        # =========================================================
+                        st.write("### 📷 Σάρωση Ετικέτας με Κάμερα")
+                        scannable_ings = ["-- Επιλέξτε Υλικό προς Σάρωση --"] + df_grouped["ingredient_name"].tolist()
+                        scan_target = st.selectbox("Επιλέξτε πρώτη ύλη και ανοίξτε την κάμερα:", scannable_ings)
+                        
+                        if scan_target != "-- Επιλέξτε Υλικό προς Σάρωση --":
+                            picture = st.camera_input(f"Φωτογραφίστε το LOT: {scan_target}")
+                            
+                            if picture:
+                                with st.spinner("🤖 Η Τεχνητή Νοημοσύνη διαβάζει την ετικέτα..."):
+                                    import time
+                                    time.sleep(1.5) # Προσομοίωση καθυστέρησης
+                                    
+                                    # Εδώ στο μέλλον θα μπαίνει η πραγματική κλήση στο AI. Τώρα βάζουμε εικονικά δεδομένα:
+                                    ai_lot = "SCAN-12345"
+                                    ai_exp = "12/2026"
+                                    
+                                    # Αποθηκεύουμε τα δεδομένα στη μνήμη του Streamlit
+                                    if "scanned_lots" not in st.session_state:
+                                        st.session_state.scanned_lots = {}
+                                    
+                                    st.session_state.scanned_lots[scan_target] = {"lot": ai_lot, "exp": ai_exp}
+                                    st.success(f"✅ Επιτυχής Ανάγνωση! (LOT: {ai_lot} | Λήξη: {ai_exp})")
+                        # =========================================================
+
                         with st.form("bulk_lot_entry_form"):
                             st.write(f"### Συγκεντρωτικά Υλικά για την παραγωγή της {sel_prep_date}")
                             
@@ -3546,10 +3573,15 @@ elif page == "📦 Lot Παραγωγής":
                                 old_lot_full = str(row['lot_number']) if row['lot_number'] and str(row['lot_number']).strip() not in ("-", "None", "nan") else ""
                                 old_exp_full = str(row['expiry_date']) if row['expiry_date'] and str(row['expiry_date']).strip() not in ("-", "None", "nan") else ""
                                 
-                                # Εδώ κουμπώνει το ιστορικό! Αν το σημερινό είναι άδειο, ρίχνει το τελευταίο πραγματικό.
+                                # Εδώ κουμπώνει το ιστορικό!
                                 if not old_lot_full and ing in historical_lots:
                                     old_lot_full = historical_lots[ing]["lot"]
                                     old_exp_full = historical_lots[ing]["exp"]
+                                
+                                # 🚀 ΝΕΟ: Αν ο συνάδελφος μόλις σκανάρισε ΑΥΤΟ το υλικό, "πατάμε" το ιστορικό!
+                                if "scanned_lots" in st.session_state and ing in st.session_state.scanned_lots:
+                                    old_lot_full = st.session_state.scanned_lots[ing]["lot"]
+                                    old_exp_full = st.session_state.scanned_lots[ing]["exp"]
                                 
                                 # 🚀 ΔΙΟΡΘΩΣΗ: Πλέον σπάει ΜΟΝΟ όταν υπάρχει κενό γύρω από την κάθετο (" / ")
                                 def_lot1, def_lot2 = (old_lot_full.split(" / ", 1) + [""])[:2] if " / " in old_lot_full else (old_lot_full, "")
@@ -3573,7 +3605,6 @@ elif page == "📦 Lot Παραγωγής":
                             if st.form_submit_button("💾 Αποθήκευση LOT στην Παραγωγή", type="primary"):
                                 with st.spinner("Γίνεται αστραπιαία μαζική ενημέρωση..."):
                                     try:
-                                        # ΒΗΜΑ 1: Τραβάμε ολόκληρες τις γραμμές της σημερινής παραγωγής
                                         full_rows_res = supabase.table("production_log").select("*").eq("prod_date", sel_prep_date).execute()
                                         
                                         if full_rows_res.data:
@@ -3581,19 +3612,19 @@ elif page == "📦 Lot Παραγωγής":
                                             for r in full_rows_res.data:
                                                 ing_name = r.get("ingredient_name")
                                                 
-                                                # Αγνοούμε το Στοκ. Αν το υλικό είναι στη λίστα των ενημερώσεων, το αλλάζουμε.
                                                 if str(r.get("is_from_stock", "False")).lower() != "true" and ing_name in updated_lots:
-                                                    updated_row = r.copy() # Κάνουμε αντίγραφο της γραμμής
+                                                    updated_row = r.copy()
                                                     updated_row["lot_number"] = updated_lots[ing_name]["lot"]
                                                     updated_row["expiry_date"] = updated_lots[ing_name]["exp"]
-                                                    
-                                                    # Προσθέτουμε την έτοιμη γραμμή στο "καλάθι"
                                                     bulk_data.append(updated_row)
                                             
-                                            # ΒΗΜΑ 2: Στέλνουμε όλο το "καλάθι" με ΜΙΑ κίνηση! (Μαζικό Upsert)
                                             if bulk_data:
                                                 supabase.table("production_log").upsert(bulk_data).execute()
                                         
+                                        # Καθαρίζουμε τη μνήμη από τα σκαναρισμένα LOT μετά την αποθήκευση
+                                        if "scanned_lots" in st.session_state:
+                                            del st.session_state["scanned_lots"]
+                                            
                                         st.success("✅ Όλα τα LOT καταχωρήθηκαν επιτυχώς σε κλάσματα δευτερολέπτου!")
                                         import time
                                         time.sleep(1)
