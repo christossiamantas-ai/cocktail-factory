@@ -3540,7 +3540,7 @@ elif page == "📦 Lot Παραγωγής":
                                         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                                         
                                         img = Image.open(picture)
-                                        model = genai.GenerativeModel('gemini-1.5-flash')
+                                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
                                         
                                         prompt = """
                                         Είσαι βοηθός αποθήκης. Διάβασε αυτή την ετικέτα. 
