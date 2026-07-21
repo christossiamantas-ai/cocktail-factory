@@ -3539,22 +3539,10 @@ elif page == "📦 Lot Παραγωγής":
                                     try:
                                         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                                         
-                                        # 1. Ρωτάμε τη Google ποια μοντέλα είναι διαθέσιμα για το δικό σου κλειδί
-                                        available_models = [m.name for m in genai.list_models()]
-                                        
-                                        # 2. Διαλέγουμε αυτόματα το καλύτερο με σειρά προτεραιότητας
-                                        target_model = None
-                                        for m in ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-1.0-pro-vision-latest', 'models/gemini-pro-vision']:
-                                            if m in available_models:
-                                                target_model = m.replace('models/', '')
-                                                break
-                                                
-                                        if not target_model:
-                                            st.error(f"Δεν βρέθηκε συμβατό μοντέλο όρασης. Ο λογαριασμός βλέπει μόνο αυτά: {available_models}")
-                                            st.stop()
-                                            
                                         img = Image.open(picture)
-                                        model = genai.GenerativeModel(target_model)
+                                        
+                                        # 🚀 Εδώ βάλαμε ακριβώς το μοντέλο που είδαμε στην οθόνη σου!
+                                        model = genai.GenerativeModel('gemini-2.5-flash')
                                         
                                         prompt = """
                                         Είσαι βοηθός αποθήκης. Διάβασε αυτή την ετικέτα. 
@@ -3581,7 +3569,7 @@ elif page == "📦 Lot Παραγωγής":
                                             "lot": ai_data.get("lot", "-"), 
                                             "exp": ai_data.get("exp", "-")
                                         }
-                                        st.success(f"✅ Επιτυχής Ανάγνωση (μέσω {target_model})! (LOT: {ai_data.get('lot', '-')} | Λήξη: {ai_data.get('exp', '-')})")
+                                        st.success(f"✅ Επιτυχής Ανάγνωση! (LOT: {ai_data.get('lot', '-')} | Λήξη: {ai_data.get('exp', '-')})")
                                         
                                     except Exception as e:
                                         st.error(f"Αποτυχία: {e}")
