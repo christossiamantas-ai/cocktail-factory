@@ -3542,7 +3542,7 @@ elif page == "📦 Lot Παραγωγής":
                                         img = Image.open(picture)
                                         
                                         # 🚀 Εδώ βάλαμε ακριβώς το μοντέλο που είδαμε στην οθόνη σου!
-                                        model = genai.GenerativeModel('gemini-2.5-flash')
+                                        model = genai.GenerativeModel('gemini-2.0-flash')
                                         
                                         prompt = """
                                         Είσαι βοηθός αποθήκης. Διάβασε αυτή την ετικέτα. 
