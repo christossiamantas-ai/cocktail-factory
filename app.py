@@ -3497,7 +3497,6 @@ elif page == "📦 Lot Παραγωγής":
                         try:
                             ing_names = df_grouped["ingredient_name"].tolist()
                             
-                            # Τραβάμε μεγάλο ιστορικό, ταξινομημένο από το πιο πρόσφατο προς το παλαιότερο
                             hist_res = supabase.table("production_log") \
                                 .select("id, ingredient_name, lot_number, expiry_date") \
                                 .in_("ingredient_name", ing_names) \
@@ -3511,20 +3510,18 @@ elif page == "📦 Lot Παραγωγής":
                                     lot_hist = str(r.get("lot_number", "")).strip()
                                     exp_hist = str(r.get("expiry_date", "")).strip()
                                     
-                                    # Αν δεν έχουμε βρει ακόμα το σωστό LOT για αυτό το υλικό
                                     if ing_hist not in historical_lots:
-                                        # Απορρίπτουμε τα κενά ή τις παύλες της σημερινής ημέρας
                                         if lot_hist and lot_hist.lower() not in ("-", "none", "nan", "", "null"):
                                             historical_lots[ing_hist] = {
                                                 "lot": lot_hist,
                                                 "exp": exp_hist
                                             }
                         except Exception as e:
-                            pass # Σε περίπτωση σφάλματος, απλά δεν θα βάλει προεπιλογές
+                            pass
                         # ---------------------------------------------------------
 
                         # =========================================================
-                        # 📱 ΝΕΟ ΚΟΜΜΑΤΙ: ΚΑΜΕΡΑ AI ΓΙΑ ΣΚΑΝΑΡΙΣΜΑ (ΠΡΙΝ ΤΗ ΦΟΡΜΑ)
+                        # 📱 ΚΑΜΕΡΑ AI ΓΙΑ ΣΚΑΝΑΡΙΣΜΑ ΜΕ GEMINI VISION
                         # =========================================================
                         st.write("### 📷 Σάρωση Ετικέτας με Κάμερα")
                         scannable_ings = ["-- Επιλέξτε Υλικό προς Σάρωση --"] + df_grouped["ingredient_name"].tolist()
@@ -3534,20 +3531,46 @@ elif page == "📦 Lot Παραγωγής":
                             picture = st.camera_input(f"Φωτογραφίστε το LOT: {scan_target}")
                             
                             if picture:
-                                with st.spinner("🤖 Η Τεχνητή Νοημοσύνη διαβάζει την ετικέτα..."):
-                                    import time
-                                    time.sleep(1.5) # Προσομοίωση καθυστέρησης
+                                with st.spinner("🤖 Το AI διαβάζει την ετικέτα..."):
+                                    import google.generativeai as genai
+                                    from PIL import Image
+                                    import json
                                     
-                                    # Εδώ στο μέλλον θα μπαίνει η πραγματική κλήση στο AI. Τώρα βάζουμε εικονικά δεδομένα:
-                                    ai_lot = "SCAN-12345"
-                                    ai_exp = "12/2026"
-                                    
-                                    # Αποθηκεύουμε τα δεδομένα στη μνήμη του Streamlit
-                                    if "scanned_lots" not in st.session_state:
-                                        st.session_state.scanned_lots = {}
-                                    
-                                    st.session_state.scanned_lots[scan_target] = {"lot": ai_lot, "exp": ai_exp}
-                                    st.success(f"✅ Επιτυχής Ανάγνωση! (LOT: {ai_lot} | Λήξη: {ai_exp})")
+                                    try:
+                                        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                                        
+                                        img = Image.open(picture)
+                                        model = genai.GenerativeModel('gemini-1.5-flash')
+                                        
+                                        prompt = """
+                                        Είσαι βοηθός αποθήκης. Διάβασε αυτή την ετικέτα. 
+                                        Βρες τον αριθμό παρτίδας (LOT ή L.) και την ημερομηνία λήξης (EXP ή BBD).
+                                        Επίστρεψε ΑΥΣΤΗΡΑ ΚΑΙ ΜΟΝΟ ένα JSON, χωρίς κανένα άλλο κείμενο.
+                                        Μορφή: {"lot": "ΤΟ_ΝΟΥΜΕΡΟ", "exp": "Η_ΗΜΕΡΟΜΗΝΙΑ"}
+                                        Αν δεν βρεις κάτι, βάλε την παύλα "-".
+                                        """
+                                        
+                                        response = model.generate_content([prompt, img])
+                                        
+                                        clean_response = response.text.strip()
+                                        if clean_response.startswith("```json"):
+                                            clean_response = clean_response.replace("```json", "").replace("```", "").strip()
+                                        elif clean_response.startswith("```"):
+                                            clean_response = clean_response.replace("```", "").strip()
+                                            
+                                        ai_data = json.loads(clean_response)
+                                        
+                                        if "scanned_lots" not in st.session_state:
+                                            st.session_state.scanned_lots = {}
+                                        
+                                        st.session_state.scanned_lots[scan_target] = {
+                                            "lot": ai_data.get("lot", "-"), 
+                                            "exp": ai_data.get("exp", "-")
+                                        }
+                                        st.success(f"✅ Επιτυχής Ανάγνωση! (LOT: {ai_data.get('lot', '-')} | Λήξη: {ai_data.get('exp', '-')})")
+                                        
+                                    except Exception as e:
+                                        st.error(f"Αποτυχία ανάγνωσης από το AI: Βεβαιωθείτε ότι το API Key είναι σωστό στα Secrets. Λεπτομέρειες: {e}")
                         # =========================================================
 
                         with st.form("bulk_lot_entry_form"):
@@ -3573,17 +3596,14 @@ elif page == "📦 Lot Παραγωγής":
                                 old_lot_full = str(row['lot_number']) if row['lot_number'] and str(row['lot_number']).strip() not in ("-", "None", "nan") else ""
                                 old_exp_full = str(row['expiry_date']) if row['expiry_date'] and str(row['expiry_date']).strip() not in ("-", "None", "nan") else ""
                                 
-                                # Εδώ κουμπώνει το ιστορικό!
                                 if not old_lot_full and ing in historical_lots:
                                     old_lot_full = historical_lots[ing]["lot"]
                                     old_exp_full = historical_lots[ing]["exp"]
                                 
-                                # 🚀 ΝΕΟ: Αν ο συνάδελφος μόλις σκανάρισε ΑΥΤΟ το υλικό, "πατάμε" το ιστορικό!
                                 if "scanned_lots" in st.session_state and ing in st.session_state.scanned_lots:
                                     old_lot_full = st.session_state.scanned_lots[ing]["lot"]
                                     old_exp_full = st.session_state.scanned_lots[ing]["exp"]
                                 
-                                # 🚀 ΔΙΟΡΘΩΣΗ: Πλέον σπάει ΜΟΝΟ όταν υπάρχει κενό γύρω από την κάθετο (" / ")
                                 def_lot1, def_lot2 = (old_lot_full.split(" / ", 1) + [""])[:2] if " / " in old_lot_full else (old_lot_full, "")
                                 def_exp1, def_exp2 = (old_exp_full.split(" / ", 1) + [""])[:2] if " / " in old_exp_full else (old_exp_full, "")
                                 
@@ -3621,7 +3641,6 @@ elif page == "📦 Lot Παραγωγής":
                                             if bulk_data:
                                                 supabase.table("production_log").upsert(bulk_data).execute()
                                         
-                                        # Καθαρίζουμε τη μνήμη από τα σκαναρισμένα LOT μετά την αποθήκευση
                                         if "scanned_lots" in st.session_state:
                                             del st.session_state["scanned_lots"]
                                             
