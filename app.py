@@ -4527,7 +4527,7 @@ elif page == "📦 Lot Παραγωγής":
 
         html_daily += f"<div class='grand-total'>{total_label_text}<br><b>{grand_total_pcs} Τεμάχια</b><span class='cocktail-count'>🍹 Διαφορετικά Cocktail: {total_different_cocktails}</span></div></body></html>"
         
-        # ─── ΕΚΤΥΠΩΣΗ 3: ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ (Αυτή παραμένει στο df_past γιατί θέλουμε τα υλικά) ───
+        # ─── ΕΚΤΥΠΩΣΗ 3: ΛΙΣΤΑ ΠΡΟΕΤΟΙΜΑΣΙΑΣ ΥΛΙΚΩΝ ───
         if not df_past.empty and "Υλικό" in df_past.columns:
             df_prep = df_past.groupby("Υλικό").agg({
                 "Σύνολο_ML": "sum", "Στόχος_Γραμμάρια": "sum",
@@ -4536,6 +4536,25 @@ elif page == "📦 Lot Παραγωγής":
             }).reset_index()
         else:
             df_prep = pd.DataFrame(columns=["Υλικό", "Σύνολο_ML", "Στόχος_Γραμμάρια", "Lot Number", "Ημ_Λήξης"])
+
+        # --- 🚀 ΝΕΟ: ΤΡΑΒΑΜΕ ΤΑ ΠΡΑΓΜΑΤΙΚΑ LOT ΑΠΟ ΤΟ ΙΣΤΟΡΙΚΟ ΠΑΡΑΓΩΓΗΣ ---
+        actual_saved_lots = {}
+        try:
+            log_res = supabase.table("production_log") \
+                .select("ingredient_name, lot_number, expiry_date") \
+                .eq("prod_date", sel_hist_date) \
+                .execute()
+            
+            if log_res.data:
+                for r in log_res.data:
+                    i_name = r.get("ingredient_name")
+                    i_lot = str(r.get("lot_number", "")).strip()
+                    i_exp = str(r.get("expiry_date", "")).strip()
+                    if i_lot and i_lot.lower() not in ['none', '', 'nan', '-']:
+                        actual_saved_lots[i_name] = {"lot": i_lot, "exp": i_exp}
+        except Exception as e:
+            pass
+        # ---------------------------------------------------------------
 
         # ΣΥΜΠΙΕΣΜΕΝΟ CSS ΓΙΑ ΕΞΟΙΚΟΝΟΜΗΣΗ ΧΑΡΤΙΟΥ
         html_prep = f"""<html><head><meta charset='UTF-8'><style>
@@ -4565,12 +4584,22 @@ elif page == "📦 Lot Παραγωγής":
         """
         
         for _, row in df_prep.iterrows():
+            ing_name = row.get('Υλικό', '-')
             ml_val = float(row.get('Σύνολο_ML', 0)) if pd.notna(row.get('Σύνολο_ML')) else 0.0
             g_val = float(row.get('Στόχος_Γραμμάρια', 0)) if pd.notna(row.get('Στόχος_Γραμμάρια')) else 0.0
             
+            # Παίρνουμε αρχικά τα "θεωρητικά" από την αποθήκη
+            lots_str = str(row.get('Lot Number', ''))
+            exps_str = str(row.get('Ημ_Λήξης', ''))
+            
+            # ΑΝ ΟΜΩΣ έχουμε σώσει πραγματικά LOT για αυτή τη μέρα, τα κάνουμε αντικατάσταση (OVERRIDE)!
+            if ing_name in actual_saved_lots:
+                lots_str = actual_saved_lots[ing_name]["lot"]
+                exps_str = actual_saved_lots[ing_name]["exp"]
+            
             # Σπάμε τα string σε λίστες αν υπάρχουν πολλαπλά LOT (διαχωρισμένα με " / ")
-            lots = str(row.get('Lot Number', '')).split(" / ") if row.get('Lot Number') else []
-            exps = str(row.get('Ημ_Λήξης', '')).split(" / ") if row.get('Ημ_Λήξης') else []
+            lots = lots_str.split(" / ") if lots_str else []
+            exps = exps_str.split(" / ") if exps_str else []
             
             # Αν υπάρχει το βρίσκει, αλλιώς βάζει τελείες για χειρόγραφη συμπλήρωση (μειωμένες τελείες για εξοικονόμηση χώρου)
             l1 = lots[0] if len(lots) > 0 and lots[0] else "............"
@@ -4580,7 +4609,7 @@ elif page == "📦 Lot Παραγωγής":
             e2 = exps[1] if len(exps) > 1 and exps[1] else "............"
             
             html_prep += f"""<tr>
-                <td><b>{row.get('Υλικό', '-')}</b></td>
+                <td><b>{ing_name}</b></td>
                 <td>{ml_val:.0f} ml</td>
                 <td>{g_val:.1f} g</td>
                 <td class='lot-info'><b>L1:</b> {l1}<br><b>E1:</b> {e1}</td>
@@ -4593,7 +4622,6 @@ elif page == "📦 Lot Παραγωγής":
         col_p1.download_button("📋 Ημερήσια Παραγωγή Ανά Πελάτη", data=html_pro, file_name=f"Prod_By_Customer_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p2.download_button("📋 Ημερήσια Παραγωγή", data=html_daily, file_name=f"Daily_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
         col_p3.download_button("🧪 Λίστα Προετοιμασίας", data=html_prep, file_name=f"Prep_{sel_hist_date}{file_suffix}.html", mime="text/html", use_container_width=True)
-
     # =========================================================================
     # 📊 REPORT: ΠΛΗΡΕΣ ΙΣΤΟΡΙΚΟ LOT ΠΡΩΤΩΝ ΥΛΩΝ
     # =========================================================================
