@@ -925,7 +925,7 @@ elif page == "🔍 Ανάλυση":
     df_ing_list = []
     for item in ing_data:
         df_ing_list.append({
-            "Name": item["name"],
+            "Name": str(item["name"]).strip(),
             "Price": item["price"],
             "Volume": item["volume"],
             "weight_full": item.get("weight_full", 0.0), # 👈 Φορτώνουμε το συνολικό βάρος συσκευασίας
