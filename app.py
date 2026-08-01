@@ -5994,7 +5994,7 @@ elif page == "👥 Πελατολόγιο":
                         st.warning("Δεν βρέθηκε γραμμή παραγωγής (υλικά) για τη συγκεκριμένη παραγγελία.")
             else:
                 st.info("Δεν βρέθηκαν προηγούμενες παραγγελίες για αυτόν τον πελάτη.")
-# --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (PRO VERSION - MULTIPLE SWAPS, PROFIT & PDF) ---
+# --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (FINAL PRO VERSION - FULL PROFIT TRACKING & CLEAN HTML) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Μαζική Αντικατάσταση Υλικών & Πρόγνωση Κέρδους")
     st.info("Σύγκριση Τιμών: Οι τιμές πώλησης (Λιανική & Αντιπρόσωπος στο -26%) παραμένουν σταθερές για να φανεί το πραγματικό επιπλέον κέρδος.")
@@ -6101,10 +6101,12 @@ elif page == "🔄 Αντικατάσταση":
                         # Υπολογισμός Κέρδους Λιανικής
                         old_retail_profit = retail_price - current_cost
                         new_retail_profit = retail_price - new_cost
+                        diff_retail = new_retail_profit - old_retail_profit
                         
                         # Υπολογισμός Κέρδους Αντιπροσώπου
                         old_agent_profit = agent_price - current_cost
                         new_agent_profit = agent_price - new_cost
+                        diff_agent = new_agent_profit - old_agent_profit
 
                         analysis_data.append({
                             "Cocktail": r_name,
@@ -6112,10 +6114,13 @@ elif page == "🔄 Αντικατάσταση":
                             "Παλιό Κόστος (€)": current_cost,
                             "Νέο Κόστος (€)": new_cost,
                             "Λιανική (€)": retail_price,
-                            "Αντιπρόσωπος (€)": agent_price,
+                            "Παλιό Κέρδος Λιαν. (€)": old_retail_profit,
                             "Νέο Κέρδος Λιαν. (€)": new_retail_profit,
-                            "Διαφορά Κέρδους (€)": (new_retail_profit - old_retail_profit),
-                            "Νέο Κέρδος Αντιπρ. (€)": new_agent_profit
+                            "Διαφορά Λιαν. (€)": diff_retail,
+                            "Αντιπρόσωπος (€)": agent_price,
+                            "Παλιό Κέρδος Αντιπρ. (€)": old_agent_profit,
+                            "Νέο Κέρδος Αντιπρ. (€)": new_agent_profit,
+                            "Διαφορά Αντιπρ. (€)": diff_agent
                         })
 
                 if analysis_data:
@@ -6123,7 +6128,7 @@ elif page == "🔄 Αντικατάσταση":
                     
                     st.subheader(f"📊 Ανάλυση Οικονομικού Αντικτύπου ({len(df_res)} Συνταγές)")
                     
-                    # Χρωματισμός Διαφοράς Κέρδους
+                    # Χρωματισμός Διαφοράς Κέρδους (Πράσινο για θετικό, Κόκκινο για αρνητικό)
                     def style_profit(val):
                         color = '#ff4b4b' if val < 0 else '#00ffcc' if val > 0 else '#ffffff'
                         return f'color: {color}; font-weight: bold'
@@ -6133,35 +6138,48 @@ elif page == "🔄 Αντικατάσταση":
                         "Παλιό Κόστος (€)": "{:.2f}",
                         "Νέο Κόστος (€)": "{:.2f}",
                         "Λιανική (€)": "{:.2f}",
-                        "Αντιπρόσωπος (€)": "{:.2f}",
+                        "Παλιό Κέρδος Λιαν. (€)": "{:.2f}",
                         "Νέο Κέρδος Λιαν. (€)": "{:.2f}",
-                        "Διαφορά Κέρδους (€)": "{:.2f}",
-                        "Νέο Κέρδος Αντιπρ. (€)": "{:.2f}"
+                        "Διαφορά Λιαν. (€)": "{:.2f}",
+                        "Αντιπρόσωπος (€)": "{:.2f}",
+                        "Παλιό Κέρδος Αντιπρ. (€)": "{:.2f}",
+                        "Νέο Κέρδος Αντιπρ. (€)": "{:.2f}",
+                        "Διαφορά Αντιπρ. (€)": "{:.2f}"
                     }
 
                     # Εμφάνιση του DataFrame
                     st.dataframe(
-                        df_res.style.format(format_dict).map(style_profit, subset=['Διαφορά Κέρδους (€)']),
+                        df_res.style.format(format_dict).map(style_profit, subset=['Διαφορά Λιαν. (€)', 'Διαφορά Αντιπρ. (€)']),
                         use_container_width=True,
                         hide_index=True
                     )
 
-                    # --- ΔΗΜΙΟΥΡΓΙΑ PDF / HTML REPORT ---
+                    # --- ΔΗΜΙΟΥΡΓΙΑ ΑΠΛΟΥ HTML REPORT ΓΙΑ SAFARI ---
                     html_rows = ""
                     for _, row in df_res.iterrows():
-                        profit_color = "red" if row['Διαφορά Κέρδους (€)'] < 0 else "green"
-                        diff_sign = "+" if row['Διαφορά Κέρδους (€)'] > 0 else ""
+                        # Χρώματα Λιανικής
+                        profit_color_retail = "red" if row['Διαφορά Λιαν. (€)'] < 0 else "green"
+                        diff_sign_retail = "+" if row['Διαφορά Λιαν. (€)'] > 0 else ""
+                        
+                        # Χρώματα Αντιπροσώπου
+                        profit_color_agent = "red" if row['Διαφορά Αντιπρ. (€)'] < 0 else "green"
+                        diff_sign_agent = "+" if row['Διαφορά Αντιπρ. (€)'] > 0 else ""
+
                         html_rows += f"""
                         <tr>
                             <td><strong>{row['Cocktail']}</strong><br><small style="color:#666;">{row['Αλλαγές']}</small></td>
                             <td>{row['Παλιό Κόστος (€)']:.2f} ➡️ <b>{row['Νέο Κόστος (€)']:.2f}</b></td>
                             <td style="background-color: #f9f9f9;">
-                                Λιανική: <b>{row['Λιανική (€)']:.2f}</b><br>
-                                Κέρδος: <span style="color:{profit_color}; font-weight:bold;">{row['Νέο Κέρδος Λιαν. (€)']:.2f} ({diff_sign}{row['Διαφορά Κέρδους (€)']:.2f})</span>
+                                <u>Τιμή: {row['Λιανική (€)']:.2f} €</u><br>
+                                Παλιό Κέρδος: {row['Παλιό Κέρδος Λιαν. (€)']:.2f} €<br>
+                                Νέο Κέρδος: <b>{row['Νέο Κέρδος Λιαν. (€)']:.2f} €</b><br>
+                                <span style="color:{profit_color_retail}; font-weight:bold; font-size: 1.1em;">Διαφορά: {diff_sign_retail}{row['Διαφορά Λιαν. (€)']:.2f} €</span>
                             </td>
                             <td>
-                                Αντιπρ.: <b>{row['Αντιπρόσωπος (€)']:.2f}</b><br>
-                                Κέρδος: <span style="color:{profit_color}; font-weight:bold;">{row['Νέο Κέρδος Αντιπρ. (€)']:.2f}</span>
+                                <u>Τιμή: {row['Αντιπρόσωπος (€)']:.2f} €</u><br>
+                                Παλιό Κέρδος: {row['Παλιό Κέρδος Αντιπρ. (€)']:.2f} €<br>
+                                Νέο Κέρδος: <b>{row['Νέο Κέρδος Αντιπρ. (€)']:.2f} €</b><br>
+                                <span style="color:{profit_color_agent}; font-weight:bold; font-size: 1.1em;">Διαφορά: {diff_sign_agent}{row['Διαφορά Αντιπρ. (€)']:.2f} €</span>
                             </td>
                         </tr>
                         """
@@ -6179,21 +6197,18 @@ elif page == "🔄 Αντικατάσταση":
                                 .no-print {{ display: none !important; }}
                             }}
                             body {{ font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 20px; color: #333; }}
-                            .container {{ max-width: 900px; margin: auto; }}
+                            .container {{ max-width: 1000px; margin: auto; }}
                             h2 {{ color: #1a3a5f; border-bottom: 2px solid #1a3a5f; padding-bottom: 10px; }}
                             table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
-                            th, td {{ border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; }}
+                            th, td {{ border: 1px solid #ddd; padding: 12px; text-align: center; vertical-align: top; }}
                             th {{ background-color: #f4f6f8; color: #333; }}
-                            td:first-child {{ text-align: left; }}
-                            .print-btn {{ background: #1a3a5f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-bottom: 20px; font-weight: bold; cursor: pointer; }}
+                            td:first-child {{ text-align: left; vertical-align: middle; }}
+                            .print-btn {{ background: #1a3a5f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-bottom: 20px; font-weight: bold; cursor: pointer; border: none; }}
                         </style>
-                        <script>
-                            window.onload = function() {{ window.print(); }}
-                        </script>
                     </head>
                     <body>
                         <div class="container">
-                            <button class="no-print print-btn" onclick="window.print()">🖨️ Αποθήκευση ως PDF / Εκτύπωση</button>
+                            <button class="no-print print-btn" onclick="window.print()">🖨️ Εκτύπωση Αναφοράς</button>
                             <h2>📊 CabClub: Αναφορά Αντικατάστασης Υλικών & Κερδοφορίας</h2>
                             <p><b>Ημερομηνία:</b> {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}</p>
                             <table>
@@ -6201,8 +6216,8 @@ elif page == "🔄 Αντικατάσταση":
                                     <tr>
                                         <th>Cocktail / Αλλαγή</th>
                                         <th>Κόστος Υλικών (€)</th>
-                                        <th>Πωλήσεις Λιανικής (€)</th>
-                                        <th>Πωλήσεις Αντιπροσώπου (€)</th>
+                                        <th>Πωλήσεις Λιανικής</th>
+                                        <th>Πωλήσεις Αντιπροσώπου</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -6217,12 +6232,12 @@ elif page == "🔄 Αντικατάσταση":
                     col_dl1, col_dl2 = st.columns([1, 2])
                     with col_dl1:
                         st.download_button(
-                            label="📄 Εξαγωγή σε PDF (με Αντιπρόσωπο)",
+                            label="📄 Λήψη Αναφοράς (HTML)",
                             data=report_html,
                             file_name="Replacement_Profit_Report.html",
                             mime="text/html"
                         )
-                    st.caption("*(Ανοίξτε το αρχείο που θα κατέβει και θα εμφανιστεί αυτόματα το παράθυρο 'Αποθήκευση ως PDF')*")
+                    st.caption("*(Ανοίξτε το αρχείο στον browser σας (π.χ. Safari) για να δείτε τα αποτελέσματα και να τα εκτυπώσετε)*")
 
                     st.divider()
 
@@ -6244,7 +6259,6 @@ elif page == "🔄 Αντικατάσταση":
             st.info("Επιλέξτε τουλάχιστον ένα ζευγάρι (Παλιό -> Νέο) για να δείτε την πρόγνωση κέρδους.")
     else:
         st.warning("⚠️ Δεν υπάρχουν δεδομένα στην αποθήκη ή στις συνταγές.")
-
 # --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B & E-SHOP ---
 elif page == "📦 Παραγγελίες B2B":
     st.header("📦 Διαχείριση Παραγγελιών B2B")
