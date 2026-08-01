@@ -2711,14 +2711,16 @@ elif page == "📦 Lot Παραγωγής":
     df_ing_list = []
     for item in ing_data:
         df_ing_list.append({
-            "Name": str(item["name"]).strip(), # 👈 Προστασία από τα αόρατα κενά
-            "Price": item["price"],
-            "Volume": item["volume"],
-            "weight_full": item.get("weight_full", 0.0), 
-            "Αλκοόλ %": item["abv"],
-            "ABV": item["abv"], 
-            "Τιμή/ml": item["price"] / item["volume"] if item["volume"] > 0 else 0
-        })
+        "Name": str(item["name"]).strip(), 
+        "Price": item["price"],
+        "Volume": item["volume"],
+        "weight_full": item.get("weight_full", 0.0),
+        "Weight_full": item.get("weight_full", 0.0), # Προσθήκη για συμβατότητα (Κεφαλαίο W)
+        "Weight": item.get("weight_full", 0.0),      # Προσθήκη για συμβατότητα
+        "Αλκοόλ %": item["abv"],
+        "ABV": item["abv"], 
+        "Τιμή/ml": item["price"] / item["volume"] if item["volume"] > 0 else 0
+    })
     df_ing = pd.DataFrame(df_ing_list)
 
     res_rec_base = supabase.table("recipes").select("*").order("name").execute()
