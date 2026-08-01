@@ -2705,6 +2705,45 @@ elif page == "📈 Dashboard":
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
+    # --- ΜΑΓΕΙΑ SUPABASE: Φόρτωση φρέσκων δεδομένων (Συνταγές & Υλικά) ---
+    res_ing = supabase.table("ingredients").select("*").execute()
+    ing_data = res_ing.data if res_ing.data else []
+    df_ing_list = []
+    for item in ing_data:
+        df_ing_list.append({
+            "Name": str(item["name"]).strip(), # 👈 Προστασία από τα αόρατα κενά
+            "Price": item["price"],
+            "Volume": item["volume"],
+            "weight_full": item.get("weight_full", 0.0), 
+            "Αλκοόλ %": item["abv"],
+            "ABV": item["abv"], 
+            "Τιμή/ml": item["price"] / item["volume"] if item["volume"] > 0 else 0
+        })
+    df_ing = pd.DataFrame(df_ing_list)
+
+    res_rec_base = supabase.table("recipes").select("*").order("name").execute()
+    rec_data = res_rec_base.data if res_rec_base.data else []
+    all_items = supabase.table("recipe_items").select("*").execute().data if rec_data else []
+    
+    df_rec_list = []
+    for r in rec_data:
+        row_dict = {
+            "Ονομα": r["name"],
+            "Barcode": str(r.get("barcode", "")).replace(".0", "").replace("nan", ""),
+            "Τιμή Καταλόγου": r.get("catalog_price", 0.0)
+        }
+        r_items = [item for item in all_items if item["recipe_id"] == r["id"]]
+        for i in range(1, 14):
+            if i - 1 < len(r_items):
+                row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = r_items[i-1]["ingredient_name"]
+                row_dict[f"ML{i}"] = r_items[i-1]["ml_per_unit"]
+            else:
+                row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = "ΚΕΝΟ"
+                row_dict[f"ML{i}"] = 0.0
+        df_rec_list.append(row_dict)
+    df_rec = pd.DataFrame(df_rec_list)
+    # --- ΤΕΛΟΣ ΦΟΡΤΩΣΗΣ SUPABASE ---
+
     # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΓΙΑ ΤΟ DROP-DOWN
     try:
         res_cust = supabase.table("customers").select("name").execute()
