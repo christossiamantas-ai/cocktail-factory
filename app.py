@@ -5997,12 +5997,7 @@ elif page == "👥 Πελατολόγιο":
 # --- 1.5 ΑΝΤΙΚΑΤΑΣΤΑΣΗ ΠΡΩΤΗΣ ΥΛΗΣ (PRO VERSION - MULTIPLE SWAPS, PROFIT & PDF) ---
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Μαζική Αντικατάσταση Υλικών & Πρόγνωση Κέρδους")
-    st.info("Σύγκριση Τιμών: Χρησιμοποιούνται οι δικές σας καταχωρημένες τιμές λιανικής. Ο Αντιπρόσωπος υπολογίζεται στο -26%.")
-
-    # Βοηθητική συνάρτηση για καθαρούς αριθμούς (χωρίς περιττά μηδενικά)
-    def format_num(n):
-        if n is None or n == 0: return "0"
-        return f"{n:g}"
+    st.info("Σύγκριση Τιμών: Οι τιμές πώλησης (Λιανική & Αντιπρόσωπος στο -26%) παραμένουν σταθερές για να φανεί το πραγματικό επιπλέον κέρδος.")
 
     # --- ΜΑΓΕΙΑ SUPABASE: Φόρτωση φρέσκων δεδομένων (αν δεν υπάρχουν) ---
     res_ing = supabase.table("ingredients").select("*").execute()
@@ -6072,8 +6067,10 @@ elif page == "🔄 Αντικατάσταση":
                 for rid in affected_recipes_ids:
                     r_items = df_all_items[df_all_items["recipe_id"] == rid]
                     r_name = rec_lookup[rid]['name']
-                    old_retail = rec_lookup[rid]['catalog_price'] or 0.0
-                    old_agent = old_retail * 0.74 
+                    
+                    # Κρατάμε σταθερές τις τιμές πώλησης
+                    retail_price = rec_lookup[rid]['catalog_price'] or 0.0
+                    agent_price = retail_price * 0.74 
                     
                     current_cost = 0.22  # TOTAL_FIXED
                     cost_diff_total = 0.0
@@ -6084,13 +6081,11 @@ elif page == "🔄 Αντικατάσταση":
                         ing_n = item['ingredient_name']
                         ml = item['ml_per_unit']
                         
-                        # Βρίσκουμε την τιμή του τρέχοντος υλικού
                         ing_info = df_ing[df_ing["Name"] == ing_n]
                         if not ing_info.empty:
                             price_ml = ing_info["Τιμή/ml"].values[0]
                             current_cost += ml * price_ml
                             
-                        # Ελέγχουμε αν αυτό το υλικό είναι στη λίστα αλλαγών μας
                         for swap in swaps:
                             if ing_n == swap["old"]:
                                 new_ing_info = df_ing[df_ing["Name"] == swap["new"]]
@@ -6103,29 +6098,24 @@ elif page == "🔄 Αντικατάσταση":
                     if cost_diff_total != 0:
                         new_cost = current_cost + cost_diff_total
                         
-                        # Υπολογισμός Κέρδους
-                        old_profit = old_retail - current_cost
+                        # Υπολογισμός Κέρδους Λιανικής
+                        old_retail_profit = retail_price - current_cost
+                        new_retail_profit = retail_price - new_cost
                         
-                        # Νέα Λιανική & Νέο Κέρδος
-                        if current_cost > 0 and old_retail > 0:
-                            markup_factor = old_retail / current_cost
-                            new_retail = new_cost * markup_factor
-                        else:
-                            new_retail = new_cost / 0.25
-                            
-                        new_agent = new_retail * 0.74
-                        new_profit = new_retail - new_cost
+                        # Υπολογισμός Κέρδους Αντιπροσώπου
+                        old_agent_profit = agent_price - current_cost
+                        new_agent_profit = agent_price - new_cost
 
                         analysis_data.append({
                             "Cocktail": r_name,
                             "Αλλαγές": " | ".join(swap_desc_list),
-                            "Παλιό Κόστος (€)": round(current_cost, 2),
-                            "Νέο Κόστος (€)": round(new_cost, 2),
-                            "Παλιό Κέρδος (€)": round(old_profit, 2),
-                            "Νέο Κέρδος (€)": round(new_profit, 2),
-                            "Διαφορά Κέρδους (€)": round(new_profit - old_profit, 2),
-                            "Παλιά Λιανική (€)": round(old_retail, 2),
-                            "Νέα Λιανική (€)": round(new_retail, 2)
+                            "Παλιό Κόστος (€)": current_cost,
+                            "Νέο Κόστος (€)": new_cost,
+                            "Λιανική (€)": retail_price,
+                            "Αντιπρόσωπος (€)": agent_price,
+                            "Νέο Κέρδος Λιαν. (€)": new_retail_profit,
+                            "Διαφορά Κέρδους (€)": (new_retail_profit - old_retail_profit),
+                            "Νέο Κέρδος Αντιπρ. (€)": new_agent_profit
                         })
 
                 if analysis_data:
@@ -6138,25 +6128,41 @@ elif page == "🔄 Αντικατάσταση":
                         color = '#ff4b4b' if val < 0 else '#00ffcc' if val > 0 else '#ffffff'
                         return f'color: {color}; font-weight: bold'
 
+                    # Μορφοποίηση για καθαρά 2 δεκαδικά (εξαφάνιση περιττών μηδενικών)
+                    format_dict = {
+                        "Παλιό Κόστος (€)": "{:.2f}",
+                        "Νέο Κόστος (€)": "{:.2f}",
+                        "Λιανική (€)": "{:.2f}",
+                        "Αντιπρόσωπος (€)": "{:.2f}",
+                        "Νέο Κέρδος Λιαν. (€)": "{:.2f}",
+                        "Διαφορά Κέρδους (€)": "{:.2f}",
+                        "Νέο Κέρδος Αντιπρ. (€)": "{:.2f}"
+                    }
+
                     # Εμφάνιση του DataFrame
                     st.dataframe(
-                        df_res.style.map(style_profit, subset=['Διαφορά Κέρδους (€)']),
+                        df_res.style.format(format_dict).map(style_profit, subset=['Διαφορά Κέρδους (€)']),
                         use_container_width=True,
                         hide_index=True
                     )
-
-                    st.caption("💡 Το **Νέο Κέρδος** και η **Νέα Λιανική** υπολογίζονται ώστε να διατηρηθεί ακριβώς το ίδιο % Markup που είχατε με τα παλιά υλικά.")
 
                     # --- ΔΗΜΙΟΥΡΓΙΑ PDF / HTML REPORT ---
                     html_rows = ""
                     for _, row in df_res.iterrows():
                         profit_color = "red" if row['Διαφορά Κέρδους (€)'] < 0 else "green"
+                        diff_sign = "+" if row['Διαφορά Κέρδους (€)'] > 0 else ""
                         html_rows += f"""
                         <tr>
                             <td><strong>{row['Cocktail']}</strong><br><small style="color:#666;">{row['Αλλαγές']}</small></td>
                             <td>{row['Παλιό Κόστος (€)']:.2f} ➡️ <b>{row['Νέο Κόστος (€)']:.2f}</b></td>
-                            <td>{row['Παλιά Λιανική (€)']:.2f} ➡️ <b>{row['Νέα Λιανική (€)']:.2f}</b></td>
-                            <td style="color:{profit_color}; font-weight:bold;">{row['Παλιό Κέρδος (€)']:.2f} ➡️ {row['Νέο Κέρδος (€)']:.2f}</td>
+                            <td style="background-color: #f9f9f9;">
+                                Λιανική: <b>{row['Λιανική (€)']:.2f}</b><br>
+                                Κέρδος: <span style="color:{profit_color}; font-weight:bold;">{row['Νέο Κέρδος Λιαν. (€)']:.2f} ({diff_sign}{row['Διαφορά Κέρδους (€)']:.2f})</span>
+                            </td>
+                            <td>
+                                Αντιπρ.: <b>{row['Αντιπρόσωπος (€)']:.2f}</b><br>
+                                Κέρδος: <span style="color:{profit_color}; font-weight:bold;">{row['Νέο Κέρδος Αντιπρ. (€)']:.2f}</span>
+                            </td>
                         </tr>
                         """
                         
@@ -6176,12 +6182,11 @@ elif page == "🔄 Αντικατάσταση":
                             .container {{ max-width: 900px; margin: auto; }}
                             h2 {{ color: #1a3a5f; border-bottom: 2px solid #1a3a5f; padding-bottom: 10px; }}
                             table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
-                            th, td {{ border: 1px solid #ddd; padding: 10px; text-align: center; }}
+                            th, td {{ border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; }}
                             th {{ background-color: #f4f6f8; color: #333; }}
                             td:first-child {{ text-align: left; }}
                             .print-btn {{ background: #1a3a5f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-bottom: 20px; font-weight: bold; cursor: pointer; }}
                         </style>
-                        <!-- Αυτόματο prompt για αποθήκευση σε PDF -->
                         <script>
                             window.onload = function() {{ window.print(); }}
                         </script>
@@ -6196,8 +6201,8 @@ elif page == "🔄 Αντικατάσταση":
                                     <tr>
                                         <th>Cocktail / Αλλαγή</th>
                                         <th>Κόστος Υλικών (€)</th>
-                                        <th>Τιμή Λιανικής (€)</th>
-                                        <th>Καθαρό Κέρδος (€)</th>
+                                        <th>Πωλήσεις Λιανικής (€)</th>
+                                        <th>Πωλήσεις Αντιπροσώπου (€)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -6212,7 +6217,7 @@ elif page == "🔄 Αντικατάσταση":
                     col_dl1, col_dl2 = st.columns([1, 2])
                     with col_dl1:
                         st.download_button(
-                            label="📄 Εξαγωγή σε PDF (μέσω HTML)",
+                            label="📄 Εξαγωγή σε PDF (με Αντιπρόσωπο)",
                             data=report_html,
                             file_name="Replacement_Profit_Report.html",
                             mime="text/html"
@@ -6229,7 +6234,7 @@ elif page == "🔄 Αντικατάσταση":
                             for swap in swaps:
                                 supabase.table("recipe_items").update({"ingredient_name": swap["new"]}).eq("ingredient_name", swap["old"]).execute()
                             st.success("✅ Όλες οι αντικαταστάσεις ολοκληρώθηκαν με επιτυχία!")
-                            st.session_state.swap_rows = 1 # Reset UI
+                            st.session_state.swap_rows = 1
                             st.cache_data.clear()
                             time.sleep(2)
                             st.rerun()
