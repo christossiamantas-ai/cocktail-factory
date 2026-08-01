@@ -2715,8 +2715,7 @@ elif page == "📦 Lot Παραγωγής":
         "Price": item["price"],
         "Volume": item["volume"],
         "weight_full": item.get("weight_full", 0.0),
-        "Weight_full": item.get("weight_full", 0.0), # Προσθήκη για συμβατότητα (Κεφαλαίο W)
-        "Weight": item.get("weight_full", 0.0),      # Προσθήκη για συμβατότητα
+        "Weight_Full": item.get("weight_full", 0.0), # 👈 Εδώ βάλαμε το κεφαλαίο F!
         "Αλκοόλ %": item["abv"],
         "ABV": item["abv"], 
         "Τιμή/ml": item["price"] / item["volume"] if item["volume"] > 0 else 0
