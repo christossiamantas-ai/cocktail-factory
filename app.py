@@ -130,6 +130,59 @@ def deduct_inventory_for_production(cocktail_name, total_pieces_made):
     except Exception as e:
         pass # Αθόρυβη λειτουργία για να μην διακοπεί ποτέ η αποθήκευση της παραγγελίας
 # --------------------------------------------------
+
+# --- 🚀 PERFORMANCE FIX: BATCH ΑΦΑΙΡΕΣΗ ΑΠΟΘΕΜΑΤΟΣ (αντί για select+update ανά υλικό/κοκτέιλ) ---
+def compute_inventory_deductions(cocktail_name, total_pieces_made, df_recipes, deductions):
+    """Υπολογίζει ΣΤΗ ΜΝΗΜΗ (χωρίς κλήση στη βάση) τα ml που πρέπει να αφαιρεθούν
+    για ένα κοκτέιλ, και τα προσθέτει στο συγκεντρωτικό dict `deductions`
+    {όνομα_υλικού: σύνολο_ml_προς_αφαίρεση}. Χρησιμοποιεί το ήδη φορτωμένο df_rec
+    (cached) αντί να ξαναρωτά τη βάση για κάθε κοκτέιλ ξεχωριστά."""
+    match = df_recipes[df_recipes["Ονομα"] == cocktail_name]
+    if match.empty:
+        return
+    recipe_row = match.iloc[0]
+    for i in range(1, 14):
+        ing_name = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ"))
+        if ing_name in ["ΚΕΝΟ", "nan", "None", ""]:
+            continue
+        try:
+            ml_per_unit = float(recipe_row.get(f"ML{i}", 0.0))
+        except (TypeError, ValueError):
+            continue
+        if ml_per_unit <= 0:
+            continue
+        ml_used = ml_per_unit * total_pieces_made
+        deductions[ing_name] = deductions.get(ing_name, 0.0) + ml_used
+
+def commit_inventory_deductions(deductions):
+    """Εφαρμόζει ΟΛΕΣ τις αφαιρέσεις αποθέματος σε ΕΝΑ batch call στη Supabase
+    (αντί για 2 κλήσεις -select + update- ανά υλικό). Επιστρέφει (ok, failed_names)."""
+    if not deductions:
+        return True, []
+    try:
+        res_ing_fresh = supabase.table("ingredients").select("id, name, current_stock_ml").execute()
+    except Exception as e:
+        return False, [f"Σφάλμα φόρτωσης αποθέματος: {e}"]
+    fresh_by_name = {str(r["name"]).strip(): r for r in (res_ing_fresh.data or [])}
+
+    updates = []
+    failed = []
+    for ing_name, ml_used in deductions.items():
+        row = fresh_by_name.get(str(ing_name).strip())
+        if row is None:
+            failed.append(ing_name)
+            continue
+        old_stock = float(row.get("current_stock_ml") or 0.0)
+        updates.append({"id": row["id"], "current_stock_ml": old_stock - ml_used})
+
+    if updates:
+        try:
+            supabase.table("ingredients").upsert(updates, on_conflict="id").execute()
+        except Exception as e:
+            return False, failed + [f"Σφάλμα batch ενημέρωσης: {e}"]
+
+    return (len(failed) == 0), failed
+# --------------------------------------------------
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
@@ -326,6 +379,25 @@ def load_all_recipes():
     else:
         cols_rec = ["Ονομα", "Barcode", "Τιμή Καταλόγου"] + [f"ΣΥΣΤΑΤΙΚΟ{i}" for i in range(1,14)] + [f"ML{i}" for i in range(1,14)]
         return pd.DataFrame(columns=cols_rec)
+
+@st.cache_data(ttl=300)
+def load_customer_names():
+    """Λίστα ονομάτων πελατών για dropdowns. Cached ώστε να μη γίνεται νέο query
+    σε κάθε αλληλεπίδραση με τη φόρμα Lot Παραγωγής."""
+    res_cust = supabase.table("customers").select("name").execute()
+    names = sorted([c["name"] for c in res_cust.data]) if res_cust.data else []
+    if "Λιανική / Άγνωστος" not in names:
+        names.insert(0, "Λιανική / Άγνωστος")
+    return names
+
+@st.cache_data(ttl=90)
+def load_production_log_snapshot():
+    """Στιγμιότυπο του production_log για τον έλεγχο εκκρεμοτήτων LOT/λήξης.
+    🚀 PERFORMANCE FIX: Πριν, αυτό ξαναφόρτωνε έως 100.000 γραμμές ΣΕ ΚΑΘΕ κλικ
+    στην καρτέλα Lot Παραγωγής. Τώρα φορτώνεται μία φορά και ξαναχρησιμοποιείται
+    για 90 δευτερόλεπτα (ή μέχρι το επόμενο st.cache_data.clear() μετά από save)."""
+    res = supabase.table("production_log").select("*").order("id", desc=True).limit(100000).execute()
+    return res.data if res.data else []
 
 df_ing = load_all_ingredients()
 df_rec = load_all_recipes()
@@ -2721,54 +2793,19 @@ elif page == "📈 Dashboard":
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
-    # --- ΜΑΓΕΙΑ SUPABASE: Φόρτωση φρέσκων δεδομένων (Συνταγές & Υλικά) ---
-    res_ing = supabase.table("ingredients").select("*").execute()
-    ing_data = res_ing.data if res_ing.data else []
-    df_ing_list = []
-    for item in ing_data:
-        df_ing_list.append({
-        "Name": str(item["name"]).strip(), 
-        "Price": item["price"],
-        "Volume": item["volume"],
-        "weight_full": item.get("weight_full", 0.0),
-        "Weight_Full": item.get("weight_full", 0.0), # 👈 Εδώ βάλαμε το κεφαλαίο F!
-        "Αλκοόλ %": item["abv"],
-        "ABV": item["abv"], 
-        "Τιμή/ml": item["price"] / item["volume"] if item["volume"] > 0 else 0
-    })
-    df_ing = pd.DataFrame(df_ing_list)
+    # --- ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ (ΑΠΟ CACHE — ΟΧΙ ΝΕΟ QUERY ΣΕ ΚΑΘΕ ΚΛΙΚ) ---
+    # 🚀 PERFORMANCE FIX: Πριν, αυτό το block έκανε 3 raw queries (ingredients,
+    # recipes, recipe_items) ΣΕ ΚΑΘΕ rerun του Streamlit — δηλαδή σε κάθε επιλογή
+    # πελάτη/κοκτέιλ/τσεκ-μποξ, όχι μόνο στο submit. Τώρα χρησιμοποιούμε τις ήδη
+    # υπάρχουσες cached συναρτήσεις (@st.cache_data ttl=600) που κάνουν ακριβώς
+    # την ίδια δουλειά, αλλά χτυπάνε τη βάση μόνο όταν όντως έχει περάσει η ώρα
+    # λήξης του cache ή όταν καλείται ρητά st.cache_data.clear() μετά από αλλαγή.
+    df_ing = load_all_ingredients()
+    df_rec = load_all_recipes()
+    # --- ΤΕΛΟΣ ΦΟΡΤΩΣΗΣ ---
 
-    res_rec_base = supabase.table("recipes").select("*").order("name").execute()
-    rec_data = res_rec_base.data if res_rec_base.data else []
-    all_items = supabase.table("recipe_items").select("*").execute().data if rec_data else []
-    
-    df_rec_list = []
-    for r in rec_data:
-        row_dict = {
-            "Ονομα": r["name"],
-            "Barcode": str(r.get("barcode", "")).replace(".0", "").replace("nan", ""),
-            "Τιμή Καταλόγου": r.get("catalog_price", 0.0)
-        }
-        r_items = [item for item in all_items if item["recipe_id"] == r["id"]]
-        for i in range(1, 14):
-            if i - 1 < len(r_items):
-                row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = r_items[i-1]["ingredient_name"]
-                row_dict[f"ML{i}"] = r_items[i-1]["ml_per_unit"]
-            else:
-                row_dict[f"ΣΥΣΤΑΤΙΚΟ{i}"] = "ΚΕΝΟ"
-                row_dict[f"ML{i}"] = 0.0
-        df_rec_list.append(row_dict)
-    df_rec = pd.DataFrame(df_rec_list)
-    # --- ΤΕΛΟΣ ΦΟΡΤΩΣΗΣ SUPABASE ---
-
-    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΓΙΑ ΤΟ DROP-DOWN
-    try:
-        res_cust = supabase.table("customers").select("name").execute()
-        customer_options = sorted([c["name"] for c in res_cust.data]) if res_cust.data else []
-        if "Λιανική / Άγνωστος" not in customer_options:
-            customer_options.insert(0, "Λιανική / Άγνωστος")
-    except Exception:
-        customer_options = ["Λιανική / Άγνωστος"]
+    # 1. ΦΟΡΤΩΣΗ ΠΕΛΑΤΩΝ ΓΙΑ ΤΟ DROP-DOWN (cached — μαζί fix, ίδιος λόγος όπως πάνω)
+    customer_options = load_customer_names()
 
     def get_recipe_ml(row_series, idx):
         raw_val = None
@@ -2798,11 +2835,13 @@ elif page == "📦 Lot Παραγωγής":
     reset_key = st.session_state['lot_reset_key']
 
     # --- ΝΕΟ: ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΑΡΑΓΩΓΗΣ (ΕΛΕΓΧΟΣ LOT Ή ΗΜΕΡΟΜΗΝΙΑΣ ΛΗΞΗΣ) ---
-    res_pending = supabase.table("production_log").select("*").order("id", desc=True).limit(100000).execute()
-    
-    if res_pending.data:
+    # 🚀 PERFORMANCE FIX: πριν έτρεχε αυτό το (έως 100.000 γραμμών) query σε ΚΑΘΕ
+    # rerun/κλικ στην καρτέλα. Τώρα είναι cached (90 δευτ.) μέσω load_production_log_snapshot().
+    pending_data = load_production_log_snapshot()
+
+    if pending_data:
         import pandas as pd
-        df_all = pd.DataFrame(res_pending.data)
+        df_all = pd.DataFrame(pending_data)
         
         cols = df_all.columns.tolist()
         cust_col = next((c for c in ["customer_name", "customer", "Πελάτης", "Customer"] if c in cols), None)
@@ -3437,9 +3476,16 @@ elif page == "📦 Lot Παραγωγής":
                             supabase.table("production_log").insert(lot_entries).execute()
                             
                             # 2. ΑΦΑΙΡΕΣΗ ΥΛΙΚΩΝ ΑΠΟ ΑΠΟΘΗΚΗ - ΕΞΑΙΡΟΥΝΤΑΙ ΤΑ ΣΤΟΚ!
+                            # 🚀 PERFORMANCE FIX: πριν γινόταν select+update ΑΝΑ ΥΛΙΚΟ
+                            # ΑΝΑ ΚΟΚΤΕΪΛ (δεκάδες διαδοχικά network calls). Τώρα υπολογίζουμε
+                            # όλες τις αφαιρέσεις ΣΤΗ ΜΝΗΜΗ και τις στέλνουμε με ΕΝΑ batch call.
+                            deductions = {}
                             for item in st.session_state.production_batch_items:
                                 if item.get("Στοκ", "ΟΧΙ") == "ΟΧΙ":
-                                    deduct_inventory_for_production(item["Κοκτέιλ"], item["Τεμάχια"])
+                                    compute_inventory_deductions(item["Κοκτέιλ"], item["Τεμάχια"], df_rec, deductions)
+                            inv_ok, inv_failed = commit_inventory_deductions(deductions)
+                            if not inv_ok:
+                                st.warning(f"⚠️ Δεν ενημερώθηκε αυτόματα το απόθεμα για: {', '.join(inv_failed)}. Ελέγξτε χειροκίνητα στην Αποθήκη.")
                             
                             # 3. ΣΥΓΧΩΝΕΥΣΗ B2B ΟΙΚΟΝΟΜΙΚΩΝ
                             all_recipes_res = supabase.table("recipes").select("name, catalog_price").execute()
@@ -3529,9 +3575,8 @@ elif page == "📦 Lot Παραγωγής":
                             st.session_state['active_b2b_order'] = None 
                             st.session_state['lot_reset_key'] += 1
                             st.session_state.pop('search_data_loaded', None)
+                            st.cache_data.clear()  # 🚀 ώστε το cached df_ing να δείξει το ενημερωμένο απόθεμα
                             st.success("✅ Η παραγγελία αποθηκεύτηκε πανεύκολα!")
-                            import time
-                            time.sleep(1.5)
                             st.rerun()
                         except Exception as save_err:
                             st.error(f"Σφάλμα κατά την αποθήκευση: {save_err}")
