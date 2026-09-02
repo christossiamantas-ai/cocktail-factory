@@ -270,8 +270,37 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Σταθερές
-TOTAL_FIXED = 0.22  
+_TOTAL_FIXED_FALLBACK = 0.22  # παλιό hardcoded νούμερο — χρησιμοποιείται μόνο αν δεν έχει ρυθμιστεί ακόμα το Κοστολόγιο
 TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
+
+@st.cache_data(ttl=120)
+def load_cost_settings():
+    """Φορτώνει τα ετήσια σταθερά έξοδα + σενάρια όγκου από τον πίνακα cost_settings.
+    Επιστρέφει None αν δεν έχει ρυθμιστεί ακόμα (ο πίνακας μπορεί να μην υπάρχει καν)."""
+    try:
+        res = supabase.table("cost_settings").select("*").eq("id", 1).limit(1).execute()
+        if res.data:
+            return res.data[0]
+    except Exception:
+        pass
+    return None
+
+def compute_total_fixed_cost(settings, scenario="low"):
+    """Υπολογίζει το σταθερό κόστος/τεμάχιο = άθροισμα ετήσιων σταθερών εξόδων / όγκο σεναρίου.
+    scenario: 'low' (συντηρητικό, προτεινόμενο για τιμολόγηση), 'expected', 'high'."""
+    if not settings:
+        return _TOTAL_FIXED_FALLBACK
+    fixed_sum = sum(float(settings.get(k) or 0.0) for k in [
+        "rent", "depreciation", "labor", "haccp", "admin", "advertising", "insurance", "other_fixed"
+    ])
+    vol_key = {"low": "vol_low", "expected": "vol_expected", "high": "vol_high"}.get(scenario, "vol_low")
+    volume = float(settings.get(vol_key) or 0.0)
+    if volume <= 0:
+        return _TOTAL_FIXED_FALLBACK
+    return round(fixed_sum / volume, 4)
+
+_cost_settings = load_cost_settings()
+TOTAL_FIXED = compute_total_fixed_cost(_cost_settings, scenario=(_cost_settings or {}).get("active_scenario", "low"))
 
 def format_greek(value):
     if isinstance(value, (int, float)):
@@ -363,7 +392,7 @@ with st.sidebar:
         "Μενού:", 
         [
             "📦 Αποθήκη", "🔄 Αντικατάσταση", "📝 Νέα Συνταγή", "📊 Διαχείριση", 
-            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📦 Παραγγελίες B2B", 
+            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "💰 Κοστολόγιο & Σταθερά Έξοδα", "📦 Παραγγελίες B2B", 
             "📦 Lot Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP","🧪 Προσομοίωση Πωλήσεων", "🛒 Λίστα Αγορών", "🚚 Παραλαβές", "🧪 Δοκιμαστικές Παραγωγές"
         ],
         key="main_page"
@@ -1855,6 +1884,109 @@ elif page == "🔍 Ανάλυση":
 
 
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH MULTISELECT, NET PROFIT & HTML EXPORT) ---
+# --- 💰 ΚΟΣΤΟΛΟΓΙΟ & ΣΤΑΘΕΡΑ ΕΞΟΔΑ ---
+elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
+    st.header("💰 Κοστολόγιο & Σταθερά Έξοδα")
+    st.caption(
+        "Εδώ ορίζεις τα ΠΡΑΓΜΑΤΙΚΑ ετήσια σταθερά έξοδα της επιχείρησης και τα σενάρια όγκου παραγωγής. "
+        "Το αποτέλεσμα αντικαθιστά αυτόματα το παλιό σταθερό νούμερο (0,22€) που χρησιμοποιείται "
+        "σε όλους τους υπολογισμούς κόστους/περιθωρίου (Νέα Συνταγή, Ανάλυση, κ.λπ.)."
+    )
+
+    try:
+        _t = supabase.table("cost_settings").select("id").limit(1).execute()
+        table_exists = True
+    except Exception:
+        table_exists = False
+
+    if not table_exists:
+        st.error("⚠️ Ο πίνακας `cost_settings` δεν υπάρχει ακόμα στη Supabase σου. Τρέξε το SQL παρακάτω μία φορά:")
+        st.code(
+            "create table if not exists cost_settings (\n"
+            "  id bigint primary key default 1,\n"
+            "  rent numeric not null default 0,\n"
+            "  depreciation numeric not null default 0,\n"
+            "  labor numeric not null default 0,\n"
+            "  haccp numeric not null default 0,\n"
+            "  admin numeric not null default 0,\n"
+            "  advertising numeric not null default 0,\n"
+            "  insurance numeric not null default 0,\n"
+            "  other_fixed numeric not null default 0,\n"
+            "  vol_low numeric not null default 1,\n"
+            "  vol_expected numeric not null default 1,\n"
+            "  vol_high numeric not null default 1,\n"
+            "  active_scenario text not null default 'low',\n"
+            "  updated_at timestamptz not null default now(),\n"
+            "  constraint single_row check (id = 1)\n"
+            ");",
+            language="sql"
+        )
+    else:
+        s = load_cost_settings() or {}
+
+        st.subheader("1️⃣ Ετήσια Σταθερά Έξοδα (€)")
+        st.caption("Έξοδα που ΔΕΝ αλλάζουν ανάλογα με το πόσα τεμάχια παράγεις.")
+        with st.form("cost_settings_form"):
+            fc1, fc2 = st.columns(2)
+            rent = fc1.number_input("🏠 Ενοίκιο χώρου:", min_value=0.0, value=float(s.get("rent", 0.0)), step=100.0)
+            depreciation = fc2.number_input("⚙️ Απόσβεση εξοπλισμού:", min_value=0.0, value=float(s.get("depreciation", 0.0)), step=100.0)
+            labor = fc1.number_input("👷 Εργατικά (μισθός × μήνες λειτουργίας):", min_value=0.0, value=float(s.get("labor", 0.0)), step=100.0)
+            haccp = fc2.number_input("🧼 HACCP / Ποιοτικός Έλεγχος:", min_value=0.0, value=float(s.get("haccp", 0.0)), step=50.0)
+            admin = fc1.number_input("📋 Διοικητικά / Λογιστικά:", min_value=0.0, value=float(s.get("admin", 0.0)), step=50.0)
+            advertising = fc2.number_input("📣 Διαφήμιση / Μάρκετινγκ:", min_value=0.0, value=float(s.get("advertising", 0.0)), step=50.0)
+            insurance = fc1.number_input("🛡️ Ασφάλιστρα:", min_value=0.0, value=float(s.get("insurance", 0.0)), step=50.0)
+            other_fixed = fc2.number_input("➕ Λοιπά Σταθερά:", min_value=0.0, value=float(s.get("other_fixed", 0.0)), step=50.0)
+
+            st.divider()
+            st.subheader("2️⃣ Σενάρια Ετήσιου Όγκου Παραγωγής (τμχ)")
+            st.caption("⚠️ Χρησιμοποίησε το ΣΥΝΤΗΡΗΤΙΚΟ σενάριο για την τιμολόγηση — αν ο πραγματικός όγκος βγει χαμηλότερος, το κόστος/τεμάχιο ανεβαίνει.")
+            vc1, vc2, vc3 = st.columns(3)
+            vol_low = vc1.number_input("📉 Συντηρητικό:", min_value=1.0, value=float(s.get("vol_low", 70000.0)), step=1000.0)
+            vol_expected = vc2.number_input("📊 Αναμενόμενο:", min_value=1.0, value=float(s.get("vol_expected", 100000.0)), step=1000.0)
+            vol_high = vc3.number_input("📈 Αισιόδοξο:", min_value=1.0, value=float(s.get("vol_high", 130000.0)), step=1000.0)
+
+            st.divider()
+            active_scenario = st.radio(
+                "3️⃣ Ποιο σενάριο να χρησιμοποιείται ΕΝΕΡΓΑ στους υπολογισμούς κόστους της εφαρμογής;",
+                options=["low", "expected", "high"],
+                format_func=lambda x: {"low": "📉 Συντηρητικό (προτεινόμενο)", "expected": "📊 Αναμενόμενο", "high": "📈 Αισιόδοξο"}[x],
+                index=["low", "expected", "high"].index(s.get("active_scenario", "low")) if s.get("active_scenario") in ["low", "expected", "high"] else 0,
+                horizontal=True
+            )
+
+            if st.form_submit_button("💾 Αποθήκευση Ρυθμίσεων Κόστους", type="primary"):
+                try:
+                    supabase.table("cost_settings").upsert({
+                        "id": 1, "rent": rent, "depreciation": depreciation, "labor": labor,
+                        "haccp": haccp, "admin": admin, "advertising": advertising,
+                        "insurance": insurance, "other_fixed": other_fixed,
+                        "vol_low": vol_low, "vol_expected": vol_expected, "vol_high": vol_high,
+                        "active_scenario": active_scenario
+                    }).execute()
+                    st.cache_data.clear()
+                    st.success("✅ Αποθηκεύτηκε! Το TOTAL_FIXED ενημερώθηκε σε όλη την εφαρμογή.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Σφάλμα αποθήκευσης: {e}")
+
+        # --- ΖΩΝΤΑΝΗ ΠΡΟΕΠΙΣΚΟΠΗΣΗ ΚΑΙ ΣΤΑ 3 ΣΕΝΑΡΙΑ ---
+        st.divider()
+        st.subheader("📊 Σταθερό Κόστος ανά Τεμάχιο — και στα 3 σενάρια")
+        preview_fixed_sum = rent + depreciation + labor + haccp + admin + advertising + insurance + other_fixed
+        pc1, pc2, pc3 = st.columns(3)
+        with pc1:
+            v = preview_fixed_sum / vol_low if vol_low > 0 else 0
+            st.metric("📉 Συντηρητικό", f"{v:.4f} €/τμχ", help=f"{preview_fixed_sum:,.0f}€ ÷ {vol_low:,.0f} τμχ")
+        with pc2:
+            v = preview_fixed_sum / vol_expected if vol_expected > 0 else 0
+            st.metric("📊 Αναμενόμενο", f"{v:.4f} €/τμχ", help=f"{preview_fixed_sum:,.0f}€ ÷ {vol_expected:,.0f} τμχ")
+        with pc3:
+            v = preview_fixed_sum / vol_high if vol_high > 0 else 0
+            st.metric("📈 Αισιόδοξο", f"{v:.4f} €/τμχ", help=f"{preview_fixed_sum:,.0f}€ ÷ {vol_high:,.0f} τμχ")
+
+        st.info(f"🔧 Τρέχον ενεργό `TOTAL_FIXED` σε όλη την εφαρμογή: **{TOTAL_FIXED:.4f} €/τμχ** "
+                f"(βάσει σεναρίου: {({'low':'Συντηρητικό','expected':'Αναμενόμενο','high':'Αισιόδοξο'}).get(s.get('active_scenario','low'))})")
+
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
     st.write("Συγκρίνετε τη στρατηγική Δώρων έναντι της Έκπτωσης % και δείτε την ανάλυση κερδοφορίας.")
@@ -6088,7 +6220,7 @@ elif page == "🔄 Αντικατάσταση":
                     retail_price = rec_lookup[rid]['catalog_price'] or 0.0
                     agent_price = retail_price * 0.74 
                     
-                    current_cost = 0.22  # TOTAL_FIXED
+                    current_cost = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, τώρα δυναμικό
                     cost_diff_total = 0.0
                     swap_desc_list = []
 
