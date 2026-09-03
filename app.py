@@ -2453,7 +2453,7 @@ elif page == "📈 Dashboard":
                 df_orders = df_orders[df_orders['Month_Year'] == sel_month]
 
         # --- ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ ΥΛΙΚΩΝ ---
-        FIXED_COST = 0.22 
+        FIXED_COST = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο
         
         df_ing = pd.DataFrame(res_ing.data)
         df_ing['cost_per_ml'] = pd.to_numeric(df_ing.get('price', 0), errors='coerce') / pd.to_numeric(df_ing.get('volume', 1), errors='coerce')
@@ -3516,7 +3516,7 @@ elif page == "📦 Lot Παραγωγής":
                     if total_qty_this == 0: continue
                     
                     # Υπολογισμός Κόστους για τα Οικονομικά
-                    current_unit_cost = 0.22 
+                    current_unit_cost = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο
                     for idx_ing in range(1, 14):
                         tmp_ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{idx_ing}", "ΚΕΝΟ"))
                         if tmp_ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
@@ -4474,7 +4474,7 @@ elif page == "📦 Lot Παραγωγής":
                                 
                                 old_ml = float(ing_row["Σύνολο_ML"]) if pd.notna(ing_row["Σύνολο_ML"]) else 0.0
                                 orig_id = ing_row["id"]
-                                u_cost = float(ing_row["unit_cost"]) if "unit_cost" in ing_row.index and pd.notna(ing_row["unit_cost"]) else 0.22
+                                u_cost = float(ing_row["unit_cost"]) if "unit_cost" in ing_row.index and pd.notna(ing_row["unit_cost"]) else TOTAL_FIXED  # 🔧 FIX: πριν 0.22
                                 
                                 # 🚀 ΑΝ Ο ΧΡΗΣΤΗΣ ΤΟ ΓΥΡΙΣΕ ΣΕ "ΝΕΑ ΠΑΡΑΓΩΓΗ" ενώ ήταν Στοκ!
                                 if prod_type == "Νέα Παραγωγή (Κατανάλωση Υλικών Τώρα)" and old_ml == 0.0:
@@ -5698,7 +5698,7 @@ elif page == "👥 Πελατολόγιο":
                                 df_sales_raw = pd.DataFrame(res_log_full.data)
                                 
                                 # --- 2. ΜΑΘΗΜΑΤΙΚΑ ΚΟΣΤΟΥΣ & ΕΣΟΔΩΝ ---
-                                FIXED_COST = 0.22
+                                FIXED_COST = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο
                                 df_ing['cost_per_ml'] = pd.to_numeric(df_ing.get('price', 0), errors='coerce') / pd.to_numeric(df_ing.get('volume', 1), errors='coerce')
                                 ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
                                 
@@ -6651,7 +6651,7 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
         recipe_prices = dict(zip(df_recipes['name'], pd.to_numeric(df_recipes['catalog_price'], errors='coerce').fillna(0)))
         
         # Υπολογισμός Κόστους
-        FIXED_COST = 0.22 
+        FIXED_COST = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο
         df_ing = pd.DataFrame(ing_data)
         df_ing['cost_per_ml'] = pd.to_numeric(df_ing.get('price', 0), errors='coerce') / pd.to_numeric(df_ing.get('volume', 1), errors='coerce')
         ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
