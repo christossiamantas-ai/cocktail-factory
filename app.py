@@ -710,9 +710,10 @@ elif page == "📝 Νέα Συνταγή":
 
     with st.form("new_recipe_form", clear_on_submit=True):
         st.subheader("Βασικά Στοιχεία")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         new_rec_name = col1.text_input("Όνομα Cocktail", placeholder="π.χ. CabClub Margarita")
         new_barcode = col2.text_input("Barcode / Κωδικός", placeholder="Προαιρετικό")
+        new_catalog_price = col3.number_input("Τιμή Καταλόγου (€)", min_value=0.0, step=0.10, help="Χρησιμοποιείται σε Ανάλυση, Markup & Margin, Εμπορική Πολιτική. Αν μείνει 0, θα δείχνει αρνητικά περιθώρια μέχρι να τη συμπληρώσεις.")
         
         st.divider()
         st.subheader("🧪 Υλικά & Ποσότητες")
@@ -741,11 +742,14 @@ elif page == "📝 Νέα Συνταγή":
             elif not ingredients_data:
                 st.error("❌ Πρέπει να προσθέσετε τουλάχιστον 1 υλικό με ποσότητα μεγαλύτερη από 0.")
             else:
+                if new_catalog_price <= 0:
+                    st.warning("⚠️ Η τιμή καταλόγου είναι 0€ — η συνταγή θα αποθηκευτεί, αλλά η Ανάλυση/Markup & Margin θα δείχνουν αρνητικό περιθώριο μέχρι να ορίσεις τιμή στη Διαχείριση.")
                 try:
                     # ΒΗΜΑ 1: Δημιουργία της Συνταγής (Title) στον πίνακα 'recipes'
                     res = supabase.table("recipes").insert({
                         "name": new_rec_name.strip(),
-                        "barcode": new_barcode.strip() if new_barcode else ""
+                        "barcode": new_barcode.strip() if new_barcode else "",
+                        "catalog_price": new_catalog_price
                     }).execute()
                     
                     # Παίρνουμε το ID που της έδωσε αυτόματα η βάση (π.χ. ID 5)
@@ -815,7 +819,9 @@ elif page == "📊 Διαχείριση":
                 st.error(f"Σφάλμα: {e}")
 
     # Ζητάμε τα βασικά στοιχεία όλων των συνταγών από τη Supabase
-    res_rec = supabase.table("recipes").select("*").order("name").execute()
+    # 🔧 FIX: πριν έπαιρνε ΟΛΕΣ τις συνταγές (και τις αρχειοθετημένες _OLD_v.. από επεξεργασίες),
+    # γεμίζοντας το dropdown με "φαντάσματα". Τώρα παίρνει μόνο τις ενεργές.
+    res_rec = supabase.table("recipes").select("*").eq("is_active", True).order("name").execute()
     
     if not res_rec.data:
         st.info("Δεν βρέθηκαν αποθηκευμένες συνταγές. Πηγαίνετε στη 'Νέα Συνταγή' ή κάντε Εισαγωγή από πάνω.")
