@@ -1154,6 +1154,47 @@ elif page == "🔍 Ανάλυση":
             else:
                 st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΑΝΕΝΕΡΓΟ: {raw_cost:.4f}€ αυτόματο κόστος υλικών + {_TOTAL_FIXED_FALLBACK:.2f}€ προεπιλογή = {total_production:.4f} €/τμχ.")
 
+            # --- 🆚 ΣΥΓΚΡΙΣΗ: ΕΝΕΡΓΟ vs ΑΝΕΝΕΡΓΟ σενάριο (πάντα ορατή, ό,τι κι αν είναι ενεργό τώρα) ---
+            _op_cost_cmp = float((_cost_settings or {}).get("operational_cost") or 0.0)
+            _ind_cost_cmp = float(_cocktail_costs_map.get(choice, 0.0))
+            _cost_when_active = round(_ind_cost_cmp + _op_cost_cmp, 4)
+            _cost_when_inactive = round(raw_cost + _TOTAL_FIXED_FALLBACK, 4)
+
+            if _cost_when_inactive > 0:
+                _diff_pct = round((_cost_when_active - _cost_when_inactive) / _cost_when_inactive * 100, 1)
+            else:
+                _diff_pct = 0.0
+
+            with st.expander(f"🆚 Σύγκριση Ενεργό vs Ανενεργό Σενάριο — {choice}", expanded=True):
+                dc1, dc2, dc3 = st.columns(3)
+                dc1.metric(
+                    "⛔ Κόστος (Ανενεργό)",
+                    f"{_cost_when_inactive:.4f} €",
+                    help=f"{raw_cost:.4f}€ υλικά + {_TOTAL_FIXED_FALLBACK:.2f}€ προεπιλογή"
+                )
+                dc2.metric(
+                    "✅ Κόστος (Ενεργό)",
+                    f"{_cost_when_active:.4f} €",
+                    help=f"{_ind_cost_cmp:.4f}€ βιομηχανικό + {_op_cost_cmp:.4f}€ λειτουργικό"
+                )
+                dc3.metric(
+                    "Διαφορά Κόστους",
+                    f"{_diff_pct:+.1f}%",
+                    delta=f"{_cost_when_active - _cost_when_inactive:+.4f} €",
+                    delta_color="inverse"
+                )
+
+                # Διαφορά και στο ΠΕΡΙΘΩΡΙΟ (κέρδος), όχι μόνο στο κόστος
+                if p_retail > 0:
+                    _profit_inactive = p_retail - _cost_when_inactive
+                    _profit_active = p_retail - _cost_when_active
+                    _profit_diff_pct = round((_profit_active - _profit_inactive) / abs(_profit_inactive) * 100, 1) if _profit_inactive != 0 else 0.0
+                    st.caption(
+                        f"💰 Περιθώριο Λιανικής: Ανενεργό {_profit_inactive:.2f}€ → Ενεργό {_profit_active:.2f}€ "
+                        f"({_profit_diff_pct:+.1f}%), με βάση τιμή καταλόγου {p_retail:.2f}€."
+                    )
+                st.caption(f"👉 Το τρέχον ΕΝΕΡΓΟ σενάριο στην εφαρμογή αυτή τη στιγμή είναι: **{'✅ Ενεργό (Χειροκίνητο)' if _manual_cost_active else '⛔ Ανενεργό (Αυτόματο)'}**")
+
 
             # --- ΠΙΝΑΚΑΣ ΥΛΙΚΩΝ ΣΤΗΝ ΟΘΟΝΗ ---
             st.markdown("---")
