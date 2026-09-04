@@ -1265,7 +1265,13 @@ elif page == "🔍 Ανάλυση":
                 total_free_pcs = int(df_sales['f_pcs'].sum())
                 total_real_revenue = df_sales['Theoretical_Revenue'].sum()
                 
-                total_production_cost = total_produced_pcs * total_production
+                # 🔧 FIX: πριν πολλαπλασίαζε ΟΛΗ την ιστορική παραγωγή με το ΣΗΜΕΡΙΝΟ κόστος
+                # (λάθος αν το κόστος άλλαξε στο μεταξύ). Τώρα χρησιμοποιεί το πραγματικό,
+                # καταγεγραμμένο κόστος ανά παρτίδα (applied_cost) — πέφτει στο σημερινό μόνο
+                # για παλιές εγγραφές που δεν έχουν αυτό το πεδίο καταγεγραμμένο.
+                df_sales['_hist_applied_cost'] = pd.to_numeric(df_sales.get('applied_cost'), errors='coerce')
+                df_sales['_cost_per_batch'] = df_sales['_hist_applied_cost'].fillna(total_production) * df_sales['t_pcs']
+                total_production_cost = df_sales['_cost_per_batch'].sum()
                 total_net_profit = total_real_revenue - total_production_cost
                 
                 profit_percentage = 0.0
@@ -1768,7 +1774,7 @@ elif page == "🔍 Ανάλυση":
                             st.divider()
                             m1, m2, m3 = st.columns(3)
                             m1.metric("📦 Φιάλες που καταναλώθηκαν", f"{total_bottles:.2f} μπουκάλια".replace('.', ','))
-                            m2.metric("💶 Συνολικό Κόστος Υλικού", f"{total_cost:.2f} €".replace('.', ','))
+                            m2.metric("💶 Κόστος στη ΣΗΜΕΡΙΝΗ Τιμή", f"{total_cost:.2f} €".replace('.', ','), help="Υπολογισμένο με τη σημερινή τιμή/ml του υλικού — όχι το πραγματικό ιστορικό κόστος αγοράς.")
                             m3.metric("💧 Συνολικά ml", f"{total_ml_used:,.0f} ml".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
                             if not df_breakdown.empty:
