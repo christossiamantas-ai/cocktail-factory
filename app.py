@@ -270,13 +270,13 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Σταθερές
-_TOTAL_FIXED_FALLBACK = 0.22  # παλιό hardcoded νούμερο — χρησιμοποιείται μόνο αν δεν έχει ρυθμιστεί ακόμα το Κοστολόγιο
+_TOTAL_FIXED_FALLBACK = 0.22  # παλιό, αρχικό fallback — χρησιμοποιείται όταν το χειροκίνητο σενάριο κόστους είναι ΑΝΕΝΕΡΓΟ
 TAX_RATES = {"Ελλάδα": 0.0245, "Γερμανία": 0.0130, "Κύπρος": 0.0096, "Ιταλία": 0.0104, "Bulgaria": 0.0056}
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=90)
 def load_cost_settings():
-    """Φορτώνει τα ετήσια σταθερά έξοδα + σενάρια όγκου από τον πίνακα cost_settings.
-    Επιστρέφει None αν δεν έχει ρυθμιστεί ακόμα (ο πίνακας μπορεί να μην υπάρχει καν)."""
+    """Φορτώνει το ΕΝΕΡΓΟ/ΑΝΕΝΕΡΓΟ σενάριο + το λειτουργικό κόστος (ίδιο για όλα τα κοκτέιλ).
+    Επιστρέφει None αν δεν έχει ρυθμιστεί ακόμα (ή ο πίνακας δεν υπάρχει)."""
     try:
         res = supabase.table("cost_settings").select("*").eq("id", 1).limit(1).execute()
         if res.data:
@@ -285,25 +285,33 @@ def load_cost_settings():
         pass
     return None
 
-def compute_total_fixed_cost(settings, scenario="low"):
-    """Υπολογίζει το πλήρες overhead/τεμάχιο = (σταθερά ετήσια έξοδα ÷ όγκος σεναρίου)
-    + συσκευασία/τεμάχιο (η συσκευασία είναι ΜΕΤΑΒΛΗΤΟ κόστος, προστίθεται απευθείας
-    και ΔΕΝ διαιρείται με τον όγκο — διαφορετικά από τα άλλα σταθερά έξοδα).
-    scenario: 'low' (συντηρητικό, προτεινόμενο για τιμολόγηση), 'expected', 'high'."""
-    if not settings:
-        return _TOTAL_FIXED_FALLBACK
-    fixed_sum = sum(float(settings.get(k) or 0.0) for k in [
-        "rent", "depreciation", "labor", "haccp", "admin", "advertising", "insurance", "other_fixed"
-    ])
-    packaging_per_unit = float(settings.get("packaging_per_unit") or 0.0)
-    vol_key = {"low": "vol_low", "expected": "vol_expected", "high": "vol_high"}.get(scenario, "vol_low")
-    volume = float(settings.get(vol_key) or 0.0)
-    if volume <= 0:
-        return _TOTAL_FIXED_FALLBACK
-    return round((fixed_sum / volume) + packaging_per_unit, 4)
+@st.cache_data(ttl=90)
+def load_cocktail_costs():
+    """Φορτώνει το χειροκίνητο 'βιομηχανικό κόστος' ανά κοκτέιλ.
+    Επιστρέφει dict {cocktail_name: industrial_cost}."""
+    try:
+        res = supabase.table("cocktail_costs").select("*").execute()
+        return {r["cocktail_name"]: float(r.get("industrial_cost") or 0.0) for r in (res.data or [])}
+    except Exception:
+        return {}
 
 _cost_settings = load_cost_settings()
-TOTAL_FIXED = compute_total_fixed_cost(_cost_settings, scenario=(_cost_settings or {}).get("active_scenario", "low"))
+_cocktail_costs_map = load_cocktail_costs()
+_manual_cost_active = bool(_cost_settings and _cost_settings.get("active"))
+
+def get_unit_cost_for_cocktail(cocktail_name, raw_cost=0.0):
+    """Το πλήρες κόστος/τεμάχιο για ΣΥΓΚΕΚΡΙΜΕΝΟ κοκτέιλ.
+    - Αν το χειροκίνητο σενάριο κόστους (καρτέλα «💰 Κοστολόγιο») είναι ΕΝΕΡΓΟ:
+      επιστρέφει βιομηχανικό_κόστος[κοκτέιλ] + λειτουργικό_κόστος (και τα δύο
+      χειροκίνητα καταχωρημένα) — ΑΝΤΙΚΑΘΙΣΤΑ πλήρως τον αυτόματο υπολογισμό
+      από τα υλικά, δεν προστίθεται πάνω σε αυτόν.
+    - Αν είναι ΑΝΕΝΕΡΓΟ: επιστρέφει raw_cost (αυτόματο κόστος υλικών) + 0,22€
+      (η αρχική, προεπιλεγμένη συμπεριφορά της εφαρμογής)."""
+    if _manual_cost_active:
+        operational = float((_cost_settings or {}).get("operational_cost") or 0.0)
+        industrial = float(_cocktail_costs_map.get(cocktail_name, 0.0))
+        return round(industrial + operational, 4)
+    return round(float(raw_cost or 0.0) + _TOTAL_FIXED_FALLBACK, 4)
 
 def format_greek(value):
     if isinstance(value, (int, float)):
@@ -1077,10 +1085,8 @@ elif page == "🔍 Ανάλυση":
             final_abv = (pure_alc_ml / total_ml_cocktail * 100) if total_ml_cocktail > 0 else 0
             try: efk_informational = pure_alc_ml * tax_factor
             except NameError: efk_informational = pure_alc_ml * 0.0255
-            try: fixed_cost = TOTAL_FIXED
-            except NameError: fixed_cost = 0.50
-            
-            total_production = raw_cost + fixed_cost 
+            total_production = get_unit_cost_for_cocktail(choice, raw_cost)
+            fixed_cost = total_production - raw_cost  # για εμφάνιση: το "μη-πρώτης ύλης" κομμάτι του κόστους
             
             profit_retail = p_retail - total_production
             profit_agent = p_agent - total_production
@@ -1106,18 +1112,14 @@ elif page == "🔍 Ανάλυση":
             k2.metric("ΕΦΚ (Ενσωμ.)", f"{efk_informational:.2f} €".replace('.', ','))
             k3.metric("Σταθερά Έξοδα", f"{fixed_cost:.2f} €".replace('.', ','))
             k4.metric("ΣΥΝΟΛΟ ΚΟΣΤΟΥΣ", f"{total_production:.2f} €".replace('.', ','))
-            # 🔍 ΔΙΑΦΑΝΕΙΑ ΥΠΟΛΟΓΙΣΜΟΥ — δείχνει ΑΚΡΙΒΩΣ πώς προέκυψε το Σταθερά Έξοδα,
-            # ώστε να επαληθεύεται εύκολα αν αντιστοιχεί στις τιμές του "💰 Κοστολόγιο".
-            if _cost_settings:
-                _scen = _cost_settings.get("active_scenario", "low")
-                _scen_label = {"low": "Συντηρητικό", "expected": "Αναμενόμενο", "high": "Αισιόδοξο"}.get(_scen, _scen)
-                _fixed_sum_dbg = sum(float(_cost_settings.get(k) or 0.0) for k in
-                                      ["rent", "depreciation", "labor", "haccp", "admin", "advertising", "insurance", "other_fixed"])
-                _vol_dbg = float(_cost_settings.get({"low": "vol_low", "expected": "vol_expected", "high": "vol_high"}.get(_scen, "vol_low"), 0) or 0)
-                _pack_dbg = float(_cost_settings.get("packaging_per_unit") or 0.0)
-                st.caption(f"🔧 Υπολογισμός: ({_fixed_sum_dbg:,.0f}€ σταθερά [{_scen_label}] ÷ {_vol_dbg:,.0f} τμχ) + {_pack_dbg:.4f}€ συσκευασία = {fixed_cost:.4f} €/τμχ — ίδιο για κάθε κοκτέιλ.")
+            # 🔍 ΔΙΑΦΑΝΕΙΑ ΥΠΟΛΟΓΙΣΜΟΥ — δείχνει ΑΚΡΙΒΩΣ πώς προέκυψε το Σύνολο Κόστους.
+            if _manual_cost_active:
+                _ind_dbg = float(_cocktail_costs_map.get(choice, 0.0))
+                _op_dbg = float((_cost_settings or {}).get("operational_cost") or 0.0)
+                st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΕΝΕΡΓΟ: {_ind_dbg:.4f}€ Βιομηχανικό + {_op_dbg:.4f}€ Λειτουργικό = {total_production:.4f} €/τμχ (ανεξάρτητο από το κόστος υλικών).")
             else:
-                st.caption("⚠️ Δεν βρέθηκαν ρυθμίσεις στο «💰 Κοστολόγιο» — χρησιμοποιείται το παλιό fallback 0,22€.")
+                st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΑΝΕΝΕΡΓΟ: {raw_cost:.4f}€ αυτόματο κόστος υλικών + {_TOTAL_FIXED_FALLBACK:.2f}€ προεπιλογή = {total_production:.4f} €/τμχ.")
+
 
             # --- ΠΙΝΑΚΑΣ ΥΛΙΚΩΝ ΣΤΗΝ ΟΘΟΝΗ ---
             st.markdown("---")
@@ -1901,120 +1903,130 @@ elif page == "🔍 Ανάλυση":
 # --- 6. ΕΜΠΟΡΙΚΗ ΠΟΛΙΤΙΚΗ (COMPLETE PRO VERSION WITH MULTISELECT, NET PROFIT & HTML EXPORT) ---
 # --- 💰 ΚΟΣΤΟΛΟΓΙΟ & ΣΤΑΘΕΡΑ ΕΞΟΔΑ ---
 elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
-    st.header("💰 Κοστολόγιο & Σταθερά Έξοδα")
+    st.header("💰 Κοστολόγιο")
     st.caption(
-        "Εδώ ορίζεις τα ΠΡΑΓΜΑΤΙΚΑ ετήσια σταθερά έξοδα της επιχείρησης και τα σενάρια όγκου παραγωγής. "
-        "Το αποτέλεσμα αντικαθιστά αυτόματα το παλιό σταθερό νούμερο (0,22€) που χρησιμοποιείται "
-        "σε όλους τους υπολογισμούς κόστους/περιθωρίου (Νέα Συνταγή, Ανάλυση, κ.λπ.)."
+        "Χειροκίνητο κόστος ανά κοκτέιλ: Βιομηχανικό κόστος (ανά κοκτέιλ) + Λειτουργικά έξοδα (ίδιο για όλα) = Σύνολο. "
+        "Το σύνολο αυτό ενημερώνει αυτόματα ΟΛΕΣ τις καρτέλες (Ανάλυση, Εμπορική Πολιτική, Dashboard, Πελατολόγιο, Lot Παραγωγής, κ.λπ.) όταν είναι ενεργό."
     )
 
     try:
-        _t = supabase.table("cost_settings").select("id").limit(1).execute()
-        table_exists = True
+        _t1 = supabase.table("cost_settings").select("id").limit(1).execute()
+        _t2 = supabase.table("cocktail_costs").select("cocktail_name").limit(1).execute()
+        tables_exist = True
     except Exception:
-        table_exists = False
+        tables_exist = False
 
-    if not table_exists:
-        st.error("⚠️ Ο πίνακας `cost_settings` δεν υπάρχει ακόμα στη Supabase σου. Τρέξε το SQL παρακάτω μία φορά:")
+    if not tables_exist:
+        st.error("⚠️ Χρειάζονται 2 νέοι πίνακες στη Supabase σου. Τρέξε το SQL παρακάτω μία φορά:")
         st.code(
             "create table if not exists cost_settings (\n"
             "  id bigint primary key default 1,\n"
-            "  rent numeric not null default 0,\n"
-            "  depreciation numeric not null default 0,\n"
-            "  labor numeric not null default 0,\n"
-            "  haccp numeric not null default 0,\n"
-            "  admin numeric not null default 0,\n"
-            "  advertising numeric not null default 0,\n"
-            "  insurance numeric not null default 0,\n"
-            "  other_fixed numeric not null default 0,\n"
-            "  packaging_per_unit numeric not null default 0,\n"
-            "  vol_low numeric not null default 1,\n"
-            "  vol_expected numeric not null default 1,\n"
-            "  vol_high numeric not null default 1,\n"
-            "  active_scenario text not null default 'low',\n"
+            "  operational_cost numeric not null default 0,\n"
+            "  active boolean not null default false,\n"
             "  updated_at timestamptz not null default now(),\n"
             "  constraint single_row check (id = 1)\n"
+            ");\n\n"
+            "create table if not exists cocktail_costs (\n"
+            "  cocktail_name text primary key,\n"
+            "  industrial_cost numeric not null default 0,\n"
+            "  updated_at timestamptz not null default now()\n"
             ");",
             language="sql"
         )
     else:
-        with st.expander("🔧 Έχεις ήδη τον πίνακα από πριν; Τρέξε αυτό ΜΙΑ ΦΟΡΑ για να προστεθεί το νέο πεδίο συσκευασίας"):
-            st.code(
-                "alter table cost_settings\n"
-                "  add column if not exists packaging_per_unit numeric not null default 0;",
-                language="sql"
-            )
         s = load_cost_settings() or {}
+        cc_map = load_cocktail_costs()
 
-        st.subheader("1️⃣ Ετήσια Σταθερά Έξοδα (€)")
-        st.caption("Έξοδα που ΔΕΝ αλλάζουν ανάλογα με το πόσα τεμάχια παράγεις.")
-        with st.form("cost_settings_form"):
-            fc1, fc2 = st.columns(2)
-            rent = fc1.number_input("🏠 Ενοίκιο χώρου:", min_value=0.0, value=float(s.get("rent", 0.0)), step=100.0)
-            depreciation = fc2.number_input("⚙️ Απόσβεση εξοπλισμού:", min_value=0.0, value=float(s.get("depreciation", 0.0)), step=100.0)
-            labor = fc1.number_input("👷 Εργατικά (μισθός × μήνες λειτουργίας):", min_value=0.0, value=float(s.get("labor", 0.0)), step=100.0)
-            haccp = fc2.number_input("🧼 HACCP / Ποιοτικός Έλεγχος:", min_value=0.0, value=float(s.get("haccp", 0.0)), step=50.0)
-            admin = fc1.number_input("📋 Διοικητικά / Λογιστικά:", min_value=0.0, value=float(s.get("admin", 0.0)), step=50.0)
-            advertising = fc2.number_input("📣 Διαφήμιση / Μάρκετινγκ:", min_value=0.0, value=float(s.get("advertising", 0.0)), step=50.0)
-            insurance = fc1.number_input("🛡️ Ασφάλιστρα:", min_value=0.0, value=float(s.get("insurance", 0.0)), step=50.0)
-            other_fixed = fc2.number_input("➕ Λοιπά Σταθερά (μόνο ετήσια ποσά, ΟΧΙ ανά τεμάχιο):", min_value=0.0, value=float(s.get("other_fixed", 0.0)), step=50.0)
+        # --- 1. ΔΙΑΚΟΠΤΗΣ ΕΝΕΡΓΟΠΟΙΗΣΗΣ ---
+        st.subheader("1️⃣ Ενεργοποίηση Σεναρίου Χειροκίνητου Κόστους")
+        is_active_now = bool(s.get("active", False))
+        toggle_col1, toggle_col2 = st.columns([1, 3])
+        with toggle_col1:
+            new_active = st.toggle("✅ Ενεργό" if is_active_now else "⛔ Ανενεργό", value=is_active_now, key="cost_scenario_toggle")
+        with toggle_col2:
+            if new_active:
+                st.success("Ενεργό: χρησιμοποιείται το χειροκίνητο κόστος (Βιομηχανικό + Λειτουργικό) ανά κοκτέιλ, παντού στην εφαρμογή.")
+            else:
+                st.info("Ανενεργό: η εφαρμογή χρησιμοποιεί το παλιό, προεπιλεγμένο κόστος 0,22€ (+ αυτόματο κόστος υλικών) όπως πριν.")
 
-            st.divider()
-            st.subheader("1️⃣.5️⃣ Μεταβλητό Κόστος ανά Τεμάχιο (€)")
-            st.caption("⚠️ ΔΙΑΦΟΡΕΤΙΚΟ από τα παραπάνω: αυτό ΔΕΝ διαιρείται με τον όγκο — προστίθεται απευθείας σε κάθε τεμάχιο.")
-            packaging_per_unit = st.number_input("📦 Συσκευασία ανά τεμάχιο (φιάλη/ετικέτα/κούτα κ.λπ.):", min_value=0.0, value=float(s.get("packaging_per_unit", 0.0)), step=0.01, format="%.4f")
+        if new_active != is_active_now:
+            try:
+                supabase.table("cost_settings").upsert({
+                    "id": 1, "operational_cost": float(s.get("operational_cost") or 0.0), "active": new_active
+                }).execute()
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Σφάλμα αποθήκευσης: {e}")
 
-            st.divider()
-            st.subheader("2️⃣ Σενάρια Ετήσιου Όγκου Παραγωγής (τμχ)")
-            st.caption("⚠️ Χρησιμοποίησε το ΣΥΝΤΗΡΗΤΙΚΟ σενάριο για την τιμολόγηση — αν ο πραγματικός όγκος βγει χαμηλότερος, το κόστος/τεμάχιο ανεβαίνει.")
-            vc1, vc2, vc3 = st.columns(3)
-            vol_low = vc1.number_input("📉 Συντηρητικό:", min_value=1.0, value=float(s.get("vol_low", 70000.0)), step=1000.0)
-            vol_expected = vc2.number_input("📊 Αναμενόμενο:", min_value=1.0, value=float(s.get("vol_expected", 100000.0)), step=1000.0)
-            vol_high = vc3.number_input("📈 Αισιόδοξο:", min_value=1.0, value=float(s.get("vol_high", 130000.0)), step=1000.0)
+        st.divider()
 
-            st.divider()
-            active_scenario = st.radio(
-                "3️⃣ Ποιο σενάριο να χρησιμοποιείται ΕΝΕΡΓΑ στους υπολογισμούς κόστους της εφαρμογής;",
-                options=["low", "expected", "high"],
-                format_func=lambda x: {"low": "📉 Συντηρητικό (προτεινόμενο)", "expected": "📊 Αναμενόμενο", "high": "📈 Αισιόδοξο"}[x],
-                index=["low", "expected", "high"].index(s.get("active_scenario", "low")) if s.get("active_scenario") in ["low", "expected", "high"] else 0,
-                horizontal=True
+        # --- 2. ΛΕΙΤΟΥΡΓΙΚΟ ΚΟΣΤΟΣ (ΚΟΙΝΟ ΓΙΑ ΟΛΑ) ---
+        st.subheader("2️⃣ Λειτουργικά Κόστη (ίδιο για όλα τα κοκτέιλ)")
+        op_cost = st.number_input(
+            "Λειτουργικό κόστος ανά τεμάχιο (€):",
+            min_value=0.0, value=float(s.get("operational_cost", 0.0)), step=0.01, format="%.4f",
+            key="operational_cost_input"
+        )
+        if st.button("💾 Αποθήκευση Λειτουργικού Κόστους"):
+            try:
+                supabase.table("cost_settings").upsert({
+                    "id": 1, "operational_cost": op_cost, "active": new_active
+                }).execute()
+                st.cache_data.clear()
+                st.success("✅ Αποθηκεύτηκε!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Σφάλμα αποθήκευσης: {e}")
+
+        st.divider()
+
+        # --- 3. ΠΙΝΑΚΑΣ ΒΙΟΜΗΧΑΝΙΚΟΥ ΚΟΣΤΟΥΣ ΑΝΑ ΚΟΚΤΕΪΛ ---
+        st.subheader("3️⃣ Βιομηχανικό Κόστος ανά Κοκτέιλ")
+        st.caption("Καταχώρησε το κόστος παρασκευής για κάθε κοκτέιλ. Το «Σύνολο» υπολογίζεται αυτόματα (Βιομηχανικό + Λειτουργικό).")
+
+        if df_rec.empty:
+            st.warning("Δεν βρέθηκαν συνταγές.")
+        else:
+            table_rows = []
+            for cname in sorted(df_rec["Ονομα"].unique()):
+                industrial = float(cc_map.get(cname, 0.0))
+                table_rows.append({
+                    "Κοκτέιλ": cname,
+                    "Βιομηχανικό Κόστος (€)": industrial,
+                    "Λειτουργικά Κόστη (€)": op_cost,
+                    "Σύνολο (€)": round(industrial + op_cost, 4)
+                })
+            df_cost_table = pd.DataFrame(table_rows)
+
+            edited_df = st.data_editor(
+                df_cost_table,
+                column_config={
+                    "Κοκτέιλ": st.column_config.TextColumn(disabled=True),
+                    "Βιομηχανικό Κόστος (€)": st.column_config.NumberColumn(min_value=0.0, step=0.01, format="%.4f"),
+                    "Λειτουργικά Κόστη (€)": st.column_config.NumberColumn(disabled=True, format="%.4f", help="Αλλάζει μόνο από το πεδίο πιο πάνω — ίδιο για όλα τα κοκτέιλ."),
+                    "Σύνολο (€)": st.column_config.NumberColumn(disabled=True, format="%.4f"),
+                },
+                hide_index=True,
+                use_container_width=True,
+                key=f"cost_editor_{len(table_rows)}"
             )
 
-            if st.form_submit_button("💾 Αποθήκευση Ρυθμίσεων Κόστους", type="primary"):
+            if st.button("💾 Αποθήκευση Βιομηχανικού Κόστους", type="primary"):
                 try:
-                    supabase.table("cost_settings").upsert({
-                        "id": 1, "rent": rent, "depreciation": depreciation, "labor": labor,
-                        "haccp": haccp, "admin": admin, "advertising": advertising,
-                        "insurance": insurance, "other_fixed": other_fixed,
-                        "packaging_per_unit": packaging_per_unit,
-                        "vol_low": vol_low, "vol_expected": vol_expected, "vol_high": vol_high,
-                        "active_scenario": active_scenario
-                    }).execute()
+                    updates = []
+                    for _, r in edited_df.iterrows():
+                        updates.append({
+                            "cocktail_name": r["Κοκτέιλ"],
+                            "industrial_cost": float(r["Βιομηχανικό Κόστος (€)"])
+                        })
+                    if updates:
+                        supabase.table("cocktail_costs").upsert(updates, on_conflict="cocktail_name").execute()
                     st.cache_data.clear()
-                    st.success("✅ Αποθηκεύτηκε! Το TOTAL_FIXED ενημερώθηκε σε όλη την εφαρμογή.")
+                    st.success(f"✅ Αποθηκεύτηκαν {len(updates)} κοκτέιλ!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Σφάλμα αποθήκευσης: {e}")
-
-        # --- ΖΩΝΤΑΝΗ ΠΡΟΕΠΙΣΚΟΠΗΣΗ ΚΑΙ ΣΤΑ 3 ΣΕΝΑΡΙΑ ---
-        st.divider()
-        st.subheader("📊 Πλήρες Κόστος ανά Τεμάχιο (Σταθερά ÷ Όγκος + Συσκευασία) — και στα 3 σενάρια")
-        preview_fixed_sum = rent + depreciation + labor + haccp + admin + advertising + insurance + other_fixed
-        st.caption(f"Ετήσια σταθερά (χωρίς συσκευασία): {preview_fixed_sum:,.2f} €  |  Συσκευασία/τμχ (σταθερή, δεν διαιρείται): {packaging_per_unit:.4f} €")
-        pc1, pc2, pc3 = st.columns(3)
-        with pc1:
-            v = (preview_fixed_sum / vol_low if vol_low > 0 else 0) + packaging_per_unit
-            st.metric("📉 Συντηρητικό", f"{v:.4f} €/τμχ", help=f"({preview_fixed_sum:,.0f}€ ÷ {vol_low:,.0f} τμχ) + {packaging_per_unit:.4f}€ συσκ.")
-        with pc2:
-            v = (preview_fixed_sum / vol_expected if vol_expected > 0 else 0) + packaging_per_unit
-            st.metric("📊 Αναμενόμενο", f"{v:.4f} €/τμχ", help=f"({preview_fixed_sum:,.0f}€ ÷ {vol_expected:,.0f} τμχ) + {packaging_per_unit:.4f}€ συσκ.")
-        with pc3:
-            v = (preview_fixed_sum / vol_high if vol_high > 0 else 0) + packaging_per_unit
-            st.metric("📈 Αισιόδοξο", f"{v:.4f} €/τμχ", help=f"({preview_fixed_sum:,.0f}€ ÷ {vol_high:,.0f} τμχ) + {packaging_per_unit:.4f}€ συσκ.")
-
-        st.info(f"🔧 Τρέχον ενεργό `TOTAL_FIXED` σε όλη την εφαρμογή: **{TOTAL_FIXED:.4f} €/τμχ** "
-                f"(βάσει σεναρίου: {({'low':'Συντηρητικό','expected':'Αναμενόμενο','high':'Αισιόδοξο'}).get(s.get('active_scenario','low'))})")
 
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
@@ -2105,7 +2117,7 @@ elif page == "📊 Εμπορική Πολιτική":
                         if not match.empty:
                             raw_cost += ml * float(match.iloc[0]["Τιμή/ml"])
                 
-                unit_cost = raw_cost + TOTAL_FIXED
+                unit_cost = get_unit_cost_for_cocktail(choice, raw_cost)
                 p_retail = float(r["Τιμή Καταλόγου"])
                 p_agent_base = p_retail * 0.74  
                 
@@ -2453,20 +2465,18 @@ elif page == "📈 Dashboard":
                 df_orders = df_orders[df_orders['Month_Year'] == sel_month]
 
         # --- ΥΠΟΛΟΓΙΣΜΟΣ ΚΟΣΤΟΥΣ ΥΛΙΚΩΝ ---
-        FIXED_COST = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο
-        
         df_ing = pd.DataFrame(res_ing.data)
         df_ing['cost_per_ml'] = pd.to_numeric(df_ing.get('price', 0), errors='coerce') / pd.to_numeric(df_ing.get('volume', 1), errors='coerce')
         ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
         
         df_items = pd.DataFrame(res_items.data)
-        recipe_costs_by_id = {}
+        mat_cost_by_id = {}
         for rid in df_items['recipe_id'].unique():
             sub = df_items[df_items['recipe_id'] == rid]
-            mat_cost = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
-            recipe_costs_by_id[rid] = mat_cost + FIXED_COST
+            mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
             
-        name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], FIXED_COST) for _, r in df_recipes.iterrows()}
+        # 🔧 FIX: πριν χρησιμοποιούσε hardcoded 0.22 ασύνδετο από το Κοστολόγιο· τώρα κόστος ανά κοκτέιλ
+        name_to_cost = {r['name']: get_unit_cost_for_cocktail(r['name'], mat_cost_by_id.get(r['id'], 0.0)) for _, r in df_recipes.iterrows()}
 
         # =========================================================================
         # 🚀 ΑΠΟΛΥΤΑ ΑΣΦΑΛΗΣ ΥΠΟΛΟΓΙΣΜΟΣ ΕΣΟΔΩΝ (ΔΙΑΔΟΧΙΚΕΣ ΕΚΠΤΩΣΕΙΣ)
@@ -3188,7 +3198,9 @@ elif page == "📦 Lot Παραγωγής":
         
         st.write("") 
         if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
-            if sel_cocktail:
+            if not sel_cust:
+                st.error("⚠️ Πρέπει να επιλέξετε πρώτα Πελάτη! (αν είναι λιανική πώληση, επιλέξτε «Λιανική / Άγνωστος»)")
+            elif sel_cocktail:
                 if is_from_stock and not manual_old_lot.strip():
                     st.error("⚠️ Πρέπει να συμπληρώσετε το παλιό LOT του έτοιμου κοκτέιλ!")
                 else:
@@ -3516,7 +3528,7 @@ elif page == "📦 Lot Παραγωγής":
                     if total_qty_this == 0: continue
                     
                     # Υπολογισμός Κόστους για τα Οικονομικά
-                    current_unit_cost = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο
+                    current_unit_cost = 0.0  # 🔧 συσσωρεύουμε ΜΟΝΟ κόστος υλικών εδώ
                     for idx_ing in range(1, 14):
                         tmp_ing = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{idx_ing}", "ΚΕΝΟ"))
                         if tmp_ing not in ["ΚΕΝΟ", "nan", "Νερό", ""]:
@@ -3527,6 +3539,8 @@ elif page == "📦 Lot Παραγωγής":
                                 p = float(tmp_match.iloc[0].get("Price", tmp_match.iloc[0].get("price", 0))) 
                                 if v > 0:
                                     current_unit_cost += tmp_ml * (p / v)
+                    # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο· τώρα κόστος ανά κοκτέιλ
+                    current_unit_cost = get_unit_cost_for_cocktail(cocktail_name, current_unit_cost)
 
                     # Καθαρή εμφάνιση
                     st.markdown(f"**🍹 {cocktail_name}** | Συνολικά: **{total_qty_this} τμχ** <span style='color:gray; font-size:14px;'>(Από Στοκ: {qty_from_stock} | Νέα Παραγωγή: {qty_to_produce})</span>", unsafe_allow_html=True)
@@ -4474,7 +4488,7 @@ elif page == "📦 Lot Παραγωγής":
                                 
                                 old_ml = float(ing_row["Σύνολο_ML"]) if pd.notna(ing_row["Σύνολο_ML"]) else 0.0
                                 orig_id = ing_row["id"]
-                                u_cost = float(ing_row["unit_cost"]) if "unit_cost" in ing_row.index and pd.notna(ing_row["unit_cost"]) else TOTAL_FIXED  # 🔧 FIX: πριν 0.22
+                                u_cost = float(ing_row["unit_cost"]) if "unit_cost" in ing_row.index and pd.notna(ing_row["unit_cost"]) else _TOTAL_FIXED_FALLBACK  # 🔧 fallback μόνο για ελλιπή ιστορικά δεδομένα
                                 
                                 # 🚀 ΑΝ Ο ΧΡΗΣΤΗΣ ΤΟ ΓΥΡΙΣΕ ΣΕ "ΝΕΑ ΠΑΡΑΓΩΓΗ" ενώ ήταν Στοκ!
                                 if prod_type == "Νέα Παραγωγή (Κατανάλωση Υλικών Τώρα)" and old_ml == 0.0:
@@ -5698,17 +5712,16 @@ elif page == "👥 Πελατολόγιο":
                                 df_sales_raw = pd.DataFrame(res_log_full.data)
                                 
                                 # --- 2. ΜΑΘΗΜΑΤΙΚΑ ΚΟΣΤΟΥΣ & ΕΣΟΔΩΝ ---
-                                FIXED_COST = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο
                                 df_ing['cost_per_ml'] = pd.to_numeric(df_ing.get('price', 0), errors='coerce') / pd.to_numeric(df_ing.get('volume', 1), errors='coerce')
                                 ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
                                 
-                                recipe_costs_by_id = {}
+                                mat_cost_by_id = {}
                                 for rid in df_items['recipe_id'].unique():
                                     sub = df_items[df_items['recipe_id'] == rid]
-                                    mat_cost = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
-                                    recipe_costs_by_id[rid] = mat_cost + FIXED_COST
+                                    mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
                                     
-                                name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], FIXED_COST) for _, r in df_recipes.iterrows()}
+                                # 🔧 FIX: πριν ήταν hardcoded 0.22 ασύνδετο από το Κοστολόγιο· τώρα κόστος ανά κοκτέιλ
+                                name_to_cost = {r['name']: get_unit_cost_for_cocktail(r['name'], mat_cost_by_id.get(r['id'], 0.0)) for _, r in df_recipes.iterrows()}
                                 recipe_price_dict = dict(zip(df_recipes['name'], pd.to_numeric(df_recipes.get('catalog_price', 0), errors='coerce')))
                                 
                                 global_discount = float(customer_data.get('discount', 0))
@@ -6249,7 +6262,7 @@ elif page == "🔄 Αντικατάσταση":
                     retail_price = rec_lookup[rid]['catalog_price'] or 0.0
                     agent_price = retail_price * 0.74 
                     
-                    current_cost = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, τώρα δυναμικό
+                    current_cost = 0.0  # 🔧 συσσωρεύουμε ΜΟΝΟ κόστος υλικών εδώ
                     cost_diff_total = 0.0
                     swap_desc_list = []
 
@@ -6273,23 +6286,25 @@ elif page == "🔄 Αντικατάσταση":
                                     swap_desc_list.append(f"{swap['old']} ➡️ {swap['new']}")
 
                     if cost_diff_total != 0:
-                        new_cost = current_cost + cost_diff_total
+                        # 🔧 FIX: εφαρμόζουμε το ενεργό μοντέλο κόστους (χειροκίνητο ή αυτόματο) και στα δύο
+                        full_current_cost = get_unit_cost_for_cocktail(r_name, current_cost)
+                        full_new_cost = get_unit_cost_for_cocktail(r_name, current_cost + cost_diff_total)
                         
                         # Υπολογισμός Κέρδους Λιανικής
-                        old_retail_profit = retail_price - current_cost
-                        new_retail_profit = retail_price - new_cost
+                        old_retail_profit = retail_price - full_current_cost
+                        new_retail_profit = retail_price - full_new_cost
                         diff_retail = new_retail_profit - old_retail_profit
                         
                         # Υπολογισμός Κέρδους Αντιπροσώπου
-                        old_agent_profit = agent_price - current_cost
-                        new_agent_profit = agent_price - new_cost
+                        old_agent_profit = agent_price - full_current_cost
+                        new_agent_profit = agent_price - full_new_cost
                         diff_agent = new_agent_profit - old_agent_profit
 
                         analysis_data.append({
                             "Cocktail": r_name,
                             "Αλλαγές": " | ".join(swap_desc_list),
-                            "Παλιό Κόστος (€)": current_cost,
-                            "Νέο Κόστος (€)": new_cost,
+                            "Παλιό Κόστος (€)": full_current_cost,
+                            "Νέο Κόστος (€)": full_new_cost,
                             "Λιανική (€)": retail_price,
                             "Παλιό Κέρδος Λιαν. (€)": old_retail_profit,
                             "Νέο Κέρδος Λιαν. (€)": new_retail_profit,
@@ -6651,19 +6666,18 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
         recipe_prices = dict(zip(df_recipes['name'], pd.to_numeric(df_recipes['catalog_price'], errors='coerce').fillna(0)))
         
         # Υπολογισμός Κόστους
-        FIXED_COST = TOTAL_FIXED  # 🔧 FIX: πριν ήταν hardcoded 0.22, ασύνδετο από το Κοστολόγιο
         df_ing = pd.DataFrame(ing_data)
         df_ing['cost_per_ml'] = pd.to_numeric(df_ing.get('price', 0), errors='coerce') / pd.to_numeric(df_ing.get('volume', 1), errors='coerce')
         ing_cost_dict = dict(zip(df_ing['name'], df_ing['cost_per_ml']))
         
         df_items = pd.DataFrame(items_data)
-        recipe_costs_by_id = {}
+        mat_cost_by_id = {}
         for rid in df_items['recipe_id'].unique():
             sub = df_items[df_items['recipe_id'] == rid]
-            mat_cost = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
-            recipe_costs_by_id[rid] = mat_cost + FIXED_COST
+            mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
             
-        name_to_cost = {r['name']: recipe_costs_by_id.get(r['id'], FIXED_COST) for _, r in df_recipes.iterrows()}
+        # 🔧 FIX: πριν ήταν hardcoded 0.22 ασύνδετο από το Κοστολόγιο· τώρα κόστος ανά κοκτέιλ
+        name_to_cost = {r['name']: get_unit_cost_for_cocktail(r['name'], mat_cost_by_id.get(r['id'], 0.0)) for _, r in df_recipes.iterrows()}
 
         # --- 2. INITIALIZE SESSION STATE ---
         if 'sim_cart' not in st.session_state:
