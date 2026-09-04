@@ -434,7 +434,7 @@ with st.sidebar:
         "Μενού:", 
         [
             "📦 Αποθήκη", "🔄 Αντικατάσταση", "📝 Νέα Συνταγή", "📊 Διαχείριση", 
-            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "💰 Κοστολόγιο & Σταθερά Έξοδα", "📦 Παραγγελίες B2B", 
+            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📐 Markup & Margin", "💰 Κοστολόγιο & Σταθερά Έξοδα", "📦 Παραγγελίες B2B", 
             "📦 Lot Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP","🧪 Προσομοίωση Πωλήσεων", "🛒 Λίστα Αγορών", "🚚 Παραλαβές", "🧪 Δοκιμαστικές Παραγωγές"
         ],
         key="main_page"
@@ -2105,6 +2105,110 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
                     st.rerun()
                 except Exception as e:
                     st.error(f"Σφάλμα αποθήκευσης: {e}")
+
+# --- 📐 MARKUP & MARGIN: CABCLUB → ΑΝΤΙΠΡΟΣΩΠΟΣ → ΠΕΛΑΤΗΣ ---
+elif page == "📐 Markup & Margin":
+    st.header("📐 Markup & Margin ανά Επίπεδο Διανομής")
+    st.caption(
+        "Επίπεδο 1: Cabclub → Αντιπρόσωπος (χονδρική)  |  Επίπεδο 2: Αντιπρόσωπος → Τελικός Πελάτης (λιανική). "
+        "Δείχνει τους τρέχοντες δείκτες, και σου επιτρέπει να τρέξεις σενάριο βάζοντας το επιθυμητό markup/margin."
+    )
+
+    if df_rec.empty:
+        st.warning("Δεν βρέθηκαν συνταγές.")
+    else:
+        choice = st.selectbox("🍹 Επιλέξτε Κοκτέιλ:", sorted(df_rec["Ονομα"].unique()), key="mm_choice")
+        r = df_rec[df_rec["Ονομα"] == choice].iloc[0]
+
+        # --- Κόστος (ίδια λογική με Ανάλυση/Εμπορική Πολιτική) ---
+        raw_cost = 0.0
+        for i in range(1, 14):
+            ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+            ml = float(r.get(f"ML{i}", 0))
+            if ing_n not in ["ΚΕΝΟ", "nan", "Νερό", ""] and ml > 0:
+                match = df_ing[df_ing["Name"] == ing_n]
+                if not match.empty:
+                    raw_cost += ml * float(match.iloc[0]["Τιμή/ml"])
+        my_cost = get_unit_cost_for_cocktail(choice, raw_cost)
+
+        retail_price = float(r.get("Τιμή Καταλόγου", 0.0))
+        agent_price = retail_price * 0.74  # ίδια σύμβαση με την Εμπορική Πολιτική/Αντικατάσταση (τιμή αντιπροσώπου)
+
+        def _markup(cost, price):
+            return round((price - cost) / cost * 100, 2) if cost > 0 else 0.0
+
+        def _margin(cost, price):
+            return round((price - cost) / price * 100, 2) if price > 0 else 0.0
+
+        markup1, margin1 = _markup(my_cost, agent_price), _margin(my_cost, agent_price)
+        markup2, margin2 = _markup(agent_price, retail_price), _margin(agent_price, retail_price)
+
+        st.divider()
+        st.subheader("📊 Τρέχοντες Δείκτες")
+
+        st.markdown("**1️⃣ Cabclub → Αντιπρόσωπος**")
+        l1c1, l1c2, l1c3, l1c4 = st.columns(4)
+        l1c1.metric("Κόστος μου", f"{my_cost:.2f} €")
+        l1c2.metric("Τιμή Αντιπροσώπου", f"{agent_price:.2f} €")
+        l1c3.metric("Markup", f"{markup1:.1f} %", help="(Τιμή - Κόστος) / Κόστος")
+        l1c4.metric("Margin", f"{margin1:.1f} %", help="(Τιμή - Κόστος) / Τιμή")
+
+        st.markdown("**2️⃣ Αντιπρόσωπος → Τελικός Πελάτης**")
+        l2c1, l2c2, l2c3, l2c4 = st.columns(4)
+        l2c1.metric("Κόστος Αντιπρ. (=τιμή αγοράς)", f"{agent_price:.2f} €")
+        l2c2.metric("Τιμή Λιανικής", f"{retail_price:.2f} €")
+        l2c3.metric("Markup", f"{markup2:.1f} %", help="(Τιμή - Κόστος) / Κόστος")
+        l2c4.metric("Margin", f"{margin2:.1f} %", help="(Τιμή - Κόστος) / Τιμή")
+
+        st.divider()
+        st.subheader("🎯 Σενάριο: Ορισμός Επιθυμητού Markup ή Margin")
+        st.caption("Το markup και το margin είναι μαθηματικά συνδεδεμένα — δεν μπορείς να ορίσεις και τα δύο ανεξάρτητα για την ίδια τιμή. Διάλεξε ποιο θες να οδηγεί τον υπολογισμό.")
+
+        scenario_mode = st.radio("Τι θα ορίσεις;", ["Markup %", "Margin %"], horizontal=True, key="mm_scenario_mode")
+
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown("**Επίπεδο 1: Cabclub → Αντιπρόσωπος**")
+            default1 = markup1 if scenario_mode == "Markup %" else margin1
+            desired1 = st.number_input(f"Επιθυμητό {scenario_mode}:", value=float(default1), step=0.5, format="%.2f", key="mm_desired1")
+        with sc2:
+            st.markdown("**Επίπεδο 2: Αντιπρόσωπος → Πελάτης**")
+            default2 = markup2 if scenario_mode == "Markup %" else margin2
+            desired2 = st.number_input(f"Επιθυμητό {scenario_mode}:", value=float(default2), step=0.5, format="%.2f", key="mm_desired2")
+
+        # --- Υπολογισμός νέων τιμών από τα επιθυμητά markup/margin ---
+        if scenario_mode == "Markup %":
+            new_agent_price = my_cost * (1 + desired1 / 100)
+            new_retail_price = new_agent_price * (1 + desired2 / 100)
+        else:  # Margin %
+            new_agent_price = my_cost / (1 - desired1 / 100) if desired1 < 100 else float('inf')
+            new_retail_price = new_agent_price / (1 - desired2 / 100) if desired2 < 100 and new_agent_price != float('inf') else float('inf')
+
+        new_markup1, new_margin1 = _markup(my_cost, new_agent_price), _margin(my_cost, new_agent_price)
+        new_markup2, new_margin2 = _markup(new_agent_price, new_retail_price), _margin(new_agent_price, new_retail_price)
+
+        st.markdown("### 💡 Αποτέλεσμα Σεναρίου")
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            if new_agent_price == float('inf'):
+                st.error("⚠️ Το επιθυμητό margin (100%+) δεν είναι εφικτό μαθηματικά.")
+            else:
+                delta_agent = new_agent_price - agent_price
+                delta_agent_pct = (delta_agent / agent_price * 100) if agent_price > 0 else 0
+                st.metric("Νέα Τιμή Αντιπροσώπου", f"{new_agent_price:.2f} €", delta=f"{delta_agent:+.2f} € ({delta_agent_pct:+.1f}%)")
+                st.caption(f"Markup: {markup1:.1f}% → **{new_markup1:.1f}%**  |  Margin: {margin1:.1f}% → **{new_margin1:.1f}%**")
+        with rc2:
+            if new_retail_price == float('inf'):
+                st.error("⚠️ Το επιθυμητό margin (100%+) δεν είναι εφικτό μαθηματικά.")
+            else:
+                delta_retail = new_retail_price - retail_price
+                delta_retail_pct = (delta_retail / retail_price * 100) if retail_price > 0 else 0
+                st.metric("Νέα Τιμή Λιανικής", f"{new_retail_price:.2f} €", delta=f"{delta_retail:+.2f} € ({delta_retail_pct:+.1f}%)")
+                st.caption(f"Markup: {markup2:.1f}% → **{new_markup2:.1f}%**  |  Margin: {margin2:.1f}% → **{new_margin2:.1f}%**")
+
+        if new_agent_price != float('inf') and new_retail_price != float('inf'):
+            st.info(f"👉 Συνολική αλλαγή τιμής λιανικής από σήμερα: **{(new_retail_price - retail_price):+.2f} €** "
+                    f"({((new_retail_price - retail_price) / retail_price * 100 if retail_price > 0 else 0):+.1f}%)")
 
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
