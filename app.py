@@ -326,6 +326,16 @@ def load_cocktail_costs():
     except Exception:
         return {}
 
+@st.cache_data(ttl=60)
+def load_box_gift_offers():
+    """Φορτώνει τους κωδικούς που τρέχουν σε πολιτική 'X κούτες = Ν δώρο' (πίνακας
+    box_gift_offers). Cached μόνο 60 δευτ. γιατί ελέγχεται συχνά στο Lot Παραγωγής."""
+    try:
+        res = supabase.table("box_gift_offers").select("*").eq("active", True).execute()
+        return {r["cocktail_name"]: r for r in (res.data or [])}
+    except Exception:
+        return {}
+
 _cost_settings = load_cost_settings()
 _cocktail_costs_map = load_cocktail_costs()
 _manual_cost_active = bool(_cost_settings and _cost_settings.get("active"))
@@ -434,7 +444,7 @@ with st.sidebar:
         "Μενού:", 
         [
             "📦 Αποθήκη", "🔄 Αντικατάσταση", "📝 Νέα Συνταγή", "📊 Διαχείριση", 
-            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📐 Markup & Margin", "💰 Κοστολόγιο & Σταθερά Έξοδα", "📦 Παραγγελίες B2B", 
+            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📐 Markup & Margin", "💰 Κοστολόγιο & Σταθερά Έξοδα", "🎁 Κιβωτιακή Πολιτική", "📦 Παραγγελίες B2B", 
             "📦 Lot Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP","🧪 Προσομοίωση Πωλήσεων", "🛒 Λίστα Αγορών", "🚚 Παραλαβές", "🧪 Δοκιμαστικές Παραγωγές"
         ],
         key="main_page"
@@ -3090,6 +3100,89 @@ elif page == "📈 Dashboard":
         st.info("📭 Δεν υπάρχουν επαρκή δεδομένα για το επιλεγμένο φίλτρο.")
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ & SMART CART) ---
+# --- 🎁 ΚΙΒΩΤΙΑΚΗ ΠΟΛΙΤΙΚΗ ΔΩΡΩΝ ---
+elif page == "🎁 Κιβωτιακή Πολιτική":
+    st.header("🎁 Κιβωτιακή Πολιτική Δώρων")
+    st.caption(
+        "Όρισε ανά κοκτέιλ πόσα τεμάχια έχει η κούτα και μετά από πόσες κούτες δίνεται δώρο. "
+        "Αυτή η πληροφορία ελέγχεται αυτόματα στο «📦 Lot Παραγωγής» — όταν ένας πελάτης φτάνει "
+        "το όριο, το σύστημα θα σε ρωτήσει αν θέλεις να προστεθεί το δώρο."
+    )
+
+    try:
+        _t = supabase.table("box_gift_offers").select("cocktail_name").limit(1).execute()
+        table_exists = True
+    except Exception:
+        table_exists = False
+
+    if not table_exists:
+        st.error("⚠️ Ο πίνακας `box_gift_offers` δεν υπάρχει ακόμα στη Supabase σου. Τρέξε το SQL παρακάτω μία φορά:")
+        st.code(
+            "create table if not exists box_gift_offers (\n"
+            "  cocktail_name text primary key,\n"
+            "  box_size int not null default 2,\n"
+            "  min_boxes int not null default 10,\n"
+            "  gift_boxes int not null default 1,\n"
+            "  active boolean not null default true,\n"
+            "  updated_at timestamptz not null default now()\n"
+            ");",
+            language="sql"
+        )
+    else:
+        offers_map = load_box_gift_offers()
+
+        st.subheader("📋 Πολιτική ανά Κοκτέιλ")
+        st.caption("Ενεργοποίησε μόνο τους κωδικούς που τρέχουν αυτή τη στιγμή σε προσφορά — οι ανενεργοί δεν ελέγχονται καθόλου στο Lot Παραγωγής.")
+
+        if df_rec.empty:
+            st.warning("Δεν βρέθηκαν συνταγές.")
+        else:
+            table_rows = []
+            for cname in sorted(df_rec["Ονομα"].unique()):
+                existing = offers_map.get(cname, {})
+                table_rows.append({
+                    "Κοκτέιλ": cname,
+                    "Ενεργή Προσφορά": bool(existing.get("active", False)),
+                    "Τεμάχια/Κούτα": int(existing.get("box_size", 2)),
+                    "Κούτες για Δώρο": int(existing.get("min_boxes", 10)),
+                    "Κούτες Δώρου": int(existing.get("gift_boxes", 1)),
+                })
+            df_offers_table = pd.DataFrame(table_rows)
+
+            edited_offers = st.data_editor(
+                df_offers_table,
+                column_config={
+                    "Κοκτέιλ": st.column_config.TextColumn(disabled=True),
+                    "Ενεργή Προσφορά": st.column_config.CheckboxColumn(),
+                    "Τεμάχια/Κούτα": st.column_config.NumberColumn(min_value=1, step=1),
+                    "Κούτες για Δώρο": st.column_config.NumberColumn(min_value=1, step=1),
+                    "Κούτες Δώρου": st.column_config.NumberColumn(min_value=1, step=1),
+                },
+                hide_index=True,
+                use_container_width=True,
+                key="box_gift_offers_editor"
+            )
+
+            if st.button("💾 Αποθήκευση Κιβωτιακής Πολιτικής", type="primary"):
+                try:
+                    updates = []
+                    for _, r in edited_offers.iterrows():
+                        updates.append({
+                            "cocktail_name": r["Κοκτέιλ"],
+                            "active": bool(r["Ενεργή Προσφορά"]),
+                            "box_size": int(r["Τεμάχια/Κούτα"]),
+                            "min_boxes": int(r["Κούτες για Δώρο"]),
+                            "gift_boxes": int(r["Κούτες Δώρου"]),
+                        })
+                    if updates:
+                        supabase.table("box_gift_offers").upsert(updates, on_conflict="cocktail_name").execute()
+                    st.cache_data.clear()
+                    active_count = sum(1 for u in updates if u["active"])
+                    st.success(f"✅ Αποθηκεύτηκε! {active_count} κωδικοί έχουν ενεργή προσφορά.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Σφάλμα αποθήκευσης: {e}")
+
 elif page == "📦 Lot Παραγωγής":
     st.header("📦 Αναλυτικό Δελτίο Παραγωγής & Ιχνηλασιμότητα")
 
@@ -3512,7 +3605,7 @@ elif page == "📦 Lot Παραγωγής":
                 for idx, item in enumerate(st.session_state.production_batch_items):
                     c1, c2, c3, c4, c5, c6 = st.columns([2, 2.5, 1, 1.5, 1.5, 0.5])
                     c1.write(item.get("Πελάτης", ""))
-                    c2.write(item.get("Κοκτέιλ", ""))
+                    c2.write(("🎁 " if item.get("Δώρο") else "") + str(item.get("Κοκτέιλ", "")))
                     c3.write(f"**{item.get('Τεμάχια', 0)}**")
                     
                     if item.get("Στοκ") == "ΝΑΙ":
@@ -3532,6 +3625,84 @@ elif page == "📦 Lot Παραγωγής":
                     st.session_state.production_batch_items = []
                     st.session_state['active_b2b_order'] = None
                     st.rerun()
+
+            # ---------------------------------------------------------
+            # 🎁 ΕΛΕΓΧΟΣ ΚΙΒΩΤΙΑΚΗΣ ΠΟΛΙΤΙΚΗΣ ΔΩΡΩΝ
+            # ---------------------------------------------------------
+            _box_offers = load_box_gift_offers()
+            if _box_offers and st.session_state.production_batch_items:
+                _cart_pairs = set(
+                    (i["Πελάτης"], i["Κοκτέιλ"])
+                    for i in st.session_state.production_batch_items
+                    if not i.get("Δώρο")
+                )
+                for _cust_g, _cocktail_g in sorted(_cart_pairs):
+                    _offer = _box_offers.get(_cocktail_g)
+                    if not _offer:
+                        continue
+
+                    _box_size = int(_offer.get("box_size", 2))
+                    _min_boxes = int(_offer.get("min_boxes", 10))
+                    _gift_boxes = int(_offer.get("gift_boxes", 1))
+                    if _box_size <= 0 or _min_boxes <= 0:
+                        continue
+
+                    _saved_pieces, _saved_free_pieces = 0, 0
+                    try:
+                        _res_saved = (
+                            supabase.table("production_log")
+                            .select("pieces, free_pieces, lot_cocktail, prod_time")
+                            .eq("prod_date", formatted_date)
+                            .eq("customer", _cust_g)
+                            .eq("cocktail_name", _cocktail_g)
+                            .execute()
+                        )
+                        if _res_saved.data:
+                            _df_saved = pd.DataFrame(_res_saved.data).drop_duplicates(subset=["lot_cocktail", "prod_time"])
+                            _saved_pieces = int(pd.to_numeric(_df_saved["pieces"], errors="coerce").fillna(0).sum())
+                            _saved_free_pieces = int(pd.to_numeric(_df_saved.get("free_pieces", 0), errors="coerce").fillna(0).sum())
+                    except Exception:
+                        pass
+
+                    _cart_normal_pieces = sum(
+                        i["Τεμάχια"] for i in st.session_state.production_batch_items
+                        if i["Πελάτης"] == _cust_g and i["Κοκτέιλ"] == _cocktail_g and not i.get("Δώρο")
+                    )
+                    _cart_gift_pieces = sum(
+                        i["Τεμάχια"] for i in st.session_state.production_batch_items
+                        if i["Πελάτης"] == _cust_g and i["Κοκτέιλ"] == _cocktail_g and i.get("Δώρο")
+                    )
+
+                    _total_normal_pieces = _saved_pieces - _saved_free_pieces + _cart_normal_pieces
+                    _total_boxes = _total_normal_pieces // _box_size
+                    _gifts_owed_boxes = (_total_boxes // _min_boxes) * _gift_boxes
+                    _gifts_given_boxes = (_saved_free_pieces + _cart_gift_pieces) // _box_size
+
+                    _pending_gift_boxes = _gifts_owed_boxes - _gifts_given_boxes
+                    if _pending_gift_boxes > 0:
+                        _gift_key = f"gift_offer_{_cust_g}_{_cocktail_g}".replace(" ", "_")
+                        if not st.session_state.get(f"{_gift_key}_dismissed", False):
+                            _gift_pcs = _pending_gift_boxes * _box_size
+                            st.info(
+                                f"🎁 Ο πελάτης **{_cust_g}** έφτασε τις **{_total_boxes} κούτες** του **{_cocktail_g}** "
+                                f"(όριο: {_min_boxes} κούτες) και δικαιούται **{_pending_gift_boxes} δωρεάν κούτα/ες** "
+                                f"({_gift_pcs} τμχ) — ημερομηνία παραγωγής {formatted_date}. Να προστεθεί το δώρο;"
+                            )
+                            _gcol1, _gcol2 = st.columns(2)
+                            if _gcol1.button(f"✅ Ναι, πρόσθεσε {_gift_pcs} τμχ δώρο", key=f"{_gift_key}_yes"):
+                                st.session_state['dup_batch_counter'] = st.session_state.get('dup_batch_counter', 0) + 1
+                                st.session_state.production_batch_items.append({
+                                    "Πελάτης": _cust_g, "Κοκτέιλ": _cocktail_g, "Τεμάχια": _gift_pcs,
+                                    "Στοκ": "ΟΧΙ", "Παλιό_LOT": "-", "Με Κόστος;": False,
+                                    "Δώρο": True,
+                                    "BatchTag": st.session_state['dup_batch_counter']
+                                })
+                                st.toast(f"🎁 Προστέθηκε δώρο: {_gift_pcs} τμχ {_cocktail_g} για {_cust_g}!")
+                                st.rerun()
+                            if _gcol2.button("❌ Όχι, όχι τώρα", key=f"{_gift_key}_no"):
+                                st.session_state[f"{_gift_key}_dismissed"] = True
+                                st.rerun()
+
                     
             # Υπολογισμός all_assignments (ΑΥΤΟ ΕΙΝΑΙ ΚΡΥΦΟ, ΔΕΝ ΦΑΙΝΕΤΑΙ ΣΤΗΝ ΟΘΟΝΗ)
             for item in st.session_state.production_batch_items:
@@ -3541,15 +3712,16 @@ elif page == "📦 Lot Παραγωγής":
                 is_stock = item.get("Στοκ", "ΟΧΙ")
                 old_lot = item.get("Παλιό_LOT", "-")
                 charge_cost = item.get("Με Κόστος;", False)
-                batch_tag = item.get("BatchTag", "")  # 🔧 FIX: μοναδικό αναγνωριστικό για "2η ξεχωριστή εγγραφή"
+                batch_tag = item.get("BatchTag", "")  # 🔧 FIX: μοναδικό αναγνωριστικό για "2η ξεχωριστή εγγραφή"/δώρο
+                is_gift = item.get("Δώρο", False)
                 
                 if cocktail not in all_assignments:
-                    all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια", "Στοκ", "Παλιό_LOT", "Με Κόστος;", "BatchTag"])
+                    all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια", "Στοκ", "Παλιό_LOT", "Με Κόστος;", "BatchTag", "Δώρο"])
                 
                 new_row = pd.DataFrame([{
                     "Πελάτης": c_name, "Τεμάχια": int(pcs), 
                     "Στοκ": is_stock, "Παλιό_LOT": old_lot, 
-                    "Με Κόστος;": charge_cost, "BatchTag": batch_tag
+                    "Με Κόστος;": charge_cost, "BatchTag": batch_tag, "Δώρο": is_gift
                 }])
                 all_assignments[cocktail] = pd.concat([all_assignments[cocktail], new_row], ignore_index=True)
 
@@ -3764,6 +3936,11 @@ elif page == "📦 Lot Παραγωγής":
                         # Για ΟΛΕΣ τις κανονικές εγγραφές (χωρίς BatchTag) καμία αλλαγή συμπεριφοράς.
                         _btag = row_assign.get("BatchTag", "")
                         _btag_suffix = f"-B{int(_btag)}" if _btag not in ("", None) and pd.notna(_btag) else ""
+                        # 🎁 Αν είναι δώρο κιβωτιακής πολιτικής, ΟΛΑ τα τεμάχια της γραμμής μετράνε
+                        # ως free_pieces — δεν χρεώνονται στον πελάτη (τζίρος 0), αλλά αφαιρούν
+                        # κανονικά απόθεμα (πραγματικό προϊόν φεύγει από την αποθήκη).
+                        _is_gift_row = bool(row_assign.get("Δώρο", False))
+                        _free_pcs = c_qty if _is_gift_row else 0
                         
                         c_config = cust_lot_config_map.get(c_name, {
                             "prod_date": formatted_date, 
@@ -3782,6 +3959,7 @@ elif page == "📦 Lot Παραγωγής":
                                     "cocktail_name": cocktail_name, 
                                     "lot_cocktail": f"{old_lot}{_btag_suffix}", 
                                     "pieces": c_qty,
+                                    "free_pieces": _free_pcs,
                                     "ingredient_name": "📦 Έτοιμο Προϊόν (Στοκ)", 
                                     "total_ml": 0.0, 
                                     "target_g": 0.0,
@@ -3806,6 +3984,7 @@ elif page == "📦 Lot Παραγωγής":
                                         "cocktail_name": cocktail_name, 
                                         "lot_cocktail": f"{c_config['lot_cocktail']}{_btag_suffix}", 
                                         "pieces": c_qty,
+                                        "free_pieces": _free_pcs,
                                         "ingredient_name": ing, 
                                         "total_ml": float(ml_u * c_qty), 
                                         "target_g": round(float((ml_u * c_qty) / match_ing.iloc[0]["Volume"] * match_ing.iloc[0]["Weight_Full"]), 1) if not match_ing.empty else float(ml_u * c_qty),
@@ -3861,7 +4040,10 @@ elif page == "📦 Lot Παραγωγής":
                                             unique_cocktails[c_name] = {"pcs": 0, "free": 0, "s_pcs": 0, "s_pct": 0.0}
                                         
                                         unique_cocktails[c_name]["pcs"] += int(row.get("pieces") or 0)
-                                        unique_cocktails[c_name]["free"] = max(unique_cocktails[c_name]["free"], int(row.get("free_pieces") or 0))
+                                        # 🔧 FIX: πριν έπαιρνε max() — αν ο πελάτης πάρει 2 ξεχωριστά δώρα την
+                                        # ίδια μέρα παραγωγής (2 διαφορετικές παρτίδες), το ένα χανόταν.
+                                        # Τώρα αθροίζει, όπως ακριβώς κάνει και το "pcs" παραπάνω.
+                                        unique_cocktails[c_name]["free"] += int(row.get("free_pieces") or 0)
                                         unique_cocktails[c_name]["s_pcs"] = max(unique_cocktails[c_name]["s_pcs"], int(row.get("discounted_pieces") or 0))
                                         unique_cocktails[c_name]["s_pct"] = max(unique_cocktails[c_name]["s_pct"], float(row.get("discount_pct") or 0.0))
                                         
@@ -4822,7 +5004,8 @@ elif page == "📦 Lot Παραγωγής":
                                         c_n = row["cocktail_name"]
                                         if c_n not in unique_cocktails: unique_cocktails[c_n] = {"pcs": 0, "free": 0, "s_pcs": 0, "s_pct": 0.0}
                                         unique_cocktails[c_n]["pcs"] += int(row.get("pieces") or 0)
-                                        unique_cocktails[c_n]["free"] = max(unique_cocktails[c_n]["free"], int(row.get("free_pieces") or 0))
+                                        # 🔧 FIX: πριν max() — τώρα αθροίζει, ίδιος λόγος με την πρώτη εμφάνιση παραπάνω.
+                                        unique_cocktails[c_n]["free"] += int(row.get("free_pieces") or 0)
                                         unique_cocktails[c_n]["s_pcs"] = max(unique_cocktails[c_n]["s_pcs"], int(row.get("discounted_pieces") or 0))
                                         unique_cocktails[c_n]["s_pct"] = max(unique_cocktails[c_n]["s_pct"], float(row.get("discount_pct") or 0.0))
                                         
