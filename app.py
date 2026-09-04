@@ -1910,22 +1910,23 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
     )
 
     try:
-        _t1 = supabase.table("cost_settings").select("id").limit(1).execute()
-        _t2 = supabase.table("cocktail_costs").select("cocktail_name").limit(1).execute()
+        _t1 = supabase.table("cost_settings").select("id, operational_cost, active").limit(1).execute()
+        _t2 = supabase.table("cocktail_costs").select("cocktail_name, industrial_cost").limit(1).execute()
         tables_exist = True
-    except Exception:
+    except Exception as _e:
         tables_exist = False
+        _schema_error = str(_e)
 
     if not tables_exist:
-        st.error("⚠️ Χρειάζονται 2 νέοι πίνακες στη Supabase σου. Τρέξε το SQL παρακάτω μία φορά:")
+        st.error("⚠️ Ο πίνακας `cost_settings` υπάρχει αλλά του λείπουν οι νέες στήλες (`active`, `operational_cost`), ή/και λείπει ο πίνακας `cocktail_costs`. Τρέξε το SQL παρακάτω μία φορά — είναι ασφαλές ακόμα κι αν το ξανατρέξεις:")
         st.code(
-            "create table if not exists cost_settings (\n"
-            "  id bigint primary key default 1,\n"
-            "  operational_cost numeric not null default 0,\n"
-            "  active boolean not null default false,\n"
-            "  updated_at timestamptz not null default now(),\n"
-            "  constraint single_row check (id = 1)\n"
-            ");\n\n"
+            "alter table cost_settings\n"
+            "  add column if not exists operational_cost numeric not null default 0;\n"
+            "alter table cost_settings\n"
+            "  add column if not exists active boolean not null default false;\n\n"
+            "insert into cost_settings (id, operational_cost, active)\n"
+            "values (1, 0, false)\n"
+            "on conflict (id) do nothing;\n\n"
             "create table if not exists cocktail_costs (\n"
             "  cocktail_name text primary key,\n"
             "  industrial_cost numeric not null default 0,\n"
@@ -1933,6 +1934,8 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
             ");",
             language="sql"
         )
+        with st.expander("🔍 Τεχνική λεπτομέρεια σφάλματος"):
+            st.caption(_schema_error)
     else:
         s = load_cost_settings() or {}
         cc_map = load_cocktail_costs()
