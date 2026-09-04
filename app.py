@@ -392,6 +392,136 @@ def generate_markup_margin_pdf(cocktail_name, data):
 
     return pdf.output()
 
+# --- 📚 PDF: ΑΝΑΛΥΤΙΚΗ ΑΝΑΦΟΡΑ ΟΛΩΝ ΤΩΝ ΣΥΝΤΑΓΩΝ (ΥΛΙΚΑ + ΚΟΣΤΟΣ + MARKUP/MARGIN) ---
+def generate_full_recipe_report_pdf(df_recipes, df_ingredients, cost_fn):
+    """Δημιουργεί ένα πολυσέλιδο PDF με ΟΛΕΣ τις συνταγές: πρώτες ύλες (ml & gr ανά
+    τεμάχιο), πλήρες κόστος, τιμές, και markup/margin και στα δύο επίπεδα διανομής.
+    `cost_fn` είναι η get_unit_cost_for_cocktail (περνιέται ως παράμετρος για καθαρότητα)."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    LIGHTGREY = (245, 245, 245)
+    WHITE = (255, 255, 255)
+
+    def _markup(cost, price):
+        return round((price - cost) / cost * 100, 2) if cost > 0 else 0.0
+
+    def _margin(cost, price):
+        return round((price - cost) / price * 100, 2) if price > 0 else 0.0
+
+    try:
+        now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    # --- ΕΞΩΦΥΛΛΟ ---
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(0, 0, 210, 40, 'F')
+    pdf.set_xy(10, 12)
+    pdf.set_font(f_name, 'B', 22)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 10, "CABCLUB COCKTAILS", ln=1)
+    pdf.set_x(10)
+    pdf.set_font(f_name, size=13)
+    pdf.cell(0, 8, "Αναλυτική Αναφορά Όλων των Συνταγών", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(16)
+    pdf.set_font(f_name, size=10)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, f"Ημερομηνία αναφοράς: {now_str}   |   Σύνολο συνταγών: {len(df_recipes)}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(4)
+
+    recipe_names = sorted(df_recipes["Ονομα"].unique())
+
+    for cocktail_name in recipe_names:
+        r = df_recipes[df_recipes["Ονομα"] == cocktail_name].iloc[0]
+        retail_price = float(r.get("Τιμή Καταλόγου", 0.0) or 0.0)
+        agent_price = retail_price * 0.74
+
+        # --- Συλλογή υλικών + υπολογισμός κόστους υλικών ---
+        ingredient_rows = []
+        raw_cost = 0.0
+        for i in range(1, 14):
+            ing_n = str(r.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+            ml = float(r.get(f"ML{i}", 0) or 0)
+            if ing_n in ["ΚΕΝΟ", "nan", ""] or ml <= 0:
+                continue
+            match = df_ingredients[df_ingredients["Name"] == ing_n]
+            gr = 0.0
+            if not match.empty:
+                vol = float(match.iloc[0].get("Volume", 0) or 0)
+                wt = float(match.iloc[0].get("Weight_Full", 0) or 0)
+                if vol > 0:
+                    gr = (ml / vol) * wt
+                if ing_n != "Νερό":
+                    raw_cost += ml * float(match.iloc[0].get("Τιμή/ml", 0) or 0)
+            ingredient_rows.append((ing_n, ml, gr))
+
+        my_cost = cost_fn(cocktail_name, raw_cost)
+        markup1, margin1 = _markup(my_cost, agent_price), _margin(my_cost, agent_price)
+        markup2, margin2 = _markup(agent_price, retail_price), _margin(agent_price, retail_price)
+
+        # --- Επικεφαλίδα κοκτέιλ ---
+        pdf.set_fill_color(*GREEN)
+        pdf.set_text_color(*WHITE)
+        pdf.set_font(f_name, 'B', 12)
+        pdf.cell(0, 8, cocktail_name, ln=1, fill=True)
+        pdf.set_text_color(*DARK)
+
+        # --- Πίνακας υλικών ---
+        pdf.set_font(f_name, 'B', 9)
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.cell(100, 6, "Πρώτη Ύλη", border=1, fill=True)
+        pdf.cell(45, 6, "ml / τεμάχιο", border=1, fill=True, align='R')
+        pdf.cell(45, 6, "gr / τεμάχιο", border=1, ln=1, fill=True, align='R')
+        pdf.set_font(f_name, size=9)
+        if ingredient_rows:
+            for idx, (ing_n, ml, gr) in enumerate(ingredient_rows):
+                fill = (idx % 2 == 0)
+                pdf.set_fill_color(250, 250, 250) if fill else pdf.set_fill_color(*WHITE)
+                pdf.cell(100, 6, ing_n, border=1, fill=True)
+                pdf.cell(45, 6, f"{ml:.1f}", border=1, fill=True, align='R')
+                pdf.cell(45, 6, f"{gr:.1f}" if gr > 0 else "-", border=1, ln=1, fill=True, align='R')
+        else:
+            pdf.cell(190, 6, "Δεν βρέθηκαν πρώτες ύλες.", border=1, ln=1)
+
+        # --- Κόστος & Τιμές ---
+        pdf.ln(1)
+        pdf.set_font(f_name, size=9)
+        pdf.cell(0, 5.5, f"Κόστος Πρώτων Υλών: {raw_cost:.2f} EUR   |   Πλήρες Κόστος (δικό μου): {my_cost:.2f} EUR", ln=1)
+        pdf.cell(0, 5.5, f"Τιμή Αντιπροσώπου: {agent_price:.2f} EUR   |   Τιμή Λιανικής: {retail_price:.2f} EUR", ln=1)
+
+        # --- Markup / Margin ---
+        pdf.set_font(f_name, 'B', 9)
+        pdf.set_text_color(*GREEN)
+        pdf.cell(0, 5.5, f"Cabclub -> Αντιπρόσωπος:  Markup {markup1:.1f}%  /  Margin {margin1:.1f}%", ln=1)
+        pdf.cell(0, 5.5, f"Αντιπρόσωπος -> Πελάτης:  Markup {markup2:.1f}%  /  Margin {margin2:.1f}%", ln=1)
+        pdf.set_text_color(*DARK)
+        pdf.set_font(f_name, size=9)
+        pdf.ln(5)
+
+    # --- ΥΠΟΣΕΛΙΔΟ (μόνο τελευταία σελίδα) ---
+    pdf.set_y(-15)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Αναλυτική Αναφορά Συνταγών", align='C')
+
+    return pdf.output()
+
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
@@ -2461,7 +2591,7 @@ elif page == "📐 Markup & Margin":
         try:
             pdf_bytes = generate_markup_margin_pdf(choice, pdf_data)
             st.download_button(
-                "📄 Λήψη Αναφοράς PDF",
+                "📄 Λήψη Αναφοράς PDF (αυτό το κοκτέιλ)",
                 data=bytes(pdf_bytes),
                 file_name=f"Markup_Margin_{choice.replace(' ', '_')}_{now_str.replace('/', '-').replace(':', 'h')}.pdf",
                 mime="application/pdf",
@@ -2470,6 +2600,26 @@ elif page == "📐 Markup & Margin":
             )
         except Exception as e:
             st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
+
+        st.divider()
+        st.caption("📚 Ή, αν θέλεις πλήρη αναφορά με όλες τις συνταγές μαζί (υλικά σε ml/gr, κόστος, markup/margin):")
+        if st.button("📚 Δημιουργία Πλήρους Αναφοράς Όλων των Συνταγών", use_container_width=True):
+            try:
+                with st.spinner("Δημιουργία αναφοράς για όλες τις συνταγές..."):
+                    full_pdf_bytes = generate_full_recipe_report_pdf(df_rec, df_ing, get_unit_cost_for_cocktail)
+                st.session_state['full_recipe_pdf'] = bytes(full_pdf_bytes)
+                st.session_state['full_recipe_pdf_name'] = now_str.replace('/', '-').replace(':', 'h')
+            except Exception as e:
+                st.error(f"Σφάλμα προετοιμασίας πλήρους αναφοράς: {e}")
+
+        if st.session_state.get('full_recipe_pdf'):
+            st.download_button(
+                "📥 Λήψη Πλήρους Αναφοράς (όλες οι συνταγές)",
+                data=st.session_state['full_recipe_pdf'],
+                file_name=f"Cabclub_Πλήρης_Αναφορά_Συνταγών_{st.session_state.get('full_recipe_pdf_name', now_str)}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
 
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
