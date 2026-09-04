@@ -2517,7 +2517,7 @@ elif page == "📈 Dashboard":
         
         # Συνολικό Κόστος & Κέρδος
         def get_actual_cost(row):
-            catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
+            catalog_c = name_to_cost.get(row['cocktail_name'], get_unit_cost_for_cocktail(row['cocktail_name'], 0.0))
             
             # 1. Κοιτάμε τη ΝΕΑ στήλη applied_cost (κρατάει το 0 αν είναι Στοκ)
             if pd.notna(row.get('applied_cost')):
@@ -2580,9 +2580,15 @@ elif page == "📈 Dashboard":
                     if s['Final_Unit_Cost'] == 0.0:
                         st.write("📦 **Άντληση από Στοκ (Χωρίς χρέωση)**")
                         st.markdown("**Κόστος ανά τμχ: 0.00€**")
+                    elif _manual_cost_active:
+                        _ind = float(_cocktail_costs_map.get(s['cocktail_name'], 0.0))
+                        _op = float((_cost_settings or {}).get("operational_cost") or 0.0)
+                        st.write(f"- **Βιομηχανικό Κόστος:** {_ind:.4f}€")
+                        st.write(f"- **Λειτουργικά Κόστη:** {_op:.4f}€")
+                        st.markdown(f"- **Κόστος ανά τμχ: {s['Final_Unit_Cost']:.4f}€**")
                     else:
-                        st.write(f"- **Κόστος Υλικών:** {s['Final_Unit_Cost'] - FIXED_COST:.4f}€")
-                        st.write(f"- **Σταθερά Έξοδα:** {FIXED_COST:.2f}€")
+                        st.write(f"- **Κόστος Υλικών:** {s['Final_Unit_Cost'] - _TOTAL_FIXED_FALLBACK:.4f}€")
+                        st.write(f"- **Σταθερά Έξοδα:** {_TOTAL_FIXED_FALLBACK:.2f}€")
                         st.markdown(f"- **Κόστος ανά τμχ: {s['Final_Unit_Cost']:.4f}€**")
                     st.caption("---")
                     st.write(f"- Παράχθηκαν: {s['t_pcs']} τμχ")
@@ -5755,7 +5761,7 @@ elif page == "👥 Πελατολόγιο":
                                     df_sales['Theoretical_Revenue'] = (df_sales['rev_normal'] + df_sales['rev_special']).clip(lower=0)
                                     
                                     def get_actual_cost(row):
-                                        catalog_c = name_to_cost.get(row['cocktail_name'], FIXED_COST)
+                                        catalog_c = name_to_cost.get(row['cocktail_name'], get_unit_cost_for_cocktail(row['cocktail_name'], 0.0))
                                         if 'applied_cost' in row and pd.notna(row['applied_cost']): return float(row['applied_cost'])
                                         return catalog_c
 
@@ -6799,7 +6805,7 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
                 normal_pcs = t_pcs - f_pcs - s_pcs
                 
                 cat_price = recipe_prices.get(c_name, 0.0)
-                unit_cost = name_to_cost.get(c_name, FIXED_COST)
+                unit_cost = name_to_cost.get(c_name, get_unit_cost_for_cocktail(c_name, 0.0))
                 
                 price_after_global = cat_price * (1 - (st.session_state.sim_global_disc / 100))
                 rev_norm = normal_pcs * price_after_global
