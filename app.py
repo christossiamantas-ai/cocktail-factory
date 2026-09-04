@@ -271,6 +271,127 @@ def generate_hybrid_report(customer_name, financial_data, production_data):
     
     return pdf.output()
 
+# --- 📐 PDF REPORT ΓΙΑ MARKUP & MARGIN (ΚΑΛΑΙΣΘΗΤΟ ΣΧΕΔΙΟ) ---
+def generate_markup_margin_pdf(cocktail_name, data):
+    """Δημιουργεί ένα καλαίσθητο PDF με όλους τους δείκτες markup/margin της καρτέλας.
+    `data` είναι dict με όλα τα νούμερα (κόστος, τιμές, markup/margin, σενάριο)."""
+    pdf = FPDF()
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    LIGHTGREY = (245, 245, 245)
+    BLUE = (27, 94, 158)
+
+    # --- ΚΕΦΑΛΙΔΑ ---
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(0, 0, 210, 28, 'F')
+    pdf.set_xy(10, 7)
+    pdf.set_font(f_name, 'B', 18)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+    pdf.set_x(10)
+    pdf.set_font(f_name, size=11)
+    pdf.cell(0, 6, "Αναφορά Markup & Margin", ln=1)
+
+    pdf.set_text_color(*DARK)
+    pdf.ln(14)
+    pdf.set_font(f_name, 'B', 15)
+    pdf.cell(0, 8, f"Κοκτέιλ: {cocktail_name}", ln=1)
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, f"Ημερομηνία αναφοράς: {data['now_str']}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(4)
+
+    def section_title(text):
+        pdf.set_font(f_name, 'B', 12)
+        pdf.set_text_color(*BLUE)
+        pdf.cell(0, 9, text, ln=1)
+        pdf.set_text_color(*DARK)
+
+    def indicator_table(rows):
+        # rows: list of (label, value) tuples
+        pdf.set_font(f_name, size=10)
+        col_w = 95
+        for i, (label, value) in enumerate(rows):
+            fill = (i % 2 == 0)
+            pdf.set_fill_color(*LIGHTGREY) if fill else pdf.set_fill_color(255, 255, 255)
+            pdf.cell(col_w, 8, label, border=1, fill=True)
+            pdf.set_font(f_name, 'B', 10)
+            pdf.cell(col_w, 8, value, border=1, ln=1, fill=True, align='R')
+            pdf.set_font(f_name, size=10)
+
+    # --- ΕΝΟΤΗΤΑ 1 ---
+    section_title("1) Cabclub -> Αντιπρόσωπος (Χονδρική)")
+    indicator_table([
+        ("Κόστος μου (ανά τεμάχιο)", f"{data['my_cost']:.2f} EUR"),
+        ("Τιμή Αντιπροσώπου", f"{data['agent_price']:.2f} EUR"),
+        ("Markup", f"{data['markup1']:.1f} %"),
+        ("Margin", f"{data['margin1']:.1f} %"),
+    ])
+    pdf.ln(4)
+
+    # --- ΕΝΟΤΗΤΑ 2 ---
+    section_title("2) Αντιπρόσωπος -> Τελικός Πελάτης (Λιανική)")
+    indicator_table([
+        ("Κόστος Αντιπροσώπου (= τιμή αγοράς)", f"{data['agent_price']:.2f} EUR"),
+        ("Τιμή Λιανικής", f"{data['retail_price']:.2f} EUR"),
+        ("Markup", f"{data['markup2']:.1f} %"),
+        ("Margin", f"{data['margin2']:.1f} %"),
+    ])
+    pdf.ln(6)
+
+    # --- ΣΕΝΑΡΙΟ (αν υπάρχει) ---
+    if data.get('scenario_ran'):
+        section_title(f"Σενάριο: Επιθυμητό {data['scenario_mode']}")
+        pdf.set_font(f_name, size=9)
+        pdf.set_text_color(*GREY)
+        pdf.multi_cell(0, 5, f"Επίπεδο 1: {data['desired1']:.2f}   |   Επίπεδο 2: {data['desired2']:.2f}")
+        pdf.set_text_color(*DARK)
+        pdf.ln(1)
+
+        if data.get('new_agent_price') is not None:
+            indicator_table([
+                ("Νέα Τιμή Αντιπροσώπου", f"{data['new_agent_price']:.2f} EUR"),
+                ("Μεταβολή vs Σήμερα", f"{data['delta_agent']:+.2f} EUR ({data['delta_agent_pct']:+.1f}%)"),
+                ("Νέο Markup / Margin", f"{data['new_markup1']:.1f}% / {data['new_margin1']:.1f}%"),
+            ])
+            pdf.ln(3)
+        if data.get('new_retail_price') is not None:
+            indicator_table([
+                ("Νέα Τιμή Λιανικής", f"{data['new_retail_price']:.2f} EUR"),
+                ("Μεταβολή vs Σήμερα", f"{data['delta_retail']:+.2f} EUR ({data['delta_retail_pct']:+.1f}%)"),
+                ("Νέο Markup / Margin", f"{data['new_markup2']:.1f}% / {data['new_margin2']:.1f}%"),
+            ])
+            pdf.ln(4)
+
+        if data.get('total_change_text'):
+            pdf.set_fill_color(230, 244, 234)
+            pdf.set_draw_color(*GREEN)
+            pdf.set_font(f_name, 'B', 10)
+            pdf.set_text_color(*GREEN)
+            pdf.multi_cell(0, 8, data['total_change_text'], border=1, fill=True, align='C')
+            pdf.set_text_color(*DARK)
+
+    # --- ΥΠΟΣΕΛΙΔΟ ---
+    pdf.set_y(-18)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Αυτόματη Αναφορά Markup & Margin", align='C')
+
+    return pdf.output()
+
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
@@ -2305,8 +2426,50 @@ elif page == "📐 Markup & Margin":
                 st.caption(f"Markup: {markup2:.1f}% → **{new_markup2:.1f}%**  |  Margin: {margin2:.1f}% → **{new_margin2:.1f}%**")
 
         if new_agent_price != float('inf') and new_retail_price != float('inf'):
-            st.info(f"👉 Συνολική αλλαγή τιμής λιανικής από σήμερα: **{(new_retail_price - retail_price):+.2f} €** "
-                    f"({((new_retail_price - retail_price) / retail_price * 100 if retail_price > 0 else 0):+.1f}%)")
+            total_change_text = (
+                f"Συνολική αλλαγή τιμής λιανικής από σήμερα: {(new_retail_price - retail_price):+.2f} EUR "
+                f"({((new_retail_price - retail_price) / retail_price * 100 if retail_price > 0 else 0):+.1f}%)"
+            )
+            st.info(f"👉 {total_change_text}")
+        else:
+            total_change_text = None
+
+        # --- 📄 ΛΗΨΗ PDF ---
+        st.divider()
+        try:
+            now_str = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+        pdf_data = {
+            "now_str": now_str,
+            "my_cost": my_cost, "agent_price": agent_price, "retail_price": retail_price,
+            "markup1": markup1, "margin1": margin1, "markup2": markup2, "margin2": margin2,
+            "scenario_ran": True, "scenario_mode": scenario_mode,
+            "desired1": desired1, "desired2": desired2,
+            "new_agent_price": new_agent_price if new_agent_price != float('inf') else None,
+            "new_retail_price": new_retail_price if new_retail_price != float('inf') else None,
+            "new_markup1": new_markup1, "new_margin1": new_margin1,
+            "new_markup2": new_markup2, "new_margin2": new_margin2,
+            "delta_agent": (new_agent_price - agent_price) if new_agent_price != float('inf') else 0,
+            "delta_agent_pct": ((new_agent_price - agent_price) / agent_price * 100) if agent_price > 0 and new_agent_price != float('inf') else 0,
+            "delta_retail": (new_retail_price - retail_price) if new_retail_price != float('inf') else 0,
+            "delta_retail_pct": ((new_retail_price - retail_price) / retail_price * 100) if retail_price > 0 and new_retail_price != float('inf') else 0,
+            "total_change_text": total_change_text,
+        }
+
+        try:
+            pdf_bytes = generate_markup_margin_pdf(choice, pdf_data)
+            st.download_button(
+                "📄 Λήψη Αναφοράς PDF",
+                data=bytes(pdf_bytes),
+                file_name=f"Markup_Margin_{choice.replace(' ', '_')}_{now_str.replace('/', '-').replace(':', 'h')}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
 
 elif page == "📊 Εμπορική Πολιτική":
     st.header("📊 Εμπορική Πολιτική & Σύγκριση Σεναρίων")
