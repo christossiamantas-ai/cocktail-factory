@@ -3474,11 +3474,15 @@ elif page == "📦 Lot Παραγωγής":
                 
             if col_btn2.button(f"📄 Προσθήκη ως 2η ξεχωριστή εγγραφή ({conf['new_pcs']} τμχ)"):
                 # 🚀 ΔΕΝ διαγράφει τίποτα! Απλά προσθέτει την νέα παραγγελία ως 2η γραμμή!
+                # 🔧 FIX: μοναδικό BatchTag ώστε να ΜΗΝ συγχέεται αργότερα (Split/Ιστορικό/B2B)
+                # με την πρώτη γραμμή που έχει ίδιο πελάτη+κοκτέιλ+στοκ+lot.
+                st.session_state['dup_batch_counter'] = st.session_state.get('dup_batch_counter', 0) + 1
                 st.session_state.production_batch_items.append({
                     "Πελάτης": conf['cust'], "Κοκτέιλ": conf['cocktail'], "Τεμάχια": conf['new_pcs'],
                     "Στοκ": target_stock,
                     "Παλιό_LOT": target_lot,
-                    "Με Κόστος;": conf.get('charge_cost', False)
+                    "Με Κόστος;": conf.get('charge_cost', False),
+                    "BatchTag": st.session_state['dup_batch_counter']
                 })
                 st.session_state['pending_conflict'] = None
                 st.toast("✅ Η νέα παραγγελία προστέθηκε ξεχωριστά!")
@@ -3537,14 +3541,15 @@ elif page == "📦 Lot Παραγωγής":
                 is_stock = item.get("Στοκ", "ΟΧΙ")
                 old_lot = item.get("Παλιό_LOT", "-")
                 charge_cost = item.get("Με Κόστος;", False)
+                batch_tag = item.get("BatchTag", "")  # 🔧 FIX: μοναδικό αναγνωριστικό για "2η ξεχωριστή εγγραφή"
                 
                 if cocktail not in all_assignments:
-                    all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια", "Στοκ", "Παλιό_LOT", "Με Κόστος;"])
+                    all_assignments[cocktail] = pd.DataFrame(columns=["Πελάτης", "Τεμάχια", "Στοκ", "Παλιό_LOT", "Με Κόστος;", "BatchTag"])
                 
                 new_row = pd.DataFrame([{
                     "Πελάτης": c_name, "Τεμάχια": int(pcs), 
                     "Στοκ": is_stock, "Παλιό_LOT": old_lot, 
-                    "Με Κόστος;": charge_cost
+                    "Με Κόστος;": charge_cost, "BatchTag": batch_tag
                 }])
                 all_assignments[cocktail] = pd.concat([all_assignments[cocktail], new_row], ignore_index=True)
 
@@ -3753,6 +3758,12 @@ elif page == "📦 Lot Παραγωγής":
                         c_qty = int(row_assign.get("Τεμάχια", 0))
                         is_stock = row_assign.get("Στοκ", "ΟΧΙ")
                         old_lot = row_assign.get("Παλιό_LOT", "-")
+                        # 🔧 FIX: αν αυτή η γραμμή προήλθε από "2η ξεχωριστή εγγραφή", προσθέτουμε
+                        # μοναδικό suffix στο lot_cocktail ώστε ΝΑ ΜΗΝ συγχέεται (σε Split, Ιστορικό,
+                        # ή στη σύνοψη B2B) με την πρώτη γραμμή που έχει τα ίδια πελάτης/κοκτέιλ/lot.
+                        # Για ΟΛΕΣ τις κανονικές εγγραφές (χωρίς BatchTag) καμία αλλαγή συμπεριφοράς.
+                        _btag = row_assign.get("BatchTag", "")
+                        _btag_suffix = f"-B{int(_btag)}" if _btag not in ("", None) and pd.notna(_btag) else ""
                         
                         c_config = cust_lot_config_map.get(c_name, {
                             "prod_date": formatted_date, 
@@ -3769,7 +3780,7 @@ elif page == "📦 Lot Παραγωγής":
                                     "prod_time": current_time, 
                                     "customer": c_name,
                                     "cocktail_name": cocktail_name, 
-                                    "lot_cocktail": old_lot, 
+                                    "lot_cocktail": f"{old_lot}{_btag_suffix}", 
                                     "pieces": c_qty,
                                     "ingredient_name": "📦 Έτοιμο Προϊόν (Στοκ)", 
                                     "total_ml": 0.0, 
@@ -3793,7 +3804,7 @@ elif page == "📦 Lot Παραγωγής":
                                         "prod_time": current_time, 
                                         "customer": c_name,
                                         "cocktail_name": cocktail_name, 
-                                        "lot_cocktail": c_config["lot_cocktail"], 
+                                        "lot_cocktail": f"{c_config['lot_cocktail']}{_btag_suffix}", 
                                         "pieces": c_qty,
                                         "ingredient_name": ing, 
                                         "total_ml": float(ml_u * c_qty), 
