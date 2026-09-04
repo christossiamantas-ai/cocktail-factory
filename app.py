@@ -5779,7 +5779,13 @@ elif page == "🧼 Συντήρηση & HACCP":
             is_freezer = "Κατάψυξη" in device
             temp = c2.number_input("Θερμοκρασία (°C):", value=-18.0 if is_freezer else 4.0, step=0.5)
             notes = c3.text_input("Παρατηρήσεις / Διορθωτικές Ενέργειες:")
-            is_ok = not ((is_freezer and temp > -15.0) or (not is_freezer and temp > 7.0))
+            # 🔧 FIX: πριν ελεγχόταν ΜΟΝΟ το άνω όριο (π.χ. ψυγείο στους -50°C περνούσε ως
+            # "ΕΝΤΟΣ ΟΡΙΩΝ"). Τώρα ελέγχεται και κάτω όριο. Ενδεικτικά εύρη: Ψυγείο 0–7°C,
+            # Κατάψυξη -25–15°C — προσάρμοσέ τα αν η δική σας πολιτική ορίζει διαφορετικά.
+            if is_freezer:
+                is_ok = -25.0 <= temp <= -15.0
+            else:
+                is_ok = 0.0 <= temp <= 7.0
             
             if st.form_submit_button("💾 Αποθήκευση Μέτρησης", type="primary"):
                 if staff_name:
