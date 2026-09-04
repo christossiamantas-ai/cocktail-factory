@@ -130,14 +130,45 @@ def deduct_inventory_for_production(cocktail_name, total_pieces_made):
     except Exception as e:
         pass # Αθόρυβη λειτουργία για να μην διακοπεί ποτέ η αποθήκευση της παραγγελίας
 # --------------------------------------------------
+# --- 🔧 FIX: Εύρεση γραμματοσειράς Unicode (ελληνικά) για τα PDF, σε πολλαπλές πιθανές τοποθεσίες ---
+def _find_unicode_font_path():
+    """Ψάχνει DejaVuSans.ttf σε κοινές τοποθεσίες, ώστε τα PDF με ελληνικό κείμενο
+    να μη σκάνε με 'Character outside range... helvetica'. Επιστρέφει None αν δεν βρεθεί πουθενά
+    (τότε γίνεται graceful fallback σε Helvetica, όπως πριν)."""
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "DejaVuSans.ttf"),
+        os.path.join(os.getcwd(), "DejaVuSans.ttf"),
+        "DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for path in candidates:
+        try:
+            if os.path.isfile(path):
+                return path
+        except Exception:
+            continue
+    try:
+        import matplotlib
+        mpl_font = os.path.join(os.path.dirname(matplotlib.__file__), "mpl-data", "fonts", "ttf", "DejaVuSans.ttf")
+        if os.path.isfile(mpl_font):
+            return mpl_font
+    except Exception:
+        pass
+    return None
+
+_UNICODE_FONT_PATH = _find_unicode_font_path()
+
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
     pdf.add_page()
-    try:
-        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf')
-        f_name = 'DejaVu'
-    except:
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
         f_name = 'Helvetica'
 
     # Τίτλος Report
@@ -1086,7 +1117,10 @@ elif page == "🔍 Ανάλυση":
             try: efk_informational = pure_alc_ml * tax_factor
             except NameError: efk_informational = pure_alc_ml * 0.0255
             total_production = get_unit_cost_for_cocktail(choice, raw_cost)
-            fixed_cost = total_production - raw_cost  # για εμφάνιση: το "μη-πρώτης ύλης" κομμάτι του κόστους
+            if _manual_cost_active:
+                fixed_cost = float((_cost_settings or {}).get("operational_cost") or 0.0)  # 🔧 FIX: σταθερό, ίδιο για κάθε συνταγή
+            else:
+                fixed_cost = _TOTAL_FIXED_FALLBACK  # ίδιο πάντα (0,22€), όπως ήταν εξ αρχής
             
             profit_retail = p_retail - total_production
             profit_agent = p_agent - total_production
@@ -2553,7 +2587,7 @@ elif page == "📈 Dashboard":
         m1, m2, m3, m4, m5, m6 = st.columns(6)
         m1.metric("💰 Τζίρος", f"{format_gr(total_rev)} €")
         m2.metric("📈 Καθαρό Κέρδος", f"{format_gr(total_profit)} €", delta=f"{margin:.1f}% Margin")
-        m3.metric("📉 Κόστος Υλικών", f"{format_gr(total_cost)} €")
+        m3.metric("📉 Συνολικό Κόστος", f"{format_gr(total_cost)} €", help="Περιλαμβάνει υλικά + λειτουργικό/σταθερό κόστος ανά τεμάχιο.")
         m4.metric("🍹 Τεμάχια", f"{format_gr(int(total_units), decimals=0)} τμχ")
         m5.metric("📦 Παραγγελίες", format_gr(total_orders_count, decimals=0))
         m6.metric("⚖️ Μέση Αξία", f"{format_gr(aov)} €")
