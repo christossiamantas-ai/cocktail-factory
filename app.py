@@ -3139,14 +3139,16 @@ elif page == "📈 Dashboard":
         
         margin = (total_profit / total_rev * 100) if total_rev > 0 else 0
         aov = total_rev / total_orders_count if total_orders_count > 0 else 0
+        total_gifts_given = int(df_filtered['f_pcs'].sum()) if not df_filtered.empty else 0
         
-        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
         m1.metric("💰 Τζίρος", f"{format_gr(total_rev)} €")
         m2.metric("📈 Καθαρό Κέρδος", f"{format_gr(total_profit)} €", delta=f"{margin:.1f}% Margin")
         m3.metric("📉 Συνολικό Κόστος", f"{format_gr(total_cost)} €", help="Περιλαμβάνει υλικά + λειτουργικό/σταθερό κόστος ανά τεμάχιο.")
         m4.metric("🍹 Τεμάχια", f"{format_gr(int(total_units), decimals=0)} τμχ")
-        m5.metric("📦 Παραγγελίες", format_gr(total_orders_count, decimals=0))
-        m6.metric("⚖️ Μέση Αξία", f"{format_gr(aov)} €")
+        m5.metric("🎁 Δώρα", f"{total_gifts_given} τμχ", help="Δωρεάν τεμάχια (Κιβωτιακή Πολιτική) μέσα στο τρέχον φίλτρο.")
+        m6.metric("📦 Παραγγελίες", format_gr(total_orders_count, decimals=0))
+        m7.metric("⚖️ Μέση Αξία", f"{format_gr(aov)} €")
 
         # --- 🕵️‍♂️ ΕΡΓΑΛΕΙΟ ΕΛΕΓΧΟΥ (ΝΕΟ AUDIT TOOL) ---
         with st.expander("🕵️‍♂️ ΕΡΓΑΛΕΙΟ ΕΛΕΓΧΟΥ: Ακτινογραφία Υπολογισμών (Κάντε κλικ)"):
