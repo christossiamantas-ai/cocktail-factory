@@ -3781,11 +3781,14 @@ elif page == "📑 Έσοδα - Έξοδα":
     pl_period_type = st.radio("Περίοδος αναφοράς:", ["Μηνιαία", "Ετήσια"], horizontal=True, key="pl_period_type")
 
     try:
-        res_pl = supabase.table("production_log").select("cocktail_name, customer, pieces, free_pieces, applied_cost, lot_cocktail, prod_time, prod_date").execute()
+        res_pl = supabase.table("production_log").select("cocktail_name, customer, pieces, free_pieces, discounted_pieces, discount_pct, applied_cost, lot_cocktail, prod_time, prod_date").execute()
         df_pl_all = pd.DataFrame(res_pl.data) if res_pl.data else pd.DataFrame()
+        res_cust_pl = supabase.table("customers").select("name, discount").execute()
+        df_cust_pl = pd.DataFrame(res_cust_pl.data) if res_cust_pl.data else pd.DataFrame(columns=["name", "discount"])
     except Exception as e:
         st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
         df_pl_all = pd.DataFrame()
+        df_cust_pl = pd.DataFrame(columns=["name", "discount"])
 
     if df_pl_all.empty:
         st.warning("Δεν βρέθηκαν δεδομένα παραγωγής.")
@@ -3814,17 +3817,34 @@ elif page == "📑 Έσοδα - Έξοδα":
                 period_label = sel_period
 
             # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
-            df_period["pieces"] = pd.to_numeric(df_period["pieces"], errors="coerce").fillna(0)
-            df_period["free_pieces"] = pd.to_numeric(df_period.get("free_pieces", 0), errors="coerce").fillna(0)
+            # 🔧 FIX: πριν ο τζίρος υπολογιζόταν σαν πληρωμένα_τεμάχια × πλήρης τιμή καταλόγου,
+            # αγνοώντας τελείως τις πραγματικές εκπτώσεις (ανά πελάτη + ειδική ανά παρτίδα).
+            # Τώρα αναπαράγει ΑΚΡΙΒΩΣ τη μεθοδολογία του Dashboard/Πελατολογίου.
+            recipe_price_dict_pl = dict(zip(df_rec["Ονομα"], pd.to_numeric(df_rec["Τιμή Καταλόγου"], errors="coerce").fillna(0)))
+            cust_discount_dict_pl = dict(zip(df_cust_pl["name"], df_cust_pl.get("discount", 0))) if not df_cust_pl.empty else {}
+
+            df_period["catalog_price"] = df_period["cocktail_name"].map(recipe_price_dict_pl).fillna(0)
+            df_period["global_discount"] = df_period["customer"].map(cust_discount_dict_pl).fillna(0)
+
+            df_period["t_pcs"] = pd.to_numeric(df_period.get("pieces", 0), errors="coerce").fillna(0)
+            df_period["f_pcs"] = pd.to_numeric(df_period.get("free_pieces", 0), errors="coerce").fillna(0)
+            df_period["s_pcs"] = pd.to_numeric(df_period.get("discounted_pieces", 0), errors="coerce").fillna(0)
+            df_period["s_pct"] = pd.to_numeric(df_period.get("discount_pct", 0), errors="coerce").fillna(0)
+            df_period["s_pcs"] = df_period.apply(lambda r: min(r["s_pcs"], max(0, r["t_pcs"] - r["f_pcs"])), axis=1)
+            df_period["normal_pcs"] = df_period["t_pcs"] - df_period["f_pcs"] - df_period["s_pcs"]
+
+            df_period["price_after_global"] = df_period["catalog_price"] * (1 - (df_period["global_discount"] / 100))
+            df_period["rev_normal"] = df_period["normal_pcs"] * df_period["price_after_global"]
+            df_period["rev_special"] = df_period["s_pcs"] * df_period["price_after_global"] * (1 - (df_period["s_pct"] / 100))
+            df_period["revenue"] = (df_period["rev_normal"] + df_period["rev_special"]).clip(lower=0)
+
             df_period["applied_cost"] = pd.to_numeric(df_period.get("applied_cost", 0), errors="coerce").fillna(0)
-            price_map_pl = dict(zip(df_rec["Ονομα"], pd.to_numeric(df_rec["Τιμή Καταλόγου"], errors="coerce").fillna(0)))
-            df_period["paid_pieces"] = (df_period["pieces"] - df_period["free_pieces"]).clip(lower=0)
-            df_period["revenue"] = df_period["paid_pieces"] * df_period["cocktail_name"].map(price_map_pl).fillna(0)
-            df_period["cost_total"] = df_period["pieces"] * df_period["applied_cost"]
+            df_period["paid_pieces"] = df_period["normal_pcs"] + df_period["s_pcs"]
+            df_period["cost_total"] = df_period["t_pcs"] * df_period["applied_cost"]
 
             total_revenue = float(df_period["revenue"].sum())
             total_paid_pieces = int(df_period["paid_pieces"].sum())
-            total_gift_pieces = int(df_period["free_pieces"].sum())
+            total_gift_pieces = int(df_period["f_pcs"].sum())
             total_cogs = float(df_period["cost_total"].sum())
             gross_profit = total_revenue - total_cogs
             gross_margin_pct = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0.0
@@ -3897,7 +3917,7 @@ elif page == "📑 Έσοδα - Έξοδα":
             with st.expander("📊 Ανάλυση ανά Κοκτέιλ (μέσα στην περίοδο)"):
                 df_by_cocktail = df_period.groupby("cocktail_name", as_index=False).agg(
                     Τεμάχια=("paid_pieces", "sum"),
-                    Δωρεάν=("free_pieces", "sum"),
+                    Δωρεάν=("f_pcs", "sum"),
                     Τζίρος=("revenue", "sum"),
                     Κόστος=("cost_total", "sum"),
                 )
