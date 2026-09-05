@@ -105,6 +105,33 @@ def delete_order_and_production_safely(order_id, customer_name, created_at_times
         return False
 
 # --- 🤖 ΡΟΜΠΟΤΑΚΙ ΑΥΤΟΜΑΤΗΣ ΑΦΑΙΡΕΣΗΣ ΑΠΟΘΕΜΑΤΟΣ ---
+# --- 🔧 FIX: ανθεκτική εύρεση υπάρχουσας παραγγελίας B2B (πελάτης+ημέρα) ---
+def find_existing_b2b_order(cust, date_iso):
+    """Βρίσκει την ΥΠΑΡΧΟΥΣΑ εγγραφή b2b_orders για συγκεκριμένο πελάτη+ημέρα.
+    Πριν, ο έλεγχος γινόταν με gte/lte πάνω σε ωρολογιακό εύρος (created_at),
+    κάτι που μπορούσε να αποτύχει λόγω ζώνης ώρας/μορφής και να δημιουργεί
+    ΔΙΠΛΟΤΥΠΕΣ εγγραφές αντί να ενημερώνει τη σωστή. Τώρα φέρνει όλες τις
+    εγγραφές του πελάτη και συγκρίνει την ΗΜΕΡΟΜΗΝΙΑ (όχι ώρα) στη μνήμη —
+    ανθεκτικό σε τέτοιες αποκλίσεις. Αν βρεθούν ήδη πολλαπλές (παλιά
+    διπλότυπα), επιστρέφει τη ΠΙΟ ΠΡΟΣΦΑΤΗ (μεγαλύτερο id)."""
+    try:
+        res = supabase.table("b2b_orders").select("id, created_at").eq("customer_name", cust).execute()
+    except Exception:
+        return None
+    if not res.data:
+        return None
+    matches = []
+    for row in res.data:
+        try:
+            row_date = pd.to_datetime(row["created_at"]).strftime("%Y-%m-%d")
+        except Exception:
+            continue
+        if row_date == date_iso:
+            matches.append(row)
+    if not matches:
+        return None
+    return max(matches, key=lambda r: r["id"])
+
 def deduct_inventory_for_production(cocktail_name, total_pieces_made):
     """Αφαιρεί αυτόματα τα ml των υλικών από το current_stock_ml της αποθήκης"""
     try:
@@ -4888,7 +4915,7 @@ elif page == "📦 Lot Παραγωγής":
                                 try: date_iso = datetime.strptime(pdate, "%d/%m/%Y").strftime("%Y-%m-%d")
                                 except ValueError: date_iso = selected_date.isoformat() 
                                     
-                                existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
+                                existing_order = find_existing_b2b_order(cust, date_iso)
                                 
                                 if today_logs.data:
                                     import pandas as pd
@@ -4941,12 +4968,12 @@ elif page == "📦 Lot Παραγωγής":
                                     if discount > 0:
                                         details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
                                         
-                                    if existing_order.data:
+                                    if existing_order:
                                         supabase.table("b2b_orders").update({
                                             "total_amount": round(final_total, 2),
                                             "order_details": details_str,
                                             "status": "ΟΛΟΚΛΗΡΩΘΗΚΕ"
-                                        }).eq("id", existing_order.data[0]["id"]).execute()
+                                        }).eq("id", existing_order["id"]).execute()
                                     else:
                                         supabase.table("b2b_orders").insert({
                                             "customer_name": cust, "total_amount": round(final_total, 2),
@@ -4954,8 +4981,8 @@ elif page == "📦 Lot Παραγωγής":
                                             "created_at": f"{date_iso}T{current_time}:00"
                                         }).execute()
                                 else:
-                                    if existing_order.data:
-                                        supabase.table("b2b_orders").delete().eq("id", existing_order.data[0]["id"]).execute()
+                                    if existing_order:
+                                        supabase.table("b2b_orders").delete().eq("id", existing_order["id"]).execute()
                             
                             st.session_state.production_batch_items = []
                             st.session_state['active_b2b_order'] = None 
@@ -5873,7 +5900,7 @@ elif page == "📦 Lot Παραγωγής":
                                 try: date_iso = datetime.strptime(b2b_date, "%d/%m/%Y").strftime("%Y-%m-%d")
                                 except ValueError: date_iso = "1900-01-01" 
                                     
-                                existing_order = supabase.table("b2b_orders").select("id").eq("customer_name", b2b_cust).gte("created_at", f"{date_iso}T00:00:00").lte("created_at", f"{date_iso}T23:59:59").execute()
+                                existing_order = find_existing_b2b_order(b2b_cust, date_iso)
                                 
                                 if today_logs.data:
                                     import pandas as pd
@@ -5915,13 +5942,13 @@ elif page == "📦 Lot Παραγωγής":
                                     details_str = "\n".join(details_lines)
                                     if discount > 0: details_str += f"\n\n[Αρχική Αξία: {total_amount:.2f}€ | Έκπτωση CRM: {discount}%]"
                                         
-                                    if existing_order.data:
-                                        supabase.table("b2b_orders").update({"total_amount": round(final_total, 2), "order_details": details_str}).eq("id", existing_order.data[0]["id"]).execute()
+                                    if existing_order:
+                                        supabase.table("b2b_orders").update({"total_amount": round(final_total, 2), "order_details": details_str}).eq("id", existing_order["id"]).execute()
                                     else:
                                         supabase.table("b2b_orders").insert({"customer_name": b2b_cust, "total_amount": round(final_total, 2), "order_details": details_str, "created_at": f"{date_iso}T12:00:00"}).execute()
                                 else:
-                                    if existing_order.data:
-                                        supabase.table("b2b_orders").delete().eq("id", existing_order.data[0]["id"]).execute()
+                                    if existing_order:
+                                        supabase.table("b2b_orders").delete().eq("id", existing_order["id"]).execute()
                             
                             st.session_state['lot_reset_key'] += 1
                             st.session_state.pop('search_data_loaded', None)
