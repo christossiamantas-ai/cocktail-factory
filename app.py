@@ -3813,8 +3813,15 @@ elif page == "📑 Έσοδα - Έξοδα":
                 available_years = sorted(df_pl_all["Year"].unique(), reverse=True)
                 sel_period = st.selectbox("Επίλεξε έτος:", available_years, key="pl_year_sel")
                 df_period = df_pl_all[df_pl_all["Year"] == sel_period].copy()
-                months_count = 12
+                # 🔧 FIX: πριν υπέθετε ΠΑΝΤΑ 12 μήνες λειτουργίας, ακόμα κι αν η επιχείρηση
+                # λειτουργούσε μόνο μέρος του έτους (π.χ. ξεκίνησε τον Μάιο) — αυτό
+                # πολλαπλασίαζε τα σταθερά έξοδα σε μήνες που δεν υπήρχε καν η επιχείρηση,
+                # δείχνοντας ψευδώς αρνητικό ετήσιο αποτέλεσμα. Τώρα μετράει τους
+                # πραγματικούς μήνες με δεδομένα παραγωγής μέσα σε αυτό το έτος.
+                months_count = df_period["Month_Year"].nunique() if not df_period.empty else 0
                 period_label = sel_period
+                if months_count and months_count < 12:
+                    st.caption(f"ℹ️ Η επιχείρηση είχε δεδομένα παραγωγής για **{months_count} μήνες** μέσα στο {sel_period} — τα σταθερά έξοδα υπολογίζονται ×{months_count}, όχι ×12.")
 
             # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
             # 🔧 FIX: πριν ο τζίρος υπολογιζόταν σαν πληρωμένα_τεμάχια × πλήρης τιμή καταλόγου,
