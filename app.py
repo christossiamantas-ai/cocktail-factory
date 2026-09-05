@@ -802,15 +802,15 @@ _manual_cost_active = bool(_cost_settings and _cost_settings.get("active"))
 def get_unit_cost_for_cocktail(cocktail_name, raw_cost=0.0):
     """Το πλήρες κόστος/τεμάχιο για ΣΥΓΚΕΚΡΙΜΕΝΟ κοκτέιλ.
     - Αν το χειροκίνητο σενάριο κόστους (καρτέλα «💰 Κοστολόγιο») είναι ΕΝΕΡΓΟ:
-      επιστρέφει βιομηχανικό_κόστος[κοκτέιλ] + λειτουργικό_κόστος (και τα δύο
-      χειροκίνητα καταχωρημένα) — ΑΝΤΙΚΑΘΙΣΤΑ πλήρως τον αυτόματο υπολογισμό
-      από τα υλικά, δεν προστίθεται πάνω σε αυτόν.
+      επιστρέφει raw_cost (αυτόματο κόστος πρώτων υλών) + εργατικά[κοκτέιλ] +
+      κόστος_συσκευασίας (και τα δύο χειροκίνητα καταχωρημένα) — τώρα ΠΡΟΣΤΙΘΕΤΑΙ
+      πάνω στο αυτόματο κόστος υλικών, δεν το αντικαθιστά πια.
     - Αν είναι ΑΝΕΝΕΡΓΟ: επιστρέφει raw_cost (αυτόματο κόστος υλικών) + 0,22€
       (η αρχική, προεπιλεγμένη συμπεριφορά της εφαρμογής)."""
     if _manual_cost_active:
         operational = float((_cost_settings or {}).get("operational_cost") or 0.0)
         industrial = float(_cocktail_costs_map.get(cocktail_name, 0.0))
-        return round(industrial + operational, 4)
+        return round(float(raw_cost or 0.0) + industrial + operational, 4)
     return round(float(raw_cost or 0.0) + _TOTAL_FIXED_FALLBACK, 4)
 
 def format_greek(value):
@@ -1625,14 +1625,14 @@ elif page == "🔍 Ανάλυση":
             if _manual_cost_active:
                 _ind_dbg = float(_cocktail_costs_map.get(choice, 0.0))
                 _op_dbg = float((_cost_settings or {}).get("operational_cost") or 0.0)
-                st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΕΝΕΡΓΟ: {_ind_dbg:.4f}€ Εργατικά + {_op_dbg:.4f}€ Κόστος Συσκευασίας = {total_production:.4f} €/τμχ (ανεξάρτητο από το κόστος υλικών).")
+                st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΕΝΕΡΓΟ: {raw_cost:.4f}€ πρώτες ύλες + {_ind_dbg:.4f}€ Εργατικά + {_op_dbg:.4f}€ Κόστος Συσκευασίας = {total_production:.4f} €/τμχ.")
             else:
                 st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΑΝΕΝΕΡΓΟ: {raw_cost:.4f}€ αυτόματο κόστος υλικών + {_TOTAL_FIXED_FALLBACK:.2f}€ προεπιλογή = {total_production:.4f} €/τμχ.")
 
             # --- 🆚 ΣΥΓΚΡΙΣΗ: ΕΝΕΡΓΟ vs ΑΝΕΝΕΡΓΟ σενάριο (πάντα ορατή, ό,τι κι αν είναι ενεργό τώρα) ---
             _op_cost_cmp = float((_cost_settings or {}).get("operational_cost") or 0.0)
             _ind_cost_cmp = float(_cocktail_costs_map.get(choice, 0.0))
-            _cost_when_active = round(_ind_cost_cmp + _op_cost_cmp, 4)
+            _cost_when_active = round(raw_cost + _ind_cost_cmp + _op_cost_cmp, 4)
             _cost_when_inactive = round(raw_cost + _TOTAL_FIXED_FALLBACK, 4)
 
             if _cost_when_inactive > 0:
@@ -7615,16 +7615,6 @@ elif page == "👥 Πελατολόγιο":
 elif page == "🔄 Αντικατάσταση":
     st.header("🔄 Μαζική Αντικατάσταση Υλικών & Πρόγνωση Κέρδους")
     st.info("Σύγκριση Τιμών: Οι τιμές πώλησης (Λιανική & Αντιπρόσωπος στο -26%) παραμένουν σταθερές για να φανεί το πραγματικό επιπλέον κέρδος.")
-
-    if _manual_cost_active:
-        st.warning(
-            "⚠️ Το χειροκίνητο σενάριο κόστους («💰 Κοστολόγιο») είναι ΕΝΕΡΓΟ. Αυτό σημαίνει ότι το "
-            "τελικό κόστος κάθε κοκτέιλ είναι ένα σταθερό, χειροκίνητο νούμερο — **δεν επηρεάζεται** "
-            "από αλλαγές πρώτων υλών. Οι παρακάτω αντικαταστάσεις θα δείξουν πάντα €0 επίδραση στο "
-            "τελικό κέρδος, ακόμα κι αν το πραγματικό κόστος υλικών αλλάξει. Αν θες να δεις το "
-            "πραγματικό αντίκτυπο μιας αντικατάστασης στο κόστος, απενεργοποίησε προσωρινά το "
-            "σενάριο από το Κοστολόγιο."
-        )
 
     # --- ΜΑΓΕΙΑ SUPABASE: Φόρτωση φρέσκων δεδομένων (αν δεν υπάρχουν) ---
     res_ing = supabase.table("ingredients").select("*").execute()
