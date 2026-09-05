@@ -7267,20 +7267,48 @@ elif page == "👥 Πελατολόγιο":
                             st.info(f"**Αρχική Αξία (προ εκπτώσεων):** {base_amt:.2f} €\n\n**Καθαρή Χρέωση:** {current_amt:.2f} €\n\n**ΦΠΑ (24%):** {fpa_amt:.2f} €\n\n**Τελικό Πληρωτέο:** {final_with_fpa:.2f} €")
                             st.caption(f"Λεπτομέρειες:\n{details}")
                             
-                            if st.button("🗑️ Διαγραφή Παραγγελίας (μόνο B2B)", key=f"del_o_{order_id}"):
-                                with st.spinner("Διαγραφή σε εξέλιξη..."):
+                            if st.button("🗑️ Διαγραφή Ολόκληρης Παραγγελίας", key=f"del_o_{order_id}"):
+                                with st.spinner("Έλεγχος ασφάλειας..."):
                                     try:
-                                        # 🔧 ΕΠΕΙΓΟΥΣΑ ΔΙΟΡΘΩΣΗ ΑΣΦΑΛΕΙΑΣ: πριν, αυτό το κουμπί έψαχνε ΟΛΕΣ τις
-                                        # γραμμές production_log του πελάτη ΣΤΗΝ ΙΔΙΑ ΗΜΕΡΟΜΗΝΙΑ και τις
-                                        # διέγραφε — χωρίς κανέναν τρόπο να ξεχωρίσει ποιες ανήκουν σε ΑΥΤΗ
-                                        # τη συγκεκριμένη παραγγελία. Αν υπήρχαν 2 παραγγελίες ίδιου πελάτη/
-                                        # ημέρας (π.χ. διπλότυπα), η διαγραφή της μίας διέγραφε ΚΑΙ τα δεδομένα
-                                        # παραγωγής της άλλης — ακριβώς αυτό συνέβη. Τώρα το κουμπί διαγράφει
-                                        # ΜΟΝΟ την εγγραφή b2b_orders. Η παραγωγή διαγράφεται ξεχωριστά,
-                                        # χειροκίνητα, από το «📦 Lot Παραγωγής» όπου βλέπεις ακριβώς τι σβήνεις.
-                                        supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                        order_date_iso = str(order['created_at'])[:10]
                                         
-                                        st.warning("🔄 Διαγράφηκε ΜΟΝΟ η οικονομική εγγραφή (b2b_orders). Τα δεδομένα παραγωγής (υλικά/HACCP) ΔΕΝ αγγίχτηκαν — αν χρειάζεται να τα διαγράψεις κι αυτά, κάν' το από το «📦 Lot Παραγωγής» όπου θα δεις ακριβώς ποιες γραμμές σβήνεις.")
+                                        # 🔧 ΕΞΥΠΝΟΣ ΕΛΕΓΧΟΣ: πριν διαγράψουμε τίποτα, ελέγχουμε αν υπάρχει
+                                        # ΑΛΛΗ παραγγελία (b2b_orders) του ίδιου πελάτη ΣΤΗΝ ΙΔΙΑ ημέρα.
+                                        # Αν ΔΕΝ υπάρχει (ο κανονικός, ασφαλής κανόνας), σβήνουμε τα πάντα
+                                        # μαζί, γρήγορα, με 1 κλικ. Αν ΥΠΑΡΧΕΙ (π.χ. διπλότυπο), το
+                                        # production_log είναι κοινό/ασαφές ανάμεσά τους — σβήνουμε ΜΟΝΟ
+                                        # την οικονομική εγγραφή, για ασφάλεια, ακριβώς όπως έμαθε η εφαρμογή
+                                        # μας πριν λίγο, με τον δύσκολο τρόπο.
+                                        res_check = supabase.table("b2b_orders").select("id, created_at").eq("customer_name", sel_name).execute()
+                                        same_day_count = 0
+                                        if res_check.data:
+                                            for r in res_check.data:
+                                                try:
+                                                    r_iso = pd.to_datetime(r["created_at"]).strftime("%Y-%m-%d")
+                                                    if r_iso == order_date_iso:
+                                                        same_day_count += 1
+                                                except Exception:
+                                                    pass
+
+                                        if same_day_count > 1:
+                                            supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                            st.warning(f"⚠️ Βρέθηκαν {same_day_count} παραγγελίες αυτού του πελάτη την ίδια μέρα — για ασφάλεια διαγράφηκε ΜΟΝΟ η οικονομική εγγραφή. Τα δεδομένα παραγωγής είναι κοινά/ασαφή ανάμεσα στις παραγγελίες — αν χρειάζεται πλήρης διαγραφή, χρησιμοποίησε το «📦 Lot Παραγωγής → Ιστορικό» για χειροκίνητη, στοχευμένη διαγραφή.")
+                                        else:
+                                            prod_res = supabase.table("production_log").select("id, prod_date").eq("customer", sel_name).execute()
+                                            ids_to_delete = []
+                                            if prod_res.data:
+                                                for p in prod_res.data:
+                                                    try:
+                                                        p_iso = datetime.strptime(str(p['prod_date']).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
+                                                        if p_iso == order_date_iso:
+                                                            ids_to_delete.append(p['id'])
+                                                    except Exception:
+                                                        pass
+                                            if ids_to_delete:
+                                                supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
+                                            supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                            st.success("✅ Διαγράφηκε ολόκληρη η παραγγελία (οικονομικά + όλα τα υλικά παραγωγής) — ήταν η μοναδική παραγγελία αυτού του πελάτη/ημέρας, οπότε ήταν ασφαλές.")
+                                        
                                         import time
                                         time.sleep(1.5)
                                         st.rerun()
