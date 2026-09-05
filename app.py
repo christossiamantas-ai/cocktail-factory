@@ -3829,7 +3829,9 @@ elif page == "🎯 Νεκρό Σημείο":
             calc_note = f"Τιμή {ref_price:.2f}€ − Κόστος {unit_cost_be:.2f}€ = {contribution_margin:.2f}€ ανά τεμάχιο"
     else:
         try:
-            res_be_hist = supabase.table("production_log").select("cocktail_name, customer, pieces, free_pieces, applied_cost, lot_cocktail, prod_time, prod_date").execute()
+            res_be_hist = supabase.table("production_log").select("cocktail_name, customer, pieces, free_pieces, discounted_pieces, discount_pct, applied_cost, lot_cocktail, prod_time, prod_date").execute()
+            res_cust_be = supabase.table("customers").select("name, discount").execute()
+            df_cust_be = pd.DataFrame(res_cust_be.data) if res_cust_be.data else pd.DataFrame(columns=["name", "discount"])
             if res_be_hist.data:
                 # 🔧 FIX: πριν το dedup ΔΕΝ περιλάμβανε "customer" — αν το ίδιο κοκτέιλ
                 # καταχωρήθηκε στην ίδια αποθήκευση για 2+ διαφορετικούς πελάτες (πολύ συχνό,
@@ -3838,9 +3840,28 @@ elif page == "🎯 Νεκρό Σημείο":
                 df_be_hist = pd.DataFrame(res_be_hist.data).drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
                 df_be_hist["pieces"] = pd.to_numeric(df_be_hist["pieces"], errors="coerce").fillna(0)
                 df_be_hist["free_pieces"] = pd.to_numeric(df_be_hist.get("free_pieces", 0), errors="coerce").fillna(0)
+
+                # 🔧 FIX: πριν χρησιμοποιούσε την ΠΛΗΡΗ τιμή καταλόγου (λιανική) για όλες τις
+                # πωλήσεις, αγνοώντας τελείως την έκπτωση ανά πελάτη ΚΑΙ την ειδική έκπτωση ανά
+                # παρτίδα — ακριβώς το ίδιο πρόβλημα που είχαμε βρει και διορθώσει στο Έσοδα-Έξοδα.
+                # Τώρα αναπαράγει ΑΚΡΙΒΩΣ την ίδια μεθοδολογία με Dashboard/Πελατολόγιο/Έσοδα-Έξοδα.
                 price_map = dict(zip(df_rec["Ονομα"], pd.to_numeric(df_rec["Τιμή Καταλόγου"], errors="coerce").fillna(0)))
-                df_be_hist["paid_pieces"] = (df_be_hist["pieces"] - df_be_hist["free_pieces"]).clip(lower=0)
-                df_be_hist["revenue"] = df_be_hist["paid_pieces"] * df_be_hist["cocktail_name"].map(price_map).fillna(0)
+                cust_discount_dict_be = dict(zip(df_cust_be["name"], pd.to_numeric(df_cust_be.get("discount", 0), errors="coerce").fillna(0))) if not df_cust_be.empty else {}
+
+                df_be_hist["catalog_price"] = pd.to_numeric(df_be_hist["cocktail_name"].map(price_map), errors="coerce").fillna(0)
+                df_be_hist["global_discount"] = pd.to_numeric(df_be_hist["customer"].map(cust_discount_dict_be), errors="coerce").fillna(0)
+                df_be_hist["t_pcs"] = df_be_hist["pieces"]
+                df_be_hist["s_pcs"] = pd.to_numeric(df_be_hist.get("discounted_pieces", 0), errors="coerce").fillna(0)
+                df_be_hist["s_pct"] = pd.to_numeric(df_be_hist.get("discount_pct", 0), errors="coerce").fillna(0)
+                df_be_hist["s_pcs"] = df_be_hist.apply(lambda r: min(r["s_pcs"], max(0, r["t_pcs"] - r["free_pieces"])), axis=1)
+                df_be_hist["normal_pcs"] = df_be_hist["t_pcs"] - df_be_hist["free_pieces"] - df_be_hist["s_pcs"]
+
+                df_be_hist["price_after_global"] = df_be_hist["catalog_price"] * (1 - (df_be_hist["global_discount"] / 100))
+                df_be_hist["rev_normal"] = df_be_hist["normal_pcs"] * df_be_hist["price_after_global"]
+                df_be_hist["rev_special"] = df_be_hist["s_pcs"] * df_be_hist["price_after_global"] * (1 - (df_be_hist["s_pct"] / 100))
+                df_be_hist["revenue"] = (df_be_hist["rev_normal"] + df_be_hist["rev_special"]).clip(lower=0)
+
+                df_be_hist["paid_pieces"] = df_be_hist["normal_pcs"] + df_be_hist["s_pcs"]
 
                 # 🔧 FIX: πριν, όποτε έλειπε το applied_cost, γινόταν 0€ αντί να πέσει σε
                 # εναλλακτικό υπολογισμό — υποεκτιμούσε το συνολικό κόστος, κάνοντας το
