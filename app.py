@@ -3838,12 +3838,28 @@ elif page == "📑 Έσοδα - Έξοδα":
             df_period["rev_special"] = df_period["s_pcs"] * df_period["price_after_global"] * (1 - (df_period["s_pct"] / 100))
             df_period["revenue"] = (df_period["rev_normal"] + df_period["rev_special"]).clip(lower=0)
 
-            # 🔧 FIX: πριν, όποτε το applied_cost ήταν κενό/None (παλιές εγγραφές χωρίς
-            # καταγεγραμμένο κόστος), γινόταν 0€ αντί να πέσει σε εναλλακτικό υπολογισμό —
-            # αυτό εμφάνιζε τερατωδώς χαμηλό ΚΟΓΣ σε μήνες με πολλά τέτοια δεδομένα (π.χ. Μάιο).
-            # Τώρα: αν το applied_cost είναι ΠΡΑΓΜΑΤΙΚΑ κενό (όχι σκόπιμο μηδέν από Στοκ χωρίς
-            # χρέωση), πέφτει στο σημερινό υπολογισμένο κόστος του κοκτέιλ — ίδια λογική με
-            # το ήδη σωστό Dashboard (get_actual_cost).
+            # 🔧 FIX #2: πριν, το fallback κόστος (όταν λείπει το applied_cost) περνούσε
+            # raw_cost=0.0 αντί για το ΠΡΑΓΜΑΤΙΚΟ κόστος υλικών της συνταγής — υποεκτιμούσε
+            # δραστικά το κόστος (π.χ. έδειχνε μόνο 0,22€ αντί για πραγματικό υλικό+0,22€).
+            # Τώρα υπολογίζει το πραγματικό κόστος υλικών ανά συνταγή, ΑΚΡΙΒΩΣ όπως κάνει
+            # ήδη το Dashboard (name_to_cost / mat_cost_by_id).
+            def _pl_raw_material_cost(recipe_row):
+                total = 0.0
+                for i in range(1, 14):
+                    ing_n = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                    ml = float(recipe_row.get(f"ML{i}", 0) or 0)
+                    if ing_n in ["ΚΕΝΟ", "nan", "", "Νερό"] or ml <= 0:
+                        continue
+                    match_ing_pl = df_ing[df_ing["Name"] == ing_n]
+                    if not match_ing_pl.empty:
+                        total += ml * float(match_ing_pl.iloc[0].get("Τιμή/ml", 0) or 0)
+                return total
+
+            name_to_cost_pl = {}
+            for _, r_pl in df_rec.iterrows():
+                r_name_pl = r_pl["Ονομα"]
+                name_to_cost_pl[r_name_pl] = get_unit_cost_for_cocktail(r_name_pl, _pl_raw_material_cost(r_pl))
+
             def _pl_effective_cost(row):
                 ac = row.get("applied_cost")
                 if pd.notna(ac):
@@ -3851,7 +3867,7 @@ elif page == "📑 Έσοδα - Έξοδα":
                         return float(ac)
                     except (TypeError, ValueError):
                         pass
-                return get_unit_cost_for_cocktail(row["cocktail_name"], 0.0)
+                return name_to_cost_pl.get(row["cocktail_name"], get_unit_cost_for_cocktail(row["cocktail_name"], 0.0))
 
             df_period["effective_unit_cost"] = df_period.apply(_pl_effective_cost, axis=1)
             df_period["paid_pieces"] = df_period["normal_pcs"] + df_period["s_pcs"]
