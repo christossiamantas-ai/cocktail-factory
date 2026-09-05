@@ -1625,7 +1625,7 @@ elif page == "🔍 Ανάλυση":
             if _manual_cost_active:
                 _ind_dbg = float(_cocktail_costs_map.get(choice, 0.0))
                 _op_dbg = float((_cost_settings or {}).get("operational_cost") or 0.0)
-                st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΕΝΕΡΓΟ: {_ind_dbg:.4f}€ Βιομηχανικό + {_op_dbg:.4f}€ Λειτουργικό = {total_production:.4f} €/τμχ (ανεξάρτητο από το κόστος υλικών).")
+                st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΕΝΕΡΓΟ: {_ind_dbg:.4f}€ Εργατικά + {_op_dbg:.4f}€ Κόστος Συσκευασίας = {total_production:.4f} €/τμχ (ανεξάρτητο από το κόστος υλικών).")
             else:
                 st.caption(f"🔧 Χειροκίνητο Κοστολόγιο ΑΝΕΝΕΡΓΟ: {raw_cost:.4f}€ αυτόματο κόστος υλικών + {_TOTAL_FIXED_FALLBACK:.2f}€ προεπιλογή = {total_production:.4f} €/τμχ.")
 
@@ -1650,7 +1650,7 @@ elif page == "🔍 Ανάλυση":
                 dc2.metric(
                     "✅ Κόστος (Ενεργό)",
                     f"{_cost_when_active:.4f} €",
-                    help=f"{_ind_cost_cmp:.4f}€ βιομηχανικό + {_op_cost_cmp:.4f}€ λειτουργικό"
+                    help=f"{_ind_cost_cmp:.4f}€ εργατικά + {_op_cost_cmp:.4f}€ κόστος συσκευασίας"
                 )
                 dc3.metric(
                     "Διαφορά Κόστους",
@@ -2461,7 +2461,7 @@ elif page == "🔍 Ανάλυση":
 elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
     st.header("💰 Κοστολόγιο")
     st.caption(
-        "Χειροκίνητο κόστος ανά κοκτέιλ: Βιομηχανικό κόστος (ανά κοκτέιλ) + Λειτουργικά έξοδα (ίδιο για όλα) = Σύνολο. "
+        "Χειροκίνητο κόστος ανά κοκτέιλ: Εργατικά (ανά κοκτέιλ) + Κόστος Συσκευασίας (ίδιο για όλα) = Σύνολο. "
         "Το σύνολο αυτό ενημερώνει αυτόματα ΟΛΕΣ τις καρτέλες (Ανάλυση, Εμπορική Πολιτική, Dashboard, Πελατολόγιο, Lot Παραγωγής, κ.λπ.) όταν είναι ενεργό."
     )
 
@@ -2496,6 +2496,102 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
         s = load_cost_settings() or {}
         cc_map = load_cocktail_costs()
 
+        # --- 📥 ΓΡΗΓΟΡΗ ΕΙΣΑΓΩΓΗ ΚΟΣΤΟΥΣ ΑΠΟ EXCEL ---
+        st.subheader("📥 Γρήγορη Εισαγωγή Κόστους από Excel")
+        st.caption(
+            "Ανέβασε αρχείο Excel με στήλες: COCKTAILS, A. ΥΛΙΚΑ, B. ΣΥΣΚΕΥΑΣΙΕΣ, Γ. ΕΡΓΑΤΙΚΑ — "
+            "θα γεμίσει αυτόματα τα Εργατικά (Υλικά+Εργατικά, ανά κοκτέιλ) και το "
+            "Κόστος Συσκευασίας (ίδιο για όλα) χωρίς να χρειάζεται να τα πληκτρολογήσεις ένα-ένα."
+        )
+        uploaded_cost_file = st.file_uploader("Επίλεξε αρχείο .xlsx", type=["xlsx"], key="cost_excel_uploader")
+        if uploaded_cost_file is not None:
+            try:
+                xls_cost = pd.ExcelFile(uploaded_cost_file)
+                sheet_to_use = "ΠΡΟΤΑΣΗ" if "ΠΡΟΤΑΣΗ" in xls_cost.sheet_names else xls_cost.sheet_names[0]
+
+                # Βρίσκουμε αυτόματα ΠΟΙΑ γραμμή έχει το "COCKTAILS" header — ανθεκτικό σε
+                # μικρές αλλαγές διάταξης (extra κενές γραμμές, τίτλοι σεναρίου, κ.λπ.)
+                raw_preview = pd.read_excel(xls_cost, sheet_name=sheet_to_use, header=None, nrows=15)
+                header_row_idx = None
+                for idx, row in raw_preview.iterrows():
+                    if row.apply(lambda v: str(v).strip()).eq("COCKTAILS").any():
+                        header_row_idx = idx
+                        break
+
+                if header_row_idx is None:
+                    st.error("Δεν βρέθηκε στήλη «COCKTAILS» στις πρώτες γραμμές του αρχείου/φύλλου. Έλεγξε ότι είναι το σωστό sheet.")
+                else:
+                    header_vals = [str(v).strip() for v in raw_preview.iloc[header_row_idx].tolist()]
+                    col_map = {}
+                    for i, h in enumerate(header_vals):
+                        if h == "COCKTAILS": col_map[i] = "Cocktail"
+                        elif h.startswith("A. ΥΛΙΚΑ") or h.startswith("Α. ΥΛΙΚΑ"): col_map[i] = "Ylika"
+                        elif h.startswith("B. ΣΥΣΚΕΥΑΣΙΕΣ") or h.startswith("Β. ΣΥΣΚΕΥΑΣΙΕΣ"): col_map[i] = "Syskevasies"
+                        elif h.startswith("Γ. ΕΡΓΑΤΙΚΑ"): col_map[i] = "Ergatika"
+
+                    if not {"Cocktail", "Ylika", "Ergatika"}.issubset(set(col_map.values())):
+                        st.error(f"Δεν βρέθηκαν όλες οι απαραίτητες στήλες (COCKTAILS, A. ΥΛΙΚΑ, Γ. ΕΡΓΑΤΙΚΑ). Βρέθηκαν: {list(col_map.values())}")
+                    else:
+                        df_import = pd.read_excel(xls_cost, sheet_name=sheet_to_use, header=None, skiprows=header_row_idx + 1)
+                        keep_idx = list(col_map.keys())
+                        df_import = df_import[keep_idx]
+                        df_import.columns = [col_map[i] for i in keep_idx]
+                        df_import = df_import.dropna(subset=["Cocktail"]).reset_index(drop=True)
+                        df_import["Cocktail"] = df_import["Cocktail"].astype(str).str.strip()
+                        df_import["Ylika"] = pd.to_numeric(df_import["Ylika"], errors="coerce").fillna(0)
+                        df_import["Ergatika"] = pd.to_numeric(df_import["Ergatika"], errors="coerce").fillna(0)
+
+                        if "Syskevasies" in df_import.columns:
+                            df_import["Syskevasies"] = pd.to_numeric(df_import["Syskevasies"], errors="coerce").fillna(0)
+                            _mode = df_import["Syskevasies"].mode()
+                            detected_packaging = float(_mode.iloc[0]) if not _mode.empty else 0.0
+                        else:
+                            detected_packaging = 0.0
+
+                        df_import["Βιομηχανικό (Υλικά+Εργατικά)"] = df_import["Ylika"] + df_import["Ergatika"]
+
+                        # Αντιστοίχιση με τα ονόματα συνταγών της εφαρμογής (χωρίς διάκριση πεζών/κεφαλαίων ή κενών άκρων)
+                        app_names_norm = {n.strip().upper(): n for n in (df_rec["Ονομα"].unique() if not df_rec.empty else [])}
+                        df_import["Αντιστοίχιση"] = df_import["Cocktail"].apply(lambda x: app_names_norm.get(x.strip().upper()))
+                        matched = df_import[df_import["Αντιστοίχιση"].notna()]
+                        unmatched = df_import[df_import["Αντιστοίχιση"].isna()]
+
+                        st.success(f"✅ Βρέθηκαν {len(df_import)} κοκτέιλ στο αρχείο — {len(matched)} ταιριάζουν με συνταγές της εφαρμογής.")
+                        st.info(f"📦 Ανιχνεύθηκε κόστος συσκευασίας: **{detected_packaging:.4f}€** (θα μπει ως Κόστος Συσκευασίας, ίδιο για όλα).")
+                        st.dataframe(
+                            matched[["Cocktail", "Ylika", "Ergatika", "Βιομηχανικό (Υλικά+Εργατικά)"]].rename(columns={"Cocktail": "Κοκτέιλ (Excel)"}),
+                            use_container_width=True, hide_index=True
+                        )
+                        if not unmatched.empty:
+                            with st.expander(f"⚠️ {len(unmatched)} κοκτέιλ του αρχείου ΔΕΝ βρέθηκαν στις συνταγές της εφαρμογής (δεν θα εισαχθούν)"):
+                                st.dataframe(unmatched[["Cocktail"]], use_container_width=True, hide_index=True)
+
+                        if st.button("📥 Εφαρμογή Εισαγωγής", type="primary"):
+                            try:
+                                updates = [
+                                    {"cocktail_name": r["Αντιστοίχιση"], "industrial_cost": round(float(r["Βιομηχανικό (Υλικά+Εργατικά)"]), 4)}
+                                    for _, r in matched.iterrows()
+                                ]
+                                if updates:
+                                    supabase.table("cocktail_costs").upsert(updates, on_conflict="cocktail_name").execute()
+                                supabase.table("cost_settings").upsert({
+                                    "id": 1,
+                                    "operational_cost": round(detected_packaging, 4),
+                                    "active": bool(s.get("active", False)),
+                                    "be_rent": float(s.get("be_rent", 0.0)), "be_labor": float(s.get("be_labor", 0.0)),
+                                    "be_insurance": float(s.get("be_insurance", 0.0)), "be_admin": float(s.get("be_admin", 0.0)),
+                                    "be_utilities": float(s.get("be_utilities", 0.0)), "be_other": float(s.get("be_other", 0.0)),
+                                }).execute()
+                                st.cache_data.clear()
+                                st.success(f"✅ Εισήχθησαν {len(updates)} κοκτέιλ! Κόστος Συσκευασίας: {detected_packaging:.4f}€.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Σφάλμα εισαγωγής: {e}")
+            except Exception as e:
+                st.error(f"Σφάλμα ανάγνωσης αρχείου: {e}")
+
+        st.divider()
+
         # --- 1. ΔΙΑΚΟΠΤΗΣ ΕΝΕΡΓΟΠΟΙΗΣΗΣ ---
         st.subheader("1️⃣ Ενεργοποίηση Σεναρίου Χειροκίνητου Κόστους")
         is_active_now = bool(s.get("active", False))
@@ -2504,7 +2600,7 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
             new_active = st.toggle("✅ Ενεργό" if is_active_now else "⛔ Ανενεργό", value=is_active_now, key="cost_scenario_toggle")
         with toggle_col2:
             if new_active:
-                st.success("Ενεργό: χρησιμοποιείται το χειροκίνητο κόστος (Βιομηχανικό + Λειτουργικό) ανά κοκτέιλ, παντού στην εφαρμογή.")
+                st.success("Ενεργό: χρησιμοποιείται το χειροκίνητο κόστος (Εργατικά + Κόστος Συσκευασίας) ανά κοκτέιλ, παντού στην εφαρμογή.")
             else:
                 st.info("Ανενεργό: η εφαρμογή χρησιμοποιεί το παλιό, προεπιλεγμένο κόστος 0,22€ (+ αυτόματο κόστος υλικών) όπως πριν.")
 
@@ -2521,7 +2617,7 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
         st.divider()
 
         # --- 2. ΛΕΙΤΟΥΡΓΙΚΟ ΚΟΣΤΟΣ (ΚΟΙΝΟ ΓΙΑ ΟΛΑ) ---
-        st.subheader("2️⃣ Λειτουργικά Κόστη (ίδιο για όλα τα κοκτέιλ)")
+        st.subheader("2️⃣ Κόστος Συσκευασίας (ίδιο για όλα τα κοκτέιλ)")
         op_cost = st.number_input(
             "Λειτουργικό κόστος ανά τεμάχιο (€):",
             min_value=0.0, value=float(s.get("operational_cost", 0.0)), step=0.01, format="%.4f",
@@ -2541,9 +2637,9 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
         st.divider()
 
         # --- 3. ΠΙΝΑΚΑΣ ΒΙΟΜΗΧΑΝΙΚΟΥ ΚΟΣΤΟΥΣ ΑΝΑ ΚΟΚΤΕΪΛ ---
-        st.subheader("3️⃣ Βιομηχανικό Κόστος ανά Κοκτέιλ")
-        st.caption("Καταχώρησε το κόστος παρασκευής για κάθε κοκτέιλ. Το «Σύνολο» υπολογίζεται αυτόματα (Βιομηχανικό + Λειτουργικό).")
-        st.warning("⚠️ Αν χρειάζεται να αλλάξεις και το Λειτουργικό Κόστος (Βήμα 2), αποθήκευσέ το **πρώτα** και μετά επεξεργάσου τον παρακάτω πίνακα — αλλιώς μπορεί να χαθούν μη-αποθηκευμένες αλλαγές στον πίνακα.")
+        st.subheader("3️⃣ Εργατικά ανά Κοκτέιλ")
+        st.caption("Καταχώρησε το κόστος παρασκευής για κάθε κοκτέιλ. Το «Σύνολο» υπολογίζεται αυτόματα (Εργατικά + Κόστος Συσκευασίας).")
+        st.warning("⚠️ Αν χρειάζεται να αλλάξεις και το Κόστος Συσκευασίας (Βήμα 2), αποθήκευσέ το **πρώτα** και μετά επεξεργάσου τον παρακάτω πίνακα — αλλιώς μπορεί να χαθούν μη-αποθηκευμένες αλλαγές στον πίνακα.")
 
         if df_rec.empty:
             st.warning("Δεν βρέθηκαν συνταγές.")
@@ -2553,8 +2649,8 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
                 industrial = float(cc_map.get(cname, 0.0))
                 table_rows.append({
                     "Κοκτέιλ": cname,
-                    "Βιομηχανικό Κόστος (€)": industrial,
-                    "Λειτουργικά Κόστη (€)": op_cost,
+                    "Εργατικά (€)": industrial,
+                    "Κόστος Συσκευασίας (€)": op_cost,
                     "Σύνολο (€)": round(industrial + op_cost, 4)
                 })
             df_cost_table = pd.DataFrame(table_rows)
@@ -2563,8 +2659,8 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
                 df_cost_table,
                 column_config={
                     "Κοκτέιλ": st.column_config.TextColumn(disabled=True),
-                    "Βιομηχανικό Κόστος (€)": st.column_config.NumberColumn(min_value=0.0, step=0.01, format="%.4f"),
-                    "Λειτουργικά Κόστη (€)": st.column_config.NumberColumn(disabled=True, format="%.4f", help="Αλλάζει μόνο από το πεδίο πιο πάνω — ίδιο για όλα τα κοκτέιλ."),
+                    "Εργατικά (€)": st.column_config.NumberColumn(min_value=0.0, step=0.01, format="%.4f"),
+                    "Κόστος Συσκευασίας (€)": st.column_config.NumberColumn(disabled=True, format="%.4f", help="Αλλάζει μόνο από το πεδίο πιο πάνω — ίδιο για όλα τα κοκτέιλ."),
                     "Σύνολο (€)": st.column_config.NumberColumn(disabled=True, format="%.4f"),
                 },
                 hide_index=True,
@@ -2572,13 +2668,13 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
                 key="cost_editor_industrial"  # 🔧 FIX: σταθερό key (πριν βασιζόταν στον αριθμό γραμμών — riskάριζε reset σε αλλαγή πλήθους κοκτέιλ)
             )
 
-            if st.button("💾 Αποθήκευση Βιομηχανικού Κόστους", type="primary"):
+            if st.button("💾 Αποθήκευση Εργατικών", type="primary"):
                 try:
                     updates = []
                     for _, r in edited_df.iterrows():
                         updates.append({
                             "cocktail_name": r["Κοκτέιλ"],
-                            "industrial_cost": float(r["Βιομηχανικό Κόστος (€)"])
+                            "industrial_cost": float(r["Εργατικά (€)"])
                         })
                     if updates:
                         supabase.table("cocktail_costs").upsert(updates, on_conflict="cocktail_name").execute()
@@ -3311,8 +3407,8 @@ elif page == "📈 Dashboard":
                     elif _manual_cost_active:
                         _ind = float(_cocktail_costs_map.get(s['cocktail_name'], 0.0))
                         _op = float((_cost_settings or {}).get("operational_cost") or 0.0)
-                        st.write(f"- **Βιομηχανικό Κόστος:** {_ind:.4f}€")
-                        st.write(f"- **Λειτουργικά Κόστη:** {_op:.4f}€")
+                        st.write(f"- **Εργατικά:** {_ind:.4f}€")
+                        st.write(f"- **Κόστος Συσκευασίας:** {_op:.4f}€")
                         st.markdown(f"- **Κόστος ανά τμχ: {s['Final_Unit_Cost']:.4f}€**")
                     else:
                         st.write(f"- **Κόστος Υλικών:** {s['Final_Unit_Cost'] - _TOTAL_FIXED_FALLBACK:.4f}€")
