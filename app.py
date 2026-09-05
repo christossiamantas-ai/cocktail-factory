@@ -3838,11 +3838,44 @@ elif page == "🎯 Νεκρό Σημείο":
                 df_be_hist = pd.DataFrame(res_be_hist.data).drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
                 df_be_hist["pieces"] = pd.to_numeric(df_be_hist["pieces"], errors="coerce").fillna(0)
                 df_be_hist["free_pieces"] = pd.to_numeric(df_be_hist.get("free_pieces", 0), errors="coerce").fillna(0)
-                df_be_hist["applied_cost"] = pd.to_numeric(df_be_hist.get("applied_cost", 0), errors="coerce").fillna(0)
                 price_map = dict(zip(df_rec["Ονομα"], pd.to_numeric(df_rec["Τιμή Καταλόγου"], errors="coerce").fillna(0)))
                 df_be_hist["paid_pieces"] = (df_be_hist["pieces"] - df_be_hist["free_pieces"]).clip(lower=0)
                 df_be_hist["revenue"] = df_be_hist["paid_pieces"] * df_be_hist["cocktail_name"].map(price_map).fillna(0)
-                df_be_hist["cost_total"] = df_be_hist["pieces"] * df_be_hist["applied_cost"]
+
+                # 🔧 FIX: πριν, όποτε έλειπε το applied_cost, γινόταν 0€ αντί να πέσει σε
+                # εναλλακτικό υπολογισμό — υποεκτιμούσε το συνολικό κόστος, κάνοντας το
+                # περιθώριο τεχνητά μεγαλύτερο και τα τεμάχια νεκρού σημείου τεχνητά λιγότερα.
+                # Τώρα υπολογίζει το πραγματικό κόστος υλικών ανά συνταγή όταν λείπει —
+                # ίδια λογική με το ήδη διορθωμένο Dashboard/Έσοδα-Έξοδα.
+                def _be_raw_material_cost(recipe_row):
+                    total = 0.0
+                    for i in range(1, 14):
+                        ing_n = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                        ml = float(recipe_row.get(f"ML{i}", 0) or 0)
+                        if ing_n in ["ΚΕΝΟ", "nan", "", "Νερό"] or ml <= 0:
+                            continue
+                        match_ing_be = df_ing[df_ing["Name"] == ing_n]
+                        if not match_ing_be.empty:
+                            total += ml * float(match_ing_be.iloc[0].get("Τιμή/ml", 0) or 0)
+                    return total
+
+                name_to_cost_be = {}
+                for _, r_be in df_rec.iterrows():
+                    r_name_be = r_be["Ονομα"]
+                    name_to_cost_be[r_name_be] = get_unit_cost_for_cocktail(r_name_be, _be_raw_material_cost(r_be))
+
+                def _be_effective_cost(row):
+                    ac = row.get("applied_cost")
+                    if pd.notna(ac):
+                        try:
+                            return float(ac)
+                        except (TypeError, ValueError):
+                            pass
+                    return name_to_cost_be.get(row["cocktail_name"], get_unit_cost_for_cocktail(row["cocktail_name"], 0.0))
+
+                df_be_hist["effective_unit_cost"] = df_be_hist.apply(_be_effective_cost, axis=1)
+                df_be_hist["cost_total"] = df_be_hist["pieces"] * df_be_hist["effective_unit_cost"]
+
                 total_paid_pieces = df_be_hist["paid_pieces"].sum()
                 total_revenue = df_be_hist["revenue"].sum()
                 total_cost = df_be_hist["cost_total"].sum()
@@ -3850,6 +3883,23 @@ elif page == "🎯 Νεκρό Σημείο":
                     contribution_margin = (total_revenue - total_cost) / total_paid_pieces
                     ref_price = total_revenue / total_paid_pieces
                     calc_note = f"Βάσει {int(total_paid_pieces)} πληρωμένων τεμαχίων ιστορικά (όλες οι ημερομηνίες): μέση τιμή {ref_price:.2f}€, μέσο κόστος {(total_cost/total_paid_pieces):.2f}€"
+
+                    # 🆕 ΠΡΟΕΙΔΟΠΟΙΗΣΗ ΕΠΟΧΙΚΟΤΗΤΑΣ: το περιθώριο/τεμάχιο υπολογίζεται μόνο από
+                    # τους μήνες που ήδη έχεις δεδομένα. Αν καλύπτουν λιγότερο από 12 μήνες,
+                    # το πραγματικό μείγμα πωλήσεων/τιμών του χειμώνα μπορεί να διαφέρει.
+                    try:
+                        _be_dates = pd.to_datetime(df_be_hist["prod_date"], format="%d/%m/%Y", errors="coerce").dropna()
+                        _be_months_covered = _be_dates.dt.strftime("%m/%Y").nunique()
+                    except Exception:
+                        _be_months_covered = None
+                    if _be_months_covered and _be_months_covered < 12:
+                        st.warning(
+                            f"⚠️ Το περιθώριο υπολογίστηκε από δεδομένα που καλύπτουν **{_be_months_covered} μήνες** "
+                            f"(όχι ολόκληρο έτος). Αν οι υπόλοιποι μήνες έχουν διαφορετικό μείγμα πωλήσεων "
+                            f"(π.χ. αλλαγή σε τιμές/εκπτώσεις/πελατολόγιο τον χειμώνα), το πραγματικό ετήσιο "
+                            f"περιθώριο μπορεί να διαφέρει από αυτή την εκτίμηση. Αν οι τιμές/κόστη παραμένουν "
+                            f"σταθερά όλο τον χρόνο και απλά αλλάζει ο όγκος πωλήσεων, η εκτίμηση παραμένει έγκυρη."
+                        )
                 else:
                     st.warning("Δεν βρέθηκε αρκετό ιστορικό πωλήσεων για υπολογισμό μέσου μείγματος.")
             else:
