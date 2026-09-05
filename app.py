@@ -7305,7 +7305,10 @@ elif page == "👥 Πελατολόγιο":
         with st.form("new_customer_form_final", clear_on_submit=True):
             n_name = st.text_input("Όνομα / Επωνυμία *")
             n_afm = st.text_input("ΑΦΜ")
-            n_discount = st.text_input("Αρχική Γενική Έκπτωση (%)", value="0")
+            # 🔧 FIX: πριν ήταν text_input (ελεύθερο κείμενο) και αποθηκευόταν ως STRING στη
+            # βάση χωρίς κανέναν έλεγχο — πιθανή αιτία των "βρώμικων" τιμών έκπτωσης που
+            # χρειάστηκε να διορθώσουμε αμυντικά αλλού (Νεκρό Σημείο, Έσοδα-Έξοδα).
+            n_discount = st.number_input("Αρχική Γενική Έκπτωση (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.5)
             n_phone = st.text_input("Τηλέφωνο")
             n_email = st.text_input("Email")
             n_addr = st.text_area("Διεύθυνση")
@@ -7314,7 +7317,7 @@ elif page == "👥 Πελατολόγιο":
             if st.form_submit_button("💾 Αποθήκευση"):
                 if n_name:
                     supabase.table("customers").insert({
-                        "name": n_name, "afm": n_afm, "discount": n_discount,
+                        "name": n_name, "afm": n_afm, "discount": float(n_discount),
                         "phone": n_phone, "email": n_email, "address": n_addr, "notes": n_notes
                     }).execute()
                     st.success("✅ Ο πελάτης προστέθηκε επιτυχώς!")
