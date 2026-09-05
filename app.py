@@ -3838,9 +3838,24 @@ elif page == "📑 Έσοδα - Έξοδα":
             df_period["rev_special"] = df_period["s_pcs"] * df_period["price_after_global"] * (1 - (df_period["s_pct"] / 100))
             df_period["revenue"] = (df_period["rev_normal"] + df_period["rev_special"]).clip(lower=0)
 
-            df_period["applied_cost"] = pd.to_numeric(df_period.get("applied_cost", 0), errors="coerce").fillna(0)
+            # 🔧 FIX: πριν, όποτε το applied_cost ήταν κενό/None (παλιές εγγραφές χωρίς
+            # καταγεγραμμένο κόστος), γινόταν 0€ αντί να πέσει σε εναλλακτικό υπολογισμό —
+            # αυτό εμφάνιζε τερατωδώς χαμηλό ΚΟΓΣ σε μήνες με πολλά τέτοια δεδομένα (π.χ. Μάιο).
+            # Τώρα: αν το applied_cost είναι ΠΡΑΓΜΑΤΙΚΑ κενό (όχι σκόπιμο μηδέν από Στοκ χωρίς
+            # χρέωση), πέφτει στο σημερινό υπολογισμένο κόστος του κοκτέιλ — ίδια λογική με
+            # το ήδη σωστό Dashboard (get_actual_cost).
+            def _pl_effective_cost(row):
+                ac = row.get("applied_cost")
+                if pd.notna(ac):
+                    try:
+                        return float(ac)
+                    except (TypeError, ValueError):
+                        pass
+                return get_unit_cost_for_cocktail(row["cocktail_name"], 0.0)
+
+            df_period["effective_unit_cost"] = df_period.apply(_pl_effective_cost, axis=1)
             df_period["paid_pieces"] = df_period["normal_pcs"] + df_period["s_pcs"]
-            df_period["cost_total"] = df_period["t_pcs"] * df_period["applied_cost"]
+            df_period["cost_total"] = df_period["t_pcs"] * df_period["effective_unit_cost"]
 
             total_revenue = float(df_period["revenue"].sum())
             total_paid_pieces = int(df_period["paid_pieces"].sum())
