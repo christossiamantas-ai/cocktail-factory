@@ -3821,10 +3821,10 @@ elif page == "📑 Έσοδα - Έξοδα":
             # αγνοώντας τελείως τις πραγματικές εκπτώσεις (ανά πελάτη + ειδική ανά παρτίδα).
             # Τώρα αναπαράγει ΑΚΡΙΒΩΣ τη μεθοδολογία του Dashboard/Πελατολογίου.
             recipe_price_dict_pl = dict(zip(df_rec["Ονομα"], pd.to_numeric(df_rec["Τιμή Καταλόγου"], errors="coerce").fillna(0)))
-            cust_discount_dict_pl = dict(zip(df_cust_pl["name"], df_cust_pl.get("discount", 0))) if not df_cust_pl.empty else {}
+            cust_discount_dict_pl = dict(zip(df_cust_pl["name"], pd.to_numeric(df_cust_pl.get("discount", 0), errors="coerce").fillna(0))) if not df_cust_pl.empty else {}
 
-            df_period["catalog_price"] = df_period["cocktail_name"].map(recipe_price_dict_pl).fillna(0)
-            df_period["global_discount"] = df_period["customer"].map(cust_discount_dict_pl).fillna(0)
+            df_period["catalog_price"] = pd.to_numeric(df_period["cocktail_name"].map(recipe_price_dict_pl), errors="coerce").fillna(0)
+            df_period["global_discount"] = pd.to_numeric(df_period["customer"].map(cust_discount_dict_pl), errors="coerce").fillna(0)
 
             df_period["t_pcs"] = pd.to_numeric(df_period.get("pieces", 0), errors="coerce").fillna(0)
             df_period["f_pcs"] = pd.to_numeric(df_period.get("free_pieces", 0), errors="coerce").fillna(0)
