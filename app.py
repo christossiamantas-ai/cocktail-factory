@@ -770,7 +770,7 @@ with st.sidebar:
         "Μενού:", 
         [
             "📦 Αποθήκη", "🔄 Αντικατάσταση", "📝 Νέα Συνταγή", "📊 Διαχείριση", 
-            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📐 Markup & Margin", "💰 Κοστολόγιο & Σταθερά Έξοδα", "🎁 Κιβωτιακή Πολιτική", "📦 Παραγγελίες B2B", 
+            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📐 Markup & Margin", "💰 Κοστολόγιο & Σταθερά Έξοδα", "🎯 Νεκρό Σημείο", "🎁 Κιβωτιακή Πολιτική", "📦 Παραγγελίες B2B", 
             "📦 Lot Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP","🧪 Προσομοίωση Πωλήσεων", "🛒 Λίστα Αγορών", "🚚 Παραλαβές", "🧪 Δοκιμαστικές Παραγωγές"
         ],
         key="main_page"
@@ -3344,29 +3344,47 @@ elif page == "📈 Dashboard":
             st.plotly_chart(fig_hm, use_container_width=True)
 
         # =====================================================================
-        # 🎁 ΔΥΝΑΜΙΚΗ ΑΝΑΛΥΣΗ ΠΡΟΣΦΟΡΩΝ 240+24
+        # 🎁 ΕΝΟΠΟΙΗΜΕΝΗ ΑΝΑΛΥΣΗ ΔΩΡΩΝ (ΠΑΛΙΟ ΣΥΣΤΗΜΑ + ΝΕΑ ΚΙΒΩΤΙΑΚΗ ΠΟΛΙΤΙΚΗ)
         # =====================================================================
+        # 🔧 FIX: πριν έδειχνε ΜΟΝΟ τα δώρα του παλιού χειροκίνητου συστήματος (κείμενο
+        # "ΠΡΟΣΦΟΡΑ 240" μέσα στο order_details). Τα αυτόματα δώρα της νέας Κιβωτιακής
+        # Πολιτικής (πεδίο free_pieces) ήταν ΑΟΡΑΤΑ εδώ. Τώρα δείχνει και τα δύο μαζί.
+        import re
+
+        df_dash_promos = pd.DataFrame()
         if not df_orders.empty and 'order_details' in df_orders.columns:
-            import re
             df_dash_promos = df_orders[df_orders['order_details'].str.contains("ΠΡΟΣΦΟΡΑ 240", na=False)].copy()
-            
+
+        df_new_gifts = df_filtered[df_filtered['f_pcs'] > 0].copy() if not df_filtered.empty else pd.DataFrame()
+
+        if not df_dash_promos.empty or not df_new_gifts.empty:
+            st.divider()
+            st.subheader("🎁 Ενοποιημένη Ανάλυση Δώρων (Παλιό + Νέο Σύστημα)")
+
+            gcol1, gcol2 = st.columns(2)
+            gcol1.metric("🎁 Παλιό Σύστημα (χειροκίνητο)", f"{len(df_dash_promos)} παραγγελίες")
+            gcol2.metric("🎁 Νέο Σύστημα (Κιβωτιακή Πολιτική)", f"{int(df_new_gifts['f_pcs'].sum()) if not df_new_gifts.empty else 0} δωρεάν τμχ")
+
             if not df_dash_promos.empty:
-                st.divider()
-                st.subheader("🎁 Ανάλυση Προωθητικών Ενεργειών (240+24)")
-                
+                st.markdown("**Παλιό σύστημα** (χειροκίνητη σημείωση στην παραγγελία):")
                 def get_promo_cocktail_dash(detail_str):
                     match = re.search(r"ΠΡΟΣΦΟΡΑ 240\+24 ΔΩΡΟ στο ([^\]\n]+)", str(detail_str))
                     if match: return match.group(1).strip()
                     return "Γενική / Παλιό Μοντέλο"
-                
+
                 df_dash_promos['Ημερομηνία'] = pd.to_datetime(df_dash_promos['created_at']).dt.strftime('%d/%m/%Y')
                 df_dash_promos['Κοκτέιλ Προσφοράς'] = df_dash_promos['order_details'].apply(get_promo_cocktail_dash)
-                
-                col_dash_p1, col_dash_p2 = st.columns([1, 3])
-                with col_dash_p1:
-                    st.metric(label="🎁 Προσφορές στο Φίλτρο", value=f"{len(df_dash_promos)} φορές")
-                with col_dash_p2:
-                    st.dataframe(df_dash_promos.rename(columns={"customer_name": "ΠΕΛΑΤΗΣ", "total_amount": "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"})[["Ημερομηνία", "ΠΕΛΑΤΗΣ", "Κοκτέιλ Προσφοράς", "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"]], use_container_width=True, hide_index=True)
+                st.dataframe(
+                    df_dash_promos.rename(columns={"customer_name": "ΠΕΛΑΤΗΣ", "total_amount": "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"})[["Ημερομηνία", "ΠΕΛΑΤΗΣ", "Κοκτέιλ Προσφοράς", "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"]],
+                    use_container_width=True, hide_index=True
+                )
+
+            if not df_new_gifts.empty:
+                st.markdown("**Νέο σύστημα** (αυτόματο, Κιβωτιακή Πολιτική):")
+                st.dataframe(
+                    df_new_gifts.rename(columns={"prod_date": "Ημερομηνία Παραγωγής", "customer": "ΠΕΛΑΤΗΣ", "cocktail_name": "Κοκτέιλ", "f_pcs": "Δωρεάν Τεμάχια"})[["Ημερομηνία Παραγωγής", "ΠΕΛΑΤΗΣ", "Κοκτέιλ", "Δωρεάν Τεμάχια"]].sort_values("Ημερομηνία Παραγωγής", ascending=False),
+                    use_container_width=True, hide_index=True
+                )
 
         # --- ΑΝΑΛΥΤΙΚΟΣ ΠΙΝΑΚΑΣ ---
         with st.expander("📄 Αναλυτικό Αρχείο (LOT & Profit)"):
@@ -3489,6 +3507,162 @@ elif page == "📈 Dashboard":
        
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ & SMART CART) ---
 # --- 🎁 ΚΙΒΩΤΙΑΚΗ ΠΟΛΙΤΙΚΗ ΔΩΡΩΝ ---
+# --- 🎯 ΝΕΚΡΟ ΣΗΜΕΙΟ (BREAK-EVEN) ---
+elif page == "🎯 Νεκρό Σημείο":
+    st.header("🎯 Υπολογιστής Νεκρού Σημείου (Break-Even)")
+    st.caption(
+        "Πόσα τεμάχια πρέπει να πουλήσεις ανά μήνα / έτος για να καλύψεις τα σταθερά σου έξοδα "
+        "(ενοίκιο, μισθοδοσία, ασφάλιστρα κ.λπ. — ό,τι ΔΕΝ αλλάζει ανάλογα με το πόσο πουλάς)."
+    )
+
+    _be_settings = load_cost_settings() or {}
+
+    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ ---
+    st.subheader("1️⃣ Σταθερά Έξοδα Επιχείρησης")
+    be_col1, be_col2 = st.columns([1, 1.4])
+    with be_col1:
+        fixed_period = st.radio(
+            "Καταχώρησε τα έξοδα ως:",
+            options=["monthly", "yearly"],
+            format_func=lambda x: "📅 Μηνιαία" if x == "monthly" else "📆 Ετήσια",
+            index=["monthly", "yearly"].index(_be_settings.get("fixed_costs_period", "monthly")) if _be_settings.get("fixed_costs_period") in ["monthly", "yearly"] else 0,
+            horizontal=True,
+            key="be_period"
+        )
+    with be_col2:
+        fixed_amount = st.number_input(
+            f"Σύνολο σταθερών εξόδων ({'ανά μήνα' if fixed_period == 'monthly' else 'ανά έτος'}) σε €:",
+            min_value=0.0, value=float(_be_settings.get("fixed_costs_amount", 0.0)), step=50.0,
+            help="Ενοίκιο + Μισθοδοσία + Ασφάλιστρα + Διοικητικά + ό,τι άλλο ΔΕΝ αλλάζει με τον όγκο παραγωγής.",
+            key="be_amount"
+        )
+
+    if st.button("💾 Αποθήκευση Σταθερών Εξόδων"):
+        try:
+            supabase.table("cost_settings").upsert({
+                "id": 1,
+                "operational_cost": float(_be_settings.get("operational_cost") or 0.0),
+                "active": bool(_be_settings.get("active", False)),
+                "fixed_costs_amount": fixed_amount,
+                "fixed_costs_period": fixed_period,
+            }).execute()
+            st.cache_data.clear()
+            st.success("✅ Αποθηκεύτηκε!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Σφάλμα αποθήκευσης: {e} — αν είναι η πρώτη φορά, ίσως χρειάζεται να προστεθούν οι στήλες (δες παρακάτω).")
+            st.code(
+                "alter table cost_settings add column if not exists fixed_costs_amount numeric not null default 0;\n"
+                "alter table cost_settings add column if not exists fixed_costs_period text not null default 'monthly';",
+                language="sql"
+            )
+
+    monthly_fixed = fixed_amount if fixed_period == "monthly" else fixed_amount / 12
+    yearly_fixed = fixed_amount * 12 if fixed_period == "monthly" else fixed_amount
+
+    st.divider()
+
+    # --- 2. ΠΕΡΙΘΩΡΙΟ ΣΥΝΕΙΣΦΟΡΑΣ (Contribution Margin) ---
+    st.subheader("2️⃣ Περιθώριο Συνεισφοράς ανά Τεμάχιο")
+    be_mode = st.radio(
+        "Υπολογισμός με βάση:",
+        options=["specific", "blended"],
+        format_func=lambda x: "🍹 Συγκεκριμένο Κοκτέιλ" if x == "specific" else "📊 Μέσο Μείγμα Πωλήσεων (βάσει ιστορικού)",
+        horizontal=True,
+        key="be_mode"
+    )
+
+    contribution_margin = 0.0
+    ref_price = 0.0
+    calc_note = ""
+
+    if be_mode == "specific":
+        if df_rec.empty:
+            st.warning("Δεν βρέθηκαν συνταγές.")
+        else:
+            be_choice = st.selectbox("Επίλεξε κοκτέιλ:", sorted(df_rec["Ονομα"].unique()), key="be_choice")
+            r_be = df_rec[df_rec["Ονομα"] == be_choice].iloc[0]
+            ref_price = float(r_be.get("Τιμή Καταλόγου", 0.0) or 0.0)
+            raw_cost_be = 0.0
+            for i in range(1, 14):
+                ing_n = str(r_be.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                ml = float(r_be.get(f"ML{i}", 0) or 0)
+                if ing_n in ["ΚΕΝΟ", "nan", "", "Νερό"] or ml <= 0:
+                    continue
+                match_be = df_ing[df_ing["Name"] == ing_n]
+                if not match_be.empty:
+                    raw_cost_be += ml * float(match_be.iloc[0].get("Τιμή/ml", 0) or 0)
+            unit_cost_be = get_unit_cost_for_cocktail(be_choice, raw_cost_be)
+            contribution_margin = ref_price - unit_cost_be
+            calc_note = f"Τιμή {ref_price:.2f}€ − Κόστος {unit_cost_be:.2f}€ = {contribution_margin:.2f}€ ανά τεμάχιο"
+    else:
+        try:
+            res_be_hist = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, applied_cost, lot_cocktail, prod_time").execute()
+            if res_be_hist.data:
+                df_be_hist = pd.DataFrame(res_be_hist.data).drop_duplicates(subset=["lot_cocktail", "prod_time", "cocktail_name"])
+                df_be_hist["pieces"] = pd.to_numeric(df_be_hist["pieces"], errors="coerce").fillna(0)
+                df_be_hist["free_pieces"] = pd.to_numeric(df_be_hist.get("free_pieces", 0), errors="coerce").fillna(0)
+                df_be_hist["applied_cost"] = pd.to_numeric(df_be_hist.get("applied_cost", 0), errors="coerce").fillna(0)
+                price_map = dict(zip(df_rec["Ονομα"], pd.to_numeric(df_rec["Τιμή Καταλόγου"], errors="coerce").fillna(0)))
+                df_be_hist["paid_pieces"] = (df_be_hist["pieces"] - df_be_hist["free_pieces"]).clip(lower=0)
+                df_be_hist["revenue"] = df_be_hist["paid_pieces"] * df_be_hist["cocktail_name"].map(price_map).fillna(0)
+                df_be_hist["cost_total"] = df_be_hist["pieces"] * df_be_hist["applied_cost"]
+                total_paid_pieces = df_be_hist["paid_pieces"].sum()
+                total_revenue = df_be_hist["revenue"].sum()
+                total_cost = df_be_hist["cost_total"].sum()
+                if total_paid_pieces > 0:
+                    contribution_margin = (total_revenue - total_cost) / total_paid_pieces
+                    ref_price = total_revenue / total_paid_pieces
+                    calc_note = f"Βάσει {int(total_paid_pieces)} πληρωμένων τεμαχίων ιστορικά: μέση τιμή {ref_price:.2f}€, μέσο κόστος {(total_cost/total_paid_pieces):.2f}€"
+                else:
+                    st.warning("Δεν βρέθηκε αρκετό ιστορικό πωλήσεων για υπολογισμό μέσου μείγματος.")
+            else:
+                st.warning("Δεν βρέθηκε ιστορικό παραγωγής.")
+        except Exception as e:
+            st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
+
+    if calc_note:
+        st.caption(f"🔧 {calc_note}")
+
+    st.divider()
+
+    # --- 3. ΑΠΟΤΕΛΕΣΜΑΤΑ ---
+    st.subheader("3️⃣ Αποτέλεσμα Νεκρού Σημείου")
+    if contribution_margin <= 0:
+        st.error("⚠️ Το περιθώριο συνεισφοράς είναι μηδενικό ή αρνητικό — δεν υπάρχει σημείο νεκρού σημείου με τα τρέχοντα δεδομένα (χάνεις χρήματα σε κάθε τεμάχιο).")
+    else:
+        be_units_month = monthly_fixed / contribution_margin
+        be_units_year = yearly_fixed / contribution_margin
+        be_revenue_month = be_units_month * ref_price
+        be_revenue_year = be_units_year * ref_price
+
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            st.metric("📅 Νεκρό Σημείο / Μήνα", f"{be_units_month:,.0f} τεμάχια", help=f"≈ {be_revenue_month:,.0f} € τζίρος")
+            st.caption(f"≈ {be_revenue_month:,.0f} € τζίρος/μήνα")
+        with rc2:
+            st.metric("📆 Νεκρό Σημείο / Έτος", f"{be_units_year:,.0f} τεμάχια", help=f"≈ {be_revenue_year:,.0f} € τζίρος")
+            st.caption(f"≈ {be_revenue_year:,.0f} € τζίρος/έτος")
+
+        # --- Γράφημα Νεκρού Σημείου (μηνιαία βάση) ---
+        st.divider()
+        st.subheader("📉 Γράφημα Νεκρού Σημείου (μηνιαία βάση)")
+        max_units = max(int(be_units_month * 2), 10)
+        step = max(1, max_units // 40)
+        units_range = list(range(0, max_units + step, step))
+        chart_rows = []
+        for u in units_range:
+            chart_rows.append({"Τεμάχια": u, "Σειρά": "Συνολικό Κόστος", "Ποσό (€)": monthly_fixed + u * (ref_price - contribution_margin)})
+            chart_rows.append({"Τεμάχια": u, "Σειρά": "Έσοδα", "Ποσό (€)": u * ref_price})
+        df_be_chart = pd.DataFrame(chart_rows)
+        fig_be = px.line(
+            df_be_chart, x="Τεμάχια", y="Ποσό (€)", color="Σειρά",
+            template="plotly_dark",
+            color_discrete_map={"Συνολικό Κόστος": "#ff4b4b", "Έσοδα": "#00ffcc"}
+        )
+        fig_be.add_vline(x=be_units_month, line_dash="dash", line_color="white", annotation_text="Νεκρό Σημείο")
+        st.plotly_chart(fig_be, use_container_width=True)
+
 elif page == "🎁 Κιβωτιακή Πολιτική":
     st.header("🎁 Κιβωτιακή Πολιτική Δώρων")
     st.caption(
