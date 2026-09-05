@@ -3517,25 +3517,22 @@ elif page == "🎯 Νεκρό Σημείο":
 
     _be_settings = load_cost_settings() or {}
 
-    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ ---
-    st.subheader("1️⃣ Σταθερά Έξοδα Επιχείρησης")
-    be_col1, be_col2 = st.columns([1, 1.4])
-    with be_col1:
-        fixed_period = st.radio(
-            "Καταχώρησε τα έξοδα ως:",
-            options=["monthly", "yearly"],
-            format_func=lambda x: "📅 Μηνιαία" if x == "monthly" else "📆 Ετήσια",
-            index=["monthly", "yearly"].index(_be_settings.get("fixed_costs_period", "monthly")) if _be_settings.get("fixed_costs_period") in ["monthly", "yearly"] else 0,
-            horizontal=True,
-            key="be_period"
-        )
-    with be_col2:
-        fixed_amount = st.number_input(
-            f"Σύνολο σταθερών εξόδων ({'ανά μήνα' if fixed_period == 'monthly' else 'ανά έτος'}) σε €:",
-            min_value=0.0, value=float(_be_settings.get("fixed_costs_amount", 0.0)), step=50.0,
-            help="Ενοίκιο + Μισθοδοσία + Ασφάλιστρα + Διοικητικά + ό,τι άλλο ΔΕΝ αλλάζει με τον όγκο παραγωγής.",
-            key="be_amount"
-        )
+    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ (ανά κατηγορία, μηνιαία — αθροίζονται αυτόματα) ---
+    st.subheader("1️⃣ Σταθερά Έξοδα Επιχείρησης (μηνιαία, ανά κατηγορία)")
+    st.caption("Συμπλήρωσε ό,τι ισχύει για την επιχείρησή σου — το σύνολο υπολογίζεται αυτόματα από κάτω.")
+
+    fc1, fc2 = st.columns(2)
+    be_rent = fc1.number_input("🏠 Ενοίκιο", min_value=0.0, value=float(_be_settings.get("be_rent", 0.0)), step=50.0, key="be_rent")
+    be_labor = fc2.number_input("👷 Μισθοδοσία", min_value=0.0, value=float(_be_settings.get("be_labor", 0.0)), step=50.0, key="be_labor")
+    be_insurance = fc1.number_input("🛡️ Ασφάλιστρα", min_value=0.0, value=float(_be_settings.get("be_insurance", 0.0)), step=50.0, key="be_insurance")
+    be_admin = fc2.number_input("📋 Λογιστικά / Διοικητικά", min_value=0.0, value=float(_be_settings.get("be_admin", 0.0)), step=50.0, key="be_admin")
+    be_utilities = fc1.number_input("💡 ΔΕΗ / Ρεύμα / Νερό", min_value=0.0, value=float(_be_settings.get("be_utilities", 0.0)), step=50.0, key="be_utilities")
+    be_other = fc2.number_input("➕ Λοιπά Σταθερά", min_value=0.0, value=float(_be_settings.get("be_other", 0.0)), step=50.0, key="be_other")
+
+    monthly_fixed = be_rent + be_labor + be_insurance + be_admin + be_utilities + be_other
+    yearly_fixed = monthly_fixed * 12
+
+    st.info(f"💶 **Σύνολο Σταθερών Εξόδων:** {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος")
 
     if st.button("💾 Αποθήκευση Σταθερών Εξόδων"):
         try:
@@ -3543,22 +3540,23 @@ elif page == "🎯 Νεκρό Σημείο":
                 "id": 1,
                 "operational_cost": float(_be_settings.get("operational_cost") or 0.0),
                 "active": bool(_be_settings.get("active", False)),
-                "fixed_costs_amount": fixed_amount,
-                "fixed_costs_period": fixed_period,
+                "be_rent": be_rent, "be_labor": be_labor, "be_insurance": be_insurance,
+                "be_admin": be_admin, "be_utilities": be_utilities, "be_other": be_other,
             }).execute()
             st.cache_data.clear()
             st.success("✅ Αποθηκεύτηκε!")
             st.rerun()
         except Exception as e:
-            st.error(f"Σφάλμα αποθήκευσης: {e} — αν είναι η πρώτη φορά, ίσως χρειάζεται να προστεθούν οι στήλες (δες παρακάτω).")
+            st.error(f"Σφάλμα αποθήκευσης: {e} — ίσως χρειάζεται να προστεθούν οι στήλες (δες παρακάτω).")
             st.code(
-                "alter table cost_settings add column if not exists fixed_costs_amount numeric not null default 0;\n"
-                "alter table cost_settings add column if not exists fixed_costs_period text not null default 'monthly';",
+                "alter table cost_settings add column if not exists be_rent numeric not null default 0;\n"
+                "alter table cost_settings add column if not exists be_labor numeric not null default 0;\n"
+                "alter table cost_settings add column if not exists be_insurance numeric not null default 0;\n"
+                "alter table cost_settings add column if not exists be_admin numeric not null default 0;\n"
+                "alter table cost_settings add column if not exists be_utilities numeric not null default 0;\n"
+                "alter table cost_settings add column if not exists be_other numeric not null default 0;",
                 language="sql"
             )
-
-    monthly_fixed = fixed_amount if fixed_period == "monthly" else fixed_amount / 12
-    yearly_fixed = fixed_amount * 12 if fixed_period == "monthly" else fixed_amount
 
     st.divider()
 
