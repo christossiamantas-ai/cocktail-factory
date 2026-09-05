@@ -7267,31 +7267,22 @@ elif page == "👥 Πελατολόγιο":
                             st.info(f"**Αρχική Αξία (προ εκπτώσεων):** {base_amt:.2f} €\n\n**Καθαρή Χρέωση:** {current_amt:.2f} €\n\n**ΦΠΑ (24%):** {fpa_amt:.2f} €\n\n**Τελικό Πληρωτέο:** {final_with_fpa:.2f} €")
                             st.caption(f"Λεπτομέρειες:\n{details}")
                             
-                            if st.button("🗑️ Διαγραφή Παραγγελίας", key=f"del_o_{order_id}"):
+                            if st.button("🗑️ Διαγραφή Παραγγελίας (μόνο B2B)", key=f"del_o_{order_id}"):
                                 with st.spinner("Διαγραφή σε εξέλιξη..."):
                                     try:
-                                        from datetime import datetime
-                                        order_date_iso = str(order['created_at'])[:10]
-                                        
-                                        prod_res = supabase.table("production_log").select("id, prod_date").eq("customer", sel_name).execute()
-                                        if prod_res.data:
-                                            ids_to_delete = []
-                                            for p in prod_res.data:
-                                                try:
-                                                    p_iso = datetime.strptime(str(p['prod_date']).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
-                                                    if p_iso == order_date_iso:
-                                                        ids_to_delete.append(p['id'])
-                                                except Exception:
-                                                    pass
-                                            
-                                            if ids_to_delete:
-                                                supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
-                                        
+                                        # 🔧 ΕΠΕΙΓΟΥΣΑ ΔΙΟΡΘΩΣΗ ΑΣΦΑΛΕΙΑΣ: πριν, αυτό το κουμπί έψαχνε ΟΛΕΣ τις
+                                        # γραμμές production_log του πελάτη ΣΤΗΝ ΙΔΙΑ ΗΜΕΡΟΜΗΝΙΑ και τις
+                                        # διέγραφε — χωρίς κανέναν τρόπο να ξεχωρίσει ποιες ανήκουν σε ΑΥΤΗ
+                                        # τη συγκεκριμένη παραγγελία. Αν υπήρχαν 2 παραγγελίες ίδιου πελάτη/
+                                        # ημέρας (π.χ. διπλότυπα), η διαγραφή της μίας διέγραφε ΚΑΙ τα δεδομένα
+                                        # παραγωγής της άλλης — ακριβώς αυτό συνέβη. Τώρα το κουμπί διαγράφει
+                                        # ΜΟΝΟ την εγγραφή b2b_orders. Η παραγωγή διαγράφεται ξεχωριστά,
+                                        # χειροκίνητα, από το «📦 Lot Παραγωγής» όπου βλέπεις ακριβώς τι σβήνεις.
                                         supabase.table("b2b_orders").delete().eq("id", order_id).execute()
                                         
-                                        st.warning("🔄 Η παραγγελία και όλα της τα υλικά διαγράφηκαν οριστικά και πεντακάθαρα!")
+                                        st.warning("🔄 Διαγράφηκε ΜΟΝΟ η οικονομική εγγραφή (b2b_orders). Τα δεδομένα παραγωγής (υλικά/HACCP) ΔΕΝ αγγίχτηκαν — αν χρειάζεται να τα διαγράψεις κι αυτά, κάν' το από το «📦 Lot Παραγωγής» όπου θα δεις ακριβώς ποιες γραμμές σβήνεις.")
                                         import time
-                                        time.sleep(1)
+                                        time.sleep(1.5)
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Σφάλμα κατά τη διαγραφή: {e}")
