@@ -3597,9 +3597,13 @@ elif page == "🎯 Νεκρό Σημείο":
             calc_note = f"Τιμή {ref_price:.2f}€ − Κόστος {unit_cost_be:.2f}€ = {contribution_margin:.2f}€ ανά τεμάχιο"
     else:
         try:
-            res_be_hist = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, applied_cost, lot_cocktail, prod_time").execute()
+            res_be_hist = supabase.table("production_log").select("cocktail_name, customer, pieces, free_pieces, applied_cost, lot_cocktail, prod_time, prod_date").execute()
             if res_be_hist.data:
-                df_be_hist = pd.DataFrame(res_be_hist.data).drop_duplicates(subset=["lot_cocktail", "prod_time", "cocktail_name"])
+                # 🔧 FIX: πριν το dedup ΔΕΝ περιλάμβανε "customer" — αν το ίδιο κοκτέιλ
+                # καταχωρήθηκε στην ίδια αποθήκευση για 2+ διαφορετικούς πελάτες (πολύ συχνό,
+                # μιας κι ένα save μπορεί να έχει πολλούς πελάτες), κρατούσε μόνο τον έναν και
+                # υποεκτιμούσε τα πραγματικά πληρωμένα τεμάχια.
+                df_be_hist = pd.DataFrame(res_be_hist.data).drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
                 df_be_hist["pieces"] = pd.to_numeric(df_be_hist["pieces"], errors="coerce").fillna(0)
                 df_be_hist["free_pieces"] = pd.to_numeric(df_be_hist.get("free_pieces", 0), errors="coerce").fillna(0)
                 df_be_hist["applied_cost"] = pd.to_numeric(df_be_hist.get("applied_cost", 0), errors="coerce").fillna(0)
@@ -3613,7 +3617,7 @@ elif page == "🎯 Νεκρό Σημείο":
                 if total_paid_pieces > 0:
                     contribution_margin = (total_revenue - total_cost) / total_paid_pieces
                     ref_price = total_revenue / total_paid_pieces
-                    calc_note = f"Βάσει {int(total_paid_pieces)} πληρωμένων τεμαχίων ιστορικά: μέση τιμή {ref_price:.2f}€, μέσο κόστος {(total_cost/total_paid_pieces):.2f}€"
+                    calc_note = f"Βάσει {int(total_paid_pieces)} πληρωμένων τεμαχίων ιστορικά (όλες οι ημερομηνίες): μέση τιμή {ref_price:.2f}€, μέσο κόστος {(total_cost/total_paid_pieces):.2f}€"
                 else:
                     st.warning("Δεν βρέθηκε αρκετό ιστορικό πωλήσεων για υπολογισμό μέσου μείγματος.")
             else:
