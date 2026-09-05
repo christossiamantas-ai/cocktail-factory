@@ -3235,6 +3235,9 @@ elif page == "📈 Dashboard":
         total_profit = df_filtered['Profit'].sum()
         total_units = df_filtered['t_pcs'].sum()
         total_orders_count = df_filtered.groupby(['prod_date', 'customer']).ngroups
+        # 🔧 Ξεχωριστό μέτρημα ΜΟΝΟ B2B παραγγελιών (χωρίς λιανική) — ίδια λογική με το
+        # tab "📦 Παραγγελίες B2B", όπου η «Λιανική / Άγνωστος» εξαιρείται σκόπιμα από τιμολόγια.
+        b2b_only_count = df_filtered[df_filtered['customer'] != "Λιανική / Άγνωστος"].groupby(['prod_date', 'customer']).ngroups if not df_filtered.empty else 0
 
         df_mom_grouped = df_filtered.groupby(['customer', 'Month_Year'])['Theoretical_Revenue'].sum().reset_index()
         df_mom_grouped.rename(columns={'Theoretical_Revenue': 'Revenue', 'Month_Year': 'Month'}, inplace=True)
@@ -3253,7 +3256,7 @@ elif page == "📈 Dashboard":
         m3.metric("📉 Συνολικό Κόστος", f"{format_gr(total_cost)} €", help="Περιλαμβάνει υλικά + λειτουργικό/σταθερό κόστος ανά τεμάχιο.")
         m4.metric("🍹 Τεμάχια", f"{format_gr(int(total_units), decimals=0)} τμχ")
         m5.metric("🎁 Δώρα", f"{total_gifts_given} τμχ", help="Δωρεάν τεμάχια (Κιβωτιακή Πολιτική) μέσα στο τρέχον φίλτρο.")
-        m6.metric("📦 Παραγγελίες", format_gr(total_orders_count, decimals=0))
+        m6.metric("📦 Παραγγελίες", format_gr(total_orders_count, decimals=0), delta=f"{format_gr(b2b_only_count, decimals=0)} μόνο B2B (χωρίς λιανική)", delta_color="off", help="Το κύριο νούμερο περιλαμβάνει και λιανική. Το κάτω νούμερο ταιριάζει με την καρτέλα «📦 Παραγγελίες B2B».")
         m7.metric("⚖️ Μέση Αξία", f"{format_gr(aov)} €")
 
         # --- 🕵️‍♂️ ΕΡΓΑΛΕΙΟ ΕΛΕΓΧΟΥ (ΝΕΟ AUDIT TOOL) ---
