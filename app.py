@@ -3249,7 +3249,7 @@ elif page == "📈 Dashboard":
         
         m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
         m1.metric("💰 Τζίρος", f"{format_gr(total_rev)} €")
-        m2.metric("📈 Καθαρό Κέρδος", f"{format_gr(total_profit)} €", delta=f"{margin:.1f}% Margin")
+        m2.metric("📈 Μικτό Κέρδος", f"{format_gr(total_profit)} €", delta=f"{margin:.1f}% Margin", help="Τζίρος − Κόστος Υλικών. ΔΕΝ αφαιρεί τα Σταθερά Έξοδα Επιχείρησης (ενοίκιο, μισθοδοσία κ.λπ.) — για το πραγματικό καθαρό κέρδος δες την καρτέλα «📑 Έσοδα - Έξοδα».")
         m3.metric("📉 Συνολικό Κόστος", f"{format_gr(total_cost)} €", help="Περιλαμβάνει υλικά + λειτουργικό/σταθερό κόστος ανά τεμάχιο.")
         m4.metric("🍹 Τεμάχια", f"{format_gr(int(total_units), decimals=0)} τμχ")
         m5.metric("🎁 Δώρα", f"{total_gifts_given} τμχ", help="Δωρεάν τεμάχια (Κιβωτιακή Πολιτική) μέσα στο τρέχον φίλτρο.")
