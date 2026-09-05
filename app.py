@@ -5791,11 +5791,16 @@ elif page == "📦 Lot Παραγωγής":
                             for c_data in cocktail_updates.values():
                                 all_orig_ids.extend([i["orig_id"] for i in c_data["ingredients"]])
                             
-                            app_cost_map = {}
+                            # 🔧 FIX: πριν, ΚΑΘΕ επεξεργασία μέσω αυτού του εργαλείου διέγραφε σιωπηλά
+                            # το free_pieces (δώρο)/discounted_pieces/discount_pct της αρχικής παρτίδας —
+                            # π.χ. αν διόρθωνες μόνο ένα LOT νούμερο σε παραγγελία με δώρο, το δώρο
+                            # "εξαφανιζόταν" και ο πελάτης χρεωνόταν κανονικά. Τώρα διαβάζουμε τις
+                            # αρχικές τιμές και τις μεταφέρουμε στις νέες εγγραφές.
+                            orig_meta_map = {}
                             if all_orig_ids:
-                                res_old = supabase.table("production_log").select("id, applied_cost").in_("id", all_orig_ids).execute()
+                                res_old = supabase.table("production_log").select("id, applied_cost, free_pieces, discounted_pieces, discount_pct").in_("id", all_orig_ids).execute()
                                 if res_old.data:
-                                    app_cost_map = {row["id"]: row.get("applied_cost") for row in res_old.data}
+                                    orig_meta_map = {row["id"]: row for row in res_old.data}
                             
                             if all_orig_ids:
                                 supabase.table("production_log").delete().in_("id", all_orig_ids).execute()
@@ -5812,6 +5817,17 @@ elif page == "📦 Lot Παραγωγής":
                                 
                                 p_type = c_data["prod_type"]
                                 c_mode = c_data["cost_mode"]
+
+                                # Παίρνουμε το free_pieces/discounted_pieces/discount_pct από την ΑΡΧΙΚΗ
+                                # παρτίδα (όλες οι γραμμές υλικών της ίδιας παρτίδας μοιράζονται τις ίδιες
+                                # τιμές, όπως ακριβώς και το "pieces"), και τα προσαρμόζουμε ώστε να μην
+                                # ξεπερνούν τα νέα τεμάχια αν η ποσότητα άλλαξε.
+                                first_orig_id = c_data["ingredients"][0]["orig_id"] if c_data["ingredients"] else None
+                                orig_meta = orig_meta_map.get(first_orig_id, {}) if first_orig_id is not None else {}
+                                new_pcs_int = int(c_data["new_pcs"])
+                                carried_free = min(int(orig_meta.get("free_pieces") or 0), new_pcs_int)
+                                carried_disc_pcs = min(int(orig_meta.get("discounted_pieces") or 0), max(0, new_pcs_int - carried_free))
+                                carried_disc_pct = float(orig_meta.get("discount_pct") or 0.0)
                                 
                                 for ing in c_data["ingredients"]:
                                     new_ml = ing["final_ml"] # Παίρνει κατευθείαν τα τελικά ML που υπολόγισε η οθόνη!
@@ -5824,9 +5840,12 @@ elif page == "📦 Lot Παραγωγής":
                                     new_row = {
                                         "prod_date": c_data["new_date"].strip(), "prod_time": o_time, 
                                         "customer": c_data["new_cust"].strip(), "cocktail_name": c_data["orig_cocktail"], 
-                                        "lot_cocktail": c_data["new_lot"].strip(), "pieces": int(c_data["new_pcs"]), 
+                                        "lot_cocktail": c_data["new_lot"].strip(), "pieces": new_pcs_int, 
                                         "ingredient_name": ing["ing_name"], "total_ml": new_ml, "target_g": round(g_calc, 1), 
                                         "lot_number": ing["new_lot"], "expiry_date": ing["new_exp"], "unit_cost": round(float(ing["u_cost"]), 4),
+                                        "free_pieces": carried_free,
+                                        "discounted_pieces": carried_disc_pcs,
+                                        "discount_pct": carried_disc_pct,
                                     }
                                     if p_type == "Από Παλιό LOT (Αδήλωτο Στοκ)" and "Μηδενικό" in c_mode:
                                         new_row["applied_cost"] = 0.0
