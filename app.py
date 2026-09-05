@@ -7746,7 +7746,55 @@ elif page == "🔄 Αντικατάσταση":
 # --- ΕΝΟΤΗΤΑ: ΔΙΑΧΕΙΡΙΣΗ ΠΑΡΑΓΓΕΛΙΩΝ B2B & E-SHOP ---
 elif page == "📦 Παραγγελίες B2B":
     st.header("📦 Διαχείριση Παραγγελιών B2B")
-    
+
+    # --- 🔍 ΔΙΑΓΝΩΣΤΙΚΟ: ΣΥΝΕΠΕΙΑ ΜΕ ΤΟ PRODUCTION_LOG ---
+    with st.expander("🔍 Έλεγχος Συνέπειας — γιατί ο αριθμός παραγγελιών διαφέρει από το Dashboard"):
+        st.caption("Συγκρίνει τις εγγραφές του b2b_orders με τα πραγματικά δεδομένα παραγωγής, για να βρει διπλότυπες ή \"ξεχασμένες\" εγγραφές.")
+        if st.button("▶️ Τρέξε τον έλεγχο τώρα"):
+            with st.spinner("Ελέγχω..."):
+                try:
+                    res_all_orders = supabase.table("b2b_orders").select("id, customer_name, created_at, total_amount").execute()
+                    res_all_prod = supabase.table("production_log").select("customer, prod_date").execute()
+
+                    df_orders_chk = pd.DataFrame(res_all_orders.data) if res_all_orders.data else pd.DataFrame(columns=["id", "customer_name", "created_at", "total_amount"])
+                    df_prod_chk = pd.DataFrame(res_all_prod.data) if res_all_prod.data else pd.DataFrame(columns=["customer", "prod_date"])
+
+                    if not df_orders_chk.empty:
+                        df_orders_chk["order_date_iso"] = pd.to_datetime(df_orders_chk["created_at"]).dt.strftime("%Y-%m-%d")
+                    if not df_prod_chk.empty:
+                        df_prod_chk["prod_date_iso"] = pd.to_datetime(df_prod_chk["prod_date"], format="%d/%m/%Y", errors="coerce").dt.strftime("%Y-%m-%d")
+
+                    valid_prod_keys = set(zip(df_prod_chk["customer"], df_prod_chk["prod_date_iso"])) if not df_prod_chk.empty else set()
+
+                    # 1. Διπλότυπες εγγραφές b2b_orders για ίδιο πελάτη+ημέρα
+                    dup_mask = df_orders_chk.duplicated(subset=["customer_name", "order_date_iso"], keep=False) if not df_orders_chk.empty else pd.Series(dtype=bool)
+                    df_duplicates = df_orders_chk[dup_mask].sort_values(["customer_name", "order_date_iso"]) if not df_orders_chk.empty else pd.DataFrame()
+
+                    # 2. "Ξεχασμένες" εγγραφές b2b_orders χωρίς καμία αντίστοιχη παραγωγή
+                    if not df_orders_chk.empty:
+                        df_orders_chk["has_production"] = df_orders_chk.apply(lambda r: (r["customer_name"], r["order_date_iso"]) in valid_prod_keys, axis=1)
+                        df_orphaned = df_orders_chk[~df_orders_chk["has_production"]]
+                    else:
+                        df_orphaned = pd.DataFrame()
+
+                    st.markdown(f"**Σύνολο εγγραφών b2b_orders:** {len(df_orders_chk)}")
+
+                    if not df_duplicates.empty:
+                        st.error(f"⚠️ Βρέθηκαν {len(df_duplicates)} εγγραφές σε {df_duplicates.groupby(['customer_name','order_date_iso']).ngroups} διπλότυπα ζευγάρια (ίδιος πελάτης + ίδια ημέρα, 2+ φορές):")
+                        st.dataframe(df_duplicates[["id", "customer_name", "order_date_iso", "total_amount"]], use_container_width=True, hide_index=True)
+                    else:
+                        st.success("✅ Δεν βρέθηκαν διπλότυπες εγγραφές (ίδιος πελάτης + ίδια ημέρα).")
+
+                    if not df_orphaned.empty:
+                        st.warning(f"⚠️ Βρέθηκαν {len(df_orphaned)} εγγραφές b2b_orders ΧΩΡΙΣ καμία αντίστοιχη γραμμή παραγωγής (πιθανές \"ξεχασμένες\"):")
+                        st.dataframe(df_orphaned[["id", "customer_name", "order_date_iso", "total_amount"]], use_container_width=True, hide_index=True)
+                        st.caption("Αυτές οι εγγραφές πιθανόν να προήλθαν από παλιά παραγωγή που διαγράφηκε/επεξεργάστηκε χωρίς να ενημερωθεί το b2b_orders. Μπορείς να τις διαγράψεις χειροκίνητα από το tab «Ιστορικό & Αναζήτηση» παρακάτω αν επιβεβαιώσεις ότι είναι όντως ξεπερασμένες.")
+                    else:
+                        st.success("✅ Δεν βρέθηκαν 'ξεχασμένες' εγγραφές χωρίς αντίστοιχη παραγωγή.")
+                except Exception as e:
+                    st.error(f"Σφάλμα ελέγχου: {e}")
+
+        
     # --- ΛΕΙΤΟΥΡΓΙΑ WOOCOMMERCE SYNC ---
     from woocommerce import API
     try:
