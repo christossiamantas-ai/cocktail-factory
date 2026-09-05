@@ -522,6 +522,112 @@ def generate_full_recipe_report_pdf(df_recipes, df_ingredients, cost_fn):
 
     return pdf.output()
 
+# --- 📑 PDF: ΑΝΑΦΟΡΑ ΕΣΟΔΩΝ - ΕΞΟΔΩΝ (P&L) ---
+def generate_pl_report_pdf(period_label, data):
+    """Δημιουργεί ένα καλαίσθητο PDF με πλήρη αναφορά Εσόδων-Εξόδων για μια περίοδο
+    (μήνα ή έτος). `data` περιέχει όλα τα νούμερα (τζίρος, COGS, σταθερά έξοδα ανά
+    κατηγορία, καθαρό κέρδος)."""
+    pdf = FPDF()
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    RED = (176, 0, 32)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    LIGHTGREY = (245, 245, 245)
+    WHITE = (255, 255, 255)
+
+    # --- ΚΕΦΑΛΙΔΑ ---
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(0, 0, 210, 30, 'F')
+    pdf.set_xy(10, 7)
+    pdf.set_font(f_name, 'B', 18)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+    pdf.set_x(10)
+    pdf.set_font(f_name, size=12)
+    pdf.cell(0, 7, f"Αναφορά Εσόδων - Εξόδων  |  Περίοδος: {period_label}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(16)
+
+    def row(label, value, bold=False, color=None, indent=0):
+        pdf.set_font(f_name, 'B' if bold else '', 10)
+        pdf.set_text_color(*(color or DARK))
+        pdf.cell(10 * indent, 7)
+        pdf.cell(130 - 10 * indent, 7, label)
+        pdf.cell(50, 7, value, align='R', ln=1)
+        pdf.set_text_color(*DARK)
+
+    def divider():
+        pdf.ln(1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(3)
+
+    # --- ΕΣΟΔΑ ---
+    pdf.set_fill_color(*LIGHTGREY)
+    pdf.set_font(f_name, 'B', 12)
+    pdf.cell(0, 8, "ΕΣΟΔΑ", ln=1, fill=True)
+    pdf.ln(1)
+    row("Τζίρος (Θεωρητικά Έσοδα)", f"{data['total_revenue']:,.2f} EUR", bold=True, color=GREEN)
+    row("Τεμάχια Πωληθέντα (πληρωμένα)", f"{data['total_paid_pieces']:,} τμχ", indent=1)
+    row("Δωρεάν Τεμάχια (Κιβωτιακή Πολιτική)", f"{data['total_gift_pieces']:,} τμχ", indent=1)
+    divider()
+
+    # --- ΜΕΤΑΒΛΗΤΟ ΚΟΣΤΟΣ ---
+    pdf.set_font(f_name, 'B', 12)
+    pdf.cell(0, 8, "ΜΕΤΑΒΛΗΤΟ ΚΟΣΤΟΣ (COGS)", ln=1, fill=True)
+    pdf.ln(1)
+    row("Κόστος Πωληθέντων", f"-{data['total_cogs']:,.2f} EUR", color=RED)
+    row("Μικτό Κέρδος", f"{data['gross_profit']:,.2f} EUR", bold=True, color=GREEN if data['gross_profit'] >= 0 else RED)
+    row("Περιθώριο Μικτού Κέρδους", f"{data['gross_margin_pct']:.1f} %", indent=1)
+    divider()
+
+    # --- ΣΤΑΘΕΡΑ ΕΞΟΔΑ ---
+    pdf.set_font(f_name, 'B', 12)
+    pdf.cell(0, 8, "ΣΤΑΘΕΡΑ ΕΞΟΔΑ ΕΠΙΧΕΙΡΗΣΗΣ", ln=1, fill=True)
+    pdf.ln(1)
+    row("Ενοίκιο", f"-{data['be_rent']:,.2f} EUR", indent=1)
+    row("Μισθοδοσία", f"-{data['be_labor']:,.2f} EUR", indent=1)
+    row("Ασφάλιστρα", f"-{data['be_insurance']:,.2f} EUR", indent=1)
+    row("Λογιστικά / Διοικητικά", f"-{data['be_admin']:,.2f} EUR", indent=1)
+    row("ΔΕΗ / Ρεύμα / Νερό", f"-{data['be_utilities']:,.2f} EUR", indent=1)
+    row("Λοιπά Σταθερά", f"-{data['be_other']:,.2f} EUR", indent=1)
+    row("Σύνολο Σταθερών Εξόδων", f"-{data['period_fixed']:,.2f} EUR", bold=True, color=RED)
+    divider()
+
+    # --- ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ ---
+    net_color = GREEN if data['net_profit'] >= 0 else RED
+    pdf.set_fill_color(*(230, 244, 234) if data['net_profit'] >= 0 else (250, 230, 230))
+    pdf.set_draw_color(*net_color)
+    pdf.set_font(f_name, 'B', 13)
+    pdf.set_text_color(*net_color)
+    pdf.cell(130, 10, "ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ", border=1, fill=True)
+    pdf.cell(50, 10, f"{data['net_profit']:,.2f} EUR", border=1, fill=True, align='R', ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(2)
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, f"Περιθώριο Καθαρού Κέρδους: {data['net_margin_pct']:.1f} %", ln=1)
+    pdf.set_text_color(*DARK)
+
+    # --- ΥΠΟΣΕΛΙΔΟ ---
+    pdf.set_y(-18)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, f"CabClub Cocktails - Αναφορά Εσόδων-Εξόδων - Δημιουργήθηκε: {data['now_str']}", align='C')
+
+    return pdf.output()
+
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
@@ -770,7 +876,7 @@ with st.sidebar:
         "Μενού:", 
         [
             "📦 Αποθήκη", "🔄 Αντικατάσταση", "📝 Νέα Συνταγή", "📊 Διαχείριση", 
-            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📐 Markup & Margin", "💰 Κοστολόγιο & Σταθερά Έξοδα", "🎯 Νεκρό Σημείο", "🎁 Κιβωτιακή Πολιτική", "📦 Παραγγελίες B2B", 
+            "🔍 Ανάλυση", "📊 Εμπορική Πολιτική", "📐 Markup & Margin", "💰 Κοστολόγιο & Σταθερά Έξοδα", "🎯 Νεκρό Σημείο", "📑 Έσοδα - Έξοδα", "🎁 Κιβωτιακή Πολιτική", "📦 Παραγγελίες B2B", 
             "📦 Lot Παραγωγής", "📈 Dashboard", "👥 Πελατολόγιο", "🧼 Συντήρηση & HACCP","🧪 Προσομοίωση Πωλήσεων", "🛒 Λίστα Αγορών", "🚚 Παραλαβές", "🧪 Δοκιμαστικές Παραγωγές"
         ],
         key="main_page"
@@ -3666,6 +3772,167 @@ elif page == "🎯 Νεκρό Σημείο":
         )
         fig_be.add_vline(x=be_units_month, line_dash="dash", line_color="white", annotation_text="Νεκρό Σημείο")
         st.plotly_chart(fig_be, use_container_width=True)
+
+# --- 📑 ΑΝΑΦΟΡΑ ΕΣΟΔΩΝ - ΕΞΟΔΩΝ (P&L) ---
+elif page == "📑 Έσοδα - Έξοδα":
+    st.header("📑 Αναφορά Εσόδων - Εξόδων")
+    st.caption("Σύνοψη πορείας της επιχείρησης: τζίρος, μεταβλητό κόστος, σταθερά έξοδα, καθαρό κέρδος — ανά μήνα ή έτος.")
+
+    pl_period_type = st.radio("Περίοδος αναφοράς:", ["Μηνιαία", "Ετήσια"], horizontal=True, key="pl_period_type")
+
+    try:
+        res_pl = supabase.table("production_log").select("cocktail_name, customer, pieces, free_pieces, applied_cost, lot_cocktail, prod_time, prod_date").execute()
+        df_pl_all = pd.DataFrame(res_pl.data) if res_pl.data else pd.DataFrame()
+    except Exception as e:
+        st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
+        df_pl_all = pd.DataFrame()
+
+    if df_pl_all.empty:
+        st.warning("Δεν βρέθηκαν δεδομένα παραγωγής.")
+    else:
+        df_pl_all = df_pl_all.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+        df_pl_all["parsed_date"] = pd.to_datetime(df_pl_all["prod_date"], format="%d/%m/%Y", errors="coerce")
+        df_pl_all = df_pl_all.dropna(subset=["parsed_date"])
+
+        if df_pl_all.empty:
+            st.warning("Δεν βρέθηκαν έγκυρες ημερομηνίες παραγωγής.")
+        else:
+            df_pl_all["Month_Year"] = df_pl_all["parsed_date"].dt.strftime("%m/%Y")
+            df_pl_all["Year"] = df_pl_all["parsed_date"].dt.strftime("%Y")
+
+            if pl_period_type == "Μηνιαία":
+                available_periods = sorted(df_pl_all["Month_Year"].unique(), key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
+                sel_period = st.selectbox("Επίλεξε μήνα:", available_periods, key="pl_month_sel")
+                df_period = df_pl_all[df_pl_all["Month_Year"] == sel_period].copy()
+                months_count = 1
+                period_label = sel_period
+            else:
+                available_years = sorted(df_pl_all["Year"].unique(), reverse=True)
+                sel_period = st.selectbox("Επίλεξε έτος:", available_years, key="pl_year_sel")
+                df_period = df_pl_all[df_pl_all["Year"] == sel_period].copy()
+                months_count = 12
+                period_label = sel_period
+
+            # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
+            df_period["pieces"] = pd.to_numeric(df_period["pieces"], errors="coerce").fillna(0)
+            df_period["free_pieces"] = pd.to_numeric(df_period.get("free_pieces", 0), errors="coerce").fillna(0)
+            df_period["applied_cost"] = pd.to_numeric(df_period.get("applied_cost", 0), errors="coerce").fillna(0)
+            price_map_pl = dict(zip(df_rec["Ονομα"], pd.to_numeric(df_rec["Τιμή Καταλόγου"], errors="coerce").fillna(0)))
+            df_period["paid_pieces"] = (df_period["pieces"] - df_period["free_pieces"]).clip(lower=0)
+            df_period["revenue"] = df_period["paid_pieces"] * df_period["cocktail_name"].map(price_map_pl).fillna(0)
+            df_period["cost_total"] = df_period["pieces"] * df_period["applied_cost"]
+
+            total_revenue = float(df_period["revenue"].sum())
+            total_paid_pieces = int(df_period["paid_pieces"].sum())
+            total_gift_pieces = int(df_period["free_pieces"].sum())
+            total_cogs = float(df_period["cost_total"].sum())
+            gross_profit = total_revenue - total_cogs
+            gross_margin_pct = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0.0
+
+            _pl_settings = load_cost_settings() or {}
+            be_rent = float(_pl_settings.get("be_rent", 0.0))
+            be_labor = float(_pl_settings.get("be_labor", 0.0))
+            be_insurance = float(_pl_settings.get("be_insurance", 0.0))
+            be_admin = float(_pl_settings.get("be_admin", 0.0))
+            be_utilities = float(_pl_settings.get("be_utilities", 0.0))
+            be_other = float(_pl_settings.get("be_other", 0.0))
+            monthly_fixed_pl = be_rent + be_labor + be_insurance + be_admin + be_utilities + be_other
+            period_fixed = monthly_fixed_pl * months_count
+
+            net_profit = gross_profit - period_fixed
+            net_margin_pct = (net_profit / total_revenue * 100) if total_revenue > 0 else 0.0
+
+            if monthly_fixed_pl == 0:
+                st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» — το καθαρό κέρδος παρακάτω δεν τα αφαιρεί ακόμα.")
+
+            st.divider()
+            st.subheader(f"📅 Περίοδος: {period_label}")
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("💰 Τζίρος", f"{total_revenue:,.2f} €")
+            c2.metric("🍹 Τεμάχια Πωληθέντα", f"{total_paid_pieces:,} τμχ")
+            c3.metric("🎁 Δωρεάν Τεμάχια", f"{total_gift_pieces:,} τμχ")
+            c4.metric("📈 Καθαρό Κέρδος", f"{net_profit:,.2f} €", delta=f"{net_margin_pct:.1f}% margin")
+
+            st.divider()
+            st.subheader("🧾 Αναλυτικό Έσοδα - Έξοδα")
+
+            def pl_row(label, value, kind="expense"):
+                colA, colB = st.columns([3, 1])
+                if kind == "income":
+                    colA.markdown(f"**{label}**")
+                    colB.markdown(f":green[**+{value:,.2f} €**]")
+                elif kind == "expense":
+                    colA.write(label)
+                    colB.markdown(f":red[{value:,.2f} €]")
+                elif kind == "subtotal":
+                    colA.markdown(f"*{label}*")
+                    color = "green" if value >= 0 else "red"
+                    colB.markdown(f":{color}[*{value:,.2f} €*]")
+                elif kind == "total":
+                    colA.markdown(f"### {label}")
+                    color = "green" if value >= 0 else "red"
+                    colB.markdown(f":{color}[**{value:,.2f} €**]")
+
+            st.markdown("**ΕΣΟΔΑ**")
+            pl_row("Τζίρος (Θεωρητικά Έσοδα)", total_revenue, "income")
+            st.divider()
+            st.markdown("**ΜΕΤΑΒΛΗΤΟ ΚΟΣΤΟΣ (COGS)**")
+            pl_row("Κόστος Πωληθέντων", -total_cogs, "expense")
+            pl_row("Μικτό Κέρδος", gross_profit, "subtotal")
+            st.divider()
+            st.markdown("**ΣΤΑΘΕΡΑ ΕΞΟΔΑ ΕΠΙΧΕΙΡΗΣΗΣ**")
+            pl_row("Ενοίκιο", -be_rent * months_count, "expense")
+            pl_row("Μισθοδοσία", -be_labor * months_count, "expense")
+            pl_row("Ασφάλιστρα", -be_insurance * months_count, "expense")
+            pl_row("Λογιστικά / Διοικητικά", -be_admin * months_count, "expense")
+            pl_row("ΔΕΗ / Ρεύμα / Νερό", -be_utilities * months_count, "expense")
+            pl_row("Λοιπά Σταθερά", -be_other * months_count, "expense")
+            pl_row("Σύνολο Σταθερών Εξόδων", -period_fixed, "subtotal")
+            st.divider()
+            pl_row("🎯 ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ", net_profit, "total")
+            st.caption(f"Περιθώριο Μικτού Κέρδους: {gross_margin_pct:.1f}%  |  Περιθώριο Καθαρού Κέρδους: {net_margin_pct:.1f}%")
+
+            # --- Ανάλυση ανά κοκτέιλ (προαιρετικό, extra λεπτομέρεια) ---
+            with st.expander("📊 Ανάλυση ανά Κοκτέιλ (μέσα στην περίοδο)"):
+                df_by_cocktail = df_period.groupby("cocktail_name", as_index=False).agg(
+                    Τεμάχια=("paid_pieces", "sum"),
+                    Δωρεάν=("free_pieces", "sum"),
+                    Τζίρος=("revenue", "sum"),
+                    Κόστος=("cost_total", "sum"),
+                )
+                df_by_cocktail["Κέρδος"] = df_by_cocktail["Τζίρος"] - df_by_cocktail["Κόστος"]
+                st.dataframe(df_by_cocktail.sort_values("Τζίρος", ascending=False), use_container_width=True, hide_index=True)
+
+            # --- 📄 PDF ---
+            st.divider()
+            try:
+                now_str_pl = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                now_str_pl = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+            pl_pdf_data = {
+                "now_str": now_str_pl,
+                "total_revenue": total_revenue, "total_paid_pieces": total_paid_pieces,
+                "total_gift_pieces": total_gift_pieces, "total_cogs": total_cogs,
+                "gross_profit": gross_profit, "gross_margin_pct": gross_margin_pct,
+                "be_rent": be_rent * months_count, "be_labor": be_labor * months_count,
+                "be_insurance": be_insurance * months_count, "be_admin": be_admin * months_count,
+                "be_utilities": be_utilities * months_count, "be_other": be_other * months_count,
+                "period_fixed": period_fixed, "net_profit": net_profit, "net_margin_pct": net_margin_pct,
+            }
+            try:
+                pl_pdf_bytes = generate_pl_report_pdf(period_label, pl_pdf_data)
+                st.download_button(
+                    "📄 Λήψη Αναφοράς PDF",
+                    data=bytes(pl_pdf_bytes),
+                    file_name=f"Cabclub_Esoda_Exoda_{period_label.replace('/', '-')}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
 
 elif page == "🎁 Κιβωτιακή Πολιτική":
     st.header("🎁 Κιβωτιακή Πολιτική Δώρων")
