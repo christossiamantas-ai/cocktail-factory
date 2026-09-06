@@ -4888,14 +4888,15 @@ elif page == "💸 Έξοδα":
             # --- 3. ΣΥΝΟΛΟ ΕΞΟΔΩΝ (Σταθερά + Μεταβλητά) για την ΙΔΙΑ επιλεγμένη περίοδο ---
             st.subheader("3️⃣ Σύνολο Εξόδων για αυτή την Περίοδο")
             if var_period_type == "Μηνιαία":
-                _period_fixed_total, _ = sum_fixed_costs_for_months(_monthly_fixed_map, [sel_var_period])
+                _period_fixed_total = get_month_grand_total(sel_var_period)
                 _period_label_exp = sel_var_period
             else:
                 _year_months = sorted(df_var_period["Month_Year"].unique())
-                _period_fixed_total, _missing_exp = sum_fixed_costs_for_months(_monthly_fixed_map, _year_months)
+                _period_fixed_total = sum(get_month_grand_total(my) for my in _year_months)
+                _missing_exp = [my for my in _year_months if not get_month_category_totals(my) or sum(get_month_category_totals(my).values()) == 0]
                 _period_label_exp = sel_var_period
                 if _missing_exp:
-                    st.caption(f"⚠️ Δεν βρέθηκαν καταχωρημένα σταθερά έξοδα για: {', '.join(_missing_exp)} (υπολογίστηκαν ως 0€).")
+                    st.caption(f"⚠️ Δεν βρέθηκαν καταχωρημένα έξοδα για: {', '.join(_missing_exp)} (υπολογίστηκαν ως 0€).")
 
             _total_all_expenses = _period_fixed_total + variable_costs_total
             ec1, ec2, ec3 = st.columns(3)
