@@ -2837,6 +2837,158 @@ elif page == "📐 Markup & Margin":
         else:
             total_change_text = None
 
+        # =====================================================================
+        # 🌐 ΕΠΙΔΡΑΣΗ ΣΕΝΑΡΙΟΥ ΣΕ ΟΛΑ ΤΑ ΚΟΚΤΕΪΛ (βάσει πραγματικών πωλήσεων)
+        # =====================================================================
+        st.divider()
+        st.subheader("🌐 Επίδραση Σεναρίου σε ΟΛΑ τα Κοκτέιλ")
+        st.caption(
+            f"Εφαρμόζοντας το ίδιο επιθυμητό {scenario_mode} ({desired1:.1f}% / {desired2:.1f}% / {desired3:.1f}%) "
+            f"σε **κάθε** κοκτέιλ ξεχωριστά, με βάση το δικό του κόστος — όχι μόνο στο «{choice}»."
+        )
+
+        # --- 1. Υπολογισμός νέων τιμών για ΟΛΑ τα κοκτέιλ ---
+        all_scenario_rows = []
+        cocktail_new_prices = {}  # {cocktail_name: {"retail_old":.., "retail_new":.., "agent_old":.., "agent_new":..}}
+        for _, r_all in df_rec.iterrows():
+            c_name_all = r_all["Ονομα"]
+            raw_cost_all = 0.0
+            for i in range(1, 14):
+                ing_n_all = str(r_all.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                ml_all = float(r_all.get(f"ML{i}", 0) or 0)
+                if ing_n_all not in ["ΚΕΝΟ", "nan", "Νερό", ""] and ml_all > 0:
+                    match_all = df_ing[df_ing["Name"] == ing_n_all]
+                    if not match_all.empty:
+                        raw_cost_all += ml_all * float(match_all.iloc[0]["Τιμή/ml"])
+            my_cost_all = get_unit_cost_for_cocktail(c_name_all, raw_cost_all)
+            retail_old_all = float(r_all.get("Τιμή Καταλόγου", 0.0))
+            agent_old_all = retail_old_all * 0.74
+
+            if scenario_mode == "Markup %":
+                agent_new_all = my_cost_all * (1 + desired1 / 100)
+                retail_new_all = agent_new_all * (1 + desired2 / 100)
+                direct_new_all = my_cost_all * (1 + desired3 / 100)
+            else:
+                agent_new_all = my_cost_all / (1 - desired1 / 100) if desired1 < 100 else float('inf')
+                retail_new_all = agent_new_all / (1 - desired2 / 100) if desired2 < 100 and agent_new_all != float('inf') else float('inf')
+                direct_new_all = my_cost_all / (1 - desired3 / 100) if desired3 < 100 else float('inf')
+
+            cocktail_new_prices[c_name_all] = {
+                "retail_old": retail_old_all, "retail_new": retail_new_all,
+                "agent_old": agent_old_all, "agent_new": agent_new_all,
+                "my_cost": my_cost_all,
+            }
+            all_scenario_rows.append({
+                "Κοκτέιλ": c_name_all,
+                "Κόστος (€)": round(my_cost_all, 4),
+                "Τιμή Αντιπρ. Τώρα (€)": round(agent_old_all, 2),
+                "Νέα Τιμή Αντιπρ. (€)": round(agent_new_all, 2) if agent_new_all != float('inf') else None,
+                "Τιμή Λιανικής Τώρα (€)": round(retail_old_all, 2),
+                "Νέα Τιμή Λιανικής (€)": round(retail_new_all, 2) if retail_new_all != float('inf') else None,
+                "Νέα Τιμή Απευθείας (€)": round(direct_new_all, 2) if direct_new_all != float('inf') else None,
+            })
+
+        df_all_scenario = pd.DataFrame(all_scenario_rows)
+        st.dataframe(df_all_scenario, use_container_width=True, hide_index=True)
+
+        # --- 2. Φόρτωση πραγματικού ιστορικού πωλήσεων (για σταθμισμένο μέσο όρο + P&L) ---
+        try:
+            res_mm_hist = supabase.table("production_log").select(
+                "cocktail_name, customer, pieces, free_pieces, discounted_pieces, discount_pct, applied_cost, lot_cocktail, prod_time, prod_date"
+            ).execute()
+            res_mm_cust = supabase.table("customers").select("name, discount").execute()
+            df_mm_cust = pd.DataFrame(res_mm_cust.data) if res_mm_cust.data else pd.DataFrame(columns=["name", "discount"])
+        except Exception as e:
+            res_mm_hist = None
+            st.error(f"Σφάλμα φόρτωσης ιστορικού πωλήσεων: {e}")
+
+        if res_mm_hist and res_mm_hist.data:
+            df_mm_hist = pd.DataFrame(res_mm_hist.data).drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+            df_mm_hist["pieces"] = pd.to_numeric(df_mm_hist["pieces"], errors="coerce").fillna(0)
+            df_mm_hist["free_pieces"] = pd.to_numeric(df_mm_hist.get("free_pieces", 0), errors="coerce").fillna(0)
+            df_mm_hist["applied_cost"] = pd.to_numeric(df_mm_hist.get("applied_cost", 0), errors="coerce").fillna(0)
+            cust_disc_mm = dict(zip(df_mm_cust["name"], pd.to_numeric(df_mm_cust.get("discount", 0), errors="coerce").fillna(0))) if not df_mm_cust.empty else {}
+
+            df_mm_hist["global_discount"] = pd.to_numeric(df_mm_hist["customer"].map(cust_disc_mm), errors="coerce").fillna(0)
+            df_mm_hist["s_pcs"] = pd.to_numeric(df_mm_hist.get("discounted_pieces", 0), errors="coerce").fillna(0)
+            df_mm_hist["s_pct"] = pd.to_numeric(df_mm_hist.get("discount_pct", 0), errors="coerce").fillna(0)
+            df_mm_hist["s_pcs"] = df_mm_hist.apply(lambda r: min(r["s_pcs"], max(0, r["pieces"] - r["free_pieces"])), axis=1)
+            df_mm_hist["normal_pcs"] = df_mm_hist["pieces"] - df_mm_hist["free_pieces"] - df_mm_hist["s_pcs"]
+            df_mm_hist["paid_pieces"] = df_mm_hist["normal_pcs"] + df_mm_hist["s_pcs"]
+
+            # Τιμή καταλόγου ΤΩΡΑ και ΜΕΤΑ το σενάριο, ανά κοκτέιλ
+            df_mm_hist["retail_old"] = df_mm_hist["cocktail_name"].map(lambda c: cocktail_new_prices.get(c, {}).get("retail_old", 0.0))
+            df_mm_hist["retail_new"] = df_mm_hist["cocktail_name"].map(lambda c: cocktail_new_prices.get(c, {}).get("retail_new", 0.0))
+            df_mm_hist["retail_new"] = pd.to_numeric(df_mm_hist["retail_new"], errors="coerce").fillna(0)
+
+            # ΠΡΑΓΜΑΤΙΚΟΣ τζίρος (τώρα): ίδια μεθοδολογία με Dashboard/Έσοδα-Έξοδα
+            df_mm_hist["price_after_global_old"] = df_mm_hist["retail_old"] * (1 - (df_mm_hist["global_discount"] / 100))
+            df_mm_hist["rev_normal_old"] = df_mm_hist["normal_pcs"] * df_mm_hist["price_after_global_old"]
+            df_mm_hist["rev_special_old"] = df_mm_hist["s_pcs"] * df_mm_hist["price_after_global_old"] * (1 - (df_mm_hist["s_pct"] / 100))
+            df_mm_hist["revenue_actual"] = (df_mm_hist["rev_normal_old"] + df_mm_hist["rev_special_old"]).clip(lower=0)
+
+            # ΥΠΟΘΕΤΙΚΟΣ τζίρος (ΜΕΤΑ το σενάριο) — ΙΔΙΑ τεμάχια/εκπτώσεις, ΝΕΑ τιμή καταλόγου
+            df_mm_hist["price_after_global_new"] = df_mm_hist["retail_new"] * (1 - (df_mm_hist["global_discount"] / 100))
+            df_mm_hist["rev_normal_new"] = df_mm_hist["normal_pcs"] * df_mm_hist["price_after_global_new"]
+            df_mm_hist["rev_special_new"] = df_mm_hist["s_pcs"] * df_mm_hist["price_after_global_new"] * (1 - (df_mm_hist["s_pct"] / 100))
+            df_mm_hist["revenue_scenario"] = (df_mm_hist["rev_normal_new"] + df_mm_hist["rev_special_new"]).clip(lower=0)
+
+            # Κόστος — ΔΕΝ αλλάζει στο σενάριο (το σενάριο αφορά τιμολόγηση, όχι κόστος)
+            df_mm_hist["cost_total"] = df_mm_hist["pieces"] * df_mm_hist["applied_cost"]
+
+            total_paid_pieces_mm = df_mm_hist["paid_pieces"].sum()
+            total_revenue_actual = df_mm_hist["revenue_actual"].sum()
+            total_revenue_scenario = df_mm_hist["revenue_scenario"].sum()
+            total_cost_mm = df_mm_hist["cost_total"].sum()
+
+            gross_profit_actual = total_revenue_actual - total_cost_mm
+            gross_profit_scenario = total_revenue_scenario - total_cost_mm
+
+            # Σταθερά έξοδα από το ήδη υπάρχον Νεκρό Σημείο (μηνιαία ×12 = ετήσια, για ενδεικτική σύγκριση)
+            _mm_settings = load_cost_settings() or {}
+            _mm_fixed_monthly = sum(float(_mm_settings.get(k, 0.0) or 0.0) for k in ["be_rent", "be_labor", "be_insurance", "be_admin", "be_utilities", "be_other"])
+            _mm_fixed_annual = _mm_fixed_monthly * 12
+
+            net_profit_actual = gross_profit_actual - _mm_fixed_annual
+            net_profit_scenario = gross_profit_scenario - _mm_fixed_annual
+
+            st.markdown("### 📊 Μέσος Όρος (σταθμισμένος με πραγματικές πωλήσεις)")
+            if total_paid_pieces_mm > 0:
+                avg_price_old = total_revenue_actual / total_paid_pieces_mm
+                avg_price_new = total_revenue_scenario / total_paid_pieces_mm
+                avg_markup_old = _markup(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_old)
+                avg_markup_new = _markup(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_new)
+                avg_margin_old = _margin(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_old)
+                avg_margin_new = _margin(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_new)
+
+                ac1, ac2, ac3 = st.columns(3)
+                ac1.metric("Μέση Τιμή Πώλησης", f"{avg_price_new:.2f} €", delta=f"{(avg_price_new-avg_price_old):+.2f} € vs {avg_price_old:.2f} € τώρα")
+                ac2.metric("Μέσο Markup", f"{avg_markup_new:.1f} %", delta=f"{(avg_markup_new-avg_markup_old):+.1f} pp")
+                ac3.metric("Μέσο Margin", f"{avg_margin_new:.1f} %", delta=f"{(avg_margin_new-avg_margin_old):+.1f} pp")
+                st.caption(f"Βάσει {int(total_paid_pieces_mm):,} πληρωμένων τεμαχίων ιστορικά (όλες οι ημερομηνίες, όλα τα κοκτέιλ).")
+            else:
+                st.warning("Δεν βρέθηκε αρκετό ιστορικό πωλήσεων για σταθμισμένο μέσο όρο.")
+
+            st.markdown("### 💰 Επίδραση στα Έσοδα - Έξοδα (βάσει ιστορικών πωλήσεων)")
+            st.caption("Τι θα γινόταν αν οι ΙΔΙΕΣ πωλήσεις (ίδια τεμάχια, ίδιες εκπτώσεις) είχαν γίνει με τις ΝΕΕΣ τιμές του σεναρίου. Το κόστος δεν αλλάζει — το σενάριο αφορά μόνο τιμολόγηση.")
+
+            pl1, pl2 = st.columns(2)
+            with pl1:
+                st.markdown("**Τώρα (πραγματικό)**")
+                st.metric("Τζίρος", f"{total_revenue_actual:,.2f} €")
+                st.metric("Μικτό Κέρδος", f"{gross_profit_actual:,.2f} €")
+                st.metric("Καθαρό Κέρδος", f"{net_profit_actual:,.2f} €", help=f"Μετά από {_mm_fixed_annual:,.0f}€ ετήσια σταθερά έξοδα (από το Νεκρό Σημείο)")
+            with pl2:
+                st.markdown("**Με το Σενάριο**")
+                st.metric("Τζίρος", f"{total_revenue_scenario:,.2f} €", delta=f"{(total_revenue_scenario-total_revenue_actual):+,.2f} €")
+                st.metric("Μικτό Κέρδος", f"{gross_profit_scenario:,.2f} €", delta=f"{(gross_profit_scenario-gross_profit_actual):+,.2f} €")
+                st.metric("Καθαρό Κέρδος", f"{net_profit_scenario:,.2f} €", delta=f"{(net_profit_scenario-net_profit_actual):+,.2f} €")
+
+            if _mm_fixed_annual == 0:
+                st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» — το Καθαρό Κέρδος εδώ ισούται προσωρινά με το Μικτό.")
+        else:
+            st.warning("Δεν βρέθηκε ιστορικό πωλήσεων για υπολογισμό της επίδρασης στα Έσοδα-Έξοδα.")
+
         # --- 📄 ΛΗΨΗ PDF ---
         st.divider()
         try:
