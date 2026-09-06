@@ -649,19 +649,24 @@ def generate_pl_report_pdf(period_label, data):
     row("Σύνολο Σταθερών Εξόδων", f"-{data['period_fixed']:,.2f} EUR", bold=True, color=RED)
     divider()
 
-    # --- ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ ---
-    net_color = GREEN if data['net_profit'] >= 0 else RED
-    pdf.set_fill_color(*(230, 244, 234) if data['net_profit'] >= 0 else (250, 230, 230))
+    # --- ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ (προ φόρων) + ΦΟΡΟΛΟΓΙΑ ---
+    row("Καθαρό Αποτέλεσμα (προ φόρων)", f"{data['net_profit']:,.2f} EUR", bold=True, color=GREEN if data['net_profit'] >= 0 else RED)
+    row(f"Φόρος Εισοδήματος ({data.get('tax_rate', 22):.0f}%)", f"-{data.get('tax_amount', 0):,.2f} EUR", color=RED)
+    divider()
+
+    net_after_tax = data.get('net_after_tax', data['net_profit'])
+    net_color = GREEN if net_after_tax >= 0 else RED
+    pdf.set_fill_color(*(230, 244, 234) if net_after_tax >= 0 else (250, 230, 230))
     pdf.set_draw_color(*net_color)
     pdf.set_font(f_name, 'B', 13)
     pdf.set_text_color(*net_color)
-    pdf.cell(130, 10, "ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ", border=1, fill=True)
-    pdf.cell(50, 10, f"{data['net_profit']:,.2f} EUR", border=1, fill=True, align='R', ln=1)
+    pdf.cell(130, 10, "ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ (μετά φόρων)", border=1, fill=True)
+    pdf.cell(50, 10, f"{net_after_tax:,.2f} EUR", border=1, fill=True, align='R', ln=1)
     pdf.set_text_color(*DARK)
     pdf.ln(2)
     pdf.set_font(f_name, size=9)
     pdf.set_text_color(*GREY)
-    pdf.cell(0, 6, f"Περιθώριο Καθαρού Κέρδους: {data['net_margin_pct']:.1f} %", ln=1)
+    pdf.cell(0, 6, f"Περιθώριο Καθαρού Κέρδους (προ φόρων): {data['net_margin_pct']:.1f} %", ln=1)
     pdf.set_text_color(*DARK)
 
     # --- ΥΠΟΣΕΛΙΔΟ ---
@@ -3029,17 +3034,41 @@ elif page == "📐 Markup & Margin":
             else:
                 st.caption("Τι θα γινόταν αν οι ΙΔΙΕΣ πωλήσεις (ίδια τεμάχια, ίδιες εκπτώσεις) είχαν γίνει με τις ΝΕΕΣ τιμές του σεναρίου μέσω αντιπροσώπου. Το κόστος δεν αλλάζει — το σενάριο αφορά μόνο τιμολόγηση.")
 
+            st.caption(
+                "ℹ️ Σε αυτό το σενάριο αλλάζει **μόνο** ο τζίρος (η τιμολόγηση) — το κόστος και τα σταθερά έξοδα "
+                "παραμένουν ίδια. Γι' αυτό η μεταβολή σε Τζίρο, Μικτό και Καθαρό Κέρδος βγαίνει το **ίδιο ποσό σε ευρώ** "
+                "— είναι μαθηματικά αναμενόμενο, όχι σφάλμα."
+            )
+
+            # 🆕 ΦΟΡΟΛΟΓΙΑ ΕΙΣΟΔΗΜΑΤΟΣ
+            tax_rate_mm = st.number_input("Συντελεστής Φόρου Εισοδήματος (%)", min_value=0.0, max_value=100.0, value=22.0, step=1.0, key="mm_tax_rate", help="Προεπιλογή 22% (τρέχων συντελεστής φορολογίας νομικών προσώπων στην Ελλάδα) — άλλαξέ το αν χρειάζεται.")
+            tax_actual = max(0.0, net_profit_actual) * (tax_rate_mm / 100)
+            tax_scenario = max(0.0, net_profit_scenario) * (tax_rate_mm / 100)
+            net_after_tax_actual = net_profit_actual - tax_actual
+            net_after_tax_scenario = net_profit_scenario - tax_scenario
+
+            def _delta_str(old_v, new_v, is_currency=True):
+                diff = new_v - old_v
+                pct = (diff / abs(old_v) * 100) if old_v != 0 else 0
+                if is_currency:
+                    return f"{diff:+,.2f} € ({pct:+.1f}%)"
+                return f"{diff:+.1f} pp"
+
             pl1, pl2 = st.columns(2)
             with pl1:
                 st.markdown("**Τώρα (πραγματικό)**")
                 st.metric("Τζίρος", f"{total_revenue_actual:,.2f} €")
                 st.metric("Μικτό Κέρδος", f"{gross_profit_actual:,.2f} €")
-                st.metric("Καθαρό Κέρδος", f"{net_profit_actual:,.2f} €", help=f"Μετά από {_mm_fixed_annual:,.0f}€ ετήσια σταθερά έξοδα (από το Νεκρό Σημείο)")
+                st.metric("Καθαρό Κέρδος (προ φόρων)", f"{net_profit_actual:,.2f} €", help=f"Μετά από {_mm_fixed_annual:,.0f}€ ετήσια σταθερά έξοδα (από το Νεκρό Σημείο)")
+                st.metric(f"Φόρος Εισοδήματος ({tax_rate_mm:.0f}%)", f"-{tax_actual:,.2f} €")
+                st.metric("Καθαρό Κέρδος (μετά φόρων)", f"{net_after_tax_actual:,.2f} €")
             with pl2:
                 st.markdown("**Με το Σενάριο**")
-                st.metric("Τζίρος", f"{total_revenue_scenario:,.2f} €", delta=f"{(total_revenue_scenario-total_revenue_actual):+,.2f} €")
-                st.metric("Μικτό Κέρδος", f"{gross_profit_scenario:,.2f} €", delta=f"{(gross_profit_scenario-gross_profit_actual):+,.2f} €")
-                st.metric("Καθαρό Κέρδος", f"{net_profit_scenario:,.2f} €", delta=f"{(net_profit_scenario-net_profit_actual):+,.2f} €")
+                st.metric("Τζίρος", f"{total_revenue_scenario:,.2f} €", delta=_delta_str(total_revenue_actual, total_revenue_scenario))
+                st.metric("Μικτό Κέρδος", f"{gross_profit_scenario:,.2f} €", delta=_delta_str(gross_profit_actual, gross_profit_scenario))
+                st.metric("Καθαρό Κέρδος (προ φόρων)", f"{net_profit_scenario:,.2f} €", delta=_delta_str(net_profit_actual, net_profit_scenario))
+                st.metric(f"Φόρος Εισοδήματος ({tax_rate_mm:.0f}%)", f"-{tax_scenario:,.2f} €", delta=_delta_str(-tax_actual, -tax_scenario))
+                st.metric("Καθαρό Κέρδος (μετά φόρων)", f"{net_after_tax_scenario:,.2f} €", delta=_delta_str(net_after_tax_actual, net_after_tax_scenario))
 
             if _mm_fixed_annual == 0:
                 st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» — το Καθαρό Κέρδος εδώ ισούται προσωρινά με το Μικτό.")
@@ -4379,7 +4408,7 @@ elif page == "📑 Έσοδα - Έξοδα":
             c1.metric("💰 Τζίρος", f"{total_revenue:,.2f} €")
             c2.metric("🍹 Τεμάχια Πωληθέντα", f"{total_paid_pieces:,} τμχ")
             c3.metric("🎁 Δωρεάν Τεμάχια", f"{total_gift_pieces:,} τμχ")
-            c4.metric("📈 Καθαρό Κέρδος", f"{net_profit:,.2f} €", delta=f"{net_margin_pct:.1f}% margin")
+            c4.metric("📈 Καθαρό Κέρδος (προ φόρων)", f"{net_profit:,.2f} €", delta=f"{net_margin_pct:.1f}% margin", help="Η φορολογία υπολογίζεται στο αναλυτικό breakdown παρακάτω.")
 
             st.divider()
             st.subheader("🧾 Αναλυτικό Έσοδα - Έξοδα")
@@ -4417,8 +4446,15 @@ elif page == "📑 Έσοδα - Έξοδα":
             pl_row("Λοιπά Σταθερά", -be_other * months_count, "expense")
             pl_row("Σύνολο Σταθερών Εξόδων", -period_fixed, "subtotal")
             st.divider()
-            pl_row("🎯 ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ", net_profit, "total")
-            st.caption(f"Περιθώριο Μικτού Κέρδους: {gross_margin_pct:.1f}%  |  Περιθώριο Καθαρού Κέρδους: {net_margin_pct:.1f}%")
+            pl_row("Καθαρό Αποτέλεσμα (προ φόρων)", net_profit, "subtotal")
+
+            # 🆕 ΦΟΡΟΛΟΓΙΑ ΕΙΣΟΔΗΜΑΤΟΣ
+            tax_rate_pl = st.number_input("Συντελεστής Φόρου Εισοδήματος (%)", min_value=0.0, max_value=100.0, value=22.0, step=1.0, key="pl_tax_rate", help="Προεπιλογή 22% (τρέχων συντελεστής φορολογίας νομικών προσώπων στην Ελλάδα) — άλλαξέ το αν χρειάζεται.")
+            tax_pl = max(0.0, net_profit) * (tax_rate_pl / 100)
+            net_after_tax_pl = net_profit - tax_pl
+            pl_row(f"Φόρος Εισοδήματος ({tax_rate_pl:.0f}%)", -tax_pl, "expense")
+            pl_row("🎯 ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ (μετά φόρων)", net_after_tax_pl, "total")
+            st.caption(f"Περιθώριο Μικτού Κέρδους: {gross_margin_pct:.1f}%  |  Περιθώριο Καθαρού Κέρδους (προ φόρων): {net_margin_pct:.1f}%")
 
             # --- Ανάλυση ανά κοκτέιλ (προαιρετικό, extra λεπτομέρεια) ---
             with st.expander("📊 Ανάλυση ανά Κοκτέιλ (μέσα στην περίοδο)"):
@@ -4447,6 +4483,7 @@ elif page == "📑 Έσοδα - Έξοδα":
                 "be_insurance": be_insurance * months_count, "be_admin": be_admin * months_count,
                 "be_utilities": be_utilities * months_count, "be_other": be_other * months_count,
                 "period_fixed": period_fixed, "net_profit": net_profit, "net_margin_pct": net_margin_pct,
+                "tax_rate": tax_rate_pl, "tax_amount": tax_pl, "net_after_tax": net_after_tax_pl,
             }
             try:
                 pl_pdf_bytes = generate_pl_report_pdf(period_label, pl_pdf_data)
