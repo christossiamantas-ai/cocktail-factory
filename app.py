@@ -2948,7 +2948,7 @@ elif page == "📐 Markup & Margin":
             df_mm_hist = pd.DataFrame(res_mm_hist.data).drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
             df_mm_hist["pieces"] = pd.to_numeric(df_mm_hist["pieces"], errors="coerce").fillna(0)
             df_mm_hist["free_pieces"] = pd.to_numeric(df_mm_hist.get("free_pieces", 0), errors="coerce").fillna(0)
-            df_mm_hist["applied_cost"] = pd.to_numeric(df_mm_hist.get("applied_cost", 0), errors="coerce").fillna(0)
+            df_mm_hist["applied_cost_raw"] = pd.to_numeric(df_mm_hist.get("applied_cost", pd.NA), errors="coerce")  # 🔧 FIX: ΔΕΝ κάνουμε fillna(0) εδώ, ώστε να ξεχωρίζει "πραγματικά κενό" από σκόπιμο μηδέν
             cust_disc_mm = dict(zip(df_mm_cust["name"], pd.to_numeric(df_mm_cust.get("discount", 0), errors="coerce").fillna(0))) if not df_mm_cust.empty else {}
 
             df_mm_hist["global_discount"] = pd.to_numeric(df_mm_hist["customer"].map(cust_disc_mm), errors="coerce").fillna(0)
@@ -2992,8 +2992,18 @@ elif page == "📐 Markup & Margin":
                 df_mm_hist["rev_special_new"] = df_mm_hist["s_pcs"] * df_mm_hist["price_after_global_new"] * (1 - (df_mm_hist["s_pct"] / 100))
                 df_mm_hist["revenue_scenario"] = (df_mm_hist["rev_normal_new"] + df_mm_hist["rev_special_new"]).clip(lower=0)
 
-            # Κόστος — ΔΕΝ αλλάζει στο σενάριο (το σενάριο αφορά τιμολόγηση, όχι κόστος)
-            df_mm_hist["cost_total"] = df_mm_hist["pieces"] * df_mm_hist["applied_cost"]
+            # 🔧 FIX: πριν, όποτε έλειπε το applied_cost, γινόταν 0€ αντί να πέσει σε εναλλακτικό
+            # υπολογισμό — υποεκτιμούσε δραστικά το κόστος (46.115€ διαφορά σε πραγματικό test),
+            # κάνοντας το Μικτό/Καθαρό Κέρδος να μη συμφωνεί με το ήδη σωστό Dashboard. Τώρα πέφτει
+            # στο πραγματικό κόστος του κοκτέιλ (ήδη υπολογισμένο στο cocktail_new_prices).
+            def _mm_effective_cost(row):
+                ac = row.get("applied_cost_raw")
+                if pd.notna(ac):
+                    return float(ac)
+                return float(cocktail_new_prices.get(row["cocktail_name"], {}).get("my_cost", 0.0))
+
+            df_mm_hist["effective_unit_cost"] = df_mm_hist.apply(_mm_effective_cost, axis=1)
+            df_mm_hist["cost_total"] = df_mm_hist["pieces"] * df_mm_hist["effective_unit_cost"]
 
             total_paid_pieces_mm = df_mm_hist["paid_pieces"].sum()
             total_revenue_actual = df_mm_hist["revenue_actual"].sum()
