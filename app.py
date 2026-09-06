@@ -677,6 +677,230 @@ def generate_pl_report_pdf(period_label, data):
 
     return pdf.output()
 
+# --- 📄 PDF #1: ΛΙΣΤΑ ΤΙΜΩΝ ΟΛΩΝ ΤΩΝ ΚΟΚΤΕΪΛ (ΣΕΝΑΡΙΟ) ---
+def generate_all_cocktails_price_pdf(df_all_scenario, scenario_mode, desired1, desired2, desired3, now_str):
+    """Πίνακας με όλα τα κοκτέιλ και τις τιμές τους πριν/μετά το σενάριο, με χρωματική
+    σήμανση (κόκκινο=αύξηση, πράσινο=μείωση) ίδια λογική με την οθόνη."""
+    pdf = FPDF(orientation='L')  # Landscape, χωράει πιο άνετα ο πίνακας
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    RED = (176, 0, 32)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(0, 0, 297, 26, 'F')
+    pdf.set_xy(10, 6)
+    pdf.set_font(f_name, 'B', 16)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+    pdf.set_x(10)
+    pdf.set_font(f_name, size=11)
+    pdf.cell(0, 6, f"Λίστα Τιμών ανά Κοκτέιλ - Σενάριο: επιθυμητό {scenario_mode} ({desired1:.1f}% / {desired2:.1f}% / {desired3:.1f}%)", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(14)
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(2)
+
+    cols = [
+        ("Κοκτέιλ", 60), ("Κόστος (€)", 30),
+        ("Τιμή Αντιπρ. Τώρα", 32), ("Νέα Τιμή Αντιπρ.", 32),
+        ("Τιμή Λιανικής Τώρα", 32), ("Νέα Τιμή Λιανικής", 32),
+        ("Νέα Τιμή Απευθείας", 32),
+    ]
+    pdf.set_font(f_name, 'B', 8)
+    pdf.set_fill_color(*LIGHTGREY)
+    for label, w in cols:
+        pdf.cell(w, 7, label, border=1, fill=True, align='C')
+    pdf.ln()
+
+    pdf.set_font(f_name, size=8)
+    for i, r in df_all_scenario.iterrows():
+        fill_row = (i % 2 == 0)
+        pdf.set_fill_color(250, 250, 250) if fill_row else pdf.set_fill_color(*WHITE)
+        pdf.cell(cols[0][1], 6.5, str(r["Κοκτέιλ"])[:32], border=1, fill=True)
+        pdf.cell(cols[1][1], 6.5, f"{r['Κόστος (€)']:.2f}", border=1, fill=True, align='R')
+
+        for old_col, new_col, w in [
+            ("Τιμή Αντιπρ. Τώρα (€)", "Νέα Τιμή Αντιπρ. (€)", cols[3][1]),
+            ("Τιμή Λιανικής Τώρα (€)", "Νέα Τιμή Λιανικής (€)", cols[5][1]),
+        ]:
+            old_v, new_v = r[old_col], r[new_col]
+            pdf.cell(w, 6.5, f"{old_v:.2f}" if pd.notna(old_v) else "-", border=1, fill=True, align='R')
+            if pd.notna(new_v):
+                if new_v > old_v:
+                    pdf.set_text_color(*RED)
+                elif new_v < old_v:
+                    pdf.set_text_color(*GREEN)
+                pdf.cell(w, 6.5, f"{new_v:.2f}", border=1, fill=True, align='R')
+                pdf.set_text_color(*DARK)
+            else:
+                pdf.cell(w, 6.5, "-", border=1, fill=True, align='R')
+
+        direct_v = r["Νέα Τιμή Απευθείας (€)"]
+        pdf.cell(cols[6][1], 6.5, f"{direct_v:.2f}" if pd.notna(direct_v) else "-", border=1, fill=True, align='R')
+        pdf.ln()
+
+    pdf.ln(4)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*RED)
+    pdf.cell(5, 5, "■", border=0)
+    pdf.set_text_color(*DARK)
+    pdf.cell(60, 5, " Η τιμή ανεβαίνει", border=0)
+    pdf.set_text_color(*GREEN)
+    pdf.cell(5, 5, "■", border=0)
+    pdf.set_text_color(*DARK)
+    pdf.cell(60, 5, " Η τιμή κατεβαίνει", border=0, ln=1)
+
+    return pdf.output()
+
+# --- 📄 PDF #2: ΠΛΗΡΗΣ ΑΝΑΦΟΡΑ ΕΠΙΔΡΑΣΗΣ ΣΕΝΑΡΙΟΥ ---
+def generate_full_scenario_impact_pdf(data):
+    """Πλήρης αναφορά: παράμετροι σεναρίου, σταθμισμένος μέσος όρος, ανάλυση εξόδων,
+    πλήρες P&L (Τζίρος/Μικτό/Καθαρό/Φόρος) πριν και μετά το σενάριο."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    RED = (176, 0, 32)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(0, 0, 210, 28, 'F')
+    pdf.set_xy(10, 6)
+    pdf.set_font(f_name, 'B', 17)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+    pdf.set_x(10)
+    pdf.set_font(f_name, size=11)
+    pdf.cell(0, 6, "Πλήρης Αναφορά Επίδρασης Σεναρίου στην Επιχείρηση", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(14)
+
+    def section(title):
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.set_font(f_name, 'B', 12)
+        pdf.cell(0, 8, title, ln=1, fill=True)
+        pdf.ln(1)
+
+    def row(label, value, bold=False, color=None, indent=0):
+        pdf.set_font(f_name, 'B' if bold else '', 10)
+        pdf.set_text_color(*(color or DARK))
+        pdf.cell(10 * indent, 7)
+        pdf.cell(120 - 10 * indent, 7, label)
+        pdf.cell(60, 7, value, align='R', ln=1)
+        pdf.set_text_color(*DARK)
+
+    def divider():
+        pdf.ln(1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(3)
+
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {data['now_str']}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(2)
+
+    # --- ΠΑΡΑΜΕΤΡΟΙ ΣΕΝΑΡΙΟΥ ---
+    section("ΠΑΡΑΜΕΤΡΟΙ ΣΕΝΑΡΙΟΥ")
+    row("Τύπος στόχου", data['scenario_mode'])
+    row("Επίπεδο 1 (Cabclub→Αντιπρόσωπος)", f"{data['desired1']:.1f}", indent=1)
+    row("Επίπεδο 2 (Αντιπρόσωπος→Πελάτης)", f"{data['desired2']:.1f}", indent=1)
+    row("Επίπεδο 3 (Cabclub→Πελάτης απευθείας)", f"{data['desired3']:.1f}", indent=1)
+    row("Κανάλι πώλησης (για το P&L)", data['channel_label'])
+    row("Περίοδος ιστορικών δεδομένων", f"{data['months_covered']} μήνα/ες")
+    divider()
+
+    # --- ΣΤΑΘΜΙΣΜΕΝΟΣ ΜΕΣΟΣ ΟΡΟΣ ---
+    section("ΣΤΑΘΜΙΣΜΕΝΟΣ ΜΕΣΟΣ ΟΡΟΣ (βάσει πραγματικών πωλήσεων)")
+    row("Μέση Τιμή Πώλησης", f"{data['avg_price_old']:.2f} EUR -> {data['avg_price_new']:.2f} EUR", bold=True)
+    row("Μέσο Markup", f"{data['avg_markup_old']:.1f}% -> {data['avg_markup_new']:.1f}%", indent=1)
+    row("Μέσο Margin", f"{data['avg_margin_old']:.1f}% -> {data['avg_margin_new']:.1f}%", indent=1)
+    row("Βάση υπολογισμού", f"{data['total_paid_pieces']:,} πληρωμένα τεμάχια ιστορικά", indent=1)
+    divider()
+
+    # --- ΑΝΑΛΥΣΗ ΕΞΟΔΩΝ ---
+    section("ΑΠΟ ΤΙ ΑΠΟΤΕΛΟΥΝΤΑΙ ΤΑ ΕΞΟΔΑ")
+    row("Κόστος Παραγωγής (COGS)", f"{data['total_cogs']:,.2f} EUR", color=RED)
+    row("Πάγια / Σταθερά Έξοδα", f"{data['fixed_costs']:,.2f} EUR", color=RED)
+    _exp_total = data['total_cogs'] + data['fixed_costs']
+    if _exp_total > 0:
+        row("Σύνολο Εξόδων", f"{_exp_total:,.2f} EUR ({data['total_cogs']/_exp_total*100:.0f}% / {data['fixed_costs']/_exp_total*100:.0f}%)", bold=True)
+    divider()
+
+    # --- P&L: ΤΩΡΑ vs ΣΕΝΑΡΙΟ ---
+    section("ΑΠΟΤΕΛΕΣΜΑ: ΤΩΡΑ vs ΜΕ ΤΟ ΣΕΝΑΡΙΟ")
+    pdf.set_font(f_name, 'B', 9)
+    pdf.cell(80, 7, "")
+    pdf.cell(55, 7, "Τώρα (πραγματικό)", align='C')
+    pdf.cell(55, 7, "Με το Σενάριο", align='C', ln=1)
+
+    def compare_row(label, old_v, new_v, bold=False):
+        pdf.set_font(f_name, 'B' if bold else '', 9)
+        pdf.set_text_color(*DARK)
+        pdf.cell(80, 7, label)
+        pdf.cell(55, 7, f"{old_v:,.2f} EUR", align='C')
+        diff = new_v - old_v
+        color = GREEN if diff >= 0 else RED
+        pdf.set_text_color(*color)
+        pdf.cell(55, 7, f"{new_v:,.2f} EUR ({diff:+,.0f})", align='C', ln=1)
+        pdf.set_text_color(*DARK)
+
+    compare_row("Τζίρος", data['revenue_actual'], data['revenue_scenario'], bold=True)
+    compare_row("Μικτό Κέρδος", data['gross_actual'], data['gross_scenario'])
+    compare_row("Καθαρό Κέρδος (προ φόρων)", data['net_actual'], data['net_scenario'])
+    compare_row(f"Φόρος Εισοδήματος ({data['tax_rate']:.0f}%)", -data['tax_actual'], -data['tax_scenario'])
+    compare_row("Καθαρό Κέρδος (μετά φόρων)", data['net_after_tax_actual'], data['net_after_tax_scenario'], bold=True)
+    pdf.ln(4)
+
+    net_diff = data['net_after_tax_scenario'] - data['net_after_tax_actual']
+    box_color = GREEN if net_diff >= 0 else RED
+    pdf.set_fill_color(*(230, 244, 234) if net_diff >= 0 else (250, 230, 230))
+    pdf.set_draw_color(*box_color)
+    pdf.set_font(f_name, 'B', 12)
+    pdf.set_text_color(*box_color)
+    pdf.multi_cell(0, 9, f"Τελική Μεταβολή Καθαρού Κέρδους (μετά φόρων): {net_diff:+,.2f} EUR", border=1, fill=True, align='C')
+    pdf.set_text_color(*DARK)
+
+    # --- ΥΠΟΣΕΛΙΔΟ ---
+    pdf.set_y(-15)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Πλήρης Αναφορά Επίδρασης Σεναρίου", align='C')
+
+    return pdf.output()
+
 # --- ΣΥΝΔΕΣΗ ΜΕ SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
@@ -2933,6 +3157,22 @@ elif page == "📐 Markup & Margin":
         st.dataframe(styled_scenario, use_container_width=True, hide_index=True)
         st.caption("↑ κόκκινο = η τιμή ανεβαίνει  |  ↓ πράσινο = η τιμή κατεβαίνει  |  = αμετάβλητη")
 
+        try:
+            _now_str_mm1 = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            _now_str_mm1 = datetime.now().strftime("%d/%m/%Y %H:%M")
+        try:
+            _pdf1_bytes = generate_all_cocktails_price_pdf(df_all_scenario, scenario_mode, desired1, desired2, desired3, _now_str_mm1)
+            st.download_button(
+                "📄 Λήψη PDF: Λίστα Τιμών Όλων των Κοκτέιλ",
+                data=bytes(_pdf1_bytes),
+                file_name=f"Cabclub_Times_Kokteil_Senario_{_now_str_mm1.replace('/', '-').replace(':', 'h')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Σφάλμα προετοιμασίας PDF λίστας τιμών: {e}")
+
         # --- 2. Φόρτωση πραγματικού ιστορικού πωλήσεων (για σταθμισμένο μέσο όρο + P&L) ---
         try:
             res_mm_hist = supabase.table("production_log").select(
@@ -3115,6 +3355,40 @@ elif page == "📐 Markup & Margin":
 
             if _mm_fixed_annual == 0:
                 st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» — το Καθαρό Κέρδος εδώ ισούται προσωρινά με το Μικτό.")
+
+            try:
+                _now_str_mm2 = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                _now_str_mm2 = datetime.now().strftime("%d/%m/%Y %H:%M")
+            _full_report_data = {
+                "now_str": _now_str_mm2,
+                "scenario_mode": scenario_mode,
+                "desired1": desired1, "desired2": desired2, "desired3": desired3,
+                "channel_label": "Απευθείας στον Τελικό Πελάτη (χωρίς αντιπρόσωπο)" if _direct_mode else "Μέσω Αντιπροσώπου",
+                "months_covered": _mm_months_covered,
+                "avg_price_old": avg_price_old, "avg_price_new": avg_price_new,
+                "avg_markup_old": avg_markup_old, "avg_markup_new": avg_markup_new,
+                "avg_margin_old": avg_margin_old, "avg_margin_new": avg_margin_new,
+                "total_paid_pieces": int(total_paid_pieces_mm),
+                "total_cogs": total_cost_mm, "fixed_costs": _mm_fixed_annual,
+                "revenue_actual": total_revenue_actual, "revenue_scenario": total_revenue_scenario,
+                "gross_actual": gross_profit_actual, "gross_scenario": gross_profit_scenario,
+                "net_actual": net_profit_actual, "net_scenario": net_profit_scenario,
+                "tax_rate": tax_rate_mm, "tax_actual": tax_actual, "tax_scenario": tax_scenario,
+                "net_after_tax_actual": net_after_tax_actual, "net_after_tax_scenario": net_after_tax_scenario,
+            }
+            try:
+                _pdf2_bytes = generate_full_scenario_impact_pdf(_full_report_data)
+                st.download_button(
+                    "📄 Λήψη PDF: Πλήρης Αναφορά Επίδρασης στην Επιχείρηση",
+                    data=bytes(_pdf2_bytes),
+                    file_name=f"Cabclub_Plires_Anafora_Senariou_{_now_str_mm2.replace('/', '-').replace(':', 'h')}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Σφάλμα προετοιμασίας πλήρους αναφοράς PDF: {e}")
         else:
             st.warning("Δεν βρέθηκε ιστορικό πωλήσεων για υπολογισμό της επίδρασης στα Έσοδα-Έξοδα.")
 
