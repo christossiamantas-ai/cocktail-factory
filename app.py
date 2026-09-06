@@ -3012,6 +3012,12 @@ elif page == "📐 Markup & Margin":
             net_profit_scenario = gross_profit_scenario - _mm_fixed_annual
 
             st.markdown("### 📊 Μέσος Όρος (σταθμισμένος με πραγματικές πωλήσεις)")
+            st.caption(
+                "Ο μέσος όρος υπολογίζεται από **όλες** τις ιστορικές πωλήσεις σου (όλα τα κοκτέιλ μαζί, όλες οι ημερομηνίες) — "
+                "όχι απλός αριθμητικός μέσος όρος των συνταγών, αλλά **σταθμισμένος** με τον πραγματικό όγκο πωλήσεων: ένα "
+                "κοκτέιλ που πουλάς πολύ επηρεάζει τον μέσο όρο περισσότερο από ένα σπάνιο. Δείχνει «τι θα άλλαζε στο "
+                "σύνολο της επιχείρησης» αν εφάρμοζες αυτό το σενάριο τιμολόγησης σε όλα τα κοκτέιλ ταυτόχρονα."
+            )
             if total_paid_pieces_mm > 0:
                 avg_price_old = total_revenue_actual / total_paid_pieces_mm
                 avg_price_new = total_revenue_scenario / total_paid_pieces_mm
@@ -3021,9 +3027,10 @@ elif page == "📐 Markup & Margin":
                 avg_margin_new = _margin(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_new)
 
                 ac1, ac2, ac3 = st.columns(3)
-                ac1.metric("Μέση Τιμή Πώλησης", f"{avg_price_new:.2f} €", delta=f"{(avg_price_new-avg_price_old):+.2f} € vs {avg_price_old:.2f} € τώρα")
-                ac2.metric("Μέσο Markup", f"{avg_markup_new:.1f} %", delta=f"{(avg_markup_new-avg_markup_old):+.1f} pp")
-                ac3.metric("Μέσο Margin", f"{avg_margin_new:.1f} %", delta=f"{(avg_margin_new-avg_margin_old):+.1f} pp")
+                ac1.metric("Μέση Τιμή Πώλησης (Τώρα → Σενάριο)", f"{avg_price_old:.2f} € → {avg_price_new:.2f} €", delta=f"{(avg_price_new-avg_price_old):+.2f} € ({((avg_price_new-avg_price_old)/avg_price_old*100 if avg_price_old else 0):+.1f}%)")
+                ac2.metric("Μέσο Markup (Τώρα → Σενάριο)", f"{avg_markup_old:.1f}% → {avg_markup_new:.1f}%", delta=f"{(avg_markup_new-avg_markup_old):+.1f} ποσοστιαίες μονάδες")
+                ac3.metric("Μέσο Margin (Τώρα → Σενάριο)", f"{avg_margin_old:.1f}% → {avg_margin_new:.1f}%", delta=f"{(avg_margin_new-avg_margin_old):+.1f} ποσοστιαίες μονάδες")
+                st.caption("💡 «Ποσοστιαίες μονάδες» (π.χ. -18,3): η απλή αριθμητική διαφορά (68% → 49,7% = -18,3), όχι ποσοστιαία μεταβολή.")
                 st.caption(f"Βάσει {int(total_paid_pieces_mm):,} πληρωμένων τεμαχίων ιστορικά (όλες οι ημερομηνίες, όλα τα κοκτέιλ).")
             else:
                 st.warning("Δεν βρέθηκε αρκετό ιστορικό πωλήσεων για σταθμισμένο μέσο όρο.")
