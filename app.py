@@ -677,6 +677,165 @@ def generate_pl_report_pdf(period_label, data):
 
     return pdf.output()
 
+# --- 📄 PDF: ΣΥΓΚΡΙΤΙΚΗ ΑΝΑΛΥΣΗ ΟΛΩΝ ΤΩΝ ΜΗΝΩΝ (ΕΣΟΔΑ-ΕΞΟΔΑ) ---
+def generate_all_months_pl_comparison_pdf(months_data, tax_rate, now_str):
+    """Πίνακας + γράφημα (σχεδιασμένο απευθείας με FPDF, χωρίς matplotlib) που συγκρίνει
+    Τζίρο/COGS/Μικτό/Σταθερά/Καθαρό μεταξύ ΟΛΩΝ των μηνών που υπάρχουν δεδομένα.
+    `months_data` είναι λίστα από dict, ταξινομημένη χρονολογικά, με πεδία:
+    month, revenue, cogs, gross_profit, fixed_costs, net_profit, tax, net_after_tax."""
+    pdf = FPDF(orientation='L')  # Landscape, ώστε να χωράνε άνετα όλοι οι μήνες
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    RED = (176, 0, 32)
+    BLUE = (27, 94, 158)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(0, 0, 297, 26, 'F')
+    pdf.set_xy(10, 6)
+    pdf.set_font(f_name, 'B', 16)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+    pdf.set_x(10)
+    pdf.set_font(f_name, size=11)
+    pdf.cell(0, 6, f"Συγκριτική Ανάλυση Εσόδων - Εξόδων: Όλοι οι Μήνες (Φόρος {tax_rate:.0f}%)", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(14)
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(2)
+
+    # --- ΠΙΝΑΚΑΣ ---
+    cols = [
+        ("Μήνας", 26), ("Τζίρος", 36), ("COGS", 34), ("Μικτό Κέρδος", 36),
+        ("Πάγια", 32), ("Καθαρό (προ φόρων)", 40), ("Φόρος", 30), ("Καθαρό (μετά φόρων)", 40),
+    ]
+    pdf.set_font(f_name, 'B', 8)
+    pdf.set_fill_color(*LIGHTGREY)
+    for label, w in cols:
+        pdf.cell(w, 7, label, border=1, fill=True, align='C')
+    pdf.ln()
+
+    pdf.set_font(f_name, size=8)
+    for i, m in enumerate(months_data):
+        fill_row = (i % 2 == 0)
+        pdf.set_fill_color(250, 250, 250) if fill_row else pdf.set_fill_color(*WHITE)
+        pdf.cell(cols[0][1], 6, m["month"], border=1, fill=True, align='C')
+        pdf.cell(cols[1][1], 6, f"{m['revenue']:,.2f}", border=1, fill=True, align='R')
+        pdf.cell(cols[2][1], 6, f"{m['cogs']:,.2f}", border=1, fill=True, align='R')
+        pdf.cell(cols[3][1], 6, f"{m['gross_profit']:,.2f}", border=1, fill=True, align='R')
+        pdf.cell(cols[4][1], 6, f"{m['fixed_costs']:,.2f}", border=1, fill=True, align='R')
+        net_color = GREEN if m['net_profit'] >= 0 else RED
+        pdf.set_text_color(*net_color)
+        pdf.cell(cols[5][1], 6, f"{m['net_profit']:,.2f}", border=1, fill=True, align='R')
+        pdf.set_text_color(*DARK)
+        pdf.cell(cols[6][1], 6, f"-{m['tax']:,.2f}", border=1, fill=True, align='R')
+        net_after_color = GREEN if m['net_after_tax'] >= 0 else RED
+        pdf.set_text_color(*net_after_color)
+        pdf.cell(cols[7][1], 6, f"{m['net_after_tax']:,.2f}", border=1, fill=True, align='R')
+        pdf.set_text_color(*DARK)
+        pdf.ln()
+
+    # --- ΣΥΝΟΛΑ ---
+    total_rev = sum(m['revenue'] for m in months_data)
+    total_cogs = sum(m['cogs'] for m in months_data)
+    total_gross = sum(m['gross_profit'] for m in months_data)
+    total_fixed = sum(m['fixed_costs'] for m in months_data)
+    total_net = sum(m['net_profit'] for m in months_data)
+    total_tax = sum(m['tax'] for m in months_data)
+    total_net_after = sum(m['net_after_tax'] for m in months_data)
+
+    pdf.set_font(f_name, 'B', 8)
+    pdf.set_fill_color(*LIGHTGREY)
+    pdf.cell(cols[0][1], 6.5, "ΣΥΝΟΛΟ", border=1, fill=True, align='C')
+    pdf.cell(cols[1][1], 6.5, f"{total_rev:,.2f}", border=1, fill=True, align='R')
+    pdf.cell(cols[2][1], 6.5, f"{total_cogs:,.2f}", border=1, fill=True, align='R')
+    pdf.cell(cols[3][1], 6.5, f"{total_gross:,.2f}", border=1, fill=True, align='R')
+    pdf.cell(cols[4][1], 6.5, f"{total_fixed:,.2f}", border=1, fill=True, align='R')
+    pdf.cell(cols[5][1], 6.5, f"{total_net:,.2f}", border=1, fill=True, align='R')
+    pdf.cell(cols[6][1], 6.5, f"-{total_tax:,.2f}", border=1, fill=True, align='R')
+    pdf.cell(cols[7][1], 6.5, f"{total_net_after:,.2f}", border=1, fill=True, align='R')
+    pdf.ln(12)
+
+    # --- ΓΡΑΦΗΜΑ (χειροποίητο, μπάρες Τζίρος vs Καθαρό Κέρδος μετά φόρων, ανά μήνα) ---
+    if months_data:
+        pdf.set_font(f_name, 'B', 11)
+        pdf.set_text_color(*DARK)
+        pdf.cell(0, 8, "Τζίρος vs Καθαρό Κέρδος (μετά φόρων) ανά Μήνα", ln=1)
+        pdf.ln(2)
+
+        chart_x0 = 15
+        chart_y0 = pdf.get_y()
+        chart_w = 267
+        chart_h = 70
+        n = len(months_data)
+        max_val = max([abs(m['revenue']) for m in months_data] + [abs(m['net_after_tax']) for m in months_data] + [1])
+        group_w = chart_w / max(n, 1)
+        bar_w = group_w * 0.35
+
+        # άξονας βάσης (μηδέν)
+        zero_y = chart_y0 + chart_h * 0.85
+        pdf.set_draw_color(180, 180, 180)
+        pdf.line(chart_x0, zero_y, chart_x0 + chart_w, zero_y)
+
+        for i, m in enumerate(months_data):
+            gx = chart_x0 + i * group_w + group_w * 0.15
+
+            rev_h = (abs(m['revenue']) / max_val) * (chart_h * 0.8)
+            pdf.set_fill_color(*BLUE)
+            pdf.rect(gx, zero_y - rev_h, bar_w, rev_h, 'F')
+
+            net_val = m['net_after_tax']
+            net_h = (abs(net_val) / max_val) * (chart_h * 0.8)
+            net_color = GREEN if net_val >= 0 else RED
+            pdf.set_fill_color(*net_color)
+            if net_val >= 0:
+                pdf.rect(gx + bar_w * 1.1, zero_y - net_h, bar_w, net_h, 'F')
+            else:
+                pdf.rect(gx + bar_w * 1.1, zero_y, bar_w, net_h, 'F')
+
+            pdf.set_font(f_name, size=6.5)
+            pdf.set_text_color(*DARK)
+            pdf.set_xy(chart_x0 + i * group_w, zero_y + 2)
+            pdf.cell(group_w, 4, m["month"], align='C')
+
+        # Υπόμνημα
+        legend_y = zero_y + 10
+        pdf.set_fill_color(*BLUE)
+        pdf.rect(chart_x0, legend_y, 4, 4, 'F')
+        pdf.set_font(f_name, size=8)
+        pdf.set_text_color(*DARK)
+        pdf.set_xy(chart_x0 + 6, legend_y - 1)
+        pdf.cell(30, 6, "Τζίρος")
+        pdf.set_fill_color(*GREEN)
+        pdf.rect(chart_x0 + 45, legend_y, 4, 4, 'F')
+        pdf.set_xy(chart_x0 + 51, legend_y - 1)
+        pdf.cell(50, 6, "Καθαρό Κέρδος (μετά φόρων)")
+
+    # --- ΥΠΟΣΕΛΙΔΟ ---
+    pdf.set_y(-12)
+    pdf.set_font(f_name, size=7)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, "CabClub Cocktails - Συγκριτική Ανάλυση Μηνών", align='C')
+
+    return pdf.output()
+
 # --- 📄 PDF #1: ΛΙΣΤΑ ΤΙΜΩΝ ΟΛΩΝ ΤΩΝ ΚΟΚΤΕΪΛ (ΣΕΝΑΡΙΟ) ---
 def generate_all_cocktails_price_pdf(df_all_scenario, scenario_mode, desired1, desired2, desired3, now_str):
     """Πίνακας με όλα τα κοκτέιλ και τις τιμές τους πριν/μετά το σενάριο, με χρωματική
@@ -4926,6 +5085,80 @@ elif page == "📑 Έσοδα - Έξοδα":
                 )
             except Exception as e:
                 st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
+
+            # =====================================================================
+            # 📊 ΣΥΓΚΡΙΤΙΚΗ ΑΝΑΛΥΣΗ ΟΛΩΝ ΤΩΝ ΜΗΝΩΝ
+            # =====================================================================
+            st.divider()
+            st.subheader("📊 Σύγκριση Όλων των Μηνών")
+            st.caption("Υπολογίζει το πλήρες Έσοδα-Έξοδα για ΚΑΘΕ μήνα που υπάρχουν δεδομένα παραγωγής, για γρήγορη σύγκριση.")
+
+            if st.button("📊 Δημιουργία Σύγκρισης Όλων των Μηνών", use_container_width=True):
+                with st.spinner("Υπολογισμός για όλους τους μήνες..."):
+                    _all_months_sorted = sorted(df_pl_all["Month_Year"].unique(), key=lambda x: pd.to_datetime(x, format="%m/%Y"))
+                    _months_data = []
+                    for _my in _all_months_sorted:
+                        _df_m = df_pl_all[df_pl_all["Month_Year"] == _my].copy()
+
+                        _df_m["catalog_price"] = pd.to_numeric(_df_m["cocktail_name"].map(recipe_price_dict_pl), errors="coerce").fillna(0)
+                        _df_m["global_discount"] = pd.to_numeric(_df_m["customer"].map(cust_discount_dict_pl), errors="coerce").fillna(0)
+                        _df_m["t_pcs"] = pd.to_numeric(_df_m.get("pieces", 0), errors="coerce").fillna(0)
+                        _df_m["f_pcs"] = pd.to_numeric(_df_m.get("free_pieces", 0), errors="coerce").fillna(0)
+                        _df_m["s_pcs"] = pd.to_numeric(_df_m.get("discounted_pieces", 0), errors="coerce").fillna(0)
+                        _df_m["s_pct"] = pd.to_numeric(_df_m.get("discount_pct", 0), errors="coerce").fillna(0)
+                        _df_m["s_pcs"] = _df_m.apply(lambda r: min(r["s_pcs"], max(0, r["t_pcs"] - r["f_pcs"])), axis=1)
+                        _df_m["normal_pcs"] = _df_m["t_pcs"] - _df_m["f_pcs"] - _df_m["s_pcs"]
+                        _df_m["price_after_global"] = _df_m["catalog_price"] * (1 - (_df_m["global_discount"] / 100))
+                        _df_m["rev_normal"] = _df_m["normal_pcs"] * _df_m["price_after_global"]
+                        _df_m["rev_special"] = _df_m["s_pcs"] * _df_m["price_after_global"] * (1 - (_df_m["s_pct"] / 100))
+                        _df_m["revenue"] = (_df_m["rev_normal"] + _df_m["rev_special"]).clip(lower=0)
+                        _df_m["effective_unit_cost"] = _df_m.apply(_pl_effective_cost, axis=1)
+                        _df_m["cost_total"] = _df_m["t_pcs"] * _df_m["effective_unit_cost"]
+
+                        _m_revenue = float(_df_m["revenue"].sum())
+                        _m_cogs = float(_df_m["cost_total"].sum())
+                        _m_gross = _m_revenue - _m_cogs
+                        _m_fixed, _ = sum_fixed_costs_for_months(_monthly_fixed_map_pl, [_my])
+                        _m_net = _m_gross - _m_fixed
+                        _m_tax = max(0.0, _m_net) * (tax_rate_pl / 100)
+                        _m_net_after = _m_net - _m_tax
+
+                        _months_data.append({
+                            "month": _my, "revenue": _m_revenue, "cogs": _m_cogs, "gross_profit": _m_gross,
+                            "fixed_costs": _m_fixed, "net_profit": _m_net, "tax": _m_tax, "net_after_tax": _m_net_after,
+                        })
+
+                    st.session_state["pl_all_months_data"] = _months_data
+
+            if st.session_state.get("pl_all_months_data"):
+                _months_data = st.session_state["pl_all_months_data"]
+                df_months_summary = pd.DataFrame(_months_data).rename(columns={
+                    "month": "Μήνας", "revenue": "Τζίρος", "cogs": "COGS", "gross_profit": "Μικτό Κέρδος",
+                    "fixed_costs": "Πάγια", "net_profit": "Καθαρό (προ φόρων)", "tax": "Φόρος", "net_after_tax": "Καθαρό (μετά φόρων)"
+                })
+                st.dataframe(df_months_summary.style.format({
+                    "Τζίρος": "{:,.2f} €", "COGS": "{:,.2f} €", "Μικτό Κέρδος": "{:,.2f} €",
+                    "Πάγια": "{:,.2f} €", "Καθαρό (προ φόρων)": "{:,.2f} €", "Φόρος": "{:,.2f} €", "Καθαρό (μετά φόρων)": "{:,.2f} €",
+                }), use_container_width=True, hide_index=True)
+
+                st.line_chart(df_months_summary.set_index("Μήνας")[["Τζίρος", "Καθαρό (μετά φόρων)"]])
+
+                try:
+                    _now_str_allm = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    _now_str_allm = datetime.now().strftime("%d/%m/%Y %H:%M")
+                try:
+                    _allm_pdf_bytes = generate_all_months_pl_comparison_pdf(_months_data, tax_rate_pl, _now_str_allm)
+                    st.download_button(
+                        "📄 Λήψη PDF: Σύγκριση Όλων των Μηνών",
+                        data=bytes(_allm_pdf_bytes),
+                        file_name=f"Cabclub_Sygrisi_Menon_{_now_str_allm.replace('/', '-').replace(':', 'h')}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Σφάλμα προετοιμασίας PDF σύγκρισης: {e}")
 
 elif page == "🎁 Κιβωτιακή Πολιτική":
     st.header("🎁 Κιβωτιακή Πολιτική Δώρων")
