@@ -2876,6 +2876,7 @@ elif page == "📐 Markup & Margin":
             cocktail_new_prices[c_name_all] = {
                 "retail_old": retail_old_all, "retail_new": retail_new_all,
                 "agent_old": agent_old_all, "agent_new": agent_new_all,
+                "direct_new": direct_new_all,
                 "my_cost": my_cost_all,
             }
             all_scenario_rows.append({
@@ -2920,6 +2921,8 @@ elif page == "📐 Markup & Margin":
             df_mm_hist["retail_old"] = df_mm_hist["cocktail_name"].map(lambda c: cocktail_new_prices.get(c, {}).get("retail_old", 0.0))
             df_mm_hist["retail_new"] = df_mm_hist["cocktail_name"].map(lambda c: cocktail_new_prices.get(c, {}).get("retail_new", 0.0))
             df_mm_hist["retail_new"] = pd.to_numeric(df_mm_hist["retail_new"], errors="coerce").fillna(0)
+            df_mm_hist["direct_new"] = df_mm_hist["cocktail_name"].map(lambda c: cocktail_new_prices.get(c, {}).get("direct_new", 0.0))
+            df_mm_hist["direct_new"] = pd.to_numeric(df_mm_hist["direct_new"], errors="coerce").fillna(0)
 
             # ΠΡΑΓΜΑΤΙΚΟΣ τζίρος (τώρα): ίδια μεθοδολογία με Dashboard/Έσοδα-Έξοδα
             df_mm_hist["price_after_global_old"] = df_mm_hist["retail_old"] * (1 - (df_mm_hist["global_discount"] / 100))
@@ -2927,11 +2930,26 @@ elif page == "📐 Markup & Margin":
             df_mm_hist["rev_special_old"] = df_mm_hist["s_pcs"] * df_mm_hist["price_after_global_old"] * (1 - (df_mm_hist["s_pct"] / 100))
             df_mm_hist["revenue_actual"] = (df_mm_hist["rev_normal_old"] + df_mm_hist["rev_special_old"]).clip(lower=0)
 
-            # ΥΠΟΘΕΤΙΚΟΣ τζίρος (ΜΕΤΑ το σενάριο) — ΙΔΙΑ τεμάχια/εκπτώσεις, ΝΕΑ τιμή καταλόγου
-            df_mm_hist["price_after_global_new"] = df_mm_hist["retail_new"] * (1 - (df_mm_hist["global_discount"] / 100))
-            df_mm_hist["rev_normal_new"] = df_mm_hist["normal_pcs"] * df_mm_hist["price_after_global_new"]
-            df_mm_hist["rev_special_new"] = df_mm_hist["s_pcs"] * df_mm_hist["price_after_global_new"] * (1 - (df_mm_hist["s_pct"] / 100))
-            df_mm_hist["revenue_scenario"] = (df_mm_hist["rev_normal_new"] + df_mm_hist["rev_special_new"]).clip(lower=0)
+            # --- 🆕 Επιλογή καναλιού για το ΥΠΟΘΕΤΙΚΟ σενάριο ---
+            st.markdown("#### 🔀 Κανάλι Πώλησης για το Σενάριο")
+            channel_choice = st.radio(
+                "Οι ΙΔΙΕΣ ιστορικές πωλήσεις (τεμάχια) θα γίνονταν:",
+                ["🤝 Μέσω Αντιπροσώπου (με τις σημερινές εκπτώσεις πελατών)", "🎯 Απευθείας στον Τελικό Πελάτη (χωρίς αντιπρόσωπο)"],
+                key="mm_pl_channel"
+            )
+            _direct_mode = channel_choice.startswith("🎯")
+
+            if _direct_mode:
+                st.caption("⚠️ Στο απευθείας κανάλι δεν εφαρμόζεται καμία έκπτωση πελάτη/αντιπροσώπου — κάθε τεμάχιο τιμολογείται στην πλήρη «Τιμή Απευθείας Πώλησης».")
+                # Καμία έκπτωση πελάτη/ειδική έκπτωση — πουλάς απευθείας, χωρίς τη μεσολάβηση αντιπροσώπου.
+                df_mm_hist["revenue_scenario"] = (df_mm_hist["pieces"] - df_mm_hist["free_pieces"]) * df_mm_hist["direct_new"]
+                df_mm_hist["revenue_scenario"] = df_mm_hist["revenue_scenario"].clip(lower=0)
+            else:
+                # ΥΠΟΘΕΤΙΚΟΣ τζίρος (ΜΕΤΑ το σενάριο) — ΙΔΙΑ τεμάχια/εκπτώσεις, ΝΕΑ τιμή καταλόγου
+                df_mm_hist["price_after_global_new"] = df_mm_hist["retail_new"] * (1 - (df_mm_hist["global_discount"] / 100))
+                df_mm_hist["rev_normal_new"] = df_mm_hist["normal_pcs"] * df_mm_hist["price_after_global_new"]
+                df_mm_hist["rev_special_new"] = df_mm_hist["s_pcs"] * df_mm_hist["price_after_global_new"] * (1 - (df_mm_hist["s_pct"] / 100))
+                df_mm_hist["revenue_scenario"] = (df_mm_hist["rev_normal_new"] + df_mm_hist["rev_special_new"]).clip(lower=0)
 
             # Κόστος — ΔΕΝ αλλάζει στο σενάριο (το σενάριο αφορά τιμολόγηση, όχι κόστος)
             df_mm_hist["cost_total"] = df_mm_hist["pieces"] * df_mm_hist["applied_cost"]
@@ -2970,7 +2988,10 @@ elif page == "📐 Markup & Margin":
                 st.warning("Δεν βρέθηκε αρκετό ιστορικό πωλήσεων για σταθμισμένο μέσο όρο.")
 
             st.markdown("### 💰 Επίδραση στα Έσοδα - Έξοδα (βάσει ιστορικών πωλήσεων)")
-            st.caption("Τι θα γινόταν αν οι ΙΔΙΕΣ πωλήσεις (ίδια τεμάχια, ίδιες εκπτώσεις) είχαν γίνει με τις ΝΕΕΣ τιμές του σεναρίου. Το κόστος δεν αλλάζει — το σενάριο αφορά μόνο τιμολόγηση.")
+            if _direct_mode:
+                st.caption("Τι θα γινόταν αν οι ΙΔΙΕΣ πωλήσεις (ίδια τεμάχια) γίνονταν ΑΠΕΥΘΕΙΑΣ στον τελικό πελάτη, χωρίς αντιπρόσωπο και χωρίς εκπτώσεις. Το κόστος δεν αλλάζει.")
+            else:
+                st.caption("Τι θα γινόταν αν οι ΙΔΙΕΣ πωλήσεις (ίδια τεμάχια, ίδιες εκπτώσεις) είχαν γίνει με τις ΝΕΕΣ τιμές του σεναρίου μέσω αντιπροσώπου. Το κόστος δεν αλλάζει — το σενάριο αφορά μόνο τιμολόγηση.")
 
             pl1, pl2 = st.columns(2)
             with pl1:
