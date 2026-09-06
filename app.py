@@ -2890,7 +2890,43 @@ elif page == "📐 Markup & Margin":
             })
 
         df_all_scenario = pd.DataFrame(all_scenario_rows)
-        st.dataframe(df_all_scenario, use_container_width=True, hide_index=True)
+
+        # 🎨 ΟΠΤΙΚΗ ΣΗΜΑΝΣΗ: κόκκινο αν η νέα τιμή ανεβαίνει, πράσινο αν κατεβαίνει (χρώμα + βελάκι)
+        _price_pairs = [
+            ("Τιμή Αντιπρ. Τώρα (€)", "Νέα Τιμή Αντιπρ. (€)"),
+            ("Τιμή Λιανικής Τώρα (€)", "Νέα Τιμή Λιανικής (€)"),
+        ]
+
+        def _add_arrow(row):
+            row = row.copy()
+            for old_col, new_col in _price_pairs:
+                old_v, new_v = row[old_col], row[new_col]
+                if pd.notna(old_v) and pd.notna(new_v):
+                    if new_v > old_v:
+                        row[new_col] = f"↑ {new_v:.2f}"
+                    elif new_v < old_v:
+                        row[new_col] = f"↓ {new_v:.2f}"
+                    else:
+                        row[new_col] = f"= {new_v:.2f}"
+            return row
+
+        def _highlight_price_change(row):
+            styles = [''] * len(row)
+            for old_col, new_col in _price_pairs:
+                old_v = df_all_scenario.loc[row.name, old_col]
+                new_v = df_all_scenario.loc[row.name, new_col]
+                idx = row.index.get_loc(new_col)
+                if pd.notna(old_v) and pd.notna(new_v):
+                    if new_v > old_v:
+                        styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
+                    elif new_v < old_v:
+                        styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
+            return styles
+
+        df_display = df_all_scenario.apply(_add_arrow, axis=1)
+        styled_scenario = df_display.style.apply(_highlight_price_change, axis=1)
+        st.dataframe(styled_scenario, use_container_width=True, hide_index=True)
+        st.caption("↑ κόκκινο = η τιμή ανεβαίνει  |  ↓ πράσινο = η τιμή κατεβαίνει  |  = αμετάβλητη")
 
         # --- 2. Φόρτωση πραγματικού ιστορικού πωλήσεων (για σταθμισμένο μέσο όρο + P&L) ---
         try:
