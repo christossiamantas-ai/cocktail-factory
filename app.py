@@ -4914,34 +4914,32 @@ elif page == "🎯 Νεκρό Σημείο":
         "(ενοίκιο, μισθοδοσία, ασφάλιστρα κ.λπ. — ό,τι ΔΕΝ αλλάζει ανάλογα με το πόσο πουλάς)."
     )
 
-    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ — διαβάζονται από την καρτέλα «💸 Έξοδα» (όχι εδώ πια) ---
+    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ — διαβάζονται αυτόματα από την καρτέλα «💸 Έξοδα» (όχι εδώ πια) ---
     st.subheader("1️⃣ Σταθερά Έξοδα Επιχείρησης")
-    st.info("ℹ️ Τα σταθερά έξοδα καταχωρούνται πλέον στην καρτέλα **«💸 Έξοδα»**. Εδώ απλά επιλέγεις ποιου μήνα τα σταθερά έξοδα θα χρησιμοποιηθούν ως βάση για τον υπολογισμό.")
+    st.info("ℹ️ Τα σταθερά έξοδα καταχωρούνται στην καρτέλα **«💸 Έξοδα»**. Εδώ υπολογίζεται αυτόματα ο **μέσος όρος** όλων των μηνών που έχεις καταχωρήσει, ως πιο αντιπροσωπευτική βάση για το νεκρό σημείο.")
 
-    _monthly_fixed_map = load_monthly_fixed_costs()
-    try:
-        _today_be = datetime.now(greece_tz)
-    except Exception:
-        _today_be = datetime.now()
-    _recent_months = []
-    for _i in range(12):
-        _m = (_today_be.month - _i - 1) % 12 + 1
-        _y = _today_be.year + ((_today_be.month - _i - 1) // 12)
-        _recent_months.append(f"{_m:02d}/{_y}")
-    _all_months_be = sorted(set(list(_monthly_fixed_map.keys()) + _recent_months), key=lambda x: (x[3:], x[:2]), reverse=True)
+    _all_expense_entries_be = load_all_expense_entries()
+    _months_with_data_be = sorted({e["month_year"] for e in _all_expense_entries_be}, key=lambda x: (x[3:], x[:2]))
 
-    sel_fixed_month = st.selectbox("📅 Βάση σταθερών εξόδων (ποιου μήνα τα νούμερα να χρησιμοποιηθούν):", _all_months_be, key="be_ref_month_select")
-    _current_month_data = _monthly_fixed_map.get(sel_fixed_month, {})
-    monthly_fixed = get_month_total_fixed(_current_month_data)
-    yearly_fixed = monthly_fixed * 12
+    if not _months_with_data_be:
+        st.warning("⚠️ Δεν έχουν καταχωρηθεί ακόμα έξοδα σε κανέναν μήνα. Πήγαινε στην καρτέλα «💸 Έξοδα» για να τα συμπληρώσεις.")
+        monthly_fixed = 0.0
+        yearly_fixed = 0.0
+    else:
+        _per_month_totals_be = {my: get_month_grand_total(my) for my in _months_with_data_be}
+        monthly_fixed = sum(_per_month_totals_be.values()) / len(_per_month_totals_be)
+        yearly_fixed = monthly_fixed * 12
 
-    if not _current_month_data:
-        st.warning(f"⚠️ Δεν έχουν καταχωρηθεί ακόμα έξοδα για τον {sel_fixed_month}. Πήγαινε στην καρτέλα «💸 Έξοδα» για να τα συμπληρώσεις.")
+        st.info(f"💶 **Μέσος Όρος Σταθερών Εξόδων** (βάσει {len(_months_with_data_be)} μήνα/ες): {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος")
 
-    _cat_totals_be = get_month_category_totals(sel_fixed_month)
-    _fc_breakdown = " + ".join([f"{c.split('. ',1)[-1]}: {_cat_totals_be.get(c,0):,.0f}€" for c in EXPENSE_CATEGORIES if _cat_totals_be.get(c, 0) > 0])
-    st.caption(f"📋 {sel_fixed_month}: {_fc_breakdown or 'καμία καταχώρηση ακόμα'}")
-    st.info(f"💶 **Σύνολο Σταθερών Εξόδων ({sel_fixed_month}):** {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος (αν ίσχυε αυτό το ποσό όλο τον χρόνο)")
+        with st.expander(f"📋 Ανάλυση ανά Μήνα ({len(_months_with_data_be)} μήνα/ες)"):
+            for my in _months_with_data_be:
+                _cat_totals_my = get_month_category_totals(my)
+                _breakdown_my = " + ".join([f"{c.split('. ',1)[-1]}: {_cat_totals_my.get(c,0):,.0f}€" for c in EXPENSE_CATEGORIES if _cat_totals_my.get(c, 0) > 0])
+                st.markdown(f"**{my}** — Σύνολο: {_per_month_totals_be[my]:,.2f}€")
+                st.caption(_breakdown_my or "καμία καταχώρηση")
+            st.divider()
+            st.caption("💡 Αν κάποιος μήνας έχει ασυνήθιστα υψηλό/χαμηλό ποσό (π.χ. έκτακτο έξοδο), θα επηρεάσει τον μέσο όρο — έλεγξε τα παραπάνω αν το αποτέλεσμα σου φαίνεται περίεργο.")
 
     st.divider()
 
