@@ -1365,7 +1365,7 @@ with st.sidebar:
         ],
         "💰 Κοστολόγηση & Τιμολόγηση": [
             "💰 Κοστολόγιο & Σταθερά Έξοδα", "🔍 Ανάλυση", "📐 Markup & Margin",
-            "📊 Εμπορική Πολιτική", "🎯 Νεκρό Σημείο", "🎁 Κιβωτιακή Πολιτική",
+            "📊 Εμπορική Πολιτική", "💸 Έξοδα", "🎯 Νεκρό Σημείο", "🎁 Κιβωτιακή Πολιτική",
         ],
         "📊 Επιχείρηση & Πωλήσεις": [
             "📈 Dashboard", "📑 Έσοδα - Έξοδα", "👥 Πελατολόγιο",
@@ -4591,11 +4591,13 @@ elif page == "📈 Dashboard":
 # --- 8. LOT ΠΑΡΑΓΩΓΗΣ (ΜΕ DROP-DOWN ΠΕΛΑΤΟΛΟΓΙΟ & SMART CART) ---
 # --- 🎁 ΚΙΒΩΤΙΑΚΗ ΠΟΛΙΤΙΚΗ ΔΩΡΩΝ ---
 # --- 🎯 ΝΕΚΡΟ ΣΗΜΕΙΟ (BREAK-EVEN) ---
-elif page == "🎯 Νεκρό Σημείο":
-    st.header("🎯 Υπολογιστής Νεκρού Σημείου (Break-Even)")
+# --- 💸 ΕΞΟΔΑ (Σταθερά + Μεταβλητά) — τροφοδοτεί το Νεκρό Σημείο ---
+elif page == "💸 Έξοδα":
+    st.header("💸 Έξοδα Επιχείρησης")
     st.caption(
-        "Πόσα τεμάχια πρέπει να πουλήσεις ανά μήνα / έτος για να καλύψεις τα σταθερά σου έξοδα "
-        "(ενοίκιο, μισθοδοσία, ασφάλιστρα κ.λπ. — ό,τι ΔΕΝ αλλάζει ανάλογα με το πόσο πουλάς)."
+        "Πλήρης εικόνα του τι ξοδεύει η επιχείρηση — σταθερά (ενοίκιο, μισθοδοσία κ.λπ.) και "
+        "μεταβλητά (κόστος παραγωγής/πρώτων υλών). Το «🎯 Νεκρό Σημείο» ενημερώνεται αυτόματα "
+        "από τα σταθερά έξοδα που καταχωρείς εδώ."
     )
 
     # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ (δυναμικά ΑΝΑ ΜΗΝΑ — η αλλαγή σε έναν μήνα ΔΕΝ επηρεάζει τους άλλους) ---
@@ -4687,6 +4689,135 @@ elif page == "🎯 Νεκρό Σημείο":
                 ");"
             )
             st.code(_create_sql, language="sql")
+
+    st.divider()
+
+    # --- 2. ΜΕΤΑΒΛΗΤΑ ΕΞΟΔΑ (Κόστος Παραγωγής / COGS) — βάσει πραγματικών πωλήσεων ---
+    st.subheader("2️⃣ Μεταβλητά Έξοδα (Κόστος Παραγωγής)")
+    st.caption("Το πραγματικό κόστος πρώτων υλών/παραγωγής, υπολογισμένο από το ιστορικό πωλήσεών σου — μηνιαία ή ετήσια.")
+
+    try:
+        res_exp_hist = supabase.table("production_log").select("cocktail_name, pieces, applied_cost, lot_cocktail, prod_time, prod_date, customer").execute()
+        df_exp_hist = pd.DataFrame(res_exp_hist.data) if res_exp_hist.data else pd.DataFrame()
+    except Exception as e:
+        st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
+        df_exp_hist = pd.DataFrame()
+
+    if df_exp_hist.empty:
+        st.warning("Δεν βρέθηκαν δεδομένα παραγωγής για υπολογισμό μεταβλητού κόστους.")
+    else:
+        df_exp_hist = df_exp_hist.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+        df_exp_hist["parsed_date"] = pd.to_datetime(df_exp_hist["prod_date"], format="%d/%m/%Y", errors="coerce")
+        df_exp_hist = df_exp_hist.dropna(subset=["parsed_date"])
+
+        if df_exp_hist.empty:
+            st.warning("Δεν βρέθηκαν έγκυρες ημερομηνίες παραγωγής.")
+        else:
+            df_exp_hist["Month_Year"] = df_exp_hist["parsed_date"].dt.strftime("%m/%Y")
+            df_exp_hist["Year"] = df_exp_hist["parsed_date"].dt.strftime("%Y")
+            df_exp_hist["pieces"] = pd.to_numeric(df_exp_hist["pieces"], errors="coerce").fillna(0)
+
+            var_period_type = st.radio("Περίοδος:", ["Μηνιαία", "Ετήσια"], horizontal=True, key="exp_var_period_type")
+            if var_period_type == "Μηνιαία":
+                _var_periods = sorted(df_exp_hist["Month_Year"].unique(), key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
+                sel_var_period = st.selectbox("Επίλεξε μήνα:", _var_periods, key="exp_var_month_sel")
+                df_var_period = df_exp_hist[df_exp_hist["Month_Year"] == sel_var_period]
+            else:
+                _var_years = sorted(df_exp_hist["Year"].unique(), reverse=True)
+                sel_var_period = st.selectbox("Επίλεξε έτος:", _var_years, key="exp_var_year_sel")
+                df_var_period = df_exp_hist[df_exp_hist["Year"] == sel_var_period]
+
+            # Ίδια λογική fallback κόστους με Έσοδα-Έξοδα/Dashboard: πραγματικό applied_cost,
+            # αλλιώς πραγματικό κόστος υλικών της συνταγής (όχι μηδέν).
+            def _exp_raw_material_cost(recipe_row):
+                total = 0.0
+                for i in range(1, 14):
+                    ing_n = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                    ml = float(recipe_row.get(f"ML{i}", 0) or 0)
+                    if ing_n in ["ΚΕΝΟ", "nan", "", "Νερό"] or ml <= 0:
+                        continue
+                    match_ing_exp = df_ing[df_ing["Name"] == ing_n]
+                    if not match_ing_exp.empty:
+                        total += ml * float(match_ing_exp.iloc[0].get("Τιμή/ml", 0) or 0)
+                return total
+
+            _name_to_cost_exp = {}
+            for _, r_exp in df_rec.iterrows():
+                _name_to_cost_exp[r_exp["Ονομα"]] = get_unit_cost_for_cocktail(r_exp["Ονομα"], _exp_raw_material_cost(r_exp))
+
+            def _exp_effective_cost(row):
+                ac = row.get("applied_cost")
+                if pd.notna(ac):
+                    try:
+                        return float(ac)
+                    except (TypeError, ValueError):
+                        pass
+                return _name_to_cost_exp.get(row["cocktail_name"], get_unit_cost_for_cocktail(row["cocktail_name"], 0.0))
+
+            df_var_period = df_var_period.copy()
+            df_var_period["effective_unit_cost"] = df_var_period.apply(_exp_effective_cost, axis=1)
+            df_var_period["cost_total"] = df_var_period["pieces"] * df_var_period["effective_unit_cost"]
+            variable_costs_total = float(df_var_period["cost_total"].sum())
+
+            st.metric(f"🏭 Μεταβλητά Έξοδα ({sel_var_period})", f"{variable_costs_total:,.2f} €", help="Κόστος πρώτων υλών/παραγωγής όλων των τεμαχίων που παρήχθησαν σε αυτή την περίοδο.")
+
+            st.divider()
+
+            # --- 3. ΣΥΝΟΛΟ ΕΞΟΔΩΝ (Σταθερά + Μεταβλητά) για την ΙΔΙΑ επιλεγμένη περίοδο ---
+            st.subheader("3️⃣ Σύνολο Εξόδων για αυτή την Περίοδο")
+            if var_period_type == "Μηνιαία":
+                _period_fixed_total, _ = sum_fixed_costs_for_months(_monthly_fixed_map, [sel_var_period])
+                _period_label_exp = sel_var_period
+            else:
+                _year_months = sorted(df_var_period["Month_Year"].unique())
+                _period_fixed_total, _missing_exp = sum_fixed_costs_for_months(_monthly_fixed_map, _year_months)
+                _period_label_exp = sel_var_period
+                if _missing_exp:
+                    st.caption(f"⚠️ Δεν βρέθηκαν καταχωρημένα σταθερά έξοδα για: {', '.join(_missing_exp)} (υπολογίστηκαν ως 0€).")
+
+            _total_all_expenses = _period_fixed_total + variable_costs_total
+            ec1, ec2, ec3 = st.columns(3)
+            ec1.metric("🏠 Σταθερά", f"{_period_fixed_total:,.2f} €")
+            ec2.metric("🏭 Μεταβλητά", f"{variable_costs_total:,.2f} €")
+            ec3.metric("💰 Σύνολο Εξόδων", f"{_total_all_expenses:,.2f} €")
+            if _total_all_expenses > 0:
+                st.caption(f"Σταθερά {_period_fixed_total/_total_all_expenses*100:.0f}% / Μεταβλητά {variable_costs_total/_total_all_expenses*100:.0f}% — περίοδος: {_period_label_exp}")
+
+# --- 🎯 ΝΕΚΡΟ ΣΗΜΕΙΟ (BREAK-EVEN) ---
+elif page == "🎯 Νεκρό Σημείο":
+    st.header("🎯 Υπολογιστής Νεκρού Σημείου (Break-Even)")
+    st.caption(
+        "Πόσα τεμάχια πρέπει να πουλήσεις ανά μήνα / έτος για να καλύψεις τα σταθερά σου έξοδα "
+        "(ενοίκιο, μισθοδοσία, ασφάλιστρα κ.λπ. — ό,τι ΔΕΝ αλλάζει ανάλογα με το πόσο πουλάς)."
+    )
+
+    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ — διαβάζονται από την καρτέλα «💸 Έξοδα» (όχι εδώ πια) ---
+    st.subheader("1️⃣ Σταθερά Έξοδα Επιχείρησης")
+    st.info("ℹ️ Τα σταθερά έξοδα καταχωρούνται πλέον στην καρτέλα **«💸 Έξοδα»**. Εδώ απλά επιλέγεις ποιου μήνα τα σταθερά έξοδα θα χρησιμοποιηθούν ως βάση για τον υπολογισμό.")
+
+    _monthly_fixed_map = load_monthly_fixed_costs()
+    try:
+        _today_be = datetime.now(greece_tz)
+    except Exception:
+        _today_be = datetime.now()
+    _recent_months = []
+    for _i in range(12):
+        _m = (_today_be.month - _i - 1) % 12 + 1
+        _y = _today_be.year + ((_today_be.month - _i - 1) // 12)
+        _recent_months.append(f"{_m:02d}/{_y}")
+    _all_months_be = sorted(set(list(_monthly_fixed_map.keys()) + _recent_months), key=lambda x: (x[3:], x[:2]), reverse=True)
+
+    sel_fixed_month = st.selectbox("📅 Βάση σταθερών εξόδων (ποιου μήνα τα νούμερα να χρησιμοποιηθούν):", _all_months_be, key="be_ref_month_select")
+    _current_month_data = _monthly_fixed_map.get(sel_fixed_month, {})
+    monthly_fixed = get_month_total_fixed(_current_month_data)
+    yearly_fixed = monthly_fixed * 12
+
+    if not _current_month_data:
+        st.warning(f"⚠️ Δεν έχουν καταχωρηθεί ακόμα σταθερά έξοδα για τον {sel_fixed_month}. Πήγαινε στην καρτέλα «💸 Έξοδα» για να τα συμπληρώσεις.")
+
+    _fc_breakdown = " + ".join([f"{FIXED_COST_LABELS[c].split(' ',1)[-1]}: {float(_current_month_data.get(c,0) or 0):,.0f}€" for c in FIXED_COST_CATEGORIES])
+    st.caption(f"📋 {sel_fixed_month}: {_fc_breakdown}")
+    st.info(f"💶 **Σύνολο Σταθερών Εξόδων ({sel_fixed_month}):** {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος (αν ίσχυε αυτό το ποσό όλο τον χρόνο)")
 
     st.divider()
 
