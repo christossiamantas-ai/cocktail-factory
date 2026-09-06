@@ -1009,6 +1009,47 @@ def load_cost_settings():
         pass
     return None
 
+# 🆕 ΜΗΝΙΑΙΑ ΣΤΑΘΕΡΑ ΕΞΟΔΑ (dynamic ανά μήνα, αντί για ΕΝΑ κοινό σετ για όλη την επιχείρηση)
+FIXED_COST_CATEGORIES = ["be_rent", "be_labor", "be_insurance", "be_admin", "be_utilities", "be_other"]
+FIXED_COST_LABELS = {
+    "be_rent": "🏠 Ενοίκιο", "be_labor": "👷 Μισθοδοσία", "be_insurance": "🛡️ Ασφάλιστρα",
+    "be_admin": "📋 Λογιστικά / Διοικητικά", "be_utilities": "💡 ΔΕΗ / Ρεύμα / Νερό", "be_other": "➕ Λοιπά Σταθερά",
+}
+FIXED_COST_EXTRA_SLOTS = 5  # πόσα κενά για έκτακτα έξοδα, ανά μήνα
+
+@st.cache_data(ttl=60)
+def load_monthly_fixed_costs():
+    """Φορτώνει ΟΛΑ τα καταχωρημένα μηνιαία σταθερά έξοδα.
+    Επιστρέφει dict {month_year (π.χ. '09/2026'): {πεδία...}}."""
+    try:
+        res = supabase.table("monthly_fixed_costs").select("*").execute()
+        return {r["month_year"]: r for r in (res.data or [])}
+    except Exception:
+        return {}
+
+def get_month_total_fixed(month_data):
+    """Αθροίζει τις 6 σταθερές κατηγορίες + τα έκτακτα ενός συγκεκριμένου μήνα.
+    `month_data` είναι το dict ενός μήνα (ή None/{} αν δεν έχει καταχωρηθεί ακόμα -> 0)."""
+    if not month_data:
+        return 0.0
+    base = sum(float((month_data.get(k) or 0.0)) for k in FIXED_COST_CATEGORIES)
+    extra = sum(float((month_data.get(f"extra{i}_amount") or 0.0)) for i in range(1, FIXED_COST_EXTRA_SLOTS + 1))
+    return base + extra
+
+def sum_fixed_costs_for_months(monthly_fixed_map, month_year_list):
+    """Αθροίζει το ΠΡΑΓΜΑΤΙΚΟ σταθερό κόστος για μια ΛΙΣΤΑ συγκεκριμένων μηνών (π.χ. όσους
+    καλύπτει το ιστορικό πωλήσεων) — αντί για (σημερινό μήνα) × (πλήθος μηνών), που θα
+    αλλοίωνε αναδρομικά την εικόνα αν το ενοίκιο άλλαξε στο μεταξύ."""
+    total = 0.0
+    missing_months = []
+    for my in month_year_list:
+        data = monthly_fixed_map.get(my)
+        if data is None:
+            missing_months.append(my)
+        else:
+            total += get_month_total_fixed(data)
+    return total, missing_months
+
 @st.cache_data(ttl=90)
 def load_cocktail_costs():
     """Φορτώνει το χειροκίνητο 'βιομηχανικό κόστος' ανά κοκτέιλ.
@@ -3283,18 +3324,21 @@ elif page == "📐 Markup & Margin":
             # 🔧 FIX: πριν χρησιμοποιούσε ΠΑΝΤΑ ετήσια σταθερά έξοδα (μηνιαία ×12), ακόμα κι αν το
             # ιστορικό πωλήσεων καλύπτει πολύ λιγότερους μήνες (π.χ. 5) — αυτό συνέκρινε 5 μήνες
             # τζίρου με 12 μήνες εξόδων, κάνοντας το Καθαρό Κέρδος ψευδώς πολύ χειρότερο. Τώρα
-            # μετράει τους πραγματικούς μήνες με δεδομένα και χρησιμοποιεί τα σταθερά έξοδα ΜΟΝΟ
-            # για αυτούς τους μήνες — ίδια λογική με το αυτόνομο «📑 Έσοδα - Έξοδα».
+            # αθροίζει τα ΠΡΑΓΜΑΤΙΚΑ καταχωρημένα σταθερά έξοδα ΚΑΘΕ πραγματικού μήνα ξεχωριστά
+            # (όχι το σημερινό σετ × πλήθος μηνών) — ίδια λογική με το «📑 Έσοδα - Έξοδα».
             try:
                 _mm_dates_covered = pd.to_datetime(df_mm_hist["prod_date"], format="%d/%m/%Y", errors="coerce").dropna()
-                _mm_months_covered = _mm_dates_covered.dt.strftime("%m/%Y").nunique()
+                _mm_months_list = sorted(_mm_dates_covered.dt.strftime("%m/%Y").unique())
+                _mm_months_covered = len(_mm_months_list)
             except Exception:
+                _mm_months_list = []
                 _mm_months_covered = 12
             _mm_months_covered = max(1, _mm_months_covered)
 
-            _mm_settings = load_cost_settings() or {}
-            _mm_fixed_monthly = sum(float(_mm_settings.get(k, 0.0) or 0.0) for k in ["be_rent", "be_labor", "be_insurance", "be_admin", "be_utilities", "be_other"])
-            _mm_fixed_annual = _mm_fixed_monthly * _mm_months_covered  # 🔧 όχι πια σταθερό ×12
+            _monthly_fixed_map_mm = load_monthly_fixed_costs()
+            _mm_fixed_annual, _mm_missing_months = sum_fixed_costs_for_months(_monthly_fixed_map_mm, _mm_months_list)
+            if _mm_missing_months:
+                st.caption(f"⚠️ Δεν βρέθηκαν καταχωρημένα σταθερά έξοδα για: {', '.join(_mm_missing_months)} (υπολογίστηκαν ως 0€). Καταχώρησέ τα στο «🎯 Νεκρό Σημείο».")
 
             net_profit_actual = gross_profit_actual - _mm_fixed_annual
             net_profit_scenario = gross_profit_scenario - _mm_fixed_annual
@@ -4384,11 +4428,31 @@ elif page == "🎯 Νεκρό Σημείο":
         "(ενοίκιο, μισθοδοσία, ασφάλιστρα κ.λπ. — ό,τι ΔΕΝ αλλάζει ανάλογα με το πόσο πουλάς)."
     )
 
-    _be_settings = load_cost_settings() or {}
+    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ (δυναμικά ΑΝΑ ΜΗΝΑ — η αλλαγή σε έναν μήνα ΔΕΝ επηρεάζει τους άλλους) ---
+    st.subheader("1️⃣ Σταθερά Έξοδα Επιχείρησης (ανά μήνα)")
+    st.caption(
+        "⚠️ Κάθε μήνας έχει τα ΔΙΚΑ ΤΟΥ σταθερά έξοδα, αποθηκευμένα ξεχωριστά. Αν αλλάξεις π.χ. το "
+        "ενοίκιο του Σεπτεμβρίου, ΔΕΝ επηρεάζονται οι προηγούμενοι μήνες — έτσι οι αναφορές παλιών "
+        "μηνών παραμένουν σωστές ακόμα κι αν τα έξοδα άλλαξαν στο μεταξύ."
+    )
 
-    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ (ανά κατηγορία, μηνιαία — αθροίζονται αυτόματα) ---
-    st.subheader("1️⃣ Σταθερά Έξοδα Επιχείρησης (μηνιαία, ανά κατηγορία)")
-    st.caption("Συμπλήρωσε ό,τι ισχύει για την επιχείρησή σου — το σύνολο υπολογίζεται αυτόματα από κάτω.")
+    _monthly_fixed_map = load_monthly_fixed_costs()
+
+    # Λίστα μηνών: οι ήδη καταχωρημένοι + οι τελευταίοι 12 μήνες μέχρι σήμερα (ώστε να μπορείς
+    # πάντα να προσθέσεις τον τρέχοντα μήνα, ακόμα κι αν δεν έχει καταχωρηθεί ακόμα)
+    try:
+        _today_be = datetime.now(greece_tz)
+    except Exception:
+        _today_be = datetime.now()
+    _recent_months = []
+    for _i in range(12):
+        _m = (_today_be.month - _i - 1) % 12 + 1
+        _y = _today_be.year + ((_today_be.month - _i - 1) // 12)
+        _recent_months.append(f"{_m:02d}/{_y}")
+    _all_months_be = sorted(set(list(_monthly_fixed_map.keys()) + _recent_months), key=lambda x: (x[3:], x[:2]), reverse=True)
+
+    sel_fixed_month = st.selectbox("📅 Επίλεξε μήνα για καταχώρηση/επεξεργασία:", _all_months_be, key="be_fixed_month_select")
+    _current_month_data = _monthly_fixed_map.get(sel_fixed_month, {})
 
     if _manual_cost_active:
         st.warning(
@@ -4400,42 +4464,59 @@ elif page == "🎯 Νεκρό Σημείο":
             "μπαίνουν ήδη στα Εργατικά (π.χ. διοικητικό/πωλήσεων), όχι της παραγωγής."
         )
 
+    st.markdown(f"**Σταθερές κατηγορίες — {sel_fixed_month}**")
     fc1, fc2 = st.columns(2)
-    be_rent = fc1.number_input("🏠 Ενοίκιο", min_value=0.0, value=float(_be_settings.get("be_rent", 0.0)), step=50.0, key="be_rent")
-    be_labor = fc2.number_input("👷 Μισθοδοσία (ΜΗ παραγωγικό προσωπικό αν είναι ενεργό το χειροκίνητο κόστος)" if _manual_cost_active else "👷 Μισθοδοσία", min_value=0.0, value=float(_be_settings.get("be_labor", 0.0)), step=50.0, key="be_labor")
-    be_insurance = fc1.number_input("🛡️ Ασφάλιστρα", min_value=0.0, value=float(_be_settings.get("be_insurance", 0.0)), step=50.0, key="be_insurance")
-    be_admin = fc2.number_input("📋 Λογιστικά / Διοικητικά", min_value=0.0, value=float(_be_settings.get("be_admin", 0.0)), step=50.0, key="be_admin")
-    be_utilities = fc1.number_input("💡 ΔΕΗ / Ρεύμα / Νερό", min_value=0.0, value=float(_be_settings.get("be_utilities", 0.0)), step=50.0, key="be_utilities")
-    be_other = fc2.number_input("➕ Λοιπά Σταθερά", min_value=0.0, value=float(_be_settings.get("be_other", 0.0)), step=50.0, key="be_other")
+    fixed_values = {}
+    for idx, cat in enumerate(FIXED_COST_CATEGORIES):
+        col = fc1 if idx % 2 == 0 else fc2
+        label = FIXED_COST_LABELS[cat]
+        if cat == "be_labor" and _manual_cost_active:
+            label = "👷 Μισθοδοσία (ΜΗ παραγωγικό προσωπικό)"
+        fixed_values[cat] = col.number_input(label, min_value=0.0, value=float(_current_month_data.get(cat, 0.0) or 0.0), step=50.0, key=f"be_fixed_{sel_fixed_month}_{cat}")
 
-    monthly_fixed = be_rent + be_labor + be_insurance + be_admin + be_utilities + be_other
-    yearly_fixed = monthly_fixed * 12
+    st.markdown(f"**Έκτακτα Έξοδα — {sel_fixed_month}** (προαιρετικά, π.χ. επισκευή, έκτακτος φόρος)")
+    extra_values = {}
+    for i in range(1, FIXED_COST_EXTRA_SLOTS + 1):
+        ec1, ec2 = st.columns([2, 1])
+        extra_label = ec1.text_input(f"Περιγραφή έκτακτου #{i}", value=_current_month_data.get(f"extra{i}_label", "") or "", key=f"be_extra_label_{sel_fixed_month}_{i}")
+        extra_amount = ec2.number_input(f"Ποσό #{i} (€)", min_value=0.0, value=float(_current_month_data.get(f"extra{i}_amount", 0.0) or 0.0), step=10.0, key=f"be_extra_amount_{sel_fixed_month}_{i}")
+        extra_values[i] = (extra_label, extra_amount)
 
-    st.info(f"💶 **Σύνολο Σταθερών Εξόδων:** {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος")
+    monthly_fixed = sum(fixed_values.values()) + sum(a for _, a in extra_values.values())
+    yearly_fixed = monthly_fixed * 12  # ενδεικτικό — μόνο για τον ΕΠΙΛΕΓΜΕΝΟ μήνα ×12, όχι άθροισμα πραγματικών μηνών
 
-    if st.button("💾 Αποθήκευση Σταθερών Εξόδων"):
+    st.info(f"💶 **Σύνολο Σταθερών Εξόδων ({sel_fixed_month}):** {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος (αν ίσχυε αυτό το ποσό όλο τον χρόνο)")
+
+    if st.button(f"💾 Αποθήκευση Σταθερών Εξόδων για {sel_fixed_month}"):
         try:
-            supabase.table("cost_settings").upsert({
-                "id": 1,
-                "operational_cost": float(_be_settings.get("operational_cost") or 0.0),
-                "active": bool(_be_settings.get("active", False)),
-                "be_rent": be_rent, "be_labor": be_labor, "be_insurance": be_insurance,
-                "be_admin": be_admin, "be_utilities": be_utilities, "be_other": be_other,
-            }).execute()
+            payload = {"month_year": sel_fixed_month, **fixed_values}
+            for i, (lbl, amt) in extra_values.items():
+                payload[f"extra{i}_label"] = lbl
+                payload[f"extra{i}_amount"] = amt
+            supabase.table("monthly_fixed_costs").upsert(payload, on_conflict="month_year").execute()
             st.cache_data.clear()
-            st.success("✅ Αποθηκεύτηκε!")
+            st.success(f"✅ Αποθηκεύτηκαν τα σταθερά έξοδα για {sel_fixed_month}!")
             st.rerun()
         except Exception as e:
-            st.error(f"Σφάλμα αποθήκευσης: {e} — ίσως χρειάζεται να προστεθούν οι στήλες (δες παρακάτω).")
-            st.code(
-                "alter table cost_settings add column if not exists be_rent numeric not null default 0;\n"
-                "alter table cost_settings add column if not exists be_labor numeric not null default 0;\n"
-                "alter table cost_settings add column if not exists be_insurance numeric not null default 0;\n"
-                "alter table cost_settings add column if not exists be_admin numeric not null default 0;\n"
-                "alter table cost_settings add column if not exists be_utilities numeric not null default 0;\n"
-                "alter table cost_settings add column if not exists be_other numeric not null default 0;",
-                language="sql"
+            st.error(f"Σφάλμα αποθήκευσης: {e} — ίσως χρειάζεται να δημιουργηθεί ο πίνακας (δες παρακάτω).")
+            _extra_lines = []
+            for _i in range(1, FIXED_COST_EXTRA_SLOTS + 1):
+                _extra_lines.append(f"  extra{_i}_label text default '',")
+                _extra_lines.append(f"  extra{_i}_amount numeric not null default 0,")
+            _create_sql = (
+                "create table if not exists monthly_fixed_costs (\n"
+                "  month_year text primary key,\n"
+                "  be_rent numeric not null default 0,\n"
+                "  be_labor numeric not null default 0,\n"
+                "  be_insurance numeric not null default 0,\n"
+                "  be_admin numeric not null default 0,\n"
+                "  be_utilities numeric not null default 0,\n"
+                "  be_other numeric not null default 0,\n"
+                + "\n".join(_extra_lines) + "\n"
+                "  updated_at timestamptz not null default now()\n"
+                ");"
             )
+            st.code(_create_sql, language="sql")
 
     st.divider()
 
@@ -4651,6 +4732,7 @@ elif page == "📑 Έσοδα - Έξοδα":
                 df_period = df_pl_all[df_pl_all["Month_Year"] == sel_period].copy()
                 months_count = 1
                 period_label = sel_period
+                _pl_months_list = [sel_period]
             else:
                 available_years = sorted(df_pl_all["Year"].unique(), reverse=True)
                 sel_period = st.selectbox("Επίλεξε έτος:", available_years, key="pl_year_sel")
@@ -4662,8 +4744,9 @@ elif page == "📑 Έσοδα - Έξοδα":
                 # πραγματικούς μήνες με δεδομένα παραγωγής μέσα σε αυτό το έτος.
                 months_count = df_period["Month_Year"].nunique() if not df_period.empty else 0
                 period_label = sel_period
+                _pl_months_list = sorted(df_period["Month_Year"].unique()) if not df_period.empty else []
                 if months_count and months_count < 12:
-                    st.caption(f"ℹ️ Η επιχείρηση είχε δεδομένα παραγωγής για **{months_count} μήνες** μέσα στο {sel_period} — τα σταθερά έξοδα υπολογίζονται ×{months_count}, όχι ×12.")
+                    st.caption(f"ℹ️ Η επιχείρηση είχε δεδομένα παραγωγής για **{months_count} μήνες** μέσα στο {sel_period} — τα σταθερά έξοδα αθροίζονται από τους ΠΡΑΓΜΑΤΙΚΟΥΣ μήνες με δεδομένα, όχι ×12.")
 
             # --- ΥΠΟΛΟΓΙΣΜΟΙ ---
             # 🔧 FIX: πριν ο τζίρος υπολογιζόταν σαν πληρωμένα_τεμάχια × πλήρης τιμή καταλόγου,
@@ -4729,21 +4812,19 @@ elif page == "📑 Έσοδα - Έξοδα":
             gross_profit = total_revenue - total_cogs
             gross_margin_pct = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0.0
 
-            _pl_settings = load_cost_settings() or {}
-            be_rent = float(_pl_settings.get("be_rent", 0.0))
-            be_labor = float(_pl_settings.get("be_labor", 0.0))
-            be_insurance = float(_pl_settings.get("be_insurance", 0.0))
-            be_admin = float(_pl_settings.get("be_admin", 0.0))
-            be_utilities = float(_pl_settings.get("be_utilities", 0.0))
-            be_other = float(_pl_settings.get("be_other", 0.0))
-            monthly_fixed_pl = be_rent + be_labor + be_insurance + be_admin + be_utilities + be_other
-            period_fixed = monthly_fixed_pl * months_count
+            # 🔧 FIX: πριν έπαιρνε το ΣΗΜΕΡΙΝΟ σετ σταθερών εξόδων και το πολλαπλασίαζε ×μήνες —
+            # αν άλλαζες π.χ. το ενοίκιο σήμερα, άλλαζε αναδρομικά ΚΑΙ η αναφορά παλιών μηνών!
+            # Τώρα αθροίζει τα ΠΡΑΓΜΑΤΙΚΑ καταχωρημένα σταθερά έξοδα ΚΑΘΕ μήνα ξεχωριστά.
+            _monthly_fixed_map_pl = load_monthly_fixed_costs()
+            period_fixed, _pl_missing_months = sum_fixed_costs_for_months(_monthly_fixed_map_pl, _pl_months_list)
+            if _pl_missing_months:
+                st.warning(f"⚠️ Δεν βρέθηκαν καταχωρημένα σταθερά έξοδα για: {', '.join(_pl_missing_months)} — υπολογίστηκαν ως 0€ για αυτούς τους μήνες. Καταχώρησέ τα στο «🎯 Νεκρό Σημείο» για ακριβέστερο αποτέλεσμα.")
 
             net_profit = gross_profit - period_fixed
             net_margin_pct = (net_profit / total_revenue * 100) if total_revenue > 0 else 0.0
 
-            if monthly_fixed_pl == 0:
-                st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» — το καθαρό κέρδος παρακάτω δεν τα αφαιρεί ακόμα.")
+            if period_fixed == 0:
+                st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» για αυτή την περίοδο — το καθαρό κέρδος παρακάτω δεν τα αφαιρεί ακόμα.")
 
             st.divider()
             st.subheader(f"📅 Περίοδος: {period_label}")
@@ -4782,12 +4863,16 @@ elif page == "📑 Έσοδα - Έξοδα":
             pl_row("Μικτό Κέρδος", gross_profit, "subtotal")
             st.divider()
             st.markdown("**ΣΤΑΘΕΡΑ ΕΞΟΔΑ ΕΠΙΧΕΙΡΗΣΗΣ**")
-            pl_row("Ενοίκιο", -be_rent * months_count, "expense")
-            pl_row("Μισθοδοσία", -be_labor * months_count, "expense")
-            pl_row("Ασφάλιστρα", -be_insurance * months_count, "expense")
-            pl_row("Λογιστικά / Διοικητικά", -be_admin * months_count, "expense")
-            pl_row("ΔΕΗ / Ρεύμα / Νερό", -be_utilities * months_count, "expense")
-            pl_row("Λοιπά Σταθερά", -be_other * months_count, "expense")
+            # 🔧 Άθροισμα ανά κατηγορία στους ΠΡΑΓΜΑΤΙΚΟΥΣ μήνες (όχι σημερινή τιμή × πλήθος)
+            _cat_sums_pl = {cat: sum(float((_monthly_fixed_map_pl.get(my, {}) or {}).get(cat, 0.0) or 0.0) for my in _pl_months_list) for cat in FIXED_COST_CATEGORIES}
+            _extra_total_pl = sum(
+                float((_monthly_fixed_map_pl.get(my, {}) or {}).get(f"extra{i}_amount", 0.0) or 0.0)
+                for my in _pl_months_list for i in range(1, FIXED_COST_EXTRA_SLOTS + 1)
+            )
+            for _cat in FIXED_COST_CATEGORIES:
+                pl_row(FIXED_COST_LABELS[_cat].split(" ", 1)[-1], -_cat_sums_pl[_cat], "expense")
+            if _extra_total_pl > 0:
+                pl_row("Έκτακτα Έξοδα", -_extra_total_pl, "expense")
             pl_row("Σύνολο Σταθερών Εξόδων", -period_fixed, "subtotal")
             st.divider()
             pl_row("Καθαρό Αποτέλεσμα (προ φόρων)", net_profit, "subtotal")
@@ -4823,9 +4908,9 @@ elif page == "📑 Έσοδα - Έξοδα":
                 "total_revenue": total_revenue, "total_paid_pieces": total_paid_pieces,
                 "total_gift_pieces": total_gift_pieces, "total_cogs": total_cogs,
                 "gross_profit": gross_profit, "gross_margin_pct": gross_margin_pct,
-                "be_rent": be_rent * months_count, "be_labor": be_labor * months_count,
-                "be_insurance": be_insurance * months_count, "be_admin": be_admin * months_count,
-                "be_utilities": be_utilities * months_count, "be_other": be_other * months_count,
+                "be_rent": _cat_sums_pl["be_rent"], "be_labor": _cat_sums_pl["be_labor"],
+                "be_insurance": _cat_sums_pl["be_insurance"], "be_admin": _cat_sums_pl["be_admin"],
+                "be_utilities": _cat_sums_pl["be_utilities"], "be_other": _cat_sums_pl["be_other"] + _extra_total_pl,
                 "period_fixed": period_fixed, "net_profit": net_profit, "net_margin_pct": net_margin_pct,
                 "tax_rate": tax_rate_pl, "tax_amount": tax_pl, "net_after_tax": net_after_tax_pl,
             }
