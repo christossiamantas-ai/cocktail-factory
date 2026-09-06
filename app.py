@@ -3100,7 +3100,9 @@ elif page == "📐 Markup & Margin":
                     if not match_all.empty:
                         raw_cost_all += ml_all * float(match_all.iloc[0]["Τιμή/ml"])
             my_cost_all = get_unit_cost_for_cocktail(c_name_all, raw_cost_all)
-            retail_old_all = float(r_all.get("Τιμή Καταλόγου", 0.0))
+            retail_old_all = float(r_all.get("Τιμή Καταλόγου", 0.0) or 0.0)  # 🔧 FIX: ασφαλές αν λείπει/είναι κενή η τιμή καταλόγου (π.χ. συνταγή χωρίς τιμή)
+            if pd.isna(retail_old_all):
+                retail_old_all = 0.0
             agent_old_all = retail_old_all * 0.74
 
             if scenario_mode == "Markup %":
@@ -3129,6 +3131,17 @@ elif page == "📐 Markup & Margin":
             })
 
         df_all_scenario = pd.DataFrame(all_scenario_rows)
+
+        # 🔧 FIX ΓΕΝΙΚΗΣ ΑΣΦΑΛΕΙΑΣ: όποια στήλη κι αν έχει None/NaN (π.χ. συνταγή χωρίς
+        # καταχωρημένη τιμή καταλόγου, ή αλλού), το Streamlit το εμφάνιζε ως ορατό κείμενο
+        # "None" στη σελίδα. Τώρα καθαρίζουμε ΟΛΟΚΛΗΡΟ τον πίνακα πριν την εμφάνιση, ώστε να
+        # μην περάσει None/NaN από ΚΑΜΙΑ στήλη, ό,τι κι αν είναι η ακριβής αιτία.
+        for _col in df_all_scenario.columns:
+            if _col == "Κοκτέιλ":
+                continue
+            df_all_scenario[_col] = df_all_scenario[_col].apply(
+                lambda v: "Μη εφικτό" if (v is None or (isinstance(v, float) and pd.isna(v))) else v
+            )
 
         # 🎨 ΟΠΤΙΚΗ ΣΗΜΑΝΣΗ: κόκκινο αν η νέα τιμή ανεβαίνει, πράσινο αν κατεβαίνει (χρώμα + βελάκι)
         _price_pairs = [
