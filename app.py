@@ -1593,7 +1593,10 @@ elif page == "🔍 Ανάλυση":
             except NameError: efk_informational = pure_alc_ml * 0.0255
             total_production = get_unit_cost_for_cocktail(choice, raw_cost)
             if _manual_cost_active:
-                fixed_cost = float((_cost_settings or {}).get("operational_cost") or 0.0)  # 🔧 FIX: σταθερό, ίδιο για κάθε συνταγή
+                # 🔧 FIX: πριν έδειχνε ΜΟΝΟ το Κόστος Συσκευασίας, αγνοώντας τα Εργατικά — το
+                # άθροισμα k1+k3 δεν έβγαινε ίσο με το k4. Τώρα δείχνει και τα δύο μαζί
+                # (η λεπτομερής ανάλυση παραμένει στη γραμμή διαφάνειας από κάτω).
+                fixed_cost = float((_cost_settings or {}).get("operational_cost") or 0.0) + float(_cocktail_costs_map.get(choice, 0.0))
             else:
                 fixed_cost = _TOTAL_FIXED_FALLBACK  # ίδιο πάντα (0,22€), όπως ήταν εξ αρχής
             
@@ -1619,7 +1622,7 @@ elif page == "🔍 Ανάλυση":
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Κόστος Υλικών", f"{raw_cost:.2f} €".replace('.', ','))
             k2.metric("ΕΦΚ (Ενσωμ.)", f"{efk_informational:.2f} €".replace('.', ','))
-            k3.metric("Σταθερά Έξοδα", f"{fixed_cost:.2f} €".replace('.', ','))
+            k3.metric("Εργατικά + Συσκευασία" if _manual_cost_active else "Σταθερά Έξοδα", f"{fixed_cost:.2f} €".replace('.', ','))
             k4.metric("ΣΥΝΟΛΟ ΚΟΣΤΟΥΣ", f"{total_production:.2f} €".replace('.', ','))
             # 🔍 ΔΙΑΦΑΝΕΙΑ ΥΠΟΛΟΓΙΣΜΟΥ — δείχνει ΑΚΡΙΒΩΣ πώς προέκυψε το Σύνολο Κόστους.
             if _manual_cost_active:
@@ -3295,7 +3298,9 @@ elif page == "📈 Dashboard":
         mat_cost_by_id = {}
         for rid in df_items['recipe_id'].unique():
             sub = df_items[df_items['recipe_id'] == rid]
-            mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
+            # 🔧 FIX: εξαίρεση "Νερό" ρητά, για συνέπεια με Νεκρό Σημείο/Έσοδα-Έξοδα
+            # (εκεί ήδη εξαιρείται — αν το Νερό έχει καταχωρημένη τιμή >0, θα διέφερε το κόστος).
+            mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows() if str(item.get('ingredient_name')).strip() != "Νερό")
             
         # 🔧 FIX: πριν χρησιμοποιούσε hardcoded 0.22 ασύνδετο από το Κοστολόγιο· τώρα κόστος ανά κοκτέιλ
         name_to_cost = {r['name']: get_unit_cost_for_cocktail(r['name'], mat_cost_by_id.get(r['id'], 0.0)) for _, r in df_recipes.iterrows()}
@@ -3407,6 +3412,8 @@ elif page == "📈 Dashboard":
                     elif _manual_cost_active:
                         _ind = float(_cocktail_costs_map.get(s['cocktail_name'], 0.0))
                         _op = float((_cost_settings or {}).get("operational_cost") or 0.0)
+                        _raw_derived = s['Final_Unit_Cost'] - _ind - _op  # 🔧 FIX: πρόσθεσε το κόστος υλικών, που τώρα μπαίνει και αυτό στο σύνολο
+                        st.write(f"- **Κόστος Υλικών:** {_raw_derived:.4f}€")
                         st.write(f"- **Εργατικά:** {_ind:.4f}€")
                         st.write(f"- **Κόστος Συσκευασίας:** {_op:.4f}€")
                         st.markdown(f"- **Κόστος ανά τμχ: {s['Final_Unit_Cost']:.4f}€**")
@@ -7204,7 +7211,7 @@ elif page == "👥 Πελατολόγιο":
                                 mat_cost_by_id = {}
                                 for rid in df_items['recipe_id'].unique():
                                     sub = df_items[df_items['recipe_id'] == rid]
-                                    mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
+                                    mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows() if str(item.get('ingredient_name')).strip() != "Νερό")
                                     
                                 # 🔧 FIX: πριν ήταν hardcoded 0.22 ασύνδετο από το Κοστολόγιο· τώρα κόστος ανά κοκτέιλ
                                 name_to_cost = {r['name']: get_unit_cost_for_cocktail(r['name'], mat_cost_by_id.get(r['id'], 0.0)) for _, r in df_recipes.iterrows()}
@@ -8230,7 +8237,7 @@ elif page == "🧪 Προσομοίωση Πωλήσεων":
         mat_cost_by_id = {}
         for rid in df_items['recipe_id'].unique():
             sub = df_items[df_items['recipe_id'] == rid]
-            mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows())
+            mat_cost_by_id[rid] = sum(pd.to_numeric(item.get('ml_per_unit', 0), errors='coerce') * ing_cost_dict.get(item.get('ingredient_name'), 0) for _, item in sub.iterrows() if str(item.get('ingredient_name')).strip() != "Νερό")
             
         # 🔧 FIX: πριν ήταν hardcoded 0.22 ασύνδετο από το Κοστολόγιο· τώρα κόστος ανά κοκτέιλ
         name_to_cost = {r['name']: get_unit_cost_for_cocktail(r['name'], mat_cost_by_id.get(r['id'], 0.0)) for _, r in df_recipes.iterrows()}
