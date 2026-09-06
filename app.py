@@ -640,12 +640,8 @@ def generate_pl_report_pdf(period_label, data):
     pdf.set_font(f_name, 'B', 12)
     pdf.cell(0, 8, "ΣΤΑΘΕΡΑ ΕΞΟΔΑ ΕΠΙΧΕΙΡΗΣΗΣ", ln=1, fill=True)
     pdf.ln(1)
-    row("Ενοίκιο", f"-{data['be_rent']:,.2f} EUR", indent=1)
-    row("Μισθοδοσία", f"-{data['be_labor']:,.2f} EUR", indent=1)
-    row("Ασφάλιστρα", f"-{data['be_insurance']:,.2f} EUR", indent=1)
-    row("Λογιστικά / Διοικητικά", f"-{data['be_admin']:,.2f} EUR", indent=1)
-    row("ΔΕΗ / Ρεύμα / Νερό", f"-{data['be_utilities']:,.2f} EUR", indent=1)
-    row("Λοιπά Σταθερά", f"-{data['be_other']:,.2f} EUR", indent=1)
+    for _cat_name, _cat_amount in data.get('category_breakdown', []):
+        row(_cat_name, f"-{_cat_amount:,.2f} EUR", indent=1)
     row("Σύνολο Σταθερών Εξόδων", f"-{data['period_fixed']:,.2f} EUR", bold=True, color=RED)
     divider()
 
@@ -1168,32 +1164,93 @@ def load_cost_settings():
         pass
     return None
 
-# 🆕 ΜΗΝΙΑΙΑ ΣΤΑΘΕΡΑ ΕΞΟΔΑ (dynamic ανά μήνα, αντί για ΕΝΑ κοινό σετ για όλη την επιχείρηση)
-FIXED_COST_CATEGORIES = ["be_rent", "be_labor", "be_insurance", "be_admin", "be_utilities", "be_other"]
-FIXED_COST_LABELS = {
-    "be_rent": "🏠 Ενοίκιο", "be_labor": "👷 Μισθοδοσία", "be_insurance": "🛡️ Ασφάλιστρα",
-    "be_admin": "📋 Λογιστικά / Διοικητικά", "be_utilities": "💡 ΔΕΗ / Ρεύμα / Νερό", "be_other": "➕ Λοιπά Σταθερά",
+# 🆕 ΑΝΑΛΥΤΙΚΑ ΛΕΙΤΟΥΡΓΙΚΑ ΕΞΟΔΑ — 8 κατηγορίες, δυναμικές υποκατηγορίες/εγγραφές, ανά μήνα
+EXPENSE_CATEGORIES = [
+    "1. Προσωπικό",
+    "2. Εγκαταστάσεις & Λογαριασμοί",
+    "3. Παραγωγή & Εξοπλισμός",
+    "4. Γραφείο & Εξωτερικές Υπηρεσίες",
+    "5. Software & Ψηφιακές Υπηρεσίες",
+    "6. Marketing & Προώθηση",
+    "7. Μετακινήσεις & Ταξίδια",
+    "8. Πελάτες & Επαγγελματική Φιλοξενία",
+]
+EXPENSE_DEFAULT_SUBCATEGORIES = {
+    "2. Εγκαταστάσεις & Λογαριασμοί": ["Ενοίκιο", "Ρεύμα", "Νερό", "Σταθερό τηλέφωνο", "Κινητά", "Internet", "Καθαρισμός χώρου", "Καθαριστικά / είδη υγιεινής", "Απεντόμωση / μυοκτονία", "Πυροσβεστήρες / αναγομώσεις", "Έλεγχος πυρασφάλειας"],
+    "3. Παραγωγή & Εξοπλισμός": ["Service μηχανημάτων", "Επισκευές μηχανημάτων", "Ανταλλακτικά μηχανημάτων", "Αναλώσιμα παραγωγής", "Εργαλεία"],
+    "4. Γραφείο & Εξωτερικές Υπηρεσίες": ["Λογιστής", "Νομικός", "Γραφική ύλη", "Μελάνια / toner", "Λοιπά αναλώσιμα"],
+    "5. Software & Ψηφιακές Υπηρεσίες": ["Email / Zoho", "Domain names", "Hosting", "Website", "E-shop", "Συντήρηση website / e-shop", "Cloud storage"],
+    "6. Marketing & Προώθηση": ["Meta / Facebook / Instagram Ads", "Social media management", "Γραφίστας", "Παραγωγή περιεχομένου", "Εκτυπώσεις", "Φυλλάδια", "Κατάλογοι", "Cocktail menus", "Αφίσες", "Banners", "Stands / displays", "Συμμετοχή σε εκθέσεις", "Έξοδα έκθεσης", "Προωθητικά προϊόντα", "Δωρεάν προϊόντα"],
+    "7. Μετακινήσεις & Ταξίδια": ["Καύσιμα", "Ακτοπλοϊκά", "Αεροπορικά", "Ξενοδοχεία / διαμονές", "Ταξί", "Ενοικίαση αυτοκινήτου", "Parking"],
+    "8. Πελάτες & Επαγγελματική Φιλοξενία": ["Γεύματα με πελάτες / επαγγελματικά τραπέζια", "Διαμονή πελάτη", "Μετακίνηση πελάτη", "Λοιπά έξοδα φιλοξενίας"],
 }
-FIXED_COST_EXTRA_SLOTS = 5  # πόσα κενά για έκτακτα έξοδα, ανά μήνα
+EXPENSE_DEFAULT_EMPLOYEES = ["Λευτέρης Τσίτας", "Δημήτρης Καλούδης", "Ηλίας Διαμαντής", "Παναγιώτης Κορδάτος", "Δημήτρης Μανανεδάκης", "Μπαμπάς Ηλία", "Μαμά Ηλία"]
+PERSONNEL_CATEGORY = "1. Προσωπικό"
+PERSONNEL_FIELDS = ["Μισθός", "Ασφαλιστικές εισφορές"]
 
 @st.cache_data(ttl=60)
-def load_monthly_fixed_costs():
-    """Φορτώνει ΟΛΑ τα καταχωρημένα μηνιαία σταθερά έξοδα.
-    Επιστρέφει dict {month_year (π.χ. '09/2026'): {πεδία...}}."""
+def load_all_expense_entries():
+    """Φορτώνει ΟΛΕΣ τις αναλυτικές εγγραφές εξόδων (όλων των μηνών)."""
     try:
-        res = supabase.table("monthly_fixed_costs").select("*").execute()
-        return {r["month_year"]: r for r in (res.data or [])}
+        res = supabase.table("expense_entries").select("*").execute()
+        return res.data or []
     except Exception:
-        return {}
+        return []
+
+def get_known_subcategories(category):
+    """Οι υποκατηγορίες μιας κατηγορίας: οι προεπιλεγμένες + όσες προστέθηκαν ποτέ (σε οποιονδήποτε μήνα)."""
+    entries = load_all_expense_entries()
+    existing = {e["subcategory"] for e in entries if e.get("category") == category}
+    defaults = EXPENSE_DEFAULT_SUBCATEGORIES.get(category, [])
+    ordered = list(defaults) + [s for s in sorted(existing) if s not in defaults]
+    return ordered
+
+def get_known_employees():
+    """Οι εργαζόμενοι: οι προεπιλεγμένοι + όσοι προστέθηκαν ποτέ (σε οποιονδήποτε μήνα)."""
+    entries = load_all_expense_entries()
+    existing = {e["subcategory"] for e in entries if e.get("category") == PERSONNEL_CATEGORY}
+    ordered = list(EXPENSE_DEFAULT_EMPLOYEES) + [s for s in sorted(existing) if s not in EXPENSE_DEFAULT_EMPLOYEES]
+    return ordered
+
+def get_month_entries_map(month_year):
+    """Επιστρέφει dict {(category, subcategory, description): amount} για ΕΝΑ συγκεκριμένο μήνα."""
+    entries = load_all_expense_entries()
+    return {(e["category"], e["subcategory"], e.get("description", "")): float(e.get("amount") or 0.0) for e in entries if e.get("month_year") == month_year}
+
+def get_month_category_totals(month_year):
+    """Σύνολο ανά κατηγορία, για ΕΝΑ μήνα. Επιστρέφει dict {category: total}."""
+    entries = load_all_expense_entries()
+    totals = {cat: 0.0 for cat in EXPENSE_CATEGORIES}
+    for e in entries:
+        if e.get("month_year") == month_year:
+            totals[e["category"]] = totals.get(e["category"], 0.0) + float(e.get("amount") or 0.0)
+    return totals
+
+def get_month_grand_total(month_year):
+    """Το ΣΥΝΟΛΟ ΛΕΙΤΟΥΡΓΙΚΩΝ ΕΞΟΔΩΝ ενός μήνα (άθροισμα και των 8 κατηγοριών)."""
+    return sum(get_month_category_totals(month_year).values())
+
+# --- Συμβατότητα με ήδη υπάρχοντα σημεία (Νεκρό Σημείο / Έσοδα-Έξοδα / Markup & Margin) ---
+# Αυτές διατηρούν ΤΟ ΙΔΙΟ signature με πριν, ώστε να μη χρειαστεί να αλλάξουν οι καρτέλες
+# που τις καλούν — αλλάζει μόνο η ΠΗΓΗ δεδομένων, τώρα το νέο αναλυτικό σύστημα.
+@st.cache_data(ttl=60)
+def load_monthly_fixed_costs():
+    """Επιστρέφει dict {month_year: {"_total": X}} — απλοποιημένη μορφή για συμβατότητα."""
+    entries = load_all_expense_entries()
+    totals = {}
+    for e in entries:
+        my = e.get("month_year")
+        if my is None:
+            continue
+        totals.setdefault(my, {"_total": 0.0})
+        totals[my]["_total"] += float(e.get("amount") or 0.0)
+    return totals
 
 def get_month_total_fixed(month_data):
-    """Αθροίζει τις 6 σταθερές κατηγορίες + τα έκτακτα ενός συγκεκριμένου μήνα.
-    `month_data` είναι το dict ενός μήνα (ή None/{} αν δεν έχει καταχωρηθεί ακόμα -> 0)."""
+    """month_data εδώ είναι το {"_total": X} από το load_monthly_fixed_costs()."""
     if not month_data:
         return 0.0
-    base = sum(float((month_data.get(k) or 0.0)) for k in FIXED_COST_CATEGORIES)
-    extra = sum(float((month_data.get(f"extra{i}_amount") or 0.0)) for i in range(1, FIXED_COST_EXTRA_SLOTS + 1))
-    return base + extra
+    return float(month_data.get("_total", 0.0))
 
 def sum_fixed_costs_for_months(monthly_fixed_map, month_year_list):
     """Αθροίζει το ΠΡΑΓΜΑΤΙΚΟ σταθερό κόστος για μια ΛΙΣΤΑ συγκεκριμένων μηνών (π.χ. όσους
@@ -1208,6 +1265,7 @@ def sum_fixed_costs_for_months(monthly_fixed_map, month_year_list):
         else:
             total += get_month_total_fixed(data)
     return total, missing_months
+
 
 @st.cache_data(ttl=90)
 def load_cocktail_costs():
@@ -4600,18 +4658,14 @@ elif page == "💸 Έξοδα":
         "από τα σταθερά έξοδα που καταχωρείς εδώ."
     )
 
-    # --- 1. ΣΤΑΘΕΡΑ ΕΞΟΔΑ (δυναμικά ΑΝΑ ΜΗΝΑ — η αλλαγή σε έναν μήνα ΔΕΝ επηρεάζει τους άλλους) ---
-    st.subheader("1️⃣ Σταθερά Έξοδα Επιχείρησης (ανά μήνα)")
+    # --- 1. ΛΕΙΤΟΥΡΓΙΚΑ ΕΞΟΔΑ (8 αναλυτικές κατηγορίες, δυναμικά ΑΝΑ ΜΗΝΑ) ---
+    st.subheader("1️⃣ Λειτουργικά Έξοδα Επιχείρησης (ανά μήνα)")
     st.caption(
-        "⚠️ Κάθε μήνας έχει τα ΔΙΚΑ ΤΟΥ σταθερά έξοδα, αποθηκευμένα ξεχωριστά. Αν αλλάξεις π.χ. το "
+        "⚠️ Κάθε μήνας έχει τα ΔΙΚΑ ΤΟΥ έξοδα, αποθηκευμένα ξεχωριστά. Αν αλλάξεις π.χ. το "
         "ενοίκιο του Σεπτεμβρίου, ΔΕΝ επηρεάζονται οι προηγούμενοι μήνες — έτσι οι αναφορές παλιών "
         "μηνών παραμένουν σωστές ακόμα κι αν τα έξοδα άλλαξαν στο μεταξύ."
     )
 
-    _monthly_fixed_map = load_monthly_fixed_costs()
-
-    # Λίστα μηνών: οι ήδη καταχωρημένοι + οι τελευταίοι 12 μήνες μέχρι σήμερα (ώστε να μπορείς
-    # πάντα να προσθέσεις τον τρέχοντα μήνα, ακόμα κι αν δεν έχει καταχωρηθεί ακόμα)
     try:
         _today_be = datetime.now(greece_tz)
     except Exception:
@@ -4621,74 +4675,142 @@ elif page == "💸 Έξοδα":
         _m = (_today_be.month - _i - 1) % 12 + 1
         _y = _today_be.year + ((_today_be.month - _i - 1) // 12)
         _recent_months.append(f"{_m:02d}/{_y}")
-    _all_months_be = sorted(set(list(_monthly_fixed_map.keys()) + _recent_months), key=lambda x: (x[3:], x[:2]), reverse=True)
+    _existing_expense_months = sorted({e["month_year"] for e in load_all_expense_entries()})
+    _all_months_be = sorted(set(_existing_expense_months + _recent_months), key=lambda x: (x[3:], x[:2]), reverse=True)
 
     sel_fixed_month = st.selectbox("📅 Επίλεξε μήνα για καταχώρηση/επεξεργασία:", _all_months_be, key="be_fixed_month_select")
-    _current_month_data = _monthly_fixed_map.get(sel_fixed_month, {})
+    _month_entries_map = get_month_entries_map(sel_fixed_month)  # {(cat, subcat, desc): amount}
 
     if _manual_cost_active:
         st.warning(
-            "⚠️ **Προσοχή στη Μισθοδοσία — χειροκίνητο κόστος ΕΝΕΡΓΟ:** Στο «💰 Κοστολόγιο» τα "
+            "⚠️ **Προσοχή στο Προσωπικό — χειροκίνητο κόστος ΕΝΕΡΓΟ:** Στο «💰 Κοστολόγιο» τα "
             "\"Εργατικά\" ανά κοκτέιλ περιλαμβάνουν ήδη το κόστος των εργατών παραγωγής. Αν βάλεις "
-            "**ξανά** τους ίδιους μισθούς εδώ στο \"Μισθοδοσία\", θα μετρηθούν **δύο φορές** — μία ανά "
-            "τεμάχιο (μέσα στο περιθώριο) και μία ως σταθερό έξοδο — υπερεκτιμώντας τα τεμάχια που "
-            "χρειάζεσαι για να καλύψεις τα έξοδά σου. Βάλε εδώ **μόνο** μισθούς προσωπικού που ΔΕΝ "
-            "μπαίνουν ήδη στα Εργατικά (π.χ. διοικητικό/πωλήσεων), όχι της παραγωγής."
+            "**ξανά** τους ίδιους μισθούς εδώ, θα μετρηθούν **δύο φορές**. Βάλε εδώ **μόνο** μισθούς "
+            "προσωπικού που ΔΕΝ μπαίνει ήδη στα Εργατικά (π.χ. διοικητικό/πωλήσεων), όχι της παραγωγής."
         )
 
-    st.markdown(f"**Σταθερές κατηγορίες — {sel_fixed_month}**")
-    fc1, fc2 = st.columns(2)
-    fixed_values = {}
-    for idx, cat in enumerate(FIXED_COST_CATEGORIES):
-        col = fc1 if idx % 2 == 0 else fc2
-        label = FIXED_COST_LABELS[cat]
-        if cat == "be_labor" and _manual_cost_active:
-            label = "👷 Μισθοδοσία (ΜΗ παραγωγικό προσωπικό)"
-        fixed_values[cat] = col.number_input(label, min_value=0.0, value=float(_current_month_data.get(cat, 0.0) or 0.0), step=50.0, key=f"be_fixed_{sel_fixed_month}_{cat}")
+    # --- Κατηγορία 1: ΠΡΟΣΩΠΙΚΟ (ειδική λογική: ανά εργαζόμενο, Μισθός + Ασφαλιστικές εισφορές) ---
+    with st.expander(f"👤 {PERSONNEL_CATEGORY} — Σύνολο: {sum(v for (c,s,d),v in _month_entries_map.items() if c==PERSONNEL_CATEGORY):,.2f} €", expanded=False):
+        st.caption("Εδώ υπάρχει διαφορετική λειτουργία από τις υπόλοιπες κατηγορίες — ανά εργαζόμενο, όχι ανά υποκατηγορία.")
+        _employees = get_known_employees()
+        _personnel_payload = []
+        for emp in _employees:
+            st.markdown(f"**{emp}**")
+            pc1, pc2 = st.columns(2)
+            salary = pc1.number_input("Μισθός (€)", min_value=0.0, value=_month_entries_map.get((PERSONNEL_CATEGORY, emp, "Μισθός"), 0.0), step=50.0, key=f"exp_{sel_fixed_month}_{emp}_salary")
+            insurance = pc2.number_input("Ασφαλιστικές εισφορές (€)", min_value=0.0, value=_month_entries_map.get((PERSONNEL_CATEGORY, emp, "Ασφαλιστικές εισφορές"), 0.0), step=20.0, key=f"exp_{sel_fixed_month}_{emp}_insurance")
+            _personnel_payload.append((emp, "Μισθός", salary))
+            _personnel_payload.append((emp, "Ασφαλιστικές εισφορές", insurance))
 
-    st.markdown(f"**Έκτακτα Έξοδα — {sel_fixed_month}** (προαιρετικά, π.χ. επισκευή, έκτακτος φόρος)")
-    extra_values = {}
-    for i in range(1, FIXED_COST_EXTRA_SLOTS + 1):
-        ec1, ec2 = st.columns([2, 1])
-        extra_label = ec1.text_input(f"Περιγραφή έκτακτου #{i}", value=_current_month_data.get(f"extra{i}_label", "") or "", key=f"be_extra_label_{sel_fixed_month}_{i}")
-        extra_amount = ec2.number_input(f"Ποσό #{i} (€)", min_value=0.0, value=float(_current_month_data.get(f"extra{i}_amount", 0.0) or 0.0), step=10.0, key=f"be_extra_amount_{sel_fixed_month}_{i}")
-        extra_values[i] = (extra_label, extra_amount)
+        with st.form(f"add_employee_form_{sel_fixed_month}", clear_on_submit=True):
+            new_emp_name = st.text_input("+ Προσθήκη εργαζομένου (όνομα)")
+            if st.form_submit_button("➕ Προσθήκη"):
+                if new_emp_name.strip():
+                    try:
+                        supabase.table("expense_entries").upsert([
+                            {"month_year": sel_fixed_month, "category": PERSONNEL_CATEGORY, "subcategory": new_emp_name.strip(), "description": "Μισθός", "amount": 0.0},
+                            {"month_year": sel_fixed_month, "category": PERSONNEL_CATEGORY, "subcategory": new_emp_name.strip(), "description": "Ασφαλιστικές εισφορές", "amount": 0.0},
+                        ], on_conflict="month_year,category,subcategory,description").execute()
+                        st.cache_data.clear()
+                        st.success(f"✅ Προστέθηκε ο/η {new_emp_name}!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Σφάλμα: {e}")
 
-    monthly_fixed = sum(fixed_values.values()) + sum(a for _, a in extra_values.values())
-    yearly_fixed = monthly_fixed * 12  # ενδεικτικό — μόνο για τον ΕΠΙΛΕΓΜΕΝΟ μήνα ×12, όχι άθροισμα πραγματικών μηνών
+        if st.button("💾 Αποθήκευση Προσωπικού", key=f"save_personnel_{sel_fixed_month}"):
+            try:
+                payload = [{"month_year": sel_fixed_month, "category": PERSONNEL_CATEGORY, "subcategory": emp, "description": desc, "amount": amt} for emp, desc, amt in _personnel_payload]
+                supabase.table("expense_entries").upsert(payload, on_conflict="month_year,category,subcategory,description").execute()
+                st.cache_data.clear()
+                st.success("✅ Αποθηκεύτηκε το Προσωπικό!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Σφάλμα αποθήκευσης: {e} — ίσως χρειάζεται να δημιουργηθεί ο πίνακας (δες παρακάτω στην κατηγορία Εγκαταστάσεις).")
 
-    st.info(f"💶 **Σύνολο Σταθερών Εξόδων ({sel_fixed_month}):** {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος (αν ίσχυε αυτό το ποσό όλο τον χρόνο)")
+    # --- Κατηγορίες 2-8: δυναμικές υποκατηγορίες, κάθε μία με 1+ εγγραφές (περιγραφή + ποσό) ---
+    for category in EXPENSE_CATEGORIES:
+        if category == PERSONNEL_CATEGORY:
+            continue
+        cat_total = sum(v for (c, s, d), v in _month_entries_map.items() if c == category)
+        with st.expander(f"📁 {category} — Σύνολο: {cat_total:,.2f} €", expanded=False):
+            subcats = get_known_subcategories(category)
+            _cat_payload = []
+            for subcat in subcats:
+                # Όλες οι υπάρχουσες εγγραφές αυτής της υποκατηγορίας, γι' αυτόν τον μήνα
+                sub_entries = {(c, s, d): v for (c, s, d), v in _month_entries_map.items() if c == category and s == subcat}
+                if not sub_entries:
+                    sub_entries = {(category, subcat, ""): 0.0}  # η "κύρια" κενή εγγραφή, ακόμα κι αν δεν έχει καταχωρηθεί ακόμα
 
-    if st.button(f"💾 Αποθήκευση Σταθερών Εξόδων για {sel_fixed_month}"):
-        try:
-            payload = {"month_year": sel_fixed_month, **fixed_values}
-            for i, (lbl, amt) in extra_values.items():
-                payload[f"extra{i}_label"] = lbl
-                payload[f"extra{i}_amount"] = amt
-            supabase.table("monthly_fixed_costs").upsert(payload, on_conflict="month_year").execute()
-            st.cache_data.clear()
-            st.success(f"✅ Αποθηκεύτηκαν τα σταθερά έξοδα για {sel_fixed_month}!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Σφάλμα αποθήκευσης: {e} — ίσως χρειάζεται να δημιουργηθεί ο πίνακας (δες παρακάτω).")
-            _extra_lines = []
-            for _i in range(1, FIXED_COST_EXTRA_SLOTS + 1):
-                _extra_lines.append(f"  extra{_i}_label text default '',")
-                _extra_lines.append(f"  extra{_i}_amount numeric not null default 0,")
-            _create_sql = (
-                "create table if not exists monthly_fixed_costs (\n"
-                "  month_year text primary key,\n"
-                "  be_rent numeric not null default 0,\n"
-                "  be_labor numeric not null default 0,\n"
-                "  be_insurance numeric not null default 0,\n"
-                "  be_admin numeric not null default 0,\n"
-                "  be_utilities numeric not null default 0,\n"
-                "  be_other numeric not null default 0,\n"
-                + "\n".join(_extra_lines) + "\n"
-                "  updated_at timestamptz not null default now()\n"
-                ");"
-            )
-            st.code(_create_sql, language="sql")
+                st.markdown(f"**{subcat}**")
+                for (c, s, d), v in sub_entries.items():
+                    desc_key = f"exp_{sel_fixed_month}_{category}_{subcat}_{d}_desc"
+                    amt_key = f"exp_{sel_fixed_month}_{category}_{subcat}_{d}_amt"
+                    dcol, acol = st.columns([2, 1])
+                    new_desc = dcol.text_input("Περιγραφή", value=d, key=desc_key, label_visibility="collapsed", placeholder="Περιγραφή (προαιρετικό)")
+                    new_amt = acol.number_input("Ποσό (€)", min_value=0.0, value=float(v), step=10.0, key=amt_key, label_visibility="collapsed")
+                    _cat_payload.append((subcat, d, new_desc, new_amt))  # (old_desc για ταύτιση, νέα desc, ποσό)
+
+            with st.form(f"add_entry_form_{sel_fixed_month}_{category}", clear_on_submit=True):
+                fc1, fc2 = st.columns([1, 1])
+                new_entry_subcat = fc1.selectbox("Υποκατηγορία", subcats, key=f"new_entry_subcat_{sel_fixed_month}_{category}")
+                new_entry_desc = fc2.text_input("Περιγραφή νέας εγγραφής")
+                if st.form_submit_button("➕ Νέα εγγραφή"):
+                    try:
+                        supabase.table("expense_entries").upsert([{
+                            "month_year": sel_fixed_month, "category": category, "subcategory": new_entry_subcat,
+                            "description": new_entry_desc.strip(), "amount": 0.0,
+                        }], on_conflict="month_year,category,subcategory,description").execute()
+                        st.cache_data.clear()
+                        st.success("✅ Προστέθηκε νέα εγγραφή!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Σφάλμα: {e}")
+
+            with st.form(f"add_subcat_form_{sel_fixed_month}_{category}", clear_on_submit=True):
+                new_subcat_name = st.text_input("+ Νέα υποκατηγορία")
+                if st.form_submit_button("➕ Προσθήκη Υποκατηγορίας"):
+                    if new_subcat_name.strip():
+                        try:
+                            supabase.table("expense_entries").upsert([{
+                                "month_year": sel_fixed_month, "category": category, "subcategory": new_subcat_name.strip(),
+                                "description": "", "amount": 0.0,
+                            }], on_conflict="month_year,category,subcategory,description").execute()
+                            st.cache_data.clear()
+                            st.success(f"✅ Προστέθηκε η υποκατηγορία {new_subcat_name}!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Σφάλμα: {e}")
+
+            if st.button(f"💾 Αποθήκευση: {category}", key=f"save_cat_{sel_fixed_month}_{category}"):
+                try:
+                    payload = [{"month_year": sel_fixed_month, "category": category, "subcategory": subcat, "description": new_desc, "amount": amt} for subcat, old_desc, new_desc, amt in _cat_payload]
+                    supabase.table("expense_entries").upsert(payload, on_conflict="month_year,category,subcategory,description").execute()
+                    st.cache_data.clear()
+                    st.success(f"✅ Αποθηκεύτηκε: {category}!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Σφάλμα αποθήκευσης: {e} — ίσως χρειάζεται να δημιουργηθεί ο πίνακας (δες παρακάτω).")
+                    st.code(
+                        "create table if not exists expense_entries (\n"
+                        "  id bigint generated always as identity primary key,\n"
+                        "  month_year text not null,\n"
+                        "  category text not null,\n"
+                        "  subcategory text not null,\n"
+                        "  description text not null default '',\n"
+                        "  amount numeric not null default 0,\n"
+                        "  created_at timestamptz not null default now(),\n"
+                        "  unique (month_year, category, subcategory, description)\n"
+                        ");",
+                        language="sql"
+                    )
+
+    monthly_fixed = get_month_grand_total(sel_fixed_month)
+    yearly_fixed = monthly_fixed * 12
+    st.divider()
+    st.info(f"💶 **ΣΥΝΟΛΟ ΛΕΙΤΟΥΡΓΙΚΩΝ ΕΞΟΔΩΝ ({sel_fixed_month}):** {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος (αν ίσχυε αυτό το ποσό όλο τον χρόνο)")
+    _cat_totals_display = get_month_category_totals(sel_fixed_month)
+    for _cat in EXPENSE_CATEGORIES:
+        st.caption(f"{_cat} — Σύνολο: {_cat_totals_display.get(_cat, 0.0):,.2f} €")
 
     st.divider()
 
@@ -4813,10 +4935,11 @@ elif page == "🎯 Νεκρό Σημείο":
     yearly_fixed = monthly_fixed * 12
 
     if not _current_month_data:
-        st.warning(f"⚠️ Δεν έχουν καταχωρηθεί ακόμα σταθερά έξοδα για τον {sel_fixed_month}. Πήγαινε στην καρτέλα «💸 Έξοδα» για να τα συμπληρώσεις.")
+        st.warning(f"⚠️ Δεν έχουν καταχωρηθεί ακόμα έξοδα για τον {sel_fixed_month}. Πήγαινε στην καρτέλα «💸 Έξοδα» για να τα συμπληρώσεις.")
 
-    _fc_breakdown = " + ".join([f"{FIXED_COST_LABELS[c].split(' ',1)[-1]}: {float(_current_month_data.get(c,0) or 0):,.0f}€" for c in FIXED_COST_CATEGORIES])
-    st.caption(f"📋 {sel_fixed_month}: {_fc_breakdown}")
+    _cat_totals_be = get_month_category_totals(sel_fixed_month)
+    _fc_breakdown = " + ".join([f"{c.split('. ',1)[-1]}: {_cat_totals_be.get(c,0):,.0f}€" for c in EXPENSE_CATEGORIES if _cat_totals_be.get(c, 0) > 0])
+    st.caption(f"📋 {sel_fixed_month}: {_fc_breakdown or 'καμία καταχώρηση ακόμα'}")
     st.info(f"💶 **Σύνολο Σταθερών Εξόδων ({sel_fixed_month}):** {monthly_fixed:,.2f} €/μήνα   ➜   {yearly_fixed:,.2f} €/έτος (αν ίσχυε αυτό το ποσό όλο τον χρόνο)")
 
     st.divider()
@@ -5165,17 +5288,30 @@ elif page == "📑 Έσοδα - Έξοδα":
             st.divider()
             st.markdown("**ΣΤΑΘΕΡΑ ΕΞΟΔΑ ΕΠΙΧΕΙΡΗΣΗΣ**")
             # 🔧 Άθροισμα ανά κατηγορία στους ΠΡΑΓΜΑΤΙΚΟΥΣ μήνες (όχι σημερινή τιμή × πλήθος)
-            _cat_sums_pl = {cat: sum(float((_monthly_fixed_map_pl.get(my, {}) or {}).get(cat, 0.0) or 0.0) for my in _pl_months_list) for cat in FIXED_COST_CATEGORIES}
-            _extra_total_pl = sum(
-                float((_monthly_fixed_map_pl.get(my, {}) or {}).get(f"extra{i}_amount", 0.0) or 0.0)
-                for my in _pl_months_list for i in range(1, FIXED_COST_EXTRA_SLOTS + 1)
-            )
-            for _cat in FIXED_COST_CATEGORIES:
-                pl_row(FIXED_COST_LABELS[_cat].split(" ", 1)[-1], -_cat_sums_pl[_cat], "expense")
-            if _extra_total_pl > 0:
-                pl_row("Έκτακτα Έξοδα", -_extra_total_pl, "expense")
+            _cat_sums_pl = {cat: 0.0 for cat in EXPENSE_CATEGORIES}
+            for _my in _pl_months_list:
+                _month_cats = get_month_category_totals(_my)
+                for _cat in EXPENSE_CATEGORIES:
+                    _cat_sums_pl[_cat] += _month_cats.get(_cat, 0.0)
+            for _cat in EXPENSE_CATEGORIES:
+                if _cat_sums_pl[_cat] > 0:
+                    pl_row(_cat, -_cat_sums_pl[_cat], "expense")
             pl_row("Σύνολο Σταθερών Εξόδων", -period_fixed, "subtotal")
             st.divider()
+
+            # 🆕 Σύνολο Εσόδων vs Σύνολο Εξόδων, με επεξήγηση, πριν το τελικό αποτέλεσμα
+            total_all_expenses_pl = total_cogs + period_fixed
+            sum_col1, sum_col2 = st.columns(2)
+            sum_col1.metric(
+                "💰 Σύνολο Εσόδων", f"{total_revenue:,.2f} €",
+                help="Ο συνολικός τζίρος της περιόδου (θεωρητικά έσοδα, μετά τις πραγματικές εκπτώσεις πελατών)."
+            )
+            sum_col2.metric(
+                "📉 Σύνολο Εξόδων", f"{total_all_expenses_pl:,.2f} €",
+                help="Κόστος Πωληθέντων (πρώτες ύλες/παραγωγή) + Σταθερά Έξοδα Επιχείρησης (ενοίκιο, μισθοδοσία κ.λπ.) μαζί."
+            )
+            st.divider()
+
             pl_row("Καθαρό Αποτέλεσμα (προ φόρων)", net_profit, "subtotal")
 
             # 🆕 ΦΟΡΟΛΟΓΙΑ ΕΙΣΟΔΗΜΑΤΟΣ
@@ -5209,9 +5345,7 @@ elif page == "📑 Έσοδα - Έξοδα":
                 "total_revenue": total_revenue, "total_paid_pieces": total_paid_pieces,
                 "total_gift_pieces": total_gift_pieces, "total_cogs": total_cogs,
                 "gross_profit": gross_profit, "gross_margin_pct": gross_margin_pct,
-                "be_rent": _cat_sums_pl["be_rent"], "be_labor": _cat_sums_pl["be_labor"],
-                "be_insurance": _cat_sums_pl["be_insurance"], "be_admin": _cat_sums_pl["be_admin"],
-                "be_utilities": _cat_sums_pl["be_utilities"], "be_other": _cat_sums_pl["be_other"] + _extra_total_pl,
+                "category_breakdown": [(cat, _cat_sums_pl[cat]) for cat in EXPENSE_CATEGORIES if _cat_sums_pl[cat] > 0],
                 "period_fixed": period_fixed, "net_profit": net_profit, "net_margin_pct": net_margin_pct,
                 "tax_rate": tax_rate_pl, "tax_amount": tax_pl, "net_after_tax": net_after_tax_pl,
             }
