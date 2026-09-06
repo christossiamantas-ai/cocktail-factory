@@ -3132,16 +3132,20 @@ elif page == "📐 Markup & Margin":
 
         df_all_scenario = pd.DataFrame(all_scenario_rows)
 
-        # 🔧 FIX ΓΕΝΙΚΗΣ ΑΣΦΑΛΕΙΑΣ: όποια στήλη κι αν έχει None/NaN (π.χ. συνταγή χωρίς
-        # καταχωρημένη τιμή καταλόγου, ή αλλού), το Streamlit το εμφάνιζε ως ορατό κείμενο
-        # "None" στη σελίδα. Τώρα καθαρίζουμε ΟΛΟΚΛΗΡΟ τον πίνακα πριν την εμφάνιση, ώστε να
-        # μην περάσει None/NaN από ΚΑΜΙΑ στήλη, ό,τι κι αν είναι η ακριβής αιτία.
+        # 🔧 FIX ΓΕΝΙΚΗΣ ΑΣΦΑΛΕΙΑΣ (ενισχυμένο): όποια στήλη κι αν έχει None/NaN/NaT (π.χ.
+        # συνταγή χωρίς καταχωρημένη τιμή καταλόγου, ή χωρίς υλικά), το Streamlit το εμφάνιζε
+        # ως ορατό κείμενο "None" στη σελίδα. Τώρα καθαρίζουμε ΟΛΟΚΛΗΡΟ τον πίνακα πριν την
+        # εμφάνιση, με pd.isna() που πιάνει ΚΑΘΕ τύπο κενής τιμής, ό,τι κι αν είναι η αιτία.
+        def _clean_none(v):
+            try:
+                if v is None or pd.isna(v):
+                    return "Μη εφικτό"
+            except (TypeError, ValueError):
+                pass  # π.χ. αν το pd.isna() σκάσει σε ασυνήθιστο τύπο, το αφήνουμε όπως είναι
+            return v
+
         for _col in df_all_scenario.columns:
-            if _col == "Κοκτέιλ":
-                continue
-            df_all_scenario[_col] = df_all_scenario[_col].apply(
-                lambda v: "Μη εφικτό" if (v is None or (isinstance(v, float) and pd.isna(v))) else v
-            )
+            df_all_scenario[_col] = df_all_scenario[_col].apply(_clean_none)
 
         # 🎨 ΟΠΤΙΚΗ ΣΗΜΑΝΣΗ: κόκκινο αν η νέα τιμή ανεβαίνει, πράσινο αν κατεβαίνει (χρώμα + βελάκι)
         _price_pairs = [
