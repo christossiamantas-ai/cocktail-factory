@@ -743,7 +743,7 @@ def generate_all_cocktails_price_pdf(df_all_scenario, scenario_mode, desired1, d
         ]:
             old_v, new_v = r[old_col], r[new_col]
             pdf.cell(w, 6.5, f"{old_v:.2f}" if pd.notna(old_v) else "-", border=1, fill=True, align='R')
-            if pd.notna(new_v):
+            if isinstance(new_v, (int, float)) and pd.notna(new_v):  # 🔧 FIX: ασφαλές έναντι κειμένου πλάσματος ("Μη εφικτό")
                 if new_v > old_v:
                     pdf.set_text_color(*RED)
                 elif new_v < old_v:
@@ -751,10 +751,13 @@ def generate_all_cocktails_price_pdf(df_all_scenario, scenario_mode, desired1, d
                 pdf.cell(w, 6.5, f"{new_v:.2f}", border=1, fill=True, align='R')
                 pdf.set_text_color(*DARK)
             else:
-                pdf.cell(w, 6.5, "-", border=1, fill=True, align='R')
+                pdf.cell(w, 6.5, str(new_v) if pd.notna(new_v) else "-", border=1, fill=True, align='R')
 
         direct_v = r["Νέα Τιμή Απευθείας (€)"]
-        pdf.cell(cols[6][1], 6.5, f"{direct_v:.2f}" if pd.notna(direct_v) else "-", border=1, fill=True, align='R')
+        if isinstance(direct_v, (int, float)) and pd.notna(direct_v):
+            pdf.cell(cols[6][1], 6.5, f"{direct_v:.2f}", border=1, fill=True, align='R')
+        else:
+            pdf.cell(cols[6][1], 6.5, str(direct_v) if pd.notna(direct_v) else "-", border=1, fill=True, align='R')
         pdf.ln()
 
     pdf.ln(4)
@@ -817,7 +820,14 @@ def generate_full_scenario_impact_pdf(data):
         pdf.set_text_color(*(color or DARK))
         pdf.cell(10 * indent, 7)
         pdf.cell(120 - 10 * indent, 7, label)
-        pdf.cell(60, 7, value, align='R', ln=1)
+        # 🔧 FIX: αν η τιμή είναι πολύ μακριά για τα 60mm της στήλης, μικραίνει τη γραμματοσειρά
+        # αντί να ξεχειλίζει έξω από τη σελίδα (π.χ. "Απευθείας στον Τελικό Πελάτη...").
+        value_font_size = 10
+        while pdf.get_string_width(str(value)) > 58 and value_font_size > 6:
+            value_font_size -= 1
+            pdf.set_font(f_name, 'B' if bold else '', value_font_size)
+        pdf.cell(60, 7, str(value), align='R', ln=1)
+        pdf.set_font(f_name, 'B' if bold else '', 10)
         pdf.set_text_color(*DARK)
 
     def divider():
@@ -3112,10 +3122,10 @@ elif page == "📐 Markup & Margin":
                 "Κοκτέιλ": c_name_all,
                 "Κόστος (€)": round(my_cost_all, 4),
                 "Τιμή Αντιπρ. Τώρα (€)": round(agent_old_all, 2),
-                "Νέα Τιμή Αντιπρ. (€)": round(agent_new_all, 2) if agent_new_all != float('inf') else None,
+                "Νέα Τιμή Αντιπρ. (€)": round(agent_new_all, 2) if agent_new_all != float('inf') else "Μη εφικτό",
                 "Τιμή Λιανικής Τώρα (€)": round(retail_old_all, 2),
-                "Νέα Τιμή Λιανικής (€)": round(retail_new_all, 2) if retail_new_all != float('inf') else None,
-                "Νέα Τιμή Απευθείας (€)": round(direct_new_all, 2) if direct_new_all != float('inf') else None,
+                "Νέα Τιμή Λιανικής (€)": round(retail_new_all, 2) if retail_new_all != float('inf') else "Μη εφικτό",
+                "Νέα Τιμή Απευθείας (€)": round(direct_new_all, 2) if direct_new_all != float('inf') else "Μη εφικτό",
             })
 
         df_all_scenario = pd.DataFrame(all_scenario_rows)
@@ -3130,7 +3140,7 @@ elif page == "📐 Markup & Margin":
             row = row.copy()
             for old_col, new_col in _price_pairs:
                 old_v, new_v = row[old_col], row[new_col]
-                if pd.notna(old_v) and pd.notna(new_v):
+                if pd.notna(old_v) and isinstance(new_v, (int, float)):  # 🔧 FIX: skip non-numeric placeholder ("Μη εφικτό")
                     if new_v > old_v:
                         row[new_col] = f"↑ {new_v:.2f}"
                     elif new_v < old_v:
@@ -3145,7 +3155,7 @@ elif page == "📐 Markup & Margin":
                 old_v = df_all_scenario.loc[row.name, old_col]
                 new_v = df_all_scenario.loc[row.name, new_col]
                 idx = row.index.get_loc(new_col)
-                if pd.notna(old_v) and pd.notna(new_v):
+                if pd.notna(old_v) and isinstance(new_v, (int, float)):  # 🔧 FIX: ίδιος έλεγχος, ασφαλές έναντι κειμένου
                     if new_v > old_v:
                         styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
                     elif new_v < old_v:
@@ -3364,7 +3374,7 @@ elif page == "📐 Markup & Margin":
                 "now_str": _now_str_mm2,
                 "scenario_mode": scenario_mode,
                 "desired1": desired1, "desired2": desired2, "desired3": desired3,
-                "channel_label": "Απευθείας στον Τελικό Πελάτη (χωρίς αντιπρόσωπο)" if _direct_mode else "Μέσω Αντιπροσώπου",
+                "channel_label": "Απευθείας (χωρίς αντιπρόσωπο)" if _direct_mode else "Μέσω Αντιπροσώπου",
                 "months_covered": _mm_months_covered,
                 "avg_price_old": avg_price_old, "avg_price_new": avg_price_new,
                 "avg_markup_old": avg_markup_old, "avg_markup_new": avg_markup_new,
