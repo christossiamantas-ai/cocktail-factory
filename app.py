@@ -3003,10 +3003,21 @@ elif page == "📐 Markup & Margin":
             gross_profit_actual = total_revenue_actual - total_cost_mm
             gross_profit_scenario = total_revenue_scenario - total_cost_mm
 
-            # Σταθερά έξοδα από το ήδη υπάρχον Νεκρό Σημείο (μηνιαία ×12 = ετήσια, για ενδεικτική σύγκριση)
+            # 🔧 FIX: πριν χρησιμοποιούσε ΠΑΝΤΑ ετήσια σταθερά έξοδα (μηνιαία ×12), ακόμα κι αν το
+            # ιστορικό πωλήσεων καλύπτει πολύ λιγότερους μήνες (π.χ. 5) — αυτό συνέκρινε 5 μήνες
+            # τζίρου με 12 μήνες εξόδων, κάνοντας το Καθαρό Κέρδος ψευδώς πολύ χειρότερο. Τώρα
+            # μετράει τους πραγματικούς μήνες με δεδομένα και χρησιμοποιεί τα σταθερά έξοδα ΜΟΝΟ
+            # για αυτούς τους μήνες — ίδια λογική με το αυτόνομο «📑 Έσοδα - Έξοδα».
+            try:
+                _mm_dates_covered = pd.to_datetime(df_mm_hist["prod_date"], format="%d/%m/%Y", errors="coerce").dropna()
+                _mm_months_covered = _mm_dates_covered.dt.strftime("%m/%Y").nunique()
+            except Exception:
+                _mm_months_covered = 12
+            _mm_months_covered = max(1, _mm_months_covered)
+
             _mm_settings = load_cost_settings() or {}
             _mm_fixed_monthly = sum(float(_mm_settings.get(k, 0.0) or 0.0) for k in ["be_rent", "be_labor", "be_insurance", "be_admin", "be_utilities", "be_other"])
-            _mm_fixed_annual = _mm_fixed_monthly * 12
+            _mm_fixed_annual = _mm_fixed_monthly * _mm_months_covered  # 🔧 όχι πια σταθερό ×12
 
             net_profit_actual = gross_profit_actual - _mm_fixed_annual
             net_profit_scenario = gross_profit_scenario - _mm_fixed_annual
@@ -3041,13 +3052,28 @@ elif page == "📐 Markup & Margin":
             else:
                 st.caption("Τι θα γινόταν αν οι ΙΔΙΕΣ πωλήσεις (ίδια τεμάχια, ίδιες εκπτώσεις) είχαν γίνει με τις ΝΕΕΣ τιμές του σεναρίου μέσω αντιπροσώπου. Το κόστος δεν αλλάζει — το σενάριο αφορά μόνο τιμολόγηση.")
 
+            st.info(f"📅 Το ιστορικό πωλήσεων που χρησιμοποιείται καλύπτει **{_mm_months_covered} μήνα/ες** — τα σταθερά έξοδα παρακάτω υπολογίζονται για **{_mm_months_covered} μήνα/ες** (όχι για ολόκληρο έτος), ώστε να συγκρίνονται σωστά μεταξύ τους.")
+
             st.caption(
                 "ℹ️ Σε αυτό το σενάριο αλλάζει **μόνο** ο τζίρος (η τιμολόγηση) — το κόστος και τα σταθερά έξοδα "
                 "παραμένουν ίδια. Γι' αυτό η μεταβολή σε Τζίρο, Μικτό και Καθαρό Κέρδος βγαίνει το **ίδιο ποσό σε ευρώ** "
                 "— είναι μαθηματικά αναμενόμενο, όχι σφάλμα."
             )
 
+            # --- 📦 Ανάλυση Εξόδων: Κόστος Παραγωγής (COGS) vs Πάγια/Σταθερά ---
+            st.markdown("#### 📦 Από Τι Αποτελούνται τα Έξοδα")
+            st.caption(f"Ανάλυση εξόδων για την ίδια περίοδο ({_mm_months_covered} μήνα/ες) — δεν αλλάζει μεταξύ σεναρίων, αφού το κόστος παραμένει σταθερό.")
+            exp_col1, exp_col2 = st.columns(2)
+            with exp_col1:
+                st.metric("🏭 Κόστος Παραγωγής (COGS)", f"{total_cost_mm:,.2f} €", help="Πρώτες ύλες + εργατικά/συσκευασία ανά τεμάχιο (από applied_cost ή το τρέχον Κοστολόγιο) — αλλάζει ανάλογα με το πόσο παράγεις, όχι με την τιμή πώλησης.")
+            with exp_col2:
+                st.metric("🏠 Πάγια/Σταθερά Έξοδα", f"{_mm_fixed_annual:,.2f} €", help=f"Ενοίκιο+Μισθοδοσία+Ασφάλιστρα+Διοικητικά+ΔΕΗ+Λοιπά, ×{_mm_months_covered} μήνα/ες (από το «🎯 Νεκρό Σημείο») — ΔΕΝ αλλάζει ανάλογα με τον όγκο παραγωγής.")
+            _exp_total = total_cost_mm + _mm_fixed_annual
+            if _exp_total > 0:
+                st.caption(f"Σύνολο εξόδων: {_exp_total:,.2f} € — Κόστος Παραγωγής {total_cost_mm/_exp_total*100:.0f}% / Πάγια {_mm_fixed_annual/_exp_total*100:.0f}%")
+
             # 🆕 ΦΟΡΟΛΟΓΙΑ ΕΙΣΟΔΗΜΑΤΟΣ
+            st.markdown("#### 🧾 Αποτέλεσμα & Φορολογία")
             tax_rate_mm = st.number_input("Συντελεστής Φόρου Εισοδήματος (%)", min_value=0.0, max_value=100.0, value=22.0, step=1.0, key="mm_tax_rate", help="Προεπιλογή 22% (τρέχων συντελεστής φορολογίας νομικών προσώπων στην Ελλάδα) — άλλαξέ το αν χρειάζεται.")
             tax_actual = max(0.0, net_profit_actual) * (tax_rate_mm / 100)
             tax_scenario = max(0.0, net_profit_scenario) * (tax_rate_mm / 100)
@@ -3064,18 +3090,18 @@ elif page == "📐 Markup & Margin":
             pl1, pl2 = st.columns(2)
             with pl1:
                 st.markdown("**Τώρα (πραγματικό)**")
-                st.metric("Τζίρος", f"{total_revenue_actual:,.2f} €")
-                st.metric("Μικτό Κέρδος", f"{gross_profit_actual:,.2f} €")
-                st.metric("Καθαρό Κέρδος (προ φόρων)", f"{net_profit_actual:,.2f} €", help=f"Μετά από {_mm_fixed_annual:,.0f}€ ετήσια σταθερά έξοδα (από το Νεκρό Σημείο)")
-                st.metric(f"Φόρος Εισοδήματος ({tax_rate_mm:.0f}%)", f"-{tax_actual:,.2f} €")
-                st.metric("Καθαρό Κέρδος (μετά φόρων)", f"{net_after_tax_actual:,.2f} €")
+                st.metric("Τζίρος", f"{total_revenue_actual:,.2f} €", help="Το πραγματικό άθροισμα όσων χρέωσες στους πελάτες σου ιστορικά (με τις πραγματικές εκπτώσεις τους), για τα ίδια τεμάχια που όντως πούλησες.")
+                st.metric("Μικτό Κέρδος", f"{gross_profit_actual:,.2f} €", help="Τζίρος − Κόστος Παραγωγής (COGS). Δείχνει πόσο κερδίζεις πριν αφαιρέσεις πάγια έξοδα (ενοίκιο, μισθοί κ.λπ.).")
+                st.metric("Καθαρό Κέρδος (προ φόρων)", f"{net_profit_actual:,.2f} €", help=f"Μικτό Κέρδος − Πάγια/Σταθερά Έξοδα ({_mm_months_covered} μήνα/ες, από το Νεκρό Σημείο). Αυτό είναι το πραγματικό αποτέλεσμα της επιχείρησης πριν φόρους.")
+                st.metric(f"Φόρος Εισοδήματος ({tax_rate_mm:.0f}%)", f"-{tax_actual:,.2f} €", help="Υπολογίζεται μόνο πάνω σε θετικό Καθαρό Κέρδος (καμία φορολογία σε ζημία).")
+                st.metric("Καθαρό Κέρδος (μετά φόρων)", f"{net_after_tax_actual:,.2f} €", help="Αυτό μένει πραγματικά στην επιχείρηση μετά τον φόρο εισοδήματος.")
             with pl2:
                 st.markdown("**Με το Σενάριο**")
-                st.metric("Τζίρος", f"{total_revenue_scenario:,.2f} €", delta=_delta_str(total_revenue_actual, total_revenue_scenario))
-                st.metric("Μικτό Κέρδος", f"{gross_profit_scenario:,.2f} €", delta=_delta_str(gross_profit_actual, gross_profit_scenario))
-                st.metric("Καθαρό Κέρδος (προ φόρων)", f"{net_profit_scenario:,.2f} €", delta=_delta_str(net_profit_actual, net_profit_scenario))
+                st.metric("Τζίρος", f"{total_revenue_scenario:,.2f} €", delta=_delta_str(total_revenue_actual, total_revenue_scenario), help="Ό,τι θα ίσχυε αν οι ΙΔΙΕΣ πωλήσεις γίνονταν με τις νέες τιμές του σεναρίου.")
+                st.metric("Μικτό Κέρδος", f"{gross_profit_scenario:,.2f} €", delta=_delta_str(gross_profit_actual, gross_profit_scenario), help="Νέος Τζίρος − ΙΔΙΟ Κόστος Παραγωγής (το κόστος δεν αλλάζει σε αυτό το σενάριο).")
+                st.metric("Καθαρό Κέρδος (προ φόρων)", f"{net_profit_scenario:,.2f} €", delta=_delta_str(net_profit_actual, net_profit_scenario), help="Νέο Μικτό Κέρδος − ΙΔΙΑ Πάγια Έξοδα.")
                 st.metric(f"Φόρος Εισοδήματος ({tax_rate_mm:.0f}%)", f"-{tax_scenario:,.2f} €", delta=_delta_str(-tax_actual, -tax_scenario))
-                st.metric("Καθαρό Κέρδος (μετά φόρων)", f"{net_after_tax_scenario:,.2f} €", delta=_delta_str(net_after_tax_actual, net_after_tax_scenario))
+                st.metric("Καθαρό Κέρδος (μετά φόρων)", f"{net_after_tax_scenario:,.2f} €", delta=_delta_str(net_after_tax_actual, net_after_tax_scenario), help="Αυτό θα έμενε πραγματικά στην επιχείρηση, με το σενάριο, μετά τον φόρο.")
 
             if _mm_fixed_annual == 0:
                 st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» — το Καθαρό Κέρδος εδώ ισούται προσωρινά με το Μικτό.")
