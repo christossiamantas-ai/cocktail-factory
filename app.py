@@ -377,6 +377,16 @@ def generate_markup_margin_pdf(cocktail_name, data):
         ("Markup", f"{data['markup2']:.1f} %"),
         ("Margin", f"{data['margin2']:.1f} %"),
     ])
+    pdf.ln(4)
+
+    # --- ΕΝΟΤΗΤΑ 3 ---
+    section_title("3) Cabclub -> Τελικός Πελάτης (Απευθείας Λιανική)")
+    indicator_table([
+        ("Κόστος μου (ανά τεμάχιο)", f"{data['my_cost']:.2f} EUR"),
+        ("Τιμή Λιανικής", f"{data['retail_price']:.2f} EUR"),
+        ("Markup", f"{data['markup3']:.1f} %"),
+        ("Margin", f"{data['margin3']:.1f} %"),
+    ])
     pdf.ln(6)
 
     # --- ΣΕΝΑΡΙΟ (αν υπάρχει) ---
@@ -384,7 +394,7 @@ def generate_markup_margin_pdf(cocktail_name, data):
         section_title(f"Σενάριο: Επιθυμητό {data['scenario_mode']}")
         pdf.set_font(f_name, size=9)
         pdf.set_text_color(*GREY)
-        pdf.multi_cell(0, 5, f"Επίπεδο 1: {data['desired1']:.2f}   |   Επίπεδο 2: {data['desired2']:.2f}")
+        pdf.multi_cell(0, 5, f"Επίπεδο 1: {data['desired1']:.2f}   |   Επίπεδο 2: {data['desired2']:.2f}   |   Επίπεδο 3: {data['desired3']:.2f}")
         pdf.set_text_color(*DARK)
         pdf.ln(1)
 
@@ -400,6 +410,13 @@ def generate_markup_margin_pdf(cocktail_name, data):
                 ("Νέα Τιμή Λιανικής", f"{data['new_retail_price']:.2f} EUR"),
                 ("Μεταβολή vs Σήμερα", f"{data['delta_retail']:+.2f} EUR ({data['delta_retail_pct']:+.1f}%)"),
                 ("Νέο Markup / Margin", f"{data['new_markup2']:.1f}% / {data['new_margin2']:.1f}%"),
+            ])
+            pdf.ln(3)
+        if data.get('new_direct_price') is not None:
+            indicator_table([
+                ("Νέα Τιμή Απευθείας Πώλησης", f"{data['new_direct_price']:.2f} EUR"),
+                ("Μεταβολή vs Σήμερα", f"{data['delta_direct']:+.2f} EUR ({data['delta_direct_pct']:+.1f}%)"),
+                ("Νέο Markup / Margin", f"{data['new_markup3']:.1f}% / {data['new_margin3']:.1f}%"),
             ])
             pdf.ln(4)
 
@@ -2723,6 +2740,7 @@ elif page == "📐 Markup & Margin":
 
         markup1, margin1 = _markup(my_cost, agent_price), _margin(my_cost, agent_price)
         markup2, margin2 = _markup(agent_price, retail_price), _margin(agent_price, retail_price)
+        markup3, margin3 = _markup(my_cost, retail_price), _margin(my_cost, retail_price)
 
         st.divider()
         st.subheader("📊 Τρέχοντες Δείκτες")
@@ -2741,13 +2759,21 @@ elif page == "📐 Markup & Margin":
         l2c3.metric("Markup", f"{markup2:.1f} %", help="(Τιμή - Κόστος) / Κόστος")
         l2c4.metric("Margin", f"{margin2:.1f} %", help="(Τιμή - Κόστος) / Τιμή")
 
+        st.markdown("**3️⃣ Cabclub → Τελικός Πελάτης (Απευθείας Λιανική)**")
+        st.caption("Πουλάς εσύ ο ίδιος απευθείας στον τελικό πελάτη, χωρίς αντιπρόσωπο — στην τιμή λιανικής.")
+        l3c1, l3c2, l3c3, l3c4 = st.columns(4)
+        l3c1.metric("Κόστος μου", f"{my_cost:.2f} €")
+        l3c2.metric("Τιμή Λιανικής", f"{retail_price:.2f} €")
+        l3c3.metric("Markup", f"{markup3:.1f} %", help="(Τιμή - Κόστος) / Κόστος")
+        l3c4.metric("Margin", f"{margin3:.1f} %", help="(Τιμή - Κόστος) / Τιμή")
+
         st.divider()
         st.subheader("🎯 Σενάριο: Ορισμός Επιθυμητού Markup ή Margin")
         st.caption("Το markup και το margin είναι μαθηματικά συνδεδεμένα — δεν μπορείς να ορίσεις και τα δύο ανεξάρτητα για την ίδια τιμή. Διάλεξε ποιο θες να οδηγεί τον υπολογισμό.")
 
         scenario_mode = st.radio("Τι θα ορίσεις;", ["Markup %", "Margin %"], horizontal=True, key="mm_scenario_mode")
 
-        sc1, sc2 = st.columns(2)
+        sc1, sc2, sc3 = st.columns(3)
         with sc1:
             st.markdown("**Επίπεδο 1: Cabclub → Αντιπρόσωπος**")
             default1 = markup1 if scenario_mode == "Markup %" else margin1
@@ -2756,20 +2782,27 @@ elif page == "📐 Markup & Margin":
             st.markdown("**Επίπεδο 2: Αντιπρόσωπος → Πελάτης**")
             default2 = markup2 if scenario_mode == "Markup %" else margin2
             desired2 = st.number_input(f"Επιθυμητό {scenario_mode}:", value=float(default2), step=0.5, format="%.2f", key="mm_desired2")
+        with sc3:
+            st.markdown("**Επίπεδο 3: Cabclub → Πελάτης (Απευθείας)**")
+            default3 = markup3 if scenario_mode == "Markup %" else margin3
+            desired3 = st.number_input(f"Επιθυμητό {scenario_mode}:", value=float(default3), step=0.5, format="%.2f", key="mm_desired3")
 
         # --- Υπολογισμός νέων τιμών από τα επιθυμητά markup/margin ---
         if scenario_mode == "Markup %":
             new_agent_price = my_cost * (1 + desired1 / 100)
             new_retail_price = new_agent_price * (1 + desired2 / 100)
+            new_direct_price = my_cost * (1 + desired3 / 100)
         else:  # Margin %
             new_agent_price = my_cost / (1 - desired1 / 100) if desired1 < 100 else float('inf')
             new_retail_price = new_agent_price / (1 - desired2 / 100) if desired2 < 100 and new_agent_price != float('inf') else float('inf')
+            new_direct_price = my_cost / (1 - desired3 / 100) if desired3 < 100 else float('inf')
 
         new_markup1, new_margin1 = _markup(my_cost, new_agent_price), _margin(my_cost, new_agent_price)
         new_markup2, new_margin2 = _markup(new_agent_price, new_retail_price), _margin(new_agent_price, new_retail_price)
+        new_markup3, new_margin3 = _markup(my_cost, new_direct_price), _margin(my_cost, new_direct_price)
 
         st.markdown("### 💡 Αποτέλεσμα Σεναρίου")
-        rc1, rc2 = st.columns(2)
+        rc1, rc2, rc3 = st.columns(3)
         with rc1:
             if new_agent_price == float('inf'):
                 st.error("⚠️ Το επιθυμητό margin (100%+) δεν είναι εφικτό μαθηματικά.")
@@ -2786,6 +2819,14 @@ elif page == "📐 Markup & Margin":
                 delta_retail_pct = (delta_retail / retail_price * 100) if retail_price > 0 else 0
                 st.metric("Νέα Τιμή Λιανικής", f"{new_retail_price:.2f} €", delta=f"{delta_retail:+.2f} € ({delta_retail_pct:+.1f}%)")
                 st.caption(f"Markup: {markup2:.1f}% → **{new_markup2:.1f}%**  |  Margin: {margin2:.1f}% → **{new_margin2:.1f}%**")
+        with rc3:
+            if new_direct_price == float('inf'):
+                st.error("⚠️ Το επιθυμητό margin (100%+) δεν είναι εφικτό μαθηματικά.")
+            else:
+                delta_direct = new_direct_price - retail_price
+                delta_direct_pct = (delta_direct / retail_price * 100) if retail_price > 0 else 0
+                st.metric("Νέα Τιμή Απευθείας Πώλησης", f"{new_direct_price:.2f} €", delta=f"{delta_direct:+.2f} € ({delta_direct_pct:+.1f}%)")
+                st.caption(f"Markup: {markup3:.1f}% → **{new_markup3:.1f}%**  |  Margin: {margin3:.1f}% → **{new_margin3:.1f}%**")
 
         if new_agent_price != float('inf') and new_retail_price != float('inf'):
             total_change_text = (
@@ -2807,16 +2848,21 @@ elif page == "📐 Markup & Margin":
             "now_str": now_str,
             "my_cost": my_cost, "agent_price": agent_price, "retail_price": retail_price,
             "markup1": markup1, "margin1": margin1, "markup2": markup2, "margin2": margin2,
+            "markup3": markup3, "margin3": margin3,
             "scenario_ran": True, "scenario_mode": scenario_mode,
-            "desired1": desired1, "desired2": desired2,
+            "desired1": desired1, "desired2": desired2, "desired3": desired3,
             "new_agent_price": new_agent_price if new_agent_price != float('inf') else None,
             "new_retail_price": new_retail_price if new_retail_price != float('inf') else None,
+            "new_direct_price": new_direct_price if new_direct_price != float('inf') else None,
             "new_markup1": new_markup1, "new_margin1": new_margin1,
             "new_markup2": new_markup2, "new_margin2": new_margin2,
+            "new_markup3": new_markup3, "new_margin3": new_margin3,
             "delta_agent": (new_agent_price - agent_price) if new_agent_price != float('inf') else 0,
             "delta_agent_pct": ((new_agent_price - agent_price) / agent_price * 100) if agent_price > 0 and new_agent_price != float('inf') else 0,
             "delta_retail": (new_retail_price - retail_price) if new_retail_price != float('inf') else 0,
             "delta_retail_pct": ((new_retail_price - retail_price) / retail_price * 100) if retail_price > 0 and new_retail_price != float('inf') else 0,
+            "delta_direct": (new_direct_price - retail_price) if new_direct_price != float('inf') else 0,
+            "delta_direct_pct": ((new_direct_price - retail_price) / retail_price * 100) if retail_price > 0 and new_direct_price != float('inf') else 0,
             "total_change_text": total_change_text,
         }
 
