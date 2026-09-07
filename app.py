@@ -2024,7 +2024,13 @@ with st.sidebar:
                 "Recipes": "recipes",
                 "Recipe_Items_Dosages": "recipe_items",
                 "CRM_Customers": "customers",
-                "CRM_Special_Discounts": "customer_specials"
+                "CRM_Special_Discounts": "customer_specials",
+                # 🔧 FIX: πρόσθεσα τους νεότερους πίνακες που έλειπαν από το backup
+                "Expenses_Detailed": "expense_entries",
+                "Cost_Settings_Scenario": "cost_settings",
+                "Cocktail_Costs_Manual": "cocktail_costs",
+                "Box_Gift_Offers": "box_gift_offers",
+                "Orders_To_Receive": "orders_to_receive",
             }
             for file_label, table_name in tables.items():
                 try:
