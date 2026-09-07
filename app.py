@@ -5396,7 +5396,8 @@ elif page == "💸 Έξοδα":
         if not _copy_may_entries:
             st.warning(f"Δεν βρέθηκαν καταχωρήσεις για {_copy_may_key} — δεν υπάρχει τι να αντιγραφεί.")
         else:
-            _all_year_months = [f"{m:02d}/{_copy_year}" for m in range(1, 13) if f"{m:02d}/{_copy_year}" != _copy_may_key]
+            # 🔧 FIX: μόνο ΑΠΟ τον Μάιο και μετά — πριν τον Μάιο δεν είχε ξεκινήσει καν η καταχώρηση εξόδων
+            _all_year_months = [f"{m:02d}/{_copy_year}" for m in range(5, 13) if f"{m:02d}/{_copy_year}" != _copy_may_key]
             _existing_months_set = {e.get("month_year") for e in load_all_expense_entries()}
             _empty_target_months = [m for m in _all_year_months if m not in _existing_months_set]
 
@@ -6026,19 +6027,25 @@ elif page == "🎯 Νεκρό Σημείο":
         if not real_months:
             st.warning(f"Δεν βρέθηκαν δεδομένα πωλήσεων για το {_fc_year_str} ακόμα — δεν είναι δυνατή η πρόβλεψη.")
         else:
-            remaining_months = [m for m in MONTH_NAMES_GR.keys() if m not in real_months]
+            # 🔧 FIX: μόνο ΑΠΟ τον Μάιο και μετά — η επιχείρηση δεν λειτουργούσε πριν, άρα δεν έχει
+            # νόημα να "προβλέπουμε" πωλήσεις ή να μετράμε σταθερά έξοδα για Ιανουάριο-Απρίλιο.
+            _business_start_month = "05"
+            remaining_months = [m for m in MONTH_NAMES_GR.keys() if m not in real_months and m >= _business_start_month]
             st.info(f"📊 Πραγματικά δεδομένα: **{', '.join(MONTH_NAMES_GR[m] for m in real_months)}** ({len(real_months)} μήνα/ες, {real_pieces_year:,.0f} πληρωμένα τεμάχια). Πρόβλεψη σεναρίων για τους υπόλοιπους {len(remaining_months)} μήνες του {_fc_year_str}.")
 
             real_revenue_year = real_pieces_year * ref_price
             avg_cost_be = (total_cost / total_paid_pieces) if total_paid_pieces else 0
             real_cogs_year = real_pieces_year * avg_cost_be
 
-            # --- Σταθερά έξοδα: 12 μήνες, με τον Μάιο ως προεπιλογή όπου λείπει καταχώρηση ---
+            # --- Σταθερά έξοδα: ΑΠΟ τον Μάιο και μετά (τότε ξεκίνησε η επιχείρηση), με τον Μάιο ως
+            # προεπιλογή όπου λείπει καταχώρηση — ΟΧΙ Ιανουάριο-Απρίλιο, που δεν υπήρχε καν δραστηριότητα.
             _may_key = f"05/{_fc_year_str}"
             _may_fixed_total = get_month_grand_total(_may_key)
             annual_fixed_fc = 0.0
             _fixed_used_default = []
             for mkey in MONTH_NAMES_GR.keys():
+                if mkey < _business_start_month:
+                    continue
                 _mfull = f"{mkey}/{_fc_year_str}"
                 _mtotal = get_month_grand_total(_mfull)
                 if _mtotal <= 0 and _may_fixed_total > 0:
