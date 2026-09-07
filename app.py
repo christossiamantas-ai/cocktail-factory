@@ -878,6 +878,179 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
 
     return pdf.output()
 
+def generate_scenario_forecast_pdf(data, now_str):
+    """Πλήρης αναφορά πρόβλεψης σεναρίων: συντελεστές εποχικότητας, ποσοστά σεναρίων,
+    σύγκριση 3 σεναρίων, και πίνακας νέων τιμών για κάθε σενάριο που το χρειάζεται."""
+    pdf = FPDF(orientation='L')
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    RED = (176, 0, 32)
+    BLUE = (27, 94, 158)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    def header_bar(subtitle):
+        pdf.set_fill_color(*GREEN)
+        pdf.rect(0, 0, 297, 26, 'F')
+        pdf.set_xy(10, 6)
+        pdf.set_font(f_name, 'B', 16)
+        pdf.set_text_color(*WHITE)
+        pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+        pdf.set_x(10)
+        pdf.set_font(f_name, size=11)
+        pdf.cell(0, 6, subtitle, ln=1)
+        pdf.set_text_color(*DARK)
+        pdf.ln(14)
+
+    def section(title):
+        pdf.set_font(f_name, 'B', 12)
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.cell(0, 8, title, ln=1, fill=True)
+        pdf.ln(1)
+
+    def row(label, value, bold=False, color=None, indent=0):
+        pdf.set_font(f_name, 'B' if bold else '', 10)
+        pdf.set_text_color(*(color or DARK))
+        if indent > 0:
+            pdf.cell(10 * indent, 7)
+        pdf.cell(180 - 10 * indent, 7, label)
+        pdf.cell(70, 7, value, align='R', ln=1)
+        pdf.set_text_color(*DARK)
+
+    def divider():
+        pdf.ln(1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 287, pdf.get_y())
+        pdf.ln(3)
+
+    header_bar(f"Ετήσια Πρόβλεψη με Σενάρια Εποχικότητας — {data['year']}")
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(3)
+
+    # --- ΣΥΝΤΕΛΕΣΤΕΣ ΕΠΟΧΙΚΟΤΗΤΑΣ ---
+    section("ΣΥΝΤΕΛΕΣΤΕΣ ΕΠΟΧΙΚΟΤΗΤΑΣ")
+    pdf.set_font(f_name, 'B', 8)
+    pdf.set_fill_color(*LIGHTGREY)
+    month_keys = list(data["month_names"].keys())
+    col_w = 277 / 12
+    for mkey in month_keys:
+        pdf.cell(col_w, 6, data["month_names"][mkey][:4], border=1, fill=True, align='C')
+    pdf.ln()
+    pdf.set_font(f_name, size=8)
+    for mkey in month_keys:
+        is_real = mkey in data["real_months"]
+        pdf.set_fill_color(230, 244, 234) if is_real else pdf.set_fill_color(*WHITE)
+        pdf.cell(col_w, 6, f"{data['seasonality'][mkey]:.2f}", border=1, fill=True, align='C')
+    pdf.ln(9)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREEN)
+    pdf.cell(0, 5, "■ Πράσινο = μήνας με πραγματικά δεδομένα", ln=1)
+    pdf.set_text_color(*DARK)
+    divider()
+
+    # --- ΠΡΑΓΜΑΤΙΚΑ ΔΕΔΟΜΕΝΑ ---
+    section("ΠΡΑΓΜΑΤΙΚΑ ΔΕΔΟΜΕΝΑ vs ΠΡΟΒΛΕΨΗ")
+    real_month_names = ", ".join(data["month_names"][m] for m in data["real_months"])
+    remaining_month_names = ", ".join(data["month_names"][m] for m in data["remaining_months"])
+    row("Μήνες με πραγματικά δεδομένα", real_month_names or "—")
+    row("Πραγματικά πληρωμένα τεμάχια", f"{data['real_pieces_year']:,.2f}")
+    row("Μήνες υπό πρόβλεψη", remaining_month_names or "—")
+    row("Μέση τιμή πώλησης (βάση)", f"{data['ref_price']:.2f} EUR")
+    row("Μέσο κόστος (βάση)", f"{data['avg_cost_be']:.2f} EUR")
+    row("Ετήσια Σταθερά Έξοδα", f"{data['annual_fixed_fc']:,.2f} EUR")
+    divider()
+
+    # --- ΠΟΣΟΣΤΑ ΣΕΝΑΡΙΩΝ ---
+    section("ΠΟΣΟΣΤΑ ΣΕΝΑΡΙΩΝ")
+    for label, pct in data["scenario_pcts"].items():
+        row(label, f"{pct:+.1f} %")
+    divider()
+
+    # --- ΣΥΓΚΡΙΣΗ 3 ΣΕΝΑΡΙΩΝ ---
+    section("ΣΥΓΚΡΙΣΗ ΑΠΟΤΕΛΕΣΜΑΤΩΝ ΣΕΝΑΡΙΩΝ")
+    pdf.set_font(f_name, 'B', 9)
+    pdf.set_fill_color(*LIGHTGREY)
+    pdf.cell(75, 7, "", fill=True)
+    for label in data["fc_results"].keys():
+        pdf.cell(62, 7, label, border=1, fill=True, align='C')
+    pdf.ln()
+
+    def scenario_row(metric_label, key, fmt="{:,.2f}", is_currency=True):
+        pdf.set_font(f_name, size=9)
+        pdf.cell(75, 7, metric_label, border=1)
+        for label, res in data["fc_results"].items():
+            val = res[key]
+            txt = fmt.format(val) + (" EUR" if is_currency else "")
+            color = GREEN if (key != "profit" or val >= 0) else RED
+            pdf.set_text_color(*color)
+            pdf.cell(62, 7, txt, border=1, align='R')
+            pdf.set_text_color(*DARK)
+        pdf.ln()
+
+    scenario_row("Ετήσια Τεμάχια", "pieces", "{:,.2f}", is_currency=False)
+    scenario_row("Ετήσιος Τζίρος", "revenue")
+    scenario_row("Μεταβλητό Κόστος", "cogs")
+    scenario_row("Σταθερά Έξοδα", "fixed")
+    scenario_row("Καθαρό Αποτέλεσμα", "profit")
+    pdf.ln(6)
+
+    # --- ΠΙΝΑΚΕΣ ΤΙΜΩΝ ΑΝΑ ΣΕΝΑΡΙΟ ---
+    for label, table_data in data["fc_price_tables"].items():
+        pdf.add_page()
+        header_bar(f"Προτεινόμενες Νέες Τιμές — {label}")
+        if not table_data["needs_change"]:
+            pdf.set_font(f_name, 'B', 12)
+            pdf.set_text_color(*GREEN)
+            pdf.cell(0, 10, "Το σενάριο είναι ήδη κερδοφόρο — δεν χρειάζεται αλλαγή τιμών.", ln=1)
+            pdf.set_text_color(*DARK)
+            continue
+
+        pdf.set_font(f_name, size=10)
+        pdf.cell(0, 7, f"Ποσοστό αύξησης τιμών: {table_data['price_increase_pct']:+.2f}%   |   Απαιτούμενη μέση τιμή: {table_data['required_avg_price']:.2f} EUR", ln=1)
+        pdf.ln(3)
+
+        cols = [("Κοκτέιλ", 90), ("Κόστος", 40), ("Παλιά Τιμή", 45), ("Νέα Τιμή", 45), ("% Αύξησης", 47)]
+        pdf.set_font(f_name, 'B', 9)
+        pdf.set_fill_color(*LIGHTGREY)
+        for cname, w in cols:
+            pdf.cell(w, 7, cname, border=1, fill=True, align='C')
+        pdf.ln()
+        pdf.set_font(f_name, size=9)
+        for i, r in enumerate(table_data["rows"]):
+            pdf.set_fill_color(250, 250, 250) if i % 2 == 0 else pdf.set_fill_color(*WHITE)
+            pdf.cell(cols[0][1], 6, str(r["Κοκτέιλ"])[:42], border=1, fill=True)
+            pdf.cell(cols[1][1], 6, f"{r['Κόστος (€)']:.2f}", border=1, fill=True, align='R')
+            pdf.cell(cols[2][1], 6, f"{r['Παλιά Τιμή (€)']:.2f}", border=1, fill=True, align='R')
+            new_v, old_v = r["Νέα Τιμή (€)"], r["Παλιά Τιμή (€)"]
+            pdf.set_text_color(*(RED if new_v > old_v else (GREEN if new_v < old_v else DARK)))
+            pdf.cell(cols[3][1], 6, f"{new_v:.2f}", border=1, fill=True, align='R')
+            pdf.set_text_color(*DARK)
+            pdf.cell(cols[4][1], 6, f"{r['% Αύξησης']:.2f}%", border=1, fill=True, align='R')
+            pdf.ln()
+
+    pdf.set_y(-15)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Ετήσια Πρόβλεψη με Σενάρια Εποχικότητας", align='C')
+
+    return pdf.output()
+
 def generate_breakeven_blended_pdf(data, now_str):
     """Πλήρης αναφορά Νεκρού Σημείου (Μέσο Μείγμα Πωλήσεων): σταθερά έξοδα (μέσος όρος +
     ανά μήνα), υπολογισμός περιθωρίου συνεισφοράς, αποτέλεσμα, και γράφημα."""
@@ -6125,10 +6298,12 @@ elif page == "🎯 Νεκρό Σημείο":
             st.markdown("### 📋 Προτεινόμενες Νέες Τιμές ανά Σενάριο (ώστε να φτάσεις στο 0)")
             st.caption("Για κάθε σενάριο όπου το αποτέλεσμα είναι αρνητικό, υπολογίζεται το ελάχιστο ποσοστό αύξησης τιμών (ίδιο % σε όλα τα κοκτέιλ) ώστε ο ετήσιος τζίρος να καλύπτει ακριβώς το κόστος + τα σταθερά έξοδα.")
 
+            fc_price_tables = {}  # θα κρατήσει τα δεδομένα κάθε σεναρίου, για το PDF παρακάτω
             for label, res in fc_results.items():
                 with st.expander(f"{label} — {'✅ Ήδη κερδοφόρο' if res['profit'] >= 0 else '❌ Χρειάζεται αύξηση τιμών'}", expanded=(res['profit'] < 0)):
                     if res["profit"] >= 0:
                         st.success(f"Το σενάριο είναι ήδη κερδοφόρο ({res['profit']:,.0f} €) — δεν χρειάζεται αλλαγή τιμών.")
+                        fc_price_tables[label] = {"needs_change": False, "price_increase_pct": 0.0, "required_avg_price": ref_price, "rows": []}
                         continue
                     required_total_revenue = res["cogs"] + res["fixed"]
                     required_avg_price = required_total_revenue / res["pieces"] if res["pieces"] else 0
@@ -6149,11 +6324,13 @@ elif page == "🎯 Νεκρό Σημείο":
                         cocktail_cost_fc = get_unit_cost_for_cocktail(c_name_fc, 0.0)
                         price_rows_fc.append({
                             "Κοκτέιλ": c_name_fc,
-                            "Κόστος (€)": round(cocktail_cost_fc, 3),
+                            "Κόστος (€)": round(cocktail_cost_fc, 2),
                             "Παλιά Τιμή (€)": round(old_price_fc, 2),
                             "Νέα Τιμή (€)": round(new_price_fc, 2),
                             "% Αύξησης": round(price_increase_pct, 1),
                         })
+
+                    fc_price_tables[label] = {"needs_change": True, "price_increase_pct": price_increase_pct, "required_avg_price": required_avg_price, "rows": price_rows_fc}
 
                     if price_rows_fc:
                         df_price_fc = pd.DataFrame(price_rows_fc)
@@ -6170,6 +6347,36 @@ elif page == "🎯 Νεκρό Σημείο":
                         st.dataframe(df_price_fc.style.apply(_hl_fc, axis=1), use_container_width=True, hide_index=True)
                     else:
                         st.info("Δεν βρέθηκαν κοκτέιλ με έγκυρη τιμή για τον πίνακα.")
+
+            # --- 📄 ΛΗΨΗ ΑΝΑΛΥΤΙΚΗΣ ΑΝΑΦΟΡΑΣ PDF (εποχικότητα + σενάρια + 3 πίνακες) ---
+            st.divider()
+            try:
+                _now_str_fc = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                _now_str_fc = datetime.now().strftime("%d/%m/%Y %H:%M")
+            try:
+                _fc_pdf_data = {
+                    "year": _fc_year_str,
+                    "seasonality": seasonality, "month_names": MONTH_NAMES_GR,
+                    "real_months": real_months, "remaining_months": remaining_months,
+                    "real_pieces_year": real_pieces_year,
+                    "scenario_pcts": scenarios,
+                    "fc_results": fc_results,
+                    "fc_price_tables": fc_price_tables,
+                    "annual_fixed_fc": annual_fixed_fc,
+                    "ref_price": ref_price, "avg_cost_be": avg_cost_be,
+                }
+                _fc_pdf_bytes = generate_scenario_forecast_pdf(_fc_pdf_data, _now_str_fc)
+                st.download_button(
+                    "📄 Λήψη Αναλυτικής Αναφοράς PDF (Εποχικότητα + Σενάρια)",
+                    data=bytes(_fc_pdf_bytes),
+                    file_name=f"Cabclub_Provlepsi_Senarion_{_now_str_fc.replace('/', '-').replace(':', 'h')}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Σφάλμα προετοιμασίας αναφοράς PDF: {e}")
 
 # --- 📑 ΑΝΑΦΟΡΑ ΕΣΟΔΩΝ - ΕΞΟΔΩΝ (P&L) ---
 elif page == "📑 Έσοδα - Έξοδα":
