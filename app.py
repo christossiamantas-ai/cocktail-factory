@@ -5382,6 +5382,44 @@ elif page == "💸 Έξοδα":
     sel_fixed_month = st.selectbox("📅 Επίλεξε μήνα για καταχώρηση/επεξεργασία:", _all_months_be, key="be_fixed_month_select")
     _month_entries_map = get_month_entries_map(sel_fixed_month)  # {(cat, subcat, desc): amount}
 
+    # --- 📋 Αντιγραφή Μαΐου ως προεπιλογή στους υπόλοιπους μήνες του έτους (μόνο σε ΚΕΝΟΥΣ μήνες) ---
+    with st.expander("📋 Αντιγραφή Μαΐου ως Προεπιλογή στους Υπόλοιπους Μήνες", expanded=False):
+        st.caption(
+            "Αντιγράφει τα έξοδα του Μαΐου σε κάθε μήνα του ίδιου έτους που είναι ακόμα **κενός** "
+            "(καθόλου καταχωρήσεις) — έτσι δεν χρειάζεται να ξαναπληκτρολογείς το ίδιο ενοίκιο/μισθούς "
+            "κάθε μήνα. Μήνες που ΗΔΗ έχουν δικές τους καταχωρήσεις ΔΕΝ πειράζονται καθόλου."
+        )
+        _copy_year = st.text_input("Έτος αναφοράς Μαΐου:", value=sel_fixed_month.split("/")[-1] if "/" in sel_fixed_month else str(_today_be.year), key="be_copy_may_year")
+        _copy_may_key = f"05/{_copy_year}"
+        _copy_may_entries = [e for e in load_all_expense_entries() if e.get("month_year") == _copy_may_key]
+
+        if not _copy_may_entries:
+            st.warning(f"Δεν βρέθηκαν καταχωρήσεις για {_copy_may_key} — δεν υπάρχει τι να αντιγραφεί.")
+        else:
+            _all_year_months = [f"{m:02d}/{_copy_year}" for m in range(1, 13) if f"{m:02d}/{_copy_year}" != _copy_may_key]
+            _existing_months_set = {e.get("month_year") for e in load_all_expense_entries()}
+            _empty_target_months = [m for m in _all_year_months if m not in _existing_months_set]
+
+            if not _empty_target_months:
+                st.info("Όλοι οι υπόλοιποι μήνες του έτους έχουν ήδη δικές τους καταχωρήσεις — τίποτα να αντιγραφεί.")
+            else:
+                st.caption(f"Θα συμπληρωθούν: {', '.join(_empty_target_months)} ({len(_copy_may_entries)} εγγραφές το καθένα, από τον {_copy_may_key}).")
+                if st.button(f"📋 Αντιγραφή στους {len(_empty_target_months)} κενούς μήνες", key="btn_copy_may"):
+                    try:
+                        _copy_payload = []
+                        for target_month in _empty_target_months:
+                            for e in _copy_may_entries:
+                                _copy_payload.append({
+                                    "month_year": target_month, "category": e["category"], "subcategory": e["subcategory"],
+                                    "description": e.get("description", ""), "amount": float(e.get("amount") or 0.0),
+                                })
+                        supabase.table("expense_entries").upsert(_copy_payload, on_conflict="month_year,category,subcategory,description").execute()
+                        st.cache_data.clear()
+                        st.success(f"✅ Αντιγράφηκαν τα έξοδα του {_copy_may_key} σε {len(_empty_target_months)} μήνες! Οποιεσδήποτε διαφορές, επεξεργάσου τις ελεύθερα ανά μήνα.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Σφάλμα αντιγραφής: {e}")
+
     if _manual_cost_active:
         st.warning(
             "⚠️ **Προσοχή στο Προσωπικό — χειροκίνητο κόστος ΕΝΕΡΓΟ:** Στο «💰 Κοστολόγιο» τα "
@@ -5866,74 +5904,7 @@ elif page == "🎯 Νεκρό Σημείο":
     # --- 3. ΑΠΟΤΕΛΕΣΜΑΤΑ ---
     st.subheader("3️⃣ Αποτέλεσμα Νεκρού Σημείου")
     if contribution_margin <= 0:
-        st.error("⚠️ Το περιθώριο συνεισφοράς είναι μηδενικό ή αρνητικό — δεν υπάρχει σημείο νεκρού σημείου με τα τρέχοντα δεδομένα (χάνεις χρήματα σε κάθε τεμάχιο).")
-
-        # --- 🎯 Αντίστροφος υπολογισμός: πόσο markup/margin χρειάζεται για να φτάσεις στο 0 ---
-        st.divider()
-        st.subheader("🎯 Τι Χρειάζεται να Αλλάξεις για να Φτάσεις στο Νεκρό Σημείο")
-        st.caption("Με βάση τον πραγματικό μέσο μηνιαίο όγκο πωλήσεών σου, υπολογίζουμε το ελάχιστο markup/margin ώστε να καλύπτεις ΑΚΡΙΒΩΣ τα σταθερά σου έξοδα (0€ κέρδος/ζημία) — όχι παραπάνω.")
-
-        avg_cost = (total_cost / total_paid_pieces) if total_paid_pieces else 0
-        _months_for_avg = _be_months_covered if (_be_months_covered and _be_months_covered > 0) else max(1, len(_months_with_data_be))
-        avg_monthly_volume = (total_paid_pieces / _months_for_avg) if _months_for_avg else 0
-
-        if avg_monthly_volume > 0 and avg_cost > 0:
-            required_margin_per_unit = monthly_fixed / avg_monthly_volume
-            new_avg_price = avg_cost + required_margin_per_unit
-            new_markup = (required_margin_per_unit / avg_cost) * 100
-            new_margin = (required_margin_per_unit / new_avg_price) * 100
-            current_markup = ((ref_price - avg_cost) / avg_cost * 100) if avg_cost else 0
-            current_margin = ((ref_price - avg_cost) / ref_price * 100) if ref_price else 0
-
-            mc1, mc2, mc3 = st.columns(3)
-            mc1.metric("Απαιτούμενο Markup", f"{new_markup:.1f}%", delta=f"{(new_markup-current_markup):+.1f} pp έναντι σημερινού")
-            mc2.metric("Απαιτούμενο Margin", f"{new_margin:.1f}%", delta=f"{(new_margin-current_margin):+.1f} pp έναντι σημερινού")
-            mc3.metric("Νέα Μέση Τιμή", f"{new_avg_price:.2f} €", delta=f"{(new_avg_price-ref_price):+.2f} € έναντι {ref_price:.2f}€ σήμερα")
-            st.caption(f"Υπολογισμός βάσει μέσου μηνιαίου όγκου {avg_monthly_volume:,.0f} τεμαχίων ({int(total_paid_pieces):,} τεμάχια ÷ {_months_for_avg} μήνα/ες).")
-
-            # --- Πίνακας: παλιά vs νέα τιμή ανά κοκτέιλ, εφαρμόζοντας το ΙΔΙΟ απαιτούμενο markup ---
-            st.markdown("#### 📋 Προτεινόμενες Νέες Τιμές ανά Κοκτέιλ")
-            st.caption(f"Εφαρμόζοντας το απαιτούμενο markup ({new_markup:.1f}%) στο δικό του κόστος κάθε κοκτέιλ.")
-
-            def _be_raw_cost_row(recipe_row):
-                total = 0.0
-                for i in range(1, 14):
-                    ing_n = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
-                    ml = float(recipe_row.get(f"ML{i}", 0) or 0)
-                    if ing_n in ["ΚΕΝΟ", "nan", "", "Νερό"] or ml <= 0:
-                        continue
-                    match_ing = df_ing[df_ing["Name"] == ing_n]
-                    if not match_ing.empty:
-                        total += ml * float(match_ing.iloc[0].get("Τιμή/ml", 0) or 0)
-                return total
-
-            price_rows = []
-            for _, r_be2 in df_rec.iterrows():
-                c_name_be2 = r_be2["Ονομα"]
-                old_price_be2 = float(r_be2.get("Τιμή Καταλόγου", 0.0) or 0.0)
-                cocktail_cost_be2 = get_unit_cost_for_cocktail(c_name_be2, _be_raw_cost_row(r_be2))
-                if old_price_be2 <= 0 or cocktail_cost_be2 <= 0:
-                    continue
-                new_price_be2 = cocktail_cost_be2 * (1 + new_markup / 100)
-                price_rows.append({"Κοκτέιλ": c_name_be2, "Παλιά Τιμή (€)": round(old_price_be2, 2), "Νέα Τιμή (€)": round(new_price_be2, 2)})
-
-            if price_rows:
-                df_price_be = pd.DataFrame(price_rows)
-
-                def _hl_be(row):
-                    styles = [''] * len(row)
-                    idx = row.index.get_loc("Νέα Τιμή (€)")
-                    if row["Νέα Τιμή (€)"] > row["Παλιά Τιμή (€)"]:
-                        styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
-                    elif row["Νέα Τιμή (€)"] < row["Παλιά Τιμή (€)"]:
-                        styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
-                    return styles
-
-                st.dataframe(df_price_be.style.apply(_hl_be, axis=1), use_container_width=True, hide_index=True)
-            else:
-                st.info("Δεν βρέθηκαν κοκτέιλ με έγκυρη τιμή/κόστος για τον πίνακα.")
-        else:
-            st.warning("Δεν υπάρχουν αρκετά δεδομένα (όγκος πωλήσεων ή κόστος) για τον αντίστροφο υπολογισμό.")
+        st.error("⚠️ Το περιθώριο συνεισφοράς είναι μηδενικό ή αρνητικό — δεν υπάρχει σημείο νεκρού σημείου με τα τρέχοντα δεδομένα (χάνεις χρήματα σε κάθε τεμάχιο). Δες την «🔮 Ετήσια Πρόβλεψη» πιο κάτω για σενάρια αλλαγής τιμών.")
     else:
         be_units_month = monthly_fixed / contribution_margin
         be_units_year = yearly_fixed / contribution_margin
@@ -5996,6 +5967,174 @@ elif page == "🎯 Νεκρό Σημείο":
                 )
             except Exception as e:
                 st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
+
+    # =====================================================================
+    # 🔮 ΕΤΗΣΙΑ ΠΡΟΒΛΕΨΗ ΜΕ ΣΕΝΑΡΙΑ ΕΠΟΧΙΚΟΤΗΤΑΣ (Χειρότερο/Αναμενόμενο/Καλύτερο)
+    # =====================================================================
+    if be_mode == "blended":
+        st.divider()
+        st.subheader("🔮 Ετήσια Πρόβλεψη με Σενάρια Εποχικότητας")
+        st.caption(
+            "Λόγω χαμηλής παραγωγής τους υπόλοιπους μήνες, εδώ προβάλλεις την πορεία σου σε ολόκληρο "
+            "το έτος με 3 σενάρια, χρησιμοποιώντας σταθμισμένο επιμερισμό βάσει συντελεστών εποχικότητας "
+            "— ξεχωριστά για μεταβλητά (κλιμακώνονται με τον όγκο) και σταθερά έξοδα (δεν αλλάζουν με τον όγκο)."
+        )
+
+        MONTH_NAMES_GR = {
+            "01": "Ιανουάριος", "02": "Φεβρουάριος", "03": "Μάρτιος", "04": "Απρίλιος",
+            "05": "Μάιος", "06": "Ιούνιος", "07": "Ιούλιος", "08": "Αύγουστος",
+            "09": "Σεπτέμβριος", "10": "Οκτώβριος", "11": "Νοέμβριος", "12": "Δεκέμβριος",
+        }
+        DEFAULT_SEASONALITY = {
+            "01": 0.4, "02": 0.4, "03": 0.6, "04": 0.8, "05": 1.0, "06": 1.4,
+            "07": 1.8, "08": 1.8, "09": 1.3, "10": 0.8, "11": 0.5, "12": 0.9,
+        }
+
+        with st.expander("⚙️ Συντελεστές Εποχικότητας (επεξεργάσιμοι)", expanded=False):
+            st.caption("Προεπιλογή για εποχικό, εξωτερικό bar (καλοκαίρι ψηλά, χειμώνας χαμηλά) — προσάρμοσέ τα ελεύθερα.")
+            seas_cols = st.columns(4)
+            seasonality = {}
+            for idx, (mkey, mname) in enumerate(MONTH_NAMES_GR.items()):
+                col = seas_cols[idx % 4]
+                seasonality[mkey] = col.number_input(mname, min_value=0.1, max_value=5.0, value=DEFAULT_SEASONALITY[mkey], step=0.1, key=f"seas_{mkey}")
+
+        try:
+            _fc_year_str = str(datetime.now(greece_tz).year)
+        except Exception:
+            _fc_year_str = str(datetime.now().year)
+
+        try:
+            _res_fc_prod = supabase.table("production_log").select("cocktail_name, pieces, applied_cost, prod_date, free_pieces, discounted_pieces, discount_pct").execute()
+            df_fc_prod = pd.DataFrame(_res_fc_prod.data) if _res_fc_prod.data else pd.DataFrame()
+        except Exception as e:
+            df_fc_prod = pd.DataFrame()
+            st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
+
+        real_months = []
+        real_pieces_year = 0.0
+        if not df_fc_prod.empty:
+            df_fc_prod["parsed"] = pd.to_datetime(df_fc_prod["prod_date"], format="%d/%m/%Y", errors="coerce")
+            df_fc_prod = df_fc_prod.dropna(subset=["parsed"])
+            df_fc_prod_year = df_fc_prod[df_fc_prod["parsed"].dt.strftime("%Y") == _fc_year_str].copy()
+            if not df_fc_prod_year.empty:
+                df_fc_prod_year["month_key"] = df_fc_prod_year["parsed"].dt.strftime("%m")
+                real_months = sorted(df_fc_prod_year["month_key"].unique())
+                _pcs = pd.to_numeric(df_fc_prod_year["pieces"], errors="coerce").fillna(0)
+                _free = pd.to_numeric(df_fc_prod_year.get("free_pieces", 0), errors="coerce").fillna(0)
+                real_pieces_year = float((_pcs - _free).sum())
+
+        if not real_months:
+            st.warning(f"Δεν βρέθηκαν δεδομένα πωλήσεων για το {_fc_year_str} ακόμα — δεν είναι δυνατή η πρόβλεψη.")
+        else:
+            remaining_months = [m for m in MONTH_NAMES_GR.keys() if m not in real_months]
+            st.info(f"📊 Πραγματικά δεδομένα: **{', '.join(MONTH_NAMES_GR[m] for m in real_months)}** ({len(real_months)} μήνα/ες, {real_pieces_year:,.0f} πληρωμένα τεμάχια). Πρόβλεψη σεναρίων για τους υπόλοιπους {len(remaining_months)} μήνες του {_fc_year_str}.")
+
+            real_revenue_year = real_pieces_year * ref_price
+            avg_cost_be = (total_cost / total_paid_pieces) if total_paid_pieces else 0
+            real_cogs_year = real_pieces_year * avg_cost_be
+
+            # --- Σταθερά έξοδα: 12 μήνες, με τον Μάιο ως προεπιλογή όπου λείπει καταχώρηση ---
+            _may_key = f"05/{_fc_year_str}"
+            _may_fixed_total = get_month_grand_total(_may_key)
+            annual_fixed_fc = 0.0
+            _fixed_used_default = []
+            for mkey in MONTH_NAMES_GR.keys():
+                _mfull = f"{mkey}/{_fc_year_str}"
+                _mtotal = get_month_grand_total(_mfull)
+                if _mtotal <= 0 and _may_fixed_total > 0:
+                    _mtotal = _may_fixed_total
+                    _fixed_used_default.append(MONTH_NAMES_GR[mkey])
+                annual_fixed_fc += _mtotal
+            if _fixed_used_default:
+                st.caption(f"ℹ️ Χρησιμοποιήθηκαν τα έξοδα του Μαΐου ως προεπιλογή για: {', '.join(_fixed_used_default)} (χωρίς δική τους καταχώρηση ακόμα).")
+
+            real_seasonality_sum = sum(seasonality[m] for m in real_months)
+            rate_per_seasonality_unit = (real_pieces_year / real_seasonality_sum) if real_seasonality_sum > 0 else 0
+
+            st.markdown("**Ποσοστά Σεναρίων** (πάνω/κάτω από τον βαθμονομημένο ρυθμό παραγωγής, για τους υπόλοιπους μήνες)")
+            sp1, sp2, sp3 = st.columns(3)
+            worst_pct = sp1.number_input("😟 Χειρότερο (%)", value=-20.0, step=5.0, key="fc_worst_pct")
+            expected_pct = sp2.number_input("😐 Αναμενόμενο (%)", value=0.0, step=5.0, key="fc_expected_pct")
+            best_pct = sp3.number_input("😄 Καλύτερο (%)", value=20.0, step=5.0, key="fc_best_pct")
+
+            scenarios = {"😟 Χειρότερο": worst_pct, "😐 Αναμενόμενο": expected_pct, "😄 Καλύτερο": best_pct}
+
+            st.divider()
+            fc_results = {}
+            for label, pct in scenarios.items():
+                proj_pieces = real_pieces_year
+                proj_revenue = real_revenue_year
+                proj_cogs = real_cogs_year
+                for m in remaining_months:
+                    month_pieces = max(0.0, rate_per_seasonality_unit * seasonality[m] * (1 + pct / 100))
+                    proj_pieces += month_pieces
+                    proj_revenue += month_pieces * ref_price
+                    proj_cogs += month_pieces * avg_cost_be
+                proj_profit = proj_revenue - proj_cogs - annual_fixed_fc
+                fc_results[label] = {
+                    "pieces": proj_pieces, "revenue": proj_revenue, "cogs": proj_cogs,
+                    "fixed": annual_fixed_fc, "profit": proj_profit,
+                }
+
+            fcol1, fcol2, fcol3 = st.columns(3)
+            for col, (label, res) in zip([fcol1, fcol2, fcol3], fc_results.items()):
+                with col:
+                    st.markdown(f"**{label}**")
+                    st.metric("Ετήσια Τεμάχια", f"{res['pieces']:,.0f}")
+                    st.metric("Ετήσιος Τζίρος", f"{res['revenue']:,.0f} €")
+                    st.metric("Ετήσιο Κόστος (μεταβλητό+σταθερό)", f"{(res['cogs']+res['fixed']):,.0f} €")
+                    _pc = "normal" if res["profit"] >= 0 else "inverse"
+                    st.metric("Καθαρό Αποτέλεσμα", f"{res['profit']:,.0f} €", delta=f"{res['profit']:,.0f} €", delta_color=_pc)
+
+            st.divider()
+            st.markdown("### 📋 Προτεινόμενες Νέες Τιμές ανά Σενάριο (ώστε να φτάσεις στο 0)")
+            st.caption("Για κάθε σενάριο όπου το αποτέλεσμα είναι αρνητικό, υπολογίζεται το ελάχιστο ποσοστό αύξησης τιμών (ίδιο % σε όλα τα κοκτέιλ) ώστε ο ετήσιος τζίρος να καλύπτει ακριβώς το κόστος + τα σταθερά έξοδα.")
+
+            for label, res in fc_results.items():
+                with st.expander(f"{label} — {'✅ Ήδη κερδοφόρο' if res['profit'] >= 0 else '❌ Χρειάζεται αύξηση τιμών'}", expanded=(res['profit'] < 0)):
+                    if res["profit"] >= 0:
+                        st.success(f"Το σενάριο είναι ήδη κερδοφόρο ({res['profit']:,.0f} €) — δεν χρειάζεται αλλαγή τιμών.")
+                        continue
+                    required_total_revenue = res["cogs"] + res["fixed"]
+                    required_avg_price = required_total_revenue / res["pieces"] if res["pieces"] else 0
+                    price_increase_pct = ((required_avg_price - ref_price) / ref_price * 100) if ref_price else 0
+
+                    ic1, ic2, ic3 = st.columns(3)
+                    ic1.metric("Απαιτούμενος Τζίρος", f"{required_total_revenue:,.0f} €")
+                    ic2.metric("Απαιτούμενη Μέση Τιμή", f"{required_avg_price:.2f} €")
+                    ic3.metric("Ποσοστό Αύξησης Τιμών", f"{price_increase_pct:+.1f} %")
+
+                    price_rows_fc = []
+                    for _, r_fc2 in df_rec.iterrows():
+                        c_name_fc = r_fc2["Ονομα"]
+                        old_price_fc = float(r_fc2.get("Τιμή Καταλόγου", 0.0) or 0.0)
+                        if old_price_fc <= 0:
+                            continue
+                        new_price_fc = old_price_fc * (1 + price_increase_pct / 100)
+                        cocktail_cost_fc = get_unit_cost_for_cocktail(c_name_fc, 0.0)
+                        price_rows_fc.append({
+                            "Κοκτέιλ": c_name_fc,
+                            "Κόστος (€)": round(cocktail_cost_fc, 3),
+                            "Παλιά Τιμή (€)": round(old_price_fc, 2),
+                            "Νέα Τιμή (€)": round(new_price_fc, 2),
+                            "% Αύξησης": round(price_increase_pct, 1),
+                        })
+
+                    if price_rows_fc:
+                        df_price_fc = pd.DataFrame(price_rows_fc)
+
+                        def _hl_fc(row):
+                            styles = [''] * len(row)
+                            idx = row.index.get_loc("Νέα Τιμή (€)")
+                            if row["Νέα Τιμή (€)"] > row["Παλιά Τιμή (€)"]:
+                                styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
+                            elif row["Νέα Τιμή (€)"] < row["Παλιά Τιμή (€)"]:
+                                styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
+                            return styles
+
+                        st.dataframe(df_price_fc.style.apply(_hl_fc, axis=1), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Δεν βρέθηκαν κοκτέιλ με έγκυρη τιμή για τον πίνακα.")
 
 # --- 📑 ΑΝΑΦΟΡΑ ΕΣΟΔΩΝ - ΕΞΟΔΩΝ (P&L) ---
 elif page == "📑 Έσοδα - Έξοδα":
