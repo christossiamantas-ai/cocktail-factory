@@ -877,6 +877,192 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
 
     return pdf.output()
 
+# --- 📄 PDF: ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΦΟΡΑ (P&L + αναλυτικά έξοδα + μηνιαία εξέλιξη, όλα μαζί) ---
+def generate_full_financial_report_pdf(period_label, months_data, expense_entries_scope, tax_rate, now_str):
+    """Ολοκληρωμένη οικονομική αναφορά: Executive Summary -> Πλήρες P&L -> Αναλυτικά Έξοδα
+    ανά κατηγορία/υποκατηγορία -> Μηνιαία εξέλιξη με γράφημα.
+    `months_data`: λίστα dict (ίδια δομή με generate_all_months_pl_comparison_pdf) για την επιλεγμένη περίοδο.
+    `expense_entries_scope`: όλες οι εγγραφές expense_entries ΜΕΣΑ στην επιλεγμένη περίοδο."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    RED = (176, 0, 32)
+    BLUE = (27, 94, 158)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    def header_bar(subtitle):
+        pdf.set_fill_color(*GREEN)
+        pdf.rect(0, 0, 210, 26, 'F')
+        pdf.set_xy(10, 6)
+        pdf.set_font(f_name, 'B', 16)
+        pdf.set_text_color(*WHITE)
+        pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+        pdf.set_x(10)
+        pdf.set_font(f_name, size=11)
+        pdf.cell(0, 6, subtitle, ln=1)
+        pdf.set_text_color(*DARK)
+        pdf.ln(14)
+
+    def section(title):
+        pdf.set_font(f_name, 'B', 12)
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.cell(0, 8, title, ln=1, fill=True)
+        pdf.ln(1)
+
+    def row(label, value, bold=False, color=None, indent=0):
+        pdf.set_font(f_name, 'B' if bold else '', 10)
+        pdf.set_text_color(*(color or DARK))
+        pdf.cell(10 * indent, 7)
+        pdf.cell(120 - 10 * indent, 7, label)
+        pdf.cell(60, 7, value, align='R', ln=1)
+        pdf.set_text_color(*DARK)
+
+    def divider():
+        pdf.ln(1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(3)
+
+    header_bar(f"Πλήρης Οικονομική Αναφορά — {period_label}")
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(3)
+
+    total_revenue = sum(m["revenue"] for m in months_data)
+    total_cogs = sum(m["cogs"] for m in months_data)
+    total_gross = sum(m["gross_profit"] for m in months_data)
+    total_fixed = sum(m["fixed_costs"] for m in months_data)
+    total_net = sum(m["net_profit"] for m in months_data)
+    total_tax = sum(m["tax"] for m in months_data)
+    total_net_after = sum(m["net_after_tax"] for m in months_data)
+    gross_margin_pct = (total_gross / total_revenue * 100) if total_revenue else 0
+    net_margin_pct = (total_net_after / total_revenue * 100) if total_revenue else 0
+
+    # --- EXECUTIVE SUMMARY ---
+    section("ΣΥΝΟΨΗ")
+    row("Περίοδος", period_label)
+    row("Μήνες με δεδομένα", f"{len(months_data)}")
+    row("Τζίρος", f"{total_revenue:,.2f} EUR", bold=True)
+    row("Μικτό Κέρδος", f"{total_gross:,.2f} EUR ({gross_margin_pct:.1f}%)")
+    row("Καθαρό Κέρδος (μετά φόρων)", f"{total_net_after:,.2f} EUR ({net_margin_pct:.1f}%)", bold=True, color=GREEN if total_net_after >= 0 else RED)
+    divider()
+
+    # --- ΠΛΗΡΕΣ P&L ---
+    section("ΚΑΤΑΣΤΑΣΗ ΑΠΟΤΕΛΕΣΜΑΤΩΝ (P&L)")
+    row("Τζίρος (Θεωρητικά Έσοδα)", f"{total_revenue:,.2f} EUR", bold=True)
+    row("Κόστος Πωληθέντων (COGS)", f"-{total_cogs:,.2f} EUR", color=RED)
+    row("Μικτό Κέρδος", f"{total_gross:,.2f} EUR", bold=True)
+    row("Σύνολο Λειτουργικών Εξόδων", f"-{total_fixed:,.2f} EUR", color=RED)
+    row("Καθαρό Αποτέλεσμα (προ φόρων)", f"{total_net:,.2f} EUR", bold=True)
+    row(f"Φόρος Εισοδήματος ({tax_rate:.0f}%)", f"-{total_tax:,.2f} EUR", color=RED)
+    row("ΚΑΘΑΡΟ ΑΠΟΤΕΛΕΣΜΑ (μετά φόρων)", f"{total_net_after:,.2f} EUR", bold=True, color=GREEN if total_net_after >= 0 else RED)
+    divider()
+
+    # --- ΑΝΑΛΥΤΙΚΑ ΕΞΟΔΑ ανά κατηγορία/υποκατηγορία, μέσα στην περίοδο ---
+    section("ΑΝΑΛΥΤΙΚΑ ΛΕΙΤΟΥΡΓΙΚΑ ΕΞΟΔΑ")
+    for category in EXPENSE_CATEGORIES:
+        cat_entries = [e for e in expense_entries_scope if e.get("category") == category]
+        cat_total = sum(float(e.get("amount") or 0.0) for e in cat_entries)
+        if not cat_entries:
+            continue
+        row(category, f"{cat_total:,.2f} EUR", bold=True, color=BLUE)
+        subcats_seen = []
+        for e in cat_entries:
+            if e["subcategory"] not in subcats_seen:
+                subcats_seen.append(e["subcategory"])
+        for subcat in subcats_seen:
+            sub_total = sum(float(e.get("amount") or 0.0) for e in cat_entries if e["subcategory"] == subcat)
+            if sub_total > 0:
+                row(subcat, f"{sub_total:,.2f} EUR", indent=1)
+    divider()
+
+    # --- ΜΗΝΙΑΙΑ ΕΞΕΛΙΞΗ (πίνακας) ---
+    pdf.add_page()
+    header_bar(f"Μηνιαία Εξέλιξη — {period_label}")
+    pdf.set_font(f_name, 'B', 8)
+    pdf.set_fill_color(*LIGHTGREY)
+    cols = [("Μήνας", 22), ("Τζίρος", 32), ("COGS", 30), ("Μικτό", 32), ("Έξοδα", 30), ("Καθαρό μετά φόρων", 44)]
+    for label, w in cols:
+        pdf.cell(w, 7, label, border=1, fill=True, align='C')
+    pdf.ln()
+    pdf.set_font(f_name, size=8)
+    for i, m in enumerate(months_data):
+        pdf.set_fill_color(250, 250, 250) if i % 2 == 0 else pdf.set_fill_color(*WHITE)
+        pdf.cell(cols[0][1], 6, m["month"], border=1, fill=True, align='C')
+        pdf.cell(cols[1][1], 6, f"{m['revenue']:,.2f}", border=1, fill=True, align='R')
+        pdf.cell(cols[2][1], 6, f"{m['cogs']:,.2f}", border=1, fill=True, align='R')
+        pdf.cell(cols[3][1], 6, f"{m['gross_profit']:,.2f}", border=1, fill=True, align='R')
+        pdf.cell(cols[4][1], 6, f"{m['fixed_costs']:,.2f}", border=1, fill=True, align='R')
+        _c = GREEN if m['net_after_tax'] >= 0 else RED
+        pdf.set_text_color(*_c)
+        pdf.cell(cols[5][1], 6, f"{m['net_after_tax']:,.2f}", border=1, fill=True, align='R')
+        pdf.set_text_color(*DARK)
+        pdf.ln()
+    pdf.ln(10)
+
+    # --- ΓΡΑΦΗΜΑ (χειροποίητο) ---
+    if months_data:
+        pdf.set_font(f_name, 'B', 11)
+        pdf.cell(0, 8, "Τζίρος vs Καθαρό Κέρδος (μετά φόρων) ανά Μήνα", ln=1)
+        pdf.ln(2)
+        chart_x0, chart_y0, chart_w, chart_h = 15, pdf.get_y(), 180, 65
+        n = len(months_data)
+        max_val = max([abs(m['revenue']) for m in months_data] + [abs(m['net_after_tax']) for m in months_data] + [1])
+        group_w = chart_w / max(n, 1)
+        bar_w = group_w * 0.35
+        zero_y = chart_y0 + chart_h * 0.85
+        pdf.set_draw_color(180, 180, 180)
+        pdf.line(chart_x0, zero_y, chart_x0 + chart_w, zero_y)
+        for i, m in enumerate(months_data):
+            gx = chart_x0 + i * group_w + group_w * 0.15
+            rev_h = (abs(m['revenue']) / max_val) * (chart_h * 0.8)
+            pdf.set_fill_color(*BLUE)
+            pdf.rect(gx, zero_y - rev_h, bar_w, rev_h, 'F')
+            net_val = m['net_after_tax']
+            net_h = (abs(net_val) / max_val) * (chart_h * 0.8)
+            _c = GREEN if net_val >= 0 else RED
+            pdf.set_fill_color(*_c)
+            if net_val >= 0:
+                pdf.rect(gx + bar_w * 1.1, zero_y - net_h, bar_w, net_h, 'F')
+            else:
+                pdf.rect(gx + bar_w * 1.1, zero_y, bar_w, net_h, 'F')
+            pdf.set_font(f_name, size=6.5)
+            pdf.set_xy(chart_x0 + i * group_w, zero_y + 2)
+            pdf.cell(group_w, 4, m["month"], align='C')
+        legend_y = zero_y + 10
+        pdf.set_fill_color(*BLUE)
+        pdf.rect(chart_x0, legend_y, 4, 4, 'F')
+        pdf.set_font(f_name, size=8)
+        pdf.set_xy(chart_x0 + 6, legend_y - 1)
+        pdf.cell(30, 6, "Τζίρος")
+        pdf.set_fill_color(*GREEN)
+        pdf.rect(chart_x0 + 45, legend_y, 4, 4, 'F')
+        pdf.set_xy(chart_x0 + 51, legend_y - 1)
+        pdf.cell(50, 6, "Καθαρό Κέρδος (μετά φόρων)")
+
+    pdf.set_y(-15)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Πλήρης Οικονομική Αναφορά", align='C')
+
+    return pdf.output()
+
 def generate_all_months_pl_comparison_pdf(months_data, tax_rate, now_str):
     """Πίνακας + γράφημα (σχεδιασμένο απευθείας με FPDF, χωρίς matplotlib) που συγκρίνει
     Τζίρο/COGS/Μικτό/Σταθερά/Καθαρό μεταξύ ΟΛΩΝ των μηνών που υπάρχουν δεδομένα.
@@ -5708,6 +5894,26 @@ elif page == "📑 Έσοδα - Έξοδα":
                     )
                 except Exception as e:
                     st.error(f"Σφάλμα προετοιμασίας PDF σύγκρισης: {e}")
+
+                # --- 🗂️ ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΦΟΡΑ (P&L + αναλυτικά έξοδα + μηνιαία εξέλιξη, όλα μαζί) ---
+                st.divider()
+                st.subheader("🗂️ Πλήρης Οικονομική Αναφορά")
+                st.caption("Ένα ολοκληρωμένο έγγραφο: σύνοψη, πλήρες P&L, αναλυτικά έξοδα ανά κατηγορία/υποκατηγορία, και μηνιαία εξέλιξη με γράφημα — για όλη την περίοδο που καλύπτουν τα δεδομένα σου.")
+                try:
+                    _report_months_set = {m["month"] for m in _months_data}
+                    _expense_scope = [e for e in load_all_expense_entries() if e.get("month_year") in _report_months_set]
+                    _period_label_full = f"{_months_data[0]['month']} έως {_months_data[-1]['month']}" if _months_data else "—"
+                    _full_report_pdf_bytes = generate_full_financial_report_pdf(_period_label_full, _months_data, _expense_scope, tax_rate_pl, _now_str_allm)
+                    st.download_button(
+                        "📄 Λήψη Πλήρους Οικονομικής Αναφοράς",
+                        data=bytes(_full_report_pdf_bytes),
+                        file_name=f"Cabclub_Plires_Oikonomiki_Anafora_{_now_str_allm.replace('/', '-').replace(':', 'h')}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Σφάλμα προετοιμασίας πλήρους αναφοράς: {e}")
 
 elif page == "🎁 Κιβωτιακή Πολιτική":
     st.header("🎁 Κιβωτιακή Πολιτική Δώρων")
