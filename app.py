@@ -1628,20 +1628,6 @@ url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
 
-# --- ΣΥΣΤΗΜΑ LIVE STATUS ---
-def update_live_status(user_name):
-    with open("app_status.txt", "w", encoding="utf-8") as f:
-        f.write(f"{user_name}|{time.time()}")
-
-def get_who_is_online():
-    if os.path.exists("app_status.txt"):
-        with open("app_status.txt", "r", encoding="utf-8") as f:
-            data = f.read().split("|")
-            if len(data) == 2:
-                user, last_time = data[0], float(data[1])
-                if time.time() - last_time < 60:
-                    return user
-    return None
 
 # --- Σύστημα Password ---
 def check_password():
@@ -1679,7 +1665,7 @@ st.markdown(
 
 st.divider()
 
-# Προσθήκη CSS (Διορθωμένο μέγεθος Metrics)
+# Προσθήκη CSS (Διορθωμένο μέγεθος Metrics + περισσότερο χρώμα)
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; }
@@ -1692,18 +1678,57 @@ st.markdown("""
     }
     
     div[data-testid="stMetric"] { 
-        background-color: #1e2129; 
-        border: 1px solid #333; 
+        background: linear-gradient(145deg, #1e2129, #23272f);
+        border: 1px solid #2d3340;
+        border-left: 3px solid #00c9a7;
         padding: 15px; 
         border-radius: 10px; 
         box-shadow: 2px 2px 10px rgba(0,0,0,0.5); 
         overflow: visible !important;
+        transition: border-left-color 0.2s ease;
     }
+    div[data-testid="stMetric"]:hover { border-left: 3px solid #00ffcc; }
     
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #3e4451; color: white; border: none; }
-    .stButton>button:hover { border: 1px solid #00ffcc; color: #00ffcc; }
+    /* 🎨 Κουμπιά με πιο ζωντανό, βαθμιδωτό χρώμα */
+    .stButton>button {
+        width: 100%; border-radius: 8px; height: 3em;
+        background: linear-gradient(135deg, #3e4451, #2b2f38);
+        color: white; border: 1px solid #3e4451;
+        transition: all 0.2s ease;
+    }
+    .stButton>button:hover {
+        border: 1px solid #00ffcc;
+        background: linear-gradient(135deg, #00966b, #007a5a);
+        color: white;
+        box-shadow: 0 2px 12px rgba(0,255,204,0.25);
+    }
+    div[data-testid="stDownloadButton"] button {
+        background: linear-gradient(135deg, #009b3a, #00c9a7) !important;
+        border: none !important; color: white !important;
+    }
+
+    /* 🎨 Sidebar — ελαφρύ χρωματικό βάθος αντί για επίπεδο μαύρο */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #12151c 0%, #0e1117 100%);
+        border-right: 1px solid #23272f;
+    }
+    section[data-testid="stSidebar"] label { color: #d0d5dd !important; }
+
+    /* 🎨 Επιλεγμένο radio -> τονισμένο με το πράσινο branding */
+    div[role="radiogroup"] label[data-checked="true"] { color: #00ffcc !important; }
+
+    /* 🎨 Πιο ζωντανά tabs (st.tabs) */
+    button[data-baseweb="tab"] { border-radius: 6px 6px 0 0; }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background: linear-gradient(180deg, rgba(0,201,167,0.15), transparent);
+        border-bottom: 2px solid #00c9a7 !important;
+    }
+
+    /* 🎨 Expander headers με λεπτή χρωματική πινελιά */
+    details > summary { border-left: 2px solid #009b3a; padding-left: 8px; }
     </style>
     """, unsafe_allow_html=True)
+
 
 # Σταθερές
 _TOTAL_FIXED_FALLBACK = 0.22  # παλιό, αρχικό fallback — χρησιμοποιείται όταν το χειροκίνητο σενάριο κόστους είναι ΑΝΕΝΕΡΓΟ
@@ -1962,16 +1987,6 @@ with st.sidebar:
     
     st.divider()
 
-    # --- Live Status User Selection ---
-    current_user = st.selectbox("👤 Είσαι ο:", ["Χρήστης Α", "Χρήστης Β"], key="user_select")
-    update_live_status(current_user)
-    online_user = get_who_is_online()
-
-    if online_user and online_user != current_user:
-        st.success(f"🟢 Ο {online_user} είναι online!")
-    else:
-        st.info("⚪️ Μόνος στην εφαρμογή")
-
     st.divider()
 
     # 2. Κεντρικό Μενού — 2 επίπεδα: πρώτα κατηγορία, μετά συγκεκριμένη καρτέλα
@@ -1993,8 +2008,13 @@ with st.sidebar:
         ],
     }
 
-    selected_group = st.radio("Κατηγορία:", list(MENU_GROUPS.keys()), key="main_group")
-    page = st.radio("Καρτέλα:", MENU_GROUPS[selected_group], key=f"sub_page_{selected_group}")
+    HOME_LABEL = "🏠 Αρχική"
+    category_options = [HOME_LABEL] + list(MENU_GROUPS.keys())
+    selected_group = st.radio("Κατηγορία:", category_options, key="main_group")
+    if selected_group == HOME_LABEL:
+        page = HOME_LABEL
+    else:
+        page = st.radio("Καρτέλα:", MENU_GROUPS[selected_group], key=f"sub_page_{selected_group}")
 
     st.divider()
 
@@ -2058,8 +2078,75 @@ with st.sidebar:
 # ΑΠΟ ΕΔΩ ΚΑΙ ΚΑΤΩ ΞΕΚΙΝΑΕΙ ΤΟ ΜΕΝΟΥ (Αποθήκη κ.λπ.)
 # (Δηλαδή το αμέσως επόμενο είναι: if page == "📦 Αποθήκη":)
 # ==========================================
+if page == "🏠 Αρχική":
+    try:
+        _home_now = datetime.now(greece_tz)
+    except Exception:
+        _home_now = datetime.now()
+    _hour = _home_now.hour
+    _greeting = "Καλημέρα" if 5 <= _hour < 12 else ("Καλησπέρα" if 12 <= _hour < 20 else "Καλό βράδυ")
+
+    st.markdown(f"""
+        <div style='background: linear-gradient(135deg, #009b3a 0%, #00c9a7 50%, #00ffcc 100%);
+                    padding: 28px 32px; border-radius: 16px; margin-bottom: 24px;
+                    box-shadow: 0 4px 20px rgba(0,201,167,0.25);'>
+            <h1 style='color: white; margin: 0; font-size: 30px;'>{_greeting}! 👋</h1>
+            <p style='color: rgba(255,255,255,0.9); margin: 6px 0 0 0; font-size: 15px;'>
+                {_home_now.strftime('%A %d %B %Y')} — Καλωσήρθες στο DC Cabclub.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # --- Γρήγορη Εικόνα (φρέσκα νούμερα, τρέχων μήνας) ---
+    try:
+        _cur_month_label = _home_now.strftime("%m/%Y")
+        _res_home_prod = supabase.table("production_log").select("pieces, prod_date, customer").execute()
+        _df_home = pd.DataFrame(_res_home_prod.data) if _res_home_prod.data else pd.DataFrame()
+        if not _df_home.empty:
+            _df_home["parsed"] = pd.to_datetime(_df_home["prod_date"], format="%d/%m/%Y", errors="coerce")
+            _df_home = _df_home.dropna(subset=["parsed"])
+            _df_home_month = _df_home[_df_home["parsed"].dt.strftime("%m/%Y") == _cur_month_label]
+            _pieces_month = pd.to_numeric(_df_home_month["pieces"], errors="coerce").fillna(0).sum()
+            _customers_month = _df_home_month["customer"].nunique()
+            _today_label = _home_now.strftime("%d/%m/%Y")
+            _pieces_today = pd.to_numeric(_df_home[_df_home["prod_date"] == _today_label]["pieces"], errors="coerce").fillna(0).sum()
+        else:
+            _pieces_month, _customers_month, _pieces_today = 0, 0, 0
+
+        _fixed_this_month = get_month_grand_total(_cur_month_label)
+
+        hc1, hc2, hc3, hc4 = st.columns(4)
+        hc1.metric("📦 Τεμάχια Σήμερα", f"{int(_pieces_today):,}")
+        hc2.metric(f"🍹 Τεμάχια {_cur_month_label}", f"{int(_pieces_month):,}")
+        hc3.metric("👥 Πελάτες αυτόν τον μήνα", f"{int(_customers_month)}")
+        hc4.metric(f"💸 Έξοδα {_cur_month_label}", f"{_fixed_this_month:,.0f} €")
+    except Exception:
+        st.caption("ℹ️ Δεν ήταν δυνατή η φόρτωση γρήγορης εικόνας αυτή τη στιγμή.")
+
+    st.divider()
+    st.subheader("⚡ Γρήγορη Πρόσβαση")
+
+    def _quick_jump(group, sub_page):
+        st.session_state["main_group"] = group
+        st.session_state[f"sub_page_{group}"] = sub_page
+        st.rerun()
+
+    qc1, qc2, qc3, qc4 = st.columns(4)
+    with qc1:
+        if st.button("📦 Lot Παραγωγής", use_container_width=True):
+            _quick_jump("🏭 Παραγωγή & Απόθεμα", "📦 Lot Παραγωγής")
+    with qc2:
+        if st.button("📈 Dashboard", use_container_width=True):
+            _quick_jump("📊 Επιχείρηση & Πωλήσεις", "📈 Dashboard")
+    with qc3:
+        if st.button("💸 Έξοδα", use_container_width=True):
+            _quick_jump("💰 Κοστολόγηση & Τιμολόγηση", "💸 Έξοδα")
+    with qc4:
+        if st.button("📑 Έσοδα - Έξοδα", use_container_width=True):
+            _quick_jump("📊 Επιχείρηση & Πωλήσεις", "📑 Έσοδα - Έξοδα")
+
 # --- 1. ΑΠΟΘΗΚΗ (ΦΟΡΜΑ ΑΝΤΙ ΓΙΑ ΠΙΝΑΚΑ) ---
-if page == "📦 Αποθήκη":
+elif page == "📦 Αποθήκη":
     
     st.header("📦 Διαχείριση Υλικών")
     
