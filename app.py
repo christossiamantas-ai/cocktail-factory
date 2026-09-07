@@ -6029,8 +6029,12 @@ elif page == "🎯 Νεκρό Σημείο":
             _fc_year_str = str(datetime.now().year)
 
         try:
-            _res_fc_prod = supabase.table("production_log").select("cocktail_name, pieces, applied_cost, prod_date, free_pieces, discounted_pieces, discount_pct").execute()
+            _res_fc_prod = supabase.table("production_log").select("cocktail_name, pieces, applied_cost, prod_date, prod_time, customer, lot_cocktail, free_pieces, discounted_pieces, discount_pct").execute()
             df_fc_prod = pd.DataFrame(_res_fc_prod.data) if _res_fc_prod.data else pd.DataFrame()
+            if not df_fc_prod.empty:
+                # 🔧 FIX: χωρίς αυτό, τυχόν παλιές διπλότυπες εγγραφές (π.χ. από το γνωστό ιστορικό bug
+                # με τα B2B ραντεβού) μετριούνται πολλαπλές φορές — ίδιο dedup με το υπόλοιπο εργαλείο.
+                df_fc_prod = df_fc_prod.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
         except Exception as e:
             df_fc_prod = pd.DataFrame()
             st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
