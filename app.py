@@ -1655,7 +1655,7 @@ if not check_password():
 st.markdown(
     """
     <h2 style='color: #009b3a; text-align: center; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); margin-top: 10px;'>
-        "Stay Drunk With Our Cocktails!!!"
+        "Κοκτέιλ τόσο καλά, που ανασταίνουν και... Zombie!"
     </h2>
     <br>
     """, 
@@ -2102,6 +2102,9 @@ if page == "🏠 Αρχική":
             <h1 style='color: white; margin: 0; font-size: 30px;'>{_greeting}! 👋</h1>
             <p style='color: rgba(255,255,255,0.9); margin: 6px 0 0 0; font-size: 15px;'>
                 {_home_now.strftime('%A %d %B %Y')} — Καλωσήρθες στο DC Cabclub.
+            </p>
+            <p style='color: white; font-weight: 800; font-size: 20px; margin: 14px 0 0 0; text-shadow: 0 1px 4px rgba(0,0,0,0.2);'>
+                "Stay Drunk With Our Cocktails!!!"
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -5864,6 +5867,73 @@ elif page == "🎯 Νεκρό Σημείο":
     st.subheader("3️⃣ Αποτέλεσμα Νεκρού Σημείου")
     if contribution_margin <= 0:
         st.error("⚠️ Το περιθώριο συνεισφοράς είναι μηδενικό ή αρνητικό — δεν υπάρχει σημείο νεκρού σημείου με τα τρέχοντα δεδομένα (χάνεις χρήματα σε κάθε τεμάχιο).")
+
+        # --- 🎯 Αντίστροφος υπολογισμός: πόσο markup/margin χρειάζεται για να φτάσεις στο 0 ---
+        st.divider()
+        st.subheader("🎯 Τι Χρειάζεται να Αλλάξεις για να Φτάσεις στο Νεκρό Σημείο")
+        st.caption("Με βάση τον πραγματικό μέσο μηνιαίο όγκο πωλήσεών σου, υπολογίζουμε το ελάχιστο markup/margin ώστε να καλύπτεις ΑΚΡΙΒΩΣ τα σταθερά σου έξοδα (0€ κέρδος/ζημία) — όχι παραπάνω.")
+
+        avg_cost = (total_cost / total_paid_pieces) if total_paid_pieces else 0
+        _months_for_avg = _be_months_covered if (_be_months_covered and _be_months_covered > 0) else max(1, len(_months_with_data_be))
+        avg_monthly_volume = (total_paid_pieces / _months_for_avg) if _months_for_avg else 0
+
+        if avg_monthly_volume > 0 and avg_cost > 0:
+            required_margin_per_unit = monthly_fixed / avg_monthly_volume
+            new_avg_price = avg_cost + required_margin_per_unit
+            new_markup = (required_margin_per_unit / avg_cost) * 100
+            new_margin = (required_margin_per_unit / new_avg_price) * 100
+            current_markup = ((ref_price - avg_cost) / avg_cost * 100) if avg_cost else 0
+            current_margin = ((ref_price - avg_cost) / ref_price * 100) if ref_price else 0
+
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("Απαιτούμενο Markup", f"{new_markup:.1f}%", delta=f"{(new_markup-current_markup):+.1f} pp έναντι σημερινού")
+            mc2.metric("Απαιτούμενο Margin", f"{new_margin:.1f}%", delta=f"{(new_margin-current_margin):+.1f} pp έναντι σημερινού")
+            mc3.metric("Νέα Μέση Τιμή", f"{new_avg_price:.2f} €", delta=f"{(new_avg_price-ref_price):+.2f} € έναντι {ref_price:.2f}€ σήμερα")
+            st.caption(f"Υπολογισμός βάσει μέσου μηνιαίου όγκου {avg_monthly_volume:,.0f} τεμαχίων ({int(total_paid_pieces):,} τεμάχια ÷ {_months_for_avg} μήνα/ες).")
+
+            # --- Πίνακας: παλιά vs νέα τιμή ανά κοκτέιλ, εφαρμόζοντας το ΙΔΙΟ απαιτούμενο markup ---
+            st.markdown("#### 📋 Προτεινόμενες Νέες Τιμές ανά Κοκτέιλ")
+            st.caption(f"Εφαρμόζοντας το απαιτούμενο markup ({new_markup:.1f}%) στο δικό του κόστος κάθε κοκτέιλ.")
+
+            def _be_raw_cost_row(recipe_row):
+                total = 0.0
+                for i in range(1, 14):
+                    ing_n = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                    ml = float(recipe_row.get(f"ML{i}", 0) or 0)
+                    if ing_n in ["ΚΕΝΟ", "nan", "", "Νερό"] or ml <= 0:
+                        continue
+                    match_ing = df_ing[df_ing["Name"] == ing_n]
+                    if not match_ing.empty:
+                        total += ml * float(match_ing.iloc[0].get("Τιμή/ml", 0) or 0)
+                return total
+
+            price_rows = []
+            for _, r_be2 in df_rec.iterrows():
+                c_name_be2 = r_be2["Ονομα"]
+                old_price_be2 = float(r_be2.get("Τιμή Καταλόγου", 0.0) or 0.0)
+                cocktail_cost_be2 = get_unit_cost_for_cocktail(c_name_be2, _be_raw_cost_row(r_be2))
+                if old_price_be2 <= 0 or cocktail_cost_be2 <= 0:
+                    continue
+                new_price_be2 = cocktail_cost_be2 * (1 + new_markup / 100)
+                price_rows.append({"Κοκτέιλ": c_name_be2, "Παλιά Τιμή (€)": round(old_price_be2, 2), "Νέα Τιμή (€)": round(new_price_be2, 2)})
+
+            if price_rows:
+                df_price_be = pd.DataFrame(price_rows)
+
+                def _hl_be(row):
+                    styles = [''] * len(row)
+                    idx = row.index.get_loc("Νέα Τιμή (€)")
+                    if row["Νέα Τιμή (€)"] > row["Παλιά Τιμή (€)"]:
+                        styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
+                    elif row["Νέα Τιμή (€)"] < row["Παλιά Τιμή (€)"]:
+                        styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
+                    return styles
+
+                st.dataframe(df_price_be.style.apply(_hl_be, axis=1), use_container_width=True, hide_index=True)
+            else:
+                st.info("Δεν βρέθηκαν κοκτέιλ με έγκυρη τιμή/κόστος για τον πίνακα.")
+        else:
+            st.warning("Δεν υπάρχουν αρκετά δεδομένα (όγκος πωλήσεων ή κόστος) για τον αντίστροφο υπολογισμό.")
     else:
         be_units_month = monthly_fixed / contribution_margin
         be_units_year = yearly_fixed / contribution_margin
