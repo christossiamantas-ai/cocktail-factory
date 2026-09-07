@@ -6298,7 +6298,24 @@ elif page == "🎯 Νεκρό Σημείο":
             st.markdown("### 📋 Προτεινόμενες Νέες Τιμές ανά Σενάριο (ώστε να φτάσεις στο 0)")
             st.caption("Για κάθε σενάριο όπου το αποτέλεσμα είναι αρνητικό, υπολογίζεται το ελάχιστο ποσοστό αύξησης τιμών (ίδιο % σε όλα τα κοκτέιλ) ώστε ο ετήσιος τζίρος να καλύπτει ακριβώς το κόστος + τα σταθερά έξοδα.")
 
+
             fc_price_tables = {}  # θα κρατήσει τα δεδομένα κάθε σεναρίου, για το PDF παρακάτω
+
+            # 🔧 FIX: εδώ ΛΕΙΠΕ ο υπολογισμός κόστους πρώτων υλών — περνούσε 0.0, οπότε το
+            # get_unit_cost_for_cocktail επέστρεφε μόνο το σταθερό κομμάτι (Κόστος Συσκευασίας ή
+            # +0,22 ανάλογα με το σενάριο), ΧΩΡΙΣ τα πρώτα υλικά. Ίδια μεθοδολογία με το υπόλοιπο εργαλείο.
+            def _fc_raw_material_cost(recipe_row):
+                total = 0.0
+                for i in range(1, 14):
+                    ing_n = str(recipe_row.get(f"ΣΥΣΤΑΤΙΚΟ{i}", "ΚΕΝΟ")).strip()
+                    ml = float(recipe_row.get(f"ML{i}", 0) or 0)
+                    if ing_n in ["ΚΕΝΟ", "nan", "", "Νερό"] or ml <= 0:
+                        continue
+                    match_ing_fc = df_ing[df_ing["Name"] == ing_n]
+                    if not match_ing_fc.empty:
+                        total += ml * float(match_ing_fc.iloc[0].get("Τιμή/ml", 0) or 0)
+                return total
+
             for label, res in fc_results.items():
                 with st.expander(f"{label} — {'✅ Ήδη κερδοφόρο' if res['profit'] >= 0 else '❌ Χρειάζεται αύξηση τιμών'}", expanded=(res['profit'] < 0)):
                     if res["profit"] >= 0:
@@ -6321,7 +6338,7 @@ elif page == "🎯 Νεκρό Σημείο":
                         if old_price_fc <= 0:
                             continue
                         new_price_fc = old_price_fc * (1 + price_increase_pct / 100)
-                        cocktail_cost_fc = get_unit_cost_for_cocktail(c_name_fc, 0.0)
+                        cocktail_cost_fc = get_unit_cost_for_cocktail(c_name_fc, _fc_raw_material_cost(r_fc2))
                         price_rows_fc.append({
                             "Κοκτέιλ": c_name_fc,
                             "Κόστος (€)": round(cocktail_cost_fc, 2),
