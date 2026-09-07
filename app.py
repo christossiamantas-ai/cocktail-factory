@@ -878,6 +878,171 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
 
     return pdf.output()
 
+def generate_breakeven_blended_pdf(data, now_str):
+    """Πλήρης αναφορά Νεκρού Σημείου (Μέσο Μείγμα Πωλήσεων): σταθερά έξοδα (μέσος όρος +
+    ανά μήνα), υπολογισμός περιθωρίου συνεισφοράς, αποτέλεσμα, και γράφημα."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    RED = (176, 0, 32)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    def header_bar(subtitle):
+        pdf.set_fill_color(*GREEN)
+        pdf.rect(0, 0, 210, 26, 'F')
+        pdf.set_xy(10, 6)
+        pdf.set_font(f_name, 'B', 16)
+        pdf.set_text_color(*WHITE)
+        pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+        pdf.set_x(10)
+        pdf.set_font(f_name, size=11)
+        pdf.cell(0, 6, subtitle, ln=1)
+        pdf.set_text_color(*DARK)
+        pdf.ln(14)
+
+    def section(title):
+        pdf.set_font(f_name, 'B', 12)
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.cell(0, 8, title, ln=1, fill=True)
+        pdf.ln(1)
+
+    def row(label, value, bold=False, color=None, indent=0):
+        pdf.set_font(f_name, 'B' if bold else '', 10)
+        pdf.set_text_color(*(color or DARK))
+        if indent > 0:
+            pdf.cell(10 * indent, 7)
+        pdf.cell(120 - 10 * indent, 7, label)
+        pdf.cell(60, 7, value, align='R', ln=1)
+        pdf.set_text_color(*DARK)
+
+    def divider():
+        pdf.ln(1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(3)
+
+    header_bar("Νεκρό Σημείο (Break-Even) — Μέσο Μείγμα Πωλήσεων")
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(3)
+
+    # --- ΣΥΝΟΨΗ (μεγάλο, ευδιάκριτο κουτί) ---
+    pdf.set_fill_color(230, 244, 234)
+    pdf.set_draw_color(*GREEN)
+    pdf.set_font(f_name, 'B', 13)
+    pdf.set_text_color(*GREEN)
+    pdf.cell(95, 16, f"Νεκρό Σημείο / Μήνα\n{data['be_units_month']:,.0f} τεμάχια", border=1, fill=True, align='C')
+    pdf.cell(95, 16, f"Νεκρό Σημείο / Έτος\n{data['be_units_year']:,.0f} τεμάχια", border=1, fill=True, align='C', ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(4)
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(95, 5, f"≈ {data['be_revenue_month']:,.0f} EUR τζίρος/μήνα", align='C')
+    pdf.cell(95, 5, f"≈ {data['be_revenue_year']:,.0f} EUR τζίρος/έτος", align='C', ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(8)
+
+    # --- ΣΤΑΘΕΡΑ ΕΞΟΔΑ ---
+    section("ΣΤΑΘΕΡΑ ΕΞΟΔΑ ΕΠΙΧΕΙΡΗΣΗΣ")
+    row("Μέσος Όρος (βάση υπολογισμού)", f"{data['monthly_fixed']:,.2f} EUR/μήνα", bold=True)
+    row("Μήνες που χρησιμοποιήθηκαν", f"{data['fixed_months_count']}")
+    if data.get("fixed_per_month"):
+        pdf.ln(1)
+        pdf.set_font(f_name, size=9)
+        pdf.set_text_color(*GREY)
+        pdf.cell(0, 5, "Ανάλυση ανά μήνα:", ln=1)
+        pdf.set_text_color(*DARK)
+        for my, amt in data["fixed_per_month"]:
+            row(my, f"{amt:,.2f} EUR", indent=1)
+    divider()
+
+    # --- ΠΕΡΙΘΩΡΙΟ ΣΥΝΕΙΣΦΟΡΑΣ (Μέσο Μείγμα) ---
+    section("ΠΕΡΙΘΩΡΙΟ ΣΥΝΕΙΣΦΟΡΑΣ — ΜΕΣΟ ΜΕΙΓΜΑ ΠΩΛΗΣΕΩΝ")
+    row("Πληρωμένα Τεμάχια (βάση υπολογισμού)", f"{int(data['total_paid_pieces']):,}")
+    row("Συνολικός Τζίρος (ιστορικός)", f"{data['total_revenue']:,.2f} EUR")
+    row("Συνολικό Κόστος (ιστορικό)", f"{data['total_cost']:,.2f} EUR")
+    row("Μέση Τιμή Πώλησης / Τεμάχιο", f"{data['ref_price']:.2f} EUR", bold=True)
+    row("Μέσο Κόστος / Τεμάχιο", f"{(data['total_cost']/data['total_paid_pieces']):.2f} EUR" if data['total_paid_pieces'] else "—")
+    row("Περιθώριο Συνεισφοράς / Τεμάχιο", f"{data['contribution_margin']:.2f} EUR", bold=True, color=GREEN)
+    divider()
+
+    if data.get("months_covered") and data["months_covered"] < 12:
+        pdf.set_font(f_name, size=9)
+        pdf.set_text_color(*RED)
+        pdf.multi_cell(0, 5, f"ΠΡΟΣΟΧΗ: Ο υπολογισμός βασίζεται σε δεδομένα που καλύπτουν μόνο {data['months_covered']} μήνες. Αν το μείγμα πωλήσεων διαφέρει σε άλλες περιόδους (π.χ. εποχικότητα), το πραγματικό ετήσιο αποτέλεσμα μπορεί να διαφέρει από αυτή την εκτίμηση.")
+        pdf.set_text_color(*DARK)
+        pdf.ln(3)
+
+    # --- ΓΡΑΦΗΜΑ (χειροποίητο) ---
+    pdf.add_page()
+    header_bar("Γράφημα Νεκρού Σημείου (μηνιαία βάση)")
+    chart_x0, chart_y0, chart_w, chart_h = 20, pdf.get_y() + 5, 170, 90
+    be_units = data['be_units_month']
+    max_units = be_units * 2 if be_units > 0 else 10
+    max_cost = data['monthly_fixed'] + max_units * (data['ref_price'] - data['contribution_margin'])
+    max_revenue = max_units * data['ref_price']
+    max_val = max(max_cost, max_revenue, 1)
+
+    pdf.set_draw_color(180, 180, 180)
+    pdf.line(chart_x0, chart_y0, chart_x0, chart_y0 + chart_h)  # άξονας Y
+    pdf.line(chart_x0, chart_y0 + chart_h, chart_x0 + chart_w, chart_y0 + chart_h)  # άξονας X
+
+    def to_xy(units, value):
+        px = chart_x0 + (units / max_units) * chart_w if max_units else chart_x0
+        py = chart_y0 + chart_h - (value / max_val) * chart_h if max_val else chart_y0 + chart_h
+        return px, py
+
+    x1, y1 = to_xy(0, data['monthly_fixed'])
+    x2, y2 = to_xy(max_units, max_cost)
+    pdf.set_draw_color(*RED)
+    pdf.line(x1, y1, x2, y2)
+    x1r, y1r = to_xy(0, 0)
+    x2r, y2r = to_xy(max_units, max_revenue)
+    pdf.set_draw_color(*GREEN)
+    pdf.line(x1r, y1r, x2r, y2r)
+    xbe, ybe_top = to_xy(be_units, max_val)
+    _, ybe_bottom = to_xy(be_units, 0)
+    pdf.set_draw_color(*DARK)
+    pdf.line(xbe, ybe_top, xbe, ybe_bottom)
+
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*DARK)
+    pdf.set_xy(xbe - 15, ybe_top - 6)
+    pdf.cell(30, 5, f"Νεκρό Σημείο: {be_units:,.0f}", align='C')
+
+    legend_y = chart_y0 + chart_h + 12
+    pdf.set_draw_color(*RED)
+    pdf.line(chart_x0, legend_y, chart_x0 + 10, legend_y)
+    pdf.set_xy(chart_x0 + 12, legend_y - 2)
+    pdf.cell(50, 5, "Συνολικό Κόστος")
+    pdf.set_draw_color(*GREEN)
+    pdf.line(chart_x0 + 80, legend_y, chart_x0 + 90, legend_y)
+    pdf.set_xy(chart_x0 + 92, legend_y - 2)
+    pdf.cell(50, 5, "Έσοδα")
+
+    pdf.set_y(-15)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Νεκρό Σημείο (Μέσο Μείγμα Πωλήσεων)", align='C')
+
+    return pdf.output()
+
 # --- 📄 PDF: ΠΛΗΡΗΣ ΟΙΚΟΝΟΜΙΚΗ ΑΝΑΦΟΡΑ (P&L + αναλυτικά έξοδα + μηνιαία εξέλιξη, όλα μαζί) ---
 def generate_full_financial_report_pdf(period_label, months_data, expense_entries_scope, tax_rate, now_str):
     """Ολοκληρωμένη οικονομική αναφορά: Executive Summary -> Πλήρες P&L -> Αναλυτικά Έξοδα
@@ -5581,6 +5746,36 @@ elif page == "🎯 Νεκρό Σημείο":
         )
         fig_be.add_vline(x=be_units_month, line_dash="dash", line_color="white", annotation_text="Νεκρό Σημείο")
         st.plotly_chart(fig_be, use_container_width=True)
+
+        # --- 📄 ΛΗΨΗ PDF (μόνο για το Μέσο Μείγμα Πωλήσεων) ---
+        if be_mode == "blended":
+            st.divider()
+            try:
+                _now_str_be = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                _now_str_be = datetime.now().strftime("%d/%m/%Y %H:%M")
+            try:
+                _be_pdf_data = {
+                    "be_units_month": be_units_month, "be_units_year": be_units_year,
+                    "be_revenue_month": be_revenue_month, "be_revenue_year": be_revenue_year,
+                    "monthly_fixed": monthly_fixed,
+                    "fixed_months_count": len(_months_with_data_be) if _months_with_data_be else 0,
+                    "fixed_per_month": sorted(_per_month_totals_be.items(), key=lambda kv: (kv[0][3:], kv[0][:2])) if _months_with_data_be else [],
+                    "total_paid_pieces": total_paid_pieces, "total_revenue": total_revenue, "total_cost": total_cost,
+                    "ref_price": ref_price, "contribution_margin": contribution_margin,
+                    "months_covered": globals().get('_be_months_covered'),
+                }
+                _be_pdf_bytes = generate_breakeven_blended_pdf(_be_pdf_data, _now_str_be)
+                st.download_button(
+                    "📄 Λήψη PDF: Νεκρό Σημείο (Μέσο Μείγμα Πωλήσεων)",
+                    data=bytes(_be_pdf_bytes),
+                    file_name=f"Cabclub_Nekro_Simeio_{_now_str_be.replace('/', '-').replace(':', 'h')}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
 
 # --- 📑 ΑΝΑΦΟΡΑ ΕΣΟΔΩΝ - ΕΞΟΔΩΝ (P&L) ---
 elif page == "📑 Έσοδα - Έξοδα":
