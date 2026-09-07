@@ -2010,6 +2010,17 @@ with st.sidebar:
 
     HOME_LABEL = "🏠 Αρχική"
     category_options = [HOME_LABEL] + list(MENU_GROUPS.keys())
+
+    # 🔧 FIX: δεν μπορείς να αλλάξεις st.session_state["main_group"] ΑΦΟΥ έχει ήδη
+    # δημιουργηθεί το radio με αυτό το key στο ίδιο run (StreamlitWidgetAlreadyInstantiatedError).
+    # Τα κουμπιά γρήγορης πρόσβασης αποθηκεύουν "εκκρεμή πλοήγηση" σε ΔΙΑΦΟΡΕΤΙΚΟ key, και
+    # εδώ — ΠΡΙΝ φτιαχτούν τα radio — τη μεταφέρουμε στα πραγματικά keys των widget.
+    if "_pending_nav_group" in st.session_state:
+        st.session_state["main_group"] = st.session_state.pop("_pending_nav_group")
+        _pending_sub = st.session_state.pop("_pending_nav_subpage", None)
+        if _pending_sub:
+            st.session_state[f"sub_page_{st.session_state['main_group']}"] = _pending_sub
+
     selected_group = st.radio("Κατηγορία:", category_options, key="main_group")
     if selected_group == HOME_LABEL:
         page = HOME_LABEL
@@ -2127,8 +2138,8 @@ if page == "🏠 Αρχική":
     st.subheader("⚡ Γρήγορη Πρόσβαση")
 
     def _quick_jump(group, sub_page):
-        st.session_state["main_group"] = group
-        st.session_state[f"sub_page_{group}"] = sub_page
+        st.session_state["_pending_nav_group"] = group
+        st.session_state["_pending_nav_subpage"] = sub_page
         st.rerun()
 
     qc1, qc2, qc3, qc4 = st.columns(4)
