@@ -678,7 +678,7 @@ def generate_pl_report_pdf(period_label, data):
 def generate_expenses_month_pdf(month_year, entries, now_str):
     """Πλήρης ανάλυση: Κατηγορία -> Υποκατηγορία/Εργαζόμενος -> κάθε εγγραφή ξεχωριστά -> σύνολα.
     `entries` είναι λίστα από dict με πεδία category, subcategory, description, amount, ΓΙΑ ΕΝΑ μήνα."""
-    pdf = FPDF()
+    pdf = FPDF(orientation='L')  # 🔧 FIX: landscape — σε portrait οι στήλες "πατούσαν" στο όριο πλάτους και έκοβαν τη δεξιά μεριά
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     if _UNICODE_FONT_PATH:
@@ -698,7 +698,7 @@ def generate_expenses_month_pdf(month_year, entries, now_str):
     LIGHTGREY = (245, 245, 245)
 
     pdf.set_fill_color(*GREEN)
-    pdf.rect(0, 0, 210, 26, 'F')
+    pdf.rect(0, 0, 297, 26, 'F')
     pdf.set_xy(10, 6)
     pdf.set_font(f_name, 'B', 16)
     pdf.set_text_color(*WHITE)
@@ -738,16 +738,16 @@ def generate_expenses_month_pdf(month_year, entries, now_str):
             sub_total = sum(float(e.get("amount") or 0.0) for e in sub_entries)
             pdf.set_font(f_name, 'B', 10)
             pdf.set_text_color(*DARK)
-            pdf.cell(140, 6.5, f"  {subcat}")
-            pdf.cell(50, 6.5, f"{sub_total:,.2f} EUR", align='R', ln=1)
+            pdf.cell(220, 6.5, f"  {subcat}")
+            pdf.cell(52, 6.5, f"{sub_total:,.2f} EUR", align='R', ln=1)
             pdf.set_font(f_name, size=9)
             pdf.set_text_color(*GREY)
             for e in sub_entries:
                 desc = e.get("description") or "—"
                 amt = float(e.get("amount") or 0.0)
                 if amt > 0 or len(sub_entries) > 1:
-                    pdf.cell(150, 5.5, f"      {desc}")
-                    pdf.cell(40, 5.5, f"{amt:,.2f} EUR", align='R', ln=1)
+                    pdf.cell(230, 5.5, f"      {desc}")
+                    pdf.cell(42, 5.5, f"{amt:,.2f} EUR", align='R', ln=1)
             pdf.set_text_color(*DARK)
         pdf.ln(3)
 
@@ -756,8 +756,8 @@ def generate_expenses_month_pdf(month_year, entries, now_str):
     pdf.set_draw_color(*GREEN)
     pdf.set_font(f_name, 'B', 13)
     pdf.set_text_color(*GREEN)
-    pdf.cell(140, 10, "ΣΥΝΟΛΟ ΛΕΙΤΟΥΡΓΙΚΩΝ ΕΞΟΔΩΝ", border=1, fill=True)
-    pdf.cell(50, 10, f"{grand_total:,.2f} EUR", border=1, fill=True, align='R', ln=1)
+    pdf.cell(220, 10, "ΣΥΝΟΛΟ ΛΕΙΤΟΥΡΓΙΚΩΝ ΕΞΟΔΩΝ", border=1, fill=True)
+    pdf.cell(52, 10, f"{grand_total:,.2f} EUR", border=1, fill=True, align='R', ln=1)
     pdf.set_text_color(*DARK)
 
     pdf.set_y(-15)
@@ -771,7 +771,7 @@ def generate_expenses_month_pdf(month_year, entries, now_str):
 def generate_expenses_all_time_pdf(all_entries, now_str):
     """Πλήρης ανάλυση αθροισμένη σε ΟΛΟΥΣ τους μήνες: Κατηγορία -> Υποκατηγορία/Εργαζόμενος ->
     κάθε εγγραφή (αθροισμένη σε όλους τους μήνες) -> σύνολα. Στο τέλος, σύνοψη ανά μήνα."""
-    pdf = FPDF()
+    pdf = FPDF(orientation='L')  # 🔧 FIX: landscape — ίδιος λόγος με το generate_expenses_month_pdf
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     if _UNICODE_FONT_PATH:
@@ -791,7 +791,7 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
     LIGHTGREY = (245, 245, 245)
 
     pdf.set_fill_color(*GREEN)
-    pdf.rect(0, 0, 210, 26, 'F')
+    pdf.rect(0, 0, 297, 26, 'F')
     pdf.set_xy(10, 6)
     pdf.set_font(f_name, 'B', 16)
     pdf.set_text_color(*WHITE)
@@ -831,8 +831,8 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
             sub_total = sum(float(e.get("amount") or 0.0) for e in sub_entries)
             pdf.set_font(f_name, 'B', 10)
             pdf.set_text_color(*DARK)
-            pdf.cell(140, 6.5, f"  {subcat}")
-            pdf.cell(50, 6.5, f"{sub_total:,.2f} EUR", align='R', ln=1)
+            pdf.cell(220, 6.5, f"  {subcat}")
+            pdf.cell(52, 6.5, f"{sub_total:,.2f} EUR", align='R', ln=1)
 
             # Άθροισμα ανά (περιγραφή), σε όλους τους μήνες μαζί — πιο αναλυτικό από μόνο το σύνολο υποκατηγορίας
             desc_totals = {}
@@ -843,8 +843,8 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
             pdf.set_text_color(*GREY)
             for d, amt in desc_totals.items():
                 if amt > 0 or len(desc_totals) > 1:
-                    pdf.cell(150, 5.5, f"      {d}")
-                    pdf.cell(40, 5.5, f"{amt:,.2f} EUR", align='R', ln=1)
+                    pdf.cell(230, 5.5, f"      {d}")
+                    pdf.cell(42, 5.5, f"{amt:,.2f} EUR", align='R', ln=1)
             pdf.set_text_color(*DARK)
         pdf.ln(3)
 
@@ -853,8 +853,8 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
     pdf.set_draw_color(*GREEN)
     pdf.set_font(f_name, 'B', 13)
     pdf.set_text_color(*GREEN)
-    pdf.cell(140, 10, "ΣΥΝΟΛΟ ΛΕΙΤΟΥΡΓΙΚΩΝ ΕΞΟΔΩΝ (ΟΛΟΙ ΟΙ ΜΗΝΕΣ)", border=1, fill=True)
-    pdf.cell(50, 10, f"{grand_total:,.2f} EUR", border=1, fill=True, align='R', ln=1)
+    pdf.cell(220, 10, "ΣΥΝΟΛΟ ΛΕΙΤΟΥΡΓΙΚΩΝ ΕΞΟΔΩΝ (ΟΛΟΙ ΟΙ ΜΗΝΕΣ)", border=1, fill=True)
+    pdf.cell(52, 10, f"{grand_total:,.2f} EUR", border=1, fill=True, align='R', ln=1)
     pdf.set_text_color(*DARK)
     pdf.ln(8)
 
@@ -867,8 +867,8 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
         pdf.set_font(f_name, size=10)
         for my in _months_covered:
             month_total = sum(float(e.get("amount") or 0.0) for e in all_entries if e.get("month_year") == my)
-            pdf.cell(140, 6, f"  {my}")
-            pdf.cell(50, 6, f"{month_total:,.2f} EUR", align='R', ln=1)
+            pdf.cell(220, 6, f"  {my}")
+            pdf.cell(52, 6, f"{month_total:,.2f} EUR", align='R', ln=1)
 
     pdf.set_y(-15)
     pdf.set_font(f_name, size=8)
@@ -883,7 +883,7 @@ def generate_full_financial_report_pdf(period_label, months_data, expense_entrie
     ανά κατηγορία/υποκατηγορία -> Μηνιαία εξέλιξη με γράφημα.
     `months_data`: λίστα dict (ίδια δομή με generate_all_months_pl_comparison_pdf) για την επιλεγμένη περίοδο.
     `expense_entries_scope`: όλες οι εγγραφές expense_entries ΜΕΣΑ στην επιλεγμένη περίοδο."""
-    pdf = FPDF()
+    pdf = FPDF(orientation='L')  # 🔧 FIX: landscape — ο πίνακας μηνών+γράφημα "πατούσε" στο όριο πλάτους σε portrait
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     if _UNICODE_FONT_PATH:
@@ -906,7 +906,7 @@ def generate_full_financial_report_pdf(period_label, months_data, expense_entrie
 
     def header_bar(subtitle):
         pdf.set_fill_color(*GREEN)
-        pdf.rect(0, 0, 210, 26, 'F')
+        pdf.rect(0, 0, 297, 26, 'F')
         pdf.set_xy(10, 6)
         pdf.set_font(f_name, 'B', 16)
         pdf.set_text_color(*WHITE)
@@ -927,14 +927,14 @@ def generate_full_financial_report_pdf(period_label, months_data, expense_entrie
         pdf.set_font(f_name, 'B' if bold else '', 10)
         pdf.set_text_color(*(color or DARK))
         pdf.cell(10 * indent, 7)
-        pdf.cell(120 - 10 * indent, 7, label)
-        pdf.cell(60, 7, value, align='R', ln=1)
+        pdf.cell(180 - 10 * indent, 7, label)
+        pdf.cell(70, 7, value, align='R', ln=1)
         pdf.set_text_color(*DARK)
 
     def divider():
         pdf.ln(1)
         pdf.set_draw_color(200, 200, 200)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.line(10, pdf.get_y(), 287, pdf.get_y())
         pdf.ln(3)
 
     header_bar(f"Πλήρης Οικονομική Αναφορά — {period_label}")
@@ -997,7 +997,7 @@ def generate_full_financial_report_pdf(period_label, months_data, expense_entrie
     header_bar(f"Μηνιαία Εξέλιξη — {period_label}")
     pdf.set_font(f_name, 'B', 8)
     pdf.set_fill_color(*LIGHTGREY)
-    cols = [("Μήνας", 22), ("Τζίρος", 32), ("COGS", 30), ("Μικτό", 32), ("Έξοδα", 30), ("Καθαρό μετά φόρων", 44)]
+    cols = [("Μήνας", 32), ("Τζίρος", 45), ("COGS", 42), ("Μικτό", 45), ("Έξοδα", 42), ("Καθαρό μετά φόρων", 60)]
     for label, w in cols:
         pdf.cell(w, 7, label, border=1, fill=True, align='C')
     pdf.ln()
@@ -1021,7 +1021,7 @@ def generate_full_financial_report_pdf(period_label, months_data, expense_entrie
         pdf.set_font(f_name, 'B', 11)
         pdf.cell(0, 8, "Τζίρος vs Καθαρό Κέρδος (μετά φόρων) ανά Μήνα", ln=1)
         pdf.ln(2)
-        chart_x0, chart_y0, chart_w, chart_h = 15, pdf.get_y(), 180, 65
+        chart_x0, chart_y0, chart_w, chart_h = 15, pdf.get_y(), 250, 65
         n = len(months_data)
         max_val = max([abs(m['revenue']) for m in months_data] + [abs(m['net_after_tax']) for m in months_data] + [1])
         group_w = chart_w / max(n, 1)
