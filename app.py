@@ -674,6 +674,209 @@ def generate_pl_report_pdf(period_label, data):
     return pdf.output()
 
 # --- 📄 PDF: ΣΥΓΚΡΙΤΙΚΗ ΑΝΑΛΥΣΗ ΟΛΩΝ ΤΩΝ ΜΗΝΩΝ (ΕΣΟΔΑ-ΕΞΟΔΑ) ---
+# --- 📄 PDF: ΑΝΑΛΥΤΙΚΑ ΕΞΟΔΑ ΕΝΟΣ ΜΗΝΑ ---
+def generate_expenses_month_pdf(month_year, entries, now_str):
+    """Πλήρης ανάλυση: Κατηγορία -> Υποκατηγορία/Εργαζόμενος -> κάθε εγγραφή ξεχωριστά -> σύνολα.
+    `entries` είναι λίστα από dict με πεδία category, subcategory, description, amount, ΓΙΑ ΕΝΑ μήνα."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(0, 0, 210, 26, 'F')
+    pdf.set_xy(10, 6)
+    pdf.set_font(f_name, 'B', 16)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+    pdf.set_x(10)
+    pdf.set_font(f_name, size=11)
+    pdf.cell(0, 6, f"Αναλυτικά Λειτουργικά Έξοδα — {month_year}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(14)
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(3)
+
+    grand_total = 0.0
+    for category in EXPENSE_CATEGORIES:
+        cat_entries = [e for e in entries if e.get("category") == category]
+        cat_total = sum(float(e.get("amount") or 0.0) for e in cat_entries)
+        if cat_total == 0 and not cat_entries:
+            continue
+        grand_total += cat_total
+
+        pdf.set_font(f_name, 'B', 12)
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.cell(0, 8, f"{category}   —   Σύνολο: {cat_total:,.2f} EUR", ln=1, fill=True)
+        pdf.ln(1)
+
+        # Ομαδοποίηση ανά υποκατηγορία (ή εργαζόμενο, για το Προσωπικό)
+        subcats_seen = []
+        for e in cat_entries:
+            if e["subcategory"] not in subcats_seen:
+                subcats_seen.append(e["subcategory"])
+
+        for subcat in subcats_seen:
+            sub_entries = [e for e in cat_entries if e["subcategory"] == subcat]
+            sub_total = sum(float(e.get("amount") or 0.0) for e in sub_entries)
+            pdf.set_font(f_name, 'B', 10)
+            pdf.set_text_color(*DARK)
+            pdf.cell(140, 6.5, f"  {subcat}")
+            pdf.cell(50, 6.5, f"{sub_total:,.2f} EUR", align='R', ln=1)
+            pdf.set_font(f_name, size=9)
+            pdf.set_text_color(*GREY)
+            for e in sub_entries:
+                desc = e.get("description") or "—"
+                amt = float(e.get("amount") or 0.0)
+                if amt > 0 or len(sub_entries) > 1:
+                    pdf.cell(150, 5.5, f"      {desc}")
+                    pdf.cell(40, 5.5, f"{amt:,.2f} EUR", align='R', ln=1)
+            pdf.set_text_color(*DARK)
+        pdf.ln(3)
+
+    pdf.ln(2)
+    pdf.set_fill_color(230, 244, 234)
+    pdf.set_draw_color(*GREEN)
+    pdf.set_font(f_name, 'B', 13)
+    pdf.set_text_color(*GREEN)
+    pdf.cell(140, 10, "ΣΥΝΟΛΟ ΛΕΙΤΟΥΡΓΙΚΩΝ ΕΞΟΔΩΝ", border=1, fill=True)
+    pdf.cell(50, 10, f"{grand_total:,.2f} EUR", border=1, fill=True, align='R', ln=1)
+    pdf.set_text_color(*DARK)
+
+    pdf.set_y(-15)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Αναλυτικά Έξοδα Μήνα", align='C')
+
+    return pdf.output()
+
+# --- 📄 PDF: ΣΥΝΟΛΙΚΑ ΕΞΟΔΑ (ΟΛΟΙ ΟΙ ΜΗΝΕΣ), ΑΝΑ ΚΑΤΗΓΟΡΙΑ/ΥΠΟΚΑΤΗΓΟΡΙΑ ---
+def generate_expenses_all_time_pdf(all_entries, now_str):
+    """Πλήρης ανάλυση αθροισμένη σε ΟΛΟΥΣ τους μήνες: Κατηγορία -> Υποκατηγορία/Εργαζόμενος ->
+    κάθε εγγραφή (αθροισμένη σε όλους τους μήνες) -> σύνολα. Στο τέλος, σύνοψη ανά μήνα."""
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    pdf.set_fill_color(*GREEN)
+    pdf.rect(0, 0, 210, 26, 'F')
+    pdf.set_xy(10, 6)
+    pdf.set_font(f_name, 'B', 16)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+    pdf.set_x(10)
+    pdf.set_font(f_name, size=11)
+    _months_covered = sorted({e["month_year"] for e in all_entries}, key=lambda x: (x[3:], x[:2]))
+    pdf.cell(0, 6, f"Συνολικά Λειτουργικά Έξοδα — Όλοι οι Μήνες ({len(_months_covered)} μήνα/ες)", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(14)
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(3)
+
+    grand_total = 0.0
+    for category in EXPENSE_CATEGORIES:
+        cat_entries = [e for e in all_entries if e.get("category") == category]
+        cat_total = sum(float(e.get("amount") or 0.0) for e in cat_entries)
+        if cat_total == 0 and not cat_entries:
+            continue
+        grand_total += cat_total
+
+        pdf.set_font(f_name, 'B', 12)
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.cell(0, 8, f"{category}   —   Σύνολο (όλοι οι μήνες): {cat_total:,.2f} EUR", ln=1, fill=True)
+        pdf.ln(1)
+
+        subcats_seen = []
+        for e in cat_entries:
+            if e["subcategory"] not in subcats_seen:
+                subcats_seen.append(e["subcategory"])
+
+        for subcat in subcats_seen:
+            sub_entries = [e for e in cat_entries if e["subcategory"] == subcat]
+            sub_total = sum(float(e.get("amount") or 0.0) for e in sub_entries)
+            pdf.set_font(f_name, 'B', 10)
+            pdf.set_text_color(*DARK)
+            pdf.cell(140, 6.5, f"  {subcat}")
+            pdf.cell(50, 6.5, f"{sub_total:,.2f} EUR", align='R', ln=1)
+
+            # Άθροισμα ανά (περιγραφή), σε όλους τους μήνες μαζί — πιο αναλυτικό από μόνο το σύνολο υποκατηγορίας
+            desc_totals = {}
+            for e in sub_entries:
+                d = e.get("description") or "—"
+                desc_totals[d] = desc_totals.get(d, 0.0) + float(e.get("amount") or 0.0)
+            pdf.set_font(f_name, size=9)
+            pdf.set_text_color(*GREY)
+            for d, amt in desc_totals.items():
+                if amt > 0 or len(desc_totals) > 1:
+                    pdf.cell(150, 5.5, f"      {d}")
+                    pdf.cell(40, 5.5, f"{amt:,.2f} EUR", align='R', ln=1)
+            pdf.set_text_color(*DARK)
+        pdf.ln(3)
+
+    pdf.ln(2)
+    pdf.set_fill_color(230, 244, 234)
+    pdf.set_draw_color(*GREEN)
+    pdf.set_font(f_name, 'B', 13)
+    pdf.set_text_color(*GREEN)
+    pdf.cell(140, 10, "ΣΥΝΟΛΟ ΛΕΙΤΟΥΡΓΙΚΩΝ ΕΞΟΔΩΝ (ΟΛΟΙ ΟΙ ΜΗΝΕΣ)", border=1, fill=True)
+    pdf.cell(50, 10, f"{grand_total:,.2f} EUR", border=1, fill=True, align='R', ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(8)
+
+    # --- Σύνοψη ανά μήνα, για πλήρη διαφάνεια ---
+    if _months_covered:
+        pdf.set_font(f_name, 'B', 12)
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.cell(0, 8, "Σύνοψη ανά Μήνα", ln=1, fill=True)
+        pdf.ln(1)
+        pdf.set_font(f_name, size=10)
+        for my in _months_covered:
+            month_total = sum(float(e.get("amount") or 0.0) for e in all_entries if e.get("month_year") == my)
+            pdf.cell(140, 6, f"  {my}")
+            pdf.cell(50, 6, f"{month_total:,.2f} EUR", align='R', ln=1)
+
+    pdf.set_y(-15)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Συνολικά Έξοδα Όλων των Μηνών", align='C')
+
+    return pdf.output()
+
 def generate_all_months_pl_comparison_pdf(months_data, tax_rate, now_str):
     """Πίνακας + γράφημα (σχεδιασμένο απευθείας με FPDF, χωρίς matplotlib) που συγκρίνει
     Τζίρο/COGS/Μικτό/Σταθερά/Καθαρό μεταξύ ΟΛΩΝ των μηνών που υπάρχουν δεδομένα.
@@ -4843,6 +5046,41 @@ elif page == "💸 Έξοδα":
     _cat_totals_display = get_month_category_totals(sel_fixed_month)
     for _cat in EXPENSE_CATEGORIES:
         st.caption(f"{_cat} — Σύνολο: {_cat_totals_display.get(_cat, 0.0):,.2f} €")
+
+    # --- 📄 ΛΗΨΗ PDF: ΑΝΑΛΥΤΙΚΑ ΕΞΟΔΑ (ανά μήνα / συνολικά) ---
+    st.markdown("#### 📄 Εκτύπωση PDF")
+    try:
+        _now_str_exp = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        _now_str_exp = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    pdf_col1, pdf_col2 = st.columns(2)
+    with pdf_col1:
+        try:
+            _month_entries_for_pdf = [e for e in _all_entries_raw if e.get("month_year") == sel_fixed_month]
+            _pdf_month_bytes = generate_expenses_month_pdf(sel_fixed_month, _month_entries_for_pdf, _now_str_exp)
+            st.download_button(
+                f"📄 PDF: Αναλυτικά Έξοδα {sel_fixed_month}",
+                data=bytes(_pdf_month_bytes),
+                file_name=f"Cabclub_Exoda_{sel_fixed_month.replace('/', '-')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Σφάλμα PDF μήνα: {e}")
+    with pdf_col2:
+        try:
+            _pdf_all_bytes = generate_expenses_all_time_pdf(_all_entries_raw, _now_str_exp)
+            st.download_button(
+                "📄 PDF: Συνολικά Έξοδα (Όλοι οι Μήνες)",
+                data=bytes(_pdf_all_bytes),
+                file_name=f"Cabclub_Exoda_Synolika_{_now_str_exp.replace('/', '-').replace(':', 'h')}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Σφάλμα συνολικού PDF: {e}")
 
     st.divider()
 
