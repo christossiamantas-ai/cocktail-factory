@@ -5385,30 +5385,54 @@ elif page == "💸 Έξοδα":
     # --- 📋 Αντιγραφή Μαΐου ως προεπιλογή στους υπόλοιπους μήνες του έτους (μόνο σε ΚΕΝΟΥΣ μήνες) ---
     with st.expander("📋 Αντιγραφή Μαΐου ως Προεπιλογή στους Υπόλοιπους Μήνες", expanded=False):
         st.caption(
-            "Αντιγράφει τα έξοδα του Μαΐου σε κάθε μήνα του ίδιου έτους που είναι ακόμα **κενός** "
-            "(καθόλου καταχωρήσεις) — έτσι δεν χρειάζεται να ξαναπληκτρολογείς το ίδιο ενοίκιο/μισθούς "
-            "κάθε μήνα. Μήνες που ΗΔΗ έχουν δικές τους καταχωρήσεις ΔΕΝ πειράζονται καθόλου."
+            "Το παραγωγικό έτος ξεκινάει τον Μάιο — αντιγράφει τα έξοδα του Μαΐου σε κάθε μήνα "
+            "Ιουνίου-Δεκεμβρίου του ίδιου έτους, ώστε να μην ξαναπληκτρολογείς το ίδιο ενοίκιο/μισθούς "
+            "κάθε μήνα. Μπορείς να διαλέξεις αν θα πειράξει και μήνες που ήδη έχουν καταχωρήσεις."
         )
         _copy_year = st.text_input("Έτος αναφοράς Μαΐου:", value=sel_fixed_month.split("/")[-1] if "/" in sel_fixed_month else str(_today_be.year), key="be_copy_may_year")
         _copy_may_key = f"05/{_copy_year}"
         _copy_may_entries = [e for e in load_all_expense_entries() if e.get("month_year") == _copy_may_key]
 
+        # --- 🗑️ Καθαρισμός μηνών ΠΡΙΝ τον Μάιο (δεν υπήρχε καν δραστηριότητα) ---
+        _pre_may_months = [f"{m:02d}/{_copy_year}" for m in range(1, 5)]
+        _all_entries_check = load_all_expense_entries()
+        _pre_may_with_data = sorted({e["month_year"] for e in _all_entries_check if e.get("month_year") in _pre_may_months})
+        if _pre_may_with_data:
+            st.warning(f"⚠️ Βρέθηκαν καταχωρήσεις σε μήνες ΠΡΙΝ τον Μάιο {_copy_year} (πριν την έναρξη λειτουργίας): {', '.join(_pre_may_with_data)}")
+            if st.button("🗑️ Διαγραφή Όλων των Εξόδων Ιανουαρίου-Απριλίου " + _copy_year, key="btn_cleanup_pre_may"):
+                try:
+                    for pm in _pre_may_with_data:
+                        supabase.table("expense_entries").delete().eq("month_year", pm).execute()
+                    st.cache_data.clear()
+                    st.success(f"✅ Διαγράφηκαν τα έξοδα από: {', '.join(_pre_may_with_data)}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Σφάλμα διαγραφής: {e}")
+            st.divider()
+
         if not _copy_may_entries:
             st.warning(f"Δεν βρέθηκαν καταχωρήσεις για {_copy_may_key} — δεν υπάρχει τι να αντιγραφεί.")
         else:
-            # 🔧 FIX: μόνο ΑΠΟ τον Μάιο και μετά — πριν τον Μάιο δεν είχε ξεκινήσει καν η καταχώρηση εξόδων
-            _all_year_months = [f"{m:02d}/{_copy_year}" for m in range(5, 13) if f"{m:02d}/{_copy_year}" != _copy_may_key]
-            _existing_months_set = {e.get("month_year") for e in load_all_expense_entries()}
-            _empty_target_months = [m for m in _all_year_months if m not in _existing_months_set]
+            _target_months = [f"{m:02d}/{_copy_year}" for m in range(6, 13)]  # Ιούνιος-Δεκέμβριος
+            _existing_months_set = {e.get("month_year") for e in _all_entries_check}
+            _empty_target_months = [m for m in _target_months if m not in _existing_months_set]
+            _filled_target_months = [m for m in _target_months if m in _existing_months_set]
 
-            if not _empty_target_months:
-                st.info("Όλοι οι υπόλοιποι μήνες του έτους έχουν ήδη δικές τους καταχωρήσεις — τίποτα να αντιγραφεί.")
+            overwrite = st.checkbox(
+                f"Επαναγραφή και σε μήνες που ήδη έχουν δεδομένα ({', '.join(_filled_target_months) if _filled_target_months else 'κανένας αυτή τη στιγμή'})",
+                value=False, key="be_copy_overwrite",
+                help="Αν το επιλέξεις, ΘΑ αντικατασταθούν τα ποσά στους μήνες αυτούς με τα ποσά του Μαΐου."
+            )
+            _months_to_copy = _target_months if overwrite else _empty_target_months
+
+            if not _months_to_copy:
+                st.info("Όλοι οι μήνες Ιουνίου-Δεκεμβρίου έχουν ήδη δικές τους καταχωρήσεις. Τσέκαρε «Επαναγραφή» παραπάνω αν θες να τους ξαναγράψεις με τα ποσά του Μαΐου.")
             else:
-                st.caption(f"Θα συμπληρωθούν: {', '.join(_empty_target_months)} ({len(_copy_may_entries)} εγγραφές το καθένα, από τον {_copy_may_key}).")
-                if st.button(f"📋 Αντιγραφή στους {len(_empty_target_months)} κενούς μήνες", key="btn_copy_may"):
+                st.caption(f"Θα {'ξαναγραφούν' if overwrite else 'συμπληρωθούν'}: {', '.join(_months_to_copy)} ({len(_copy_may_entries)} εγγραφές το καθένα, από τον {_copy_may_key}).")
+                if st.button(f"📋 Αντιγραφή σε {len(_months_to_copy)} μήνες", key="btn_copy_may"):
                     try:
                         _copy_payload = []
-                        for target_month in _empty_target_months:
+                        for target_month in _months_to_copy:
                             for e in _copy_may_entries:
                                 _copy_payload.append({
                                     "month_year": target_month, "category": e["category"], "subcategory": e["subcategory"],
@@ -5416,7 +5440,7 @@ elif page == "💸 Έξοδα":
                                 })
                         supabase.table("expense_entries").upsert(_copy_payload, on_conflict="month_year,category,subcategory,description").execute()
                         st.cache_data.clear()
-                        st.success(f"✅ Αντιγράφηκαν τα έξοδα του {_copy_may_key} σε {len(_empty_target_months)} μήνες! Οποιεσδήποτε διαφορές, επεξεργάσου τις ελεύθερα ανά μήνα.")
+                        st.success(f"✅ Αντιγράφηκαν τα έξοδα του {_copy_may_key} σε {len(_months_to_copy)} μήνες! Οποιεσδήποτε διαφορές, επεξεργάσου τις ελεύθερα ανά μήνα.")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Σφάλμα αντιγραφής: {e}")
