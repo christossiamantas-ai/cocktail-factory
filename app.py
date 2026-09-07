@@ -4728,6 +4728,8 @@ elif page == "💸 Έξοδα":
                 st.error(f"Σφάλμα αποθήκευσης: {e} — ίσως χρειάζεται να δημιουργηθεί ο πίνακας (δες παρακάτω στην κατηγορία Εγκαταστάσεις).")
 
     # --- Κατηγορίες 2-8: δυναμικές υποκατηγορίες, κάθε μία με 1+ εγγραφές (περιγραφή + ποσό) ---
+    _all_entries_raw = load_all_expense_entries()  # χρειαζόμαστε τα πραγματικά id για ασφαλή διαγραφή
+
     for category in EXPENSE_CATEGORIES:
         if category == PERSONNEL_CATEGORY:
             continue
@@ -4736,19 +4738,35 @@ elif page == "💸 Έξοδα":
             subcats = get_known_subcategories(category)
             _cat_payload = []
             for subcat in subcats:
-                # Όλες οι υπάρχουσες εγγραφές αυτής της υποκατηγορίας, γι' αυτόν τον μήνα
-                sub_entries = {(c, s, d): v for (c, s, d), v in _month_entries_map.items() if c == category and s == subcat}
-                if not sub_entries:
-                    sub_entries = {(category, subcat, ""): 0.0}  # η "κύρια" κενή εγγραφή, ακόμα κι αν δεν έχει καταχωρηθεί ακόμα
+                # Όλες οι πραγματικές εγγραφές (ΜΕ id) αυτής της υποκατηγορίας, γι' αυτόν τον μήνα
+                sub_entry_rows = [e for e in _all_entries_raw if e.get("month_year") == sel_fixed_month and e.get("category") == category and e.get("subcategory") == subcat]
 
                 st.markdown(f"**{subcat}**")
-                for (c, s, d), v in sub_entries.items():
-                    desc_key = f"exp_{sel_fixed_month}_{category}_{subcat}_{d}_desc"
-                    amt_key = f"exp_{sel_fixed_month}_{category}_{subcat}_{d}_amt"
+                if not sub_entry_rows:
+                    # Καμία εγγραφή ακόμα -> δείχνουμε μία κενή, χωρίς id (θα δημιουργηθεί μόνο αν αποθηκευτεί ποσό > 0 ή περιγραφή)
+                    desc_key = f"exp_{sel_fixed_month}_{category}_{subcat}_new_desc"
+                    amt_key = f"exp_{sel_fixed_month}_{category}_{subcat}_new_amt"
                     dcol, acol = st.columns([2, 1])
-                    new_desc = dcol.text_input("Περιγραφή", value=d, key=desc_key, label_visibility="collapsed", placeholder="Περιγραφή (προαιρετικό)")
-                    new_amt = acol.number_input("Ποσό (€)", min_value=0.0, value=float(v), step=10.0, key=amt_key, label_visibility="collapsed")
-                    _cat_payload.append((subcat, d, new_desc, new_amt))  # (old_desc για ταύτιση, νέα desc, ποσό)
+                    new_desc = dcol.text_input("Περιγραφή", value="", key=desc_key, label_visibility="collapsed", placeholder="Περιγραφή (προαιρετικό)")
+                    new_amt = acol.number_input("Ποσό (€)", min_value=0.0, value=0.0, step=10.0, key=amt_key, label_visibility="collapsed")
+                    _cat_payload.append({"id": None, "subcategory": subcat, "description": new_desc, "amount": new_amt})
+                else:
+                    for entry in sub_entry_rows:
+                        eid = entry["id"]
+                        desc_key = f"exp_desc_{eid}"
+                        amt_key = f"exp_amt_{eid}"
+                        dcol, acol, xcol = st.columns([2, 1, 0.4])
+                        new_desc = dcol.text_input("Περιγραφή", value=entry.get("description", ""), key=desc_key, label_visibility="collapsed", placeholder="Περιγραφή (προαιρετικό)")
+                        new_amt = acol.number_input("Ποσό (€)", min_value=0.0, value=float(entry.get("amount") or 0.0), step=10.0, key=amt_key, label_visibility="collapsed")
+                        if xcol.button("🗑️", key=f"del_exp_{eid}", help="Διαγραφή αυτής της εγγραφής"):
+                            try:
+                                supabase.table("expense_entries").delete().eq("id", eid).execute()
+                                st.cache_data.clear()
+                                st.success("✅ Διαγράφηκε!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Σφάλμα διαγραφής: {e}")
+                        _cat_payload.append({"id": eid, "subcategory": subcat, "description": new_desc, "amount": new_amt})
 
             with st.form(f"add_entry_form_{sel_fixed_month}_{category}", clear_on_submit=True):
                 fc1, fc2 = st.columns([1, 1])
@@ -4783,8 +4801,22 @@ elif page == "💸 Έξοδα":
 
             if st.button(f"💾 Αποθήκευση: {category}", key=f"save_cat_{sel_fixed_month}_{category}"):
                 try:
-                    payload = [{"month_year": sel_fixed_month, "category": category, "subcategory": subcat, "description": new_desc, "amount": amt} for subcat, old_desc, new_desc, amt in _cat_payload]
-                    supabase.table("expense_entries").upsert(payload, on_conflict="month_year,category,subcategory,description").execute()
+                    # 🔧 FIX: αν η επεξεργασία έκανε 2 εγγραφές να έχουν ΤΗΝ ΙΔΙΑ (υποκατηγορία, περιγραφή),
+                    # η Postgres αρνείται σωστά ("cannot affect row a second time") — αφαιρούμε πριν
+                    # στείλουμε τα διπλότυπα (κρατάμε το τελευταίο, αθροίζοντας τα ποσά τους) αντί να σκάσει.
+                    dedup = {}
+                    for item in _cat_payload:
+                        key = (item["subcategory"], item["description"])
+                        if key in dedup:
+                            dedup[key]["amount"] += item["amount"]
+                        else:
+                            dedup[key] = {"subcategory": item["subcategory"], "description": item["description"], "amount": item["amount"]}
+                    if len(dedup) < len(_cat_payload):
+                        st.warning("⚠️ Βρέθηκαν 2+ εγγραφές με ίδια περιγραφή στην ίδια υποκατηγορία — τα ποσά τους αθροίστηκαν αυτόματα σε μία εγγραφή.")
+
+                    payload = [{"month_year": sel_fixed_month, "category": category, **v} for v in dedup.values()]
+                    if payload:
+                        supabase.table("expense_entries").upsert(payload, on_conflict="month_year,category,subcategory,description").execute()
                     st.cache_data.clear()
                     st.success(f"✅ Αποθηκεύτηκε: {category}!")
                     st.rerun()
