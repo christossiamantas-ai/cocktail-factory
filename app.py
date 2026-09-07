@@ -1023,9 +1023,13 @@ def generate_scenario_forecast_pdf(data, now_str):
 
         pdf.set_font(f_name, size=10)
         pdf.cell(0, 7, f"Ποσοστό αύξησης τιμών: {table_data['price_increase_pct']:+.2f}%   |   Απαιτούμενη μέση τιμή: {table_data['required_avg_price']:.2f} EUR", ln=1)
+        pdf.set_font(f_name, size=8)
+        pdf.set_text_color(*GREY)
+        pdf.cell(0, 5, "Οι τιμές παρακάτω είναι τιμές ΑΝΤΙΠΡΟΣΩΠΟΥ (74% της λιανικής), όχι λιανικές.", ln=1)
+        pdf.set_text_color(*DARK)
         pdf.ln(3)
 
-        cols = [("Κοκτέιλ", 90), ("Κόστος", 40), ("Παλιά Τιμή", 45), ("Νέα Τιμή", 45), ("% Αύξησης", 47)]
+        cols = [("Κοκτέιλ", 90), ("Κόστος", 40), ("Παλιά Τιμή Αντ.", 45), ("Νέα Τιμή Αντ.", 45), ("% Αύξησης", 47)]
         pdf.set_font(f_name, 'B', 9)
         pdf.set_fill_color(*LIGHTGREY)
         for cname, w in cols:
@@ -1036,8 +1040,8 @@ def generate_scenario_forecast_pdf(data, now_str):
             pdf.set_fill_color(250, 250, 250) if i % 2 == 0 else pdf.set_fill_color(*WHITE)
             pdf.cell(cols[0][1], 6, str(r["Κοκτέιλ"])[:42], border=1, fill=True)
             pdf.cell(cols[1][1], 6, f"{r['Κόστος (€)']:.2f}", border=1, fill=True, align='R')
-            pdf.cell(cols[2][1], 6, f"{r['Παλιά Τιμή (€)']:.2f}", border=1, fill=True, align='R')
-            new_v, old_v = r["Νέα Τιμή (€)"], r["Παλιά Τιμή (€)"]
+            pdf.cell(cols[2][1], 6, f"{r['Παλιά Τιμή Αντιπροσώπου (€)']:.2f}", border=1, fill=True, align='R')
+            new_v, old_v = r["Νέα Τιμή Αντιπροσώπου (€)"], r["Παλιά Τιμή Αντιπροσώπου (€)"]
             pdf.set_text_color(*(RED if new_v > old_v else (GREEN if new_v < old_v else DARK)))
             pdf.cell(cols[3][1], 6, f"{new_v:.2f}", border=1, fill=True, align='R')
             pdf.set_text_color(*DARK)
@@ -6334,7 +6338,10 @@ elif page == "🎯 Νεκρό Σημείο":
                     price_rows_fc = []
                     for _, r_fc2 in df_rec.iterrows():
                         c_name_fc = r_fc2["Ονομα"]
-                        old_price_fc = float(r_fc2.get("Τιμή Καταλόγου", 0.0) or 0.0)
+                        retail_price_fc = float(r_fc2.get("Τιμή Καταλόγου", 0.0) or 0.0)
+                        # 🔧 FIX: οι τιμές εδώ πρέπει να είναι τιμές ΑΝΤΙΠΡΟΣΩΠΟΥ (74% της λιανικής),
+                        # ίδια σύμβαση με Markup & Margin/Εμπορική Πολιτική — όχι η λιανική απευθείας.
+                        old_price_fc = retail_price_fc * 0.74
                         if old_price_fc <= 0:
                             continue
                         new_price_fc = old_price_fc * (1 + price_increase_pct / 100)
@@ -6342,8 +6349,8 @@ elif page == "🎯 Νεκρό Σημείο":
                         price_rows_fc.append({
                             "Κοκτέιλ": c_name_fc,
                             "Κόστος (€)": round(cocktail_cost_fc, 2),
-                            "Παλιά Τιμή (€)": round(old_price_fc, 2),
-                            "Νέα Τιμή (€)": round(new_price_fc, 2),
+                            "Παλιά Τιμή Αντιπροσώπου (€)": round(old_price_fc, 2),
+                            "Νέα Τιμή Αντιπροσώπου (€)": round(new_price_fc, 2),
                             "% Αύξησης": round(price_increase_pct, 1),
                         })
 
@@ -6354,10 +6361,10 @@ elif page == "🎯 Νεκρό Σημείο":
 
                         def _hl_fc(row):
                             styles = [''] * len(row)
-                            idx = row.index.get_loc("Νέα Τιμή (€)")
-                            if row["Νέα Τιμή (€)"] > row["Παλιά Τιμή (€)"]:
+                            idx = row.index.get_loc("Νέα Τιμή Αντιπροσώπου (€)")
+                            if row["Νέα Τιμή Αντιπροσώπου (€)"] > row["Παλιά Τιμή Αντιπροσώπου (€)"]:
                                 styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
-                            elif row["Νέα Τιμή (€)"] < row["Παλιά Τιμή (€)"]:
+                            elif row["Νέα Τιμή Αντιπροσώπου (€)"] < row["Παλιά Τιμή Αντιπροσώπου (€)"]:
                                 styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
                             return styles
 
