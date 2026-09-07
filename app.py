@@ -3566,7 +3566,7 @@ elif page == "📐 Markup & Margin":
             _monthly_fixed_map_mm = load_monthly_fixed_costs()
             _mm_fixed_annual, _mm_missing_months = sum_fixed_costs_for_months(_monthly_fixed_map_mm, _mm_months_list)
             if _mm_missing_months:
-                st.caption(f"⚠️ Δεν βρέθηκαν καταχωρημένα σταθερά έξοδα για: {', '.join(_mm_missing_months)} (υπολογίστηκαν ως 0€). Καταχώρησέ τα στο «🎯 Νεκρό Σημείο».")
+                st.caption(f"⚠️ Δεν βρέθηκαν καταχωρημένα έξοδα για: {', '.join(_mm_missing_months)} (υπολογίστηκαν ως 0€). Καταχώρησέ τα στο «💸 Έξοδα».")
 
             net_profit_actual = gross_profit_actual - _mm_fixed_annual
             net_profit_scenario = gross_profit_scenario - _mm_fixed_annual
@@ -3653,7 +3653,7 @@ elif page == "📐 Markup & Margin":
                 st.metric("Καθαρό Κέρδος (μετά φόρων)", f"{net_after_tax_scenario:,.2f} €", delta=_delta_str(net_after_tax_actual, net_after_tax_scenario), help="Αυτό θα έμενε πραγματικά στην επιχείρηση, με το σενάριο, μετά τον φόρο.")
 
             if _mm_fixed_annual == 0:
-                st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» — το Καθαρό Κέρδος εδώ ισούται προσωρινά με το Μικτό.")
+                st.info("ℹ️ Δεν έχουν καταχωρηθεί έξοδα στο «💸 Έξοδα» — το Καθαρό Κέρδος εδώ ισούται προσωρινά με το Μικτό.")
 
             try:
                 _now_str_mm2 = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
@@ -4951,7 +4951,11 @@ elif page == "🎯 Νεκρό Σημείο":
     st.info("ℹ️ Τα σταθερά έξοδα καταχωρούνται στην καρτέλα **«💸 Έξοδα»**. Εδώ υπολογίζεται αυτόματα ο **μέσος όρος** όλων των μηνών που έχεις καταχωρήσει, ως πιο αντιπροσωπευτική βάση για το νεκρό σημείο.")
 
     _all_expense_entries_be = load_all_expense_entries()
-    _months_with_data_be = sorted({e["month_year"] for e in _all_expense_entries_be}, key=lambda x: (x[3:], x[:2]))
+    _candidate_months_be = sorted({e["month_year"] for e in _all_expense_entries_be}, key=lambda x: (x[3:], x[:2]))
+    # 🔧 FIX: πριν μετρούσε έναν μήνα ως "με δεδομένα" αν είχε ΟΠΟΙΑΔΗΠΟΤΕ γραμμή, ακόμα κι αν
+    # το ποσό της ήταν 0€ (π.χ. μια εγγραφή που μηδενίστηκε αλλά δεν διαγράφηκε ποτέ πραγματικά).
+    # Τώρα μετράει μόνο μήνες με ΠΡΑΓΜΑΤΙΚΟ σύνολο > 0.
+    _months_with_data_be = [my for my in _candidate_months_be if get_month_grand_total(my) > 0]
 
     if not _months_with_data_be:
         st.warning("⚠️ Δεν έχουν καταχωρηθεί ακόμα έξοδα σε κανέναν μήνα. Πήγαινε στην καρτέλα «💸 Έξοδα» για να τα συμπληρώσεις.")
@@ -5273,13 +5277,13 @@ elif page == "📑 Έσοδα - Έξοδα":
             _monthly_fixed_map_pl = load_monthly_fixed_costs()
             period_fixed, _pl_missing_months = sum_fixed_costs_for_months(_monthly_fixed_map_pl, _pl_months_list)
             if _pl_missing_months:
-                st.warning(f"⚠️ Δεν βρέθηκαν καταχωρημένα σταθερά έξοδα για: {', '.join(_pl_missing_months)} — υπολογίστηκαν ως 0€ για αυτούς τους μήνες. Καταχώρησέ τα στο «🎯 Νεκρό Σημείο» για ακριβέστερο αποτέλεσμα.")
+                st.warning(f"⚠️ Δεν βρέθηκαν καταχωρημένα έξοδα για: {', '.join(_pl_missing_months)} — υπολογίστηκαν ως 0€ για αυτούς τους μήνες. Καταχώρησέ τα στο «💸 Έξοδα» για ακριβέστερο αποτέλεσμα.")
 
             net_profit = gross_profit - period_fixed
             net_margin_pct = (net_profit / total_revenue * 100) if total_revenue > 0 else 0.0
 
             if period_fixed == 0:
-                st.info("ℹ️ Δεν έχουν καταχωρηθεί σταθερά έξοδα στο «🎯 Νεκρό Σημείο» για αυτή την περίοδο — το καθαρό κέρδος παρακάτω δεν τα αφαιρεί ακόμα.")
+                st.info("ℹ️ Δεν έχουν καταχωρηθεί έξοδα στο «💸 Έξοδα» για αυτή την περίοδο — το καθαρό κέρδος παρακάτω δεν τα αφαιρεί ακόμα.")
 
             st.divider()
             st.subheader(f"📅 Περίοδος: {period_label}")
