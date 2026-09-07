@@ -1655,7 +1655,7 @@ if not check_password():
 st.markdown(
     """
     <h2 style='color: #009b3a; text-align: center; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); margin-top: 10px;'>
-        "Stay Drunk With Our Cocktails!!!"
+        "Κοκτέιλ τόσο καλά, που ανασταίνουν και... Zombie!"
     </h2>
     <br>
     """, 
@@ -1985,37 +1985,6 @@ with st.sidebar:
     st.image("https://cabclub.gr/wp-content/uploads/2021/12/logo.png", use_container_width=True)
     st.title("DC CABCLUB 2026 🏆")
 
-    # --- 🍹 Κυλιόμενο banner με τα ονόματα των κοκτέιλ (ζωντανά από τη βάση) ---
-    try:
-        _marquee_names = sorted(df_rec["Ονομα"].dropna().unique().tolist()) if not df_rec.empty else []
-    except Exception:
-        _marquee_names = []
-    if _marquee_names:
-        _marquee_text = "   🍸   ".join(_marquee_names)
-        _marquee_content = f"{_marquee_text}   🍸   {_marquee_text}"  # διπλό, για απρόσκοπτο loop
-        _marquee_duration = max(18, len(_marquee_names) * 2.2)  # πιο πολλά κοκτέιλ -> πιο αργή, ευανάγνωστη κύλιση
-        st.markdown(f"""
-            <style>
-            .cocktail-marquee-container {{
-                overflow: hidden; white-space: nowrap;
-                background: linear-gradient(90deg, #009b3a, #00c9a7);
-                border-radius: 8px; padding: 7px 0; margin: 10px 0;
-            }}
-            .cocktail-marquee-text {{
-                display: inline-block; white-space: nowrap;
-                color: white; font-weight: 600; font-size: 12.5px;
-                animation: cocktail-scroll {_marquee_duration}s linear infinite;
-            }}
-            @keyframes cocktail-scroll {{
-                from {{ transform: translateX(0); }}
-                to {{ transform: translateX(-50%); }}
-            }}
-            </style>
-            <div class="cocktail-marquee-container">
-                <span class="cocktail-marquee-text">{_marquee_content}</span>
-            </div>
-        """, unsafe_allow_html=True)
-
     st.divider()
 
     # 2. Κεντρικό Μενού — 2 επίπεδα: πρώτα κατηγορία, μετά συγκεκριμένη καρτέλα
@@ -2128,7 +2097,7 @@ if page == "🏠 Αρχική":
 
     st.markdown(f"""
         <div style='background: linear-gradient(135deg, #009b3a 0%, #00c9a7 50%, #00ffcc 100%);
-                    padding: 28px 32px; border-radius: 16px; margin-bottom: 24px;
+                    padding: 28px 32px; border-radius: 16px; margin-bottom: 18px;
                     box-shadow: 0 4px 20px rgba(0,201,167,0.25);'>
             <h1 style='color: white; margin: 0; font-size: 30px;'>{_greeting}! 👋</h1>
             <p style='color: rgba(255,255,255,0.9); margin: 6px 0 0 0; font-size: 15px;'>
@@ -2136,6 +2105,40 @@ if page == "🏠 Αρχική":
             </p>
         </div>
     """, unsafe_allow_html=True)
+
+    # --- 🍹 Μεγάλο κυλιόμενο banner με τα ονόματα των κοκτέιλ (ζωντανά από τη βάση) ---
+    try:
+        _marquee_names = sorted(df_rec["Ονομα"].dropna().unique().tolist()) if not df_rec.empty else []
+    except Exception:
+        _marquee_names = []
+    if _marquee_names:
+        _marquee_text = "     🍸     ".join(_marquee_names)
+        _marquee_content = f"{_marquee_text}     🍸     {_marquee_text}"  # διπλό, για απρόσκοπτο loop
+        _marquee_duration = max(20, len(_marquee_names) * 2.0)
+        st.markdown(f"""
+            <style>
+            .cocktail-marquee-container-big {{
+                overflow: hidden; white-space: nowrap;
+                background: linear-gradient(90deg, #009b3a, #00c9a7, #00ffcc, #00c9a7, #009b3a);
+                background-size: 300% 100%;
+                border-radius: 12px; padding: 16px 0; margin-bottom: 24px;
+                box-shadow: 0 4px 16px rgba(0,201,167,0.3);
+            }}
+            .cocktail-marquee-text-big {{
+                display: inline-block; white-space: nowrap;
+                color: white; font-weight: 700; font-size: 22px;
+                text-shadow: 0 1px 3px rgba(0,0,0,0.25);
+                animation: cocktail-scroll-big {_marquee_duration}s linear infinite;
+            }}
+            @keyframes cocktail-scroll-big {{
+                from {{ transform: translateX(0); }}
+                to {{ transform: translateX(-50%); }}
+            }}
+            </style>
+            <div class="cocktail-marquee-container-big">
+                <span class="cocktail-marquee-text-big">{_marquee_content}</span>
+            </div>
+        """, unsafe_allow_html=True)
 
     # --- Γρήγορη Εικόνα (φρέσκα νούμερα, τρέχων μήνας) ---
     try:
