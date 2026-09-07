@@ -1817,10 +1817,15 @@ def sum_fixed_costs_for_months(monthly_fixed_map, month_year_list):
     missing_months = []
     for my in month_year_list:
         data = monthly_fixed_map.get(my)
-        if data is None:
+        # 🔧 FIX: πριν, ένας μήνας με ΥΠΟΛΕΙΜΜΑΤΙΚΗ μηδενική εγγραφή (π.χ. κάποιος μηδένισε το
+        # ποσό αντί να διαγράψει πραγματικά τη γραμμή με το 🗑️) μετρούσε ως "έχει δεδομένα (0€)"
+        # αντί για "λείπουν δεδομένα" — έτσι δεν εμφανιζόταν στην προειδοποίηση. Τώρα ελέγχει το
+        # ΠΡΑΓΜΑΤΙΚΟ σύνολο, ίδια λογική με το ήδη διορθωμένο Νεκρό Σημείο.
+        month_total = get_month_total_fixed(data) if data is not None else 0.0
+        if month_total <= 0:
             missing_months.append(my)
         else:
-            total += get_month_total_fixed(data)
+            total += month_total
     return total, missing_months
 
 
@@ -5252,7 +5257,16 @@ elif page == "💸 Έξοδα":
         _employees = get_known_employees()
         _personnel_payload = []
         for emp in _employees:
-            st.markdown(f"**{emp}**")
+            emp_title_col, emp_del_col = st.columns([5, 1])
+            emp_title_col.markdown(f"**{emp}**")
+            if emp_del_col.button("🗑️", key=f"del_emp_{sel_fixed_month}_{emp}", help=f"Διαγραφή {emp} μόνο για {sel_fixed_month} (παραμένει διαθέσιμος/η για άλλους μήνες)"):
+                try:
+                    supabase.table("expense_entries").delete().eq("month_year", sel_fixed_month).eq("category", PERSONNEL_CATEGORY).eq("subcategory", emp).execute()
+                    st.cache_data.clear()
+                    st.success(f"✅ Διαγράφηκε ο/η {emp} για {sel_fixed_month}!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Σφάλμα διαγραφής: {e}")
             pc1, pc2 = st.columns(2)
             salary = pc1.number_input("Μισθός (€)", min_value=0.0, value=_month_entries_map.get((PERSONNEL_CATEGORY, emp, "Μισθός"), 0.0), step=50.0, key=f"exp_{sel_fixed_month}_{emp}_salary")
             insurance = pc2.number_input("Ασφαλιστικές εισφορές (€)", min_value=0.0, value=_month_entries_map.get((PERSONNEL_CATEGORY, emp, "Ασφαλιστικές εισφορές"), 0.0), step=20.0, key=f"exp_{sel_fixed_month}_{emp}_insurance")
