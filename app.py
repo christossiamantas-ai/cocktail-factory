@@ -606,7 +606,8 @@ def generate_pl_report_pdf(period_label, data):
     def row(label, value, bold=False, color=None, indent=0):
         pdf.set_font(f_name, 'B' if bold else '', 10)
         pdf.set_text_color(*(color or DARK))
-        pdf.cell(10 * indent, 7)
+        if indent > 0:
+            pdf.cell(10 * indent, 7)  # 🔧 FIX: pdf.cell(0, 7) στην FPDF σημαίνει "άπλωσε μέχρι το περιθώριο", ΟΧΙ μηδενικό πλάτος — παλιά, όταν indent=0, αυτό κατανάλωνε σιωπηλά όλη τη γραμμή και η ετικέτα ξεχείλιζε έξω από τη σελίδα
         pdf.cell(130 - 10 * indent, 7, label)
         pdf.cell(50, 7, value, align='R', ln=1)
         pdf.set_text_color(*DARK)
@@ -926,7 +927,8 @@ def generate_full_financial_report_pdf(period_label, months_data, expense_entrie
     def row(label, value, bold=False, color=None, indent=0):
         pdf.set_font(f_name, 'B' if bold else '', 10)
         pdf.set_text_color(*(color or DARK))
-        pdf.cell(10 * indent, 7)
+        if indent > 0:
+            pdf.cell(10 * indent, 7)  # 🔧 FIX: pdf.cell(0, 7) στην FPDF σημαίνει "άπλωσε μέχρι το περιθώριο", ΟΧΙ μηδενικό πλάτος — παλιά, όταν indent=0, αυτό κατανάλωνε σιωπηλά όλη τη γραμμή και η ετικέτα ξεχείλιζε έξω από τη σελίδα
         pdf.cell(180 - 10 * indent, 7, label)
         pdf.cell(70, 7, value, align='R', ln=1)
         pdf.set_text_color(*DARK)
@@ -1362,7 +1364,8 @@ def generate_full_scenario_impact_pdf(data):
     def row(label, value, bold=False, color=None, indent=0):
         pdf.set_font(f_name, 'B' if bold else '', 10)
         pdf.set_text_color(*(color or DARK))
-        pdf.cell(10 * indent, 7)
+        if indent > 0:
+            pdf.cell(10 * indent, 7)  # 🔧 FIX: pdf.cell(0, 7) στην FPDF σημαίνει "άπλωσε μέχρι το περιθώριο", ΟΧΙ μηδενικό πλάτος — παλιά, όταν indent=0, αυτό κατανάλωνε σιωπηλά όλη τη γραμμή και η ετικέτα ξεχείλιζε έξω από τη σελίδα
         pdf.cell(120 - 10 * indent, 7, label)
         # 🔧 FIX: αν η τιμή είναι πολύ μακριά για τα 60mm της στήλης, μικραίνει τη γραμματοσειρά
         # αντί να ξεχειλίζει έξω από τη σελίδα (π.χ. "Απευθείας στον Τελικό Πελάτη...").
