@@ -239,20 +239,27 @@ def _find_unicode_font_path():
 _UNICODE_FONT_PATH = _find_unicode_font_path()
 
 def _pdf_safe_text(text):
-    """Αφαιρεί emoji/σύμβολα που η γραμματοσειρά DejaVu (χρησιμοποιούμενη στα PDF) δεν
-    υποστηρίζει — χωρίς αυτό, η FPDF μπορεί να σκάσει εντελώς με 'Not enough horizontal
-    space to render a single character'. Χρησιμοποιείται ΜΟΝΟ σε κείμενο που πάει σε PDF —
-    στην ίδια την οθόνη Streamlit τα emoji εμφανίζονται κανονικά μέσω του browser."""
-    emoji_pattern = re.compile(
+    """Κρατάει ΜΟΝΟ χαρακτήρες γνωστούς ασφαλείς για τη γραμματοσειρά DejaVu (ελληνικά,
+    λατινικά, ψηφία, βασική στίξη) και αφαιρεί ΟΤΙΔΗΠΟΤΕ άλλο — emoji, αόρατους modifiers
+    (π.χ. variation selectors), ή οποιονδήποτε άλλο χαρακτήρα δεν έχουμε προβλέψει. Πιο
+    ανθεκτική μέθοδος από το να απαριθμούμε γνωστά "προβληματικά" εύρη ένα-ένα (που ξανά και
+    ξανά άφηνε απροστάτευτους αόρατους χαρακτήρες, π.χ. το U+FE0F μετά από emoji σαν το 🛡️).
+    Χρησιμοποιείται ΜΟΝΟ σε κείμενο που πάει σε PDF — στην οθόνη Streamlit τα emoji δουλεύουν κανονικά."""
+    if not isinstance(text, str):
+        text = str(text)
+    safe_pattern = re.compile(
         "["
-        "\U0001F300-\U0001FAFF"  # εικονίδια/pictographs, emoticons, μεταφορά, συμπληρωματικά
-        "\U00002600-\U000027BF"  # διάφορα σύμβολα, dingbats
-        "\U0001F1E0-\U0001F1FF"  # σημαίες
-        "\U00002190-\U000021FF"  # βέλη
-        "\U00002B00-\U00002BFF"  # διάφορα σύμβολα/βέλη (π.χ. ⭐ U+2B50)
-        "]+", flags=re.UNICODE
+        "\u0020-\u007E"   # βασικά λατινικά + αριθμοί + κοινή στίξη
+        "\u00A0-\u00FF"   # Latin-1 Supplement (π.χ. €... όχι, το € είναι αλλού, αλλά ά,ό κλπ με τόνο ίσως)
+        "\u0370-\u03FF"   # Ελληνικά και Κοπτικά
+        "\u1F00-\u1FFF"   # Greek Extended (πολυτονικά, αν χρειαστεί ποτέ)
+        "\u20AC"          # σύμβολο ευρώ €
+        "\u2018\u2019\u201C\u201D"  # «έξυπνα» εισαγωγικά
+        "\u2013\u2014"    # παύλες (en-dash, em-dash)
+        "\n\r\t"
+        "]+"
     )
-    return emoji_pattern.sub("", text).strip()
+    return "".join(safe_pattern.findall(text)).strip()
 
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
