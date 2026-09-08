@@ -969,6 +969,10 @@ def generate_scenario_forecast_pdf(data, now_str):
     pdf.set_text_color(*GREY)
     pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
     pdf.set_text_color(*DARK)
+    pdf.set_font(f_name, 'B', 11)
+    pdf.set_text_color(27, 94, 158)
+    pdf.cell(0, 7, f"Κανάλι Πώλησης: {_pdf_safe_text(data.get('channel_label', 'Μέσω Αντιπροσώπου'))}", ln=1)
+    pdf.set_text_color(*DARK)
     pdf.ln(3)
 
     # --- ΣΥΝΤΕΛΕΣΤΕΣ ΕΠΟΧΙΚΟΤΗΤΑΣ ---
@@ -996,6 +1000,7 @@ def generate_scenario_forecast_pdf(data, now_str):
 
     # --- ΠΡΑΓΜΑΤΙΚΑ ΔΕΔΟΜΕΝΑ ---
     section("ΠΡΑΓΜΑΤΙΚΑ ΔΕΔΟΜΕΝΑ vs ΠΡΟΒΛΕΨΗ")
+    row("Κανάλι Πώλησης", data.get("channel_label", "🤝 Μέσω Αντιπροσώπου"), bold=True, color=(27, 94, 158))
     # 🔧 FIX: κάθε στοιχείο είναι πλέον "MM/YYYY" — δείχνουμε "Μήνας Έτος" σωστά, ακόμα κι αν το
     # εύρος εκτείνεται σε 2 ημερολογιακά έτη.
     real_month_names = ", ".join(f"{data['month_names'][my.split('/')[0]]} {my.split('/')[1]}" for my in data["real_months"])
@@ -6755,7 +6760,9 @@ elif page == "🎯 Νεκρό Σημείο":
                     "fc_results": fc_results,
                     "fc_price_tables": fc_price_tables,
                     "annual_fixed_fc": annual_fixed_fc,
-                    "ref_price": ref_price, "avg_cost_be": avg_cost_be,
+                    "ref_price": channel_ref_price, "avg_cost_be": avg_cost_be,
+                    "channel_label": "🎯 Απευθείας στα Μαγαζιά (Τιμή Λιανικής)" if _direct_channel else "🤝 Μέσω Αντιπροσώπου",
+                    "channel_is_direct": _direct_channel,
                 }
                 _fc_pdf_bytes = generate_scenario_forecast_pdf(_fc_pdf_data, _now_str_fc)
                 st.download_button(
