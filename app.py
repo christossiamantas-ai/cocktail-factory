@@ -936,7 +936,7 @@ def generate_scenario_forecast_pdf(data, now_str):
         pdf.line(10, pdf.get_y(), 287, pdf.get_y())
         pdf.ln(3)
 
-    header_bar(f"Ετήσια Πρόβλεψη με Σενάρια Εποχικότητας — {data['year']}")
+    header_bar(f"Ετήσια Πρόβλεψη με Σενάρια Εποχικότητας — {data['period_label']}")
     pdf.set_font(f_name, size=9)
     pdf.set_text_color(*GREY)
     pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
@@ -953,8 +953,10 @@ def generate_scenario_forecast_pdf(data, now_str):
         pdf.cell(col_w, 6, data["month_names"][mkey][:4], border=1, fill=True, align='C')
     pdf.ln()
     pdf.set_font(f_name, size=8)
+    # 🔧 FIX: τα real_months είναι τώρα "MM/YYYY", όχι μόνο "MM" — συγκρίνουμε σωστά το κομμάτι μήνα
+    _real_month_keys_only = {my.split("/")[0] for my in data["real_months"]}
     for mkey in month_keys:
-        is_real = mkey in data["real_months"]
+        is_real = mkey in _real_month_keys_only
         pdf.set_fill_color(230, 244, 234) if is_real else pdf.set_fill_color(*WHITE)
         pdf.cell(col_w, 6, f"{data['seasonality'][mkey]:.2f}", border=1, fill=True, align='C')
     pdf.ln(9)
@@ -966,8 +968,10 @@ def generate_scenario_forecast_pdf(data, now_str):
 
     # --- ΠΡΑΓΜΑΤΙΚΑ ΔΕΔΟΜΕΝΑ ---
     section("ΠΡΑΓΜΑΤΙΚΑ ΔΕΔΟΜΕΝΑ vs ΠΡΟΒΛΕΨΗ")
-    real_month_names = ", ".join(data["month_names"][m] for m in data["real_months"])
-    remaining_month_names = ", ".join(data["month_names"][m] for m in data["remaining_months"])
+    # 🔧 FIX: κάθε στοιχείο είναι πλέον "MM/YYYY" — δείχνουμε "Μήνας Έτος" σωστά, ακόμα κι αν το
+    # εύρος εκτείνεται σε 2 ημερολογιακά έτη.
+    real_month_names = ", ".join(f"{data['month_names'][my.split('/')[0]]} {my.split('/')[1]}" for my in data["real_months"])
+    remaining_month_names = ", ".join(f"{data['month_names'][my.split('/')[0]]} {my.split('/')[1]}" for my in data["remaining_months"])
     row("Μήνες με πραγματικά δεδομένα", real_month_names or "—")
     row("Πραγματικά πληρωμένα τεμάχια", f"{data['real_pieces_year']:,.2f}")
     row("Μήνες υπό πρόβλεψη", remaining_month_names or "—")
@@ -6200,10 +6204,42 @@ elif page == "🎯 Νεκρό Σημείο":
                 col = seas_cols[idx % 4]
                 seasonality[mkey] = col.number_input(mname, min_value=0.1, max_value=5.0, value=DEFAULT_SEASONALITY[mkey], step=0.1, key=f"seas_{mkey}")
 
+        # --- 📅 Επιλογή εύρους μηνών πρόβλεψης (μπορεί να εκτείνεται σε 2 ημερολογιακά έτη) ---
         try:
-            _fc_year_str = str(datetime.now(greece_tz).year)
+            _today_fc = datetime.now(greece_tz)
         except Exception:
-            _fc_year_str = str(datetime.now().year)
+            _today_fc = datetime.now()
+        _year_options_fc = [str(_today_fc.year - 1), str(_today_fc.year), str(_today_fc.year + 1), str(_today_fc.year + 2)]
+        _month_options_fc = list(MONTH_NAMES_GR.keys())
+
+        st.markdown("**Εύρος Λειτουργικού Έτους** (μπορεί να ξεκινάει και να τελειώνει σε διαφορετικά ημερολογιακά έτη)")
+        rc1, rc2, rc3, rc4 = st.columns(4)
+        start_month_fc = rc1.selectbox("Από μήνα:", _month_options_fc, format_func=lambda m: MONTH_NAMES_GR[m], index=4, key="fc_start_month")  # προεπιλογή Μάιος
+        start_year_fc = rc2.selectbox("Από έτος:", _year_options_fc, index=1, key="fc_start_year")
+        end_month_fc = rc3.selectbox("Έως μήνα:", _month_options_fc, format_func=lambda m: MONTH_NAMES_GR[m], index=3, key="fc_end_month")  # προεπιλογή Απρίλιος
+        end_year_fc = rc4.selectbox("Έως έτος:", _year_options_fc, index=2, key="fc_end_year")
+
+        def _generate_month_range(sm, sy, em, ey):
+            """Λίστα 'MM/YYYY' από (sm,sy) έως (em,ey) συμπεριλαμβανομένων, ακόμα κι αν διασχίζει έτη."""
+            result = []
+            cur_m, cur_y = int(sm), int(sy)
+            end_m, end_y = int(em), int(ey)
+            guard = 0
+            while (cur_y < end_y) or (cur_y == end_y and cur_m <= end_m):
+                result.append(f"{cur_m:02d}/{cur_y}")
+                cur_m += 1
+                if cur_m > 12:
+                    cur_m = 1
+                    cur_y += 1
+                guard += 1
+                if guard > 60:  # ασφάλεια, ποτέ πάνω από 5 χρόνια εύρος
+                    break
+            return result
+
+        full_period_months = _generate_month_range(start_month_fc, start_year_fc, end_month_fc, end_year_fc)
+        if not full_period_months or int(f"{start_year_fc}{int(start_month_fc):02d}") > int(f"{end_year_fc}{int(end_month_fc):02d}"):
+            st.error("Το «Έως» πρέπει να είναι μετά ή ίδιο με το «Από».")
+            full_period_months = []
 
         try:
             _res_fc_prod = supabase.table("production_log").select("cocktail_name, pieces, applied_cost, prod_date, prod_time, customer, lot_cocktail, free_pieces, discounted_pieces, discount_pct").execute()
@@ -6216,52 +6252,76 @@ elif page == "🎯 Νεκρό Σημείο":
             df_fc_prod = pd.DataFrame()
             st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
 
-        real_months = []
+        real_months = []  # λίστα "MM/YYYY" ΜΕΣΑ στο επιλεγμένο εύρος, με πραγματικά δεδομένα
         real_pieces_year = 0.0
-        if not df_fc_prod.empty:
+        real_pieces_by_month = {}
+        if not df_fc_prod.empty and full_period_months:
             df_fc_prod["parsed"] = pd.to_datetime(df_fc_prod["prod_date"], format="%d/%m/%Y", errors="coerce")
             df_fc_prod = df_fc_prod.dropna(subset=["parsed"])
-            df_fc_prod_year = df_fc_prod[df_fc_prod["parsed"].dt.strftime("%Y") == _fc_year_str].copy()
-            if not df_fc_prod_year.empty:
-                df_fc_prod_year["month_key"] = df_fc_prod_year["parsed"].dt.strftime("%m")
-                real_months = sorted(df_fc_prod_year["month_key"].unique())
-                _pcs = pd.to_numeric(df_fc_prod_year["pieces"], errors="coerce").fillna(0)
-                _free = pd.to_numeric(df_fc_prod_year.get("free_pieces", 0), errors="coerce").fillna(0)
-                real_pieces_year = float((_pcs - _free).sum())
+            df_fc_prod["month_year_key"] = df_fc_prod["parsed"].dt.strftime("%m/%Y")
+            df_fc_prod_period = df_fc_prod[df_fc_prod["month_year_key"].isin(full_period_months)].copy()
+            if not df_fc_prod_period.empty:
+                real_months = sorted(df_fc_prod_period["month_year_key"].unique(), key=lambda x: full_period_months.index(x))
+                df_fc_prod_period["_paid_pieces"] = pd.to_numeric(df_fc_prod_period["pieces"], errors="coerce").fillna(0) - pd.to_numeric(df_fc_prod_period.get("free_pieces", 0), errors="coerce").fillna(0)
+                # 🔧 FIX: κρατάμε τα ΠΡΑΓΜΑΤΙΚΑ τεμάχια ΑΝΑ ΜΗΝΑ (MM/YYYY) ξεχωριστά — η σχέση μεταξύ
+                # των πραγματικών μηνών προκύπτει από τα ΠΡΑΓΜΑΤΙΚΑ δεδομένα, όχι από δείκτη που μαντεύεις.
+                real_pieces_by_month = df_fc_prod_period.groupby("month_year_key")["_paid_pieces"].sum().to_dict()
+                real_pieces_year = float(sum(real_pieces_by_month.values()))
 
-        if not real_months:
-            st.warning(f"Δεν βρέθηκαν δεδομένα πωλήσεων για το {_fc_year_str} ακόμα — δεν είναι δυνατή η πρόβλεψη.")
+        if not full_period_months:
+            pass  # το σφάλμα εύρους ήδη εμφανίστηκε παραπάνω
+        elif not real_months:
+            st.warning(f"Δεν βρέθηκαν δεδομένα πωλήσεων μέσα στο επιλεγμένο εύρος ({full_period_months[0]} έως {full_period_months[-1]}) — δεν είναι δυνατή η πρόβλεψη.")
         else:
-            # 🔧 FIX: μόνο ΑΠΟ τον Μάιο και μετά — η επιχείρηση δεν λειτουργούσε πριν, άρα δεν έχει
-            # νόημα να "προβλέπουμε" πωλήσεις ή να μετράμε σταθερά έξοδα για Ιανουάριο-Απρίλιο.
-            _business_start_month = "05"
-            remaining_months = [m for m in MONTH_NAMES_GR.keys() if m not in real_months and m >= _business_start_month]
-            st.info(f"📊 Πραγματικά δεδομένα: **{', '.join(MONTH_NAMES_GR[m] for m in real_months)}** ({len(real_months)} μήνα/ες, {real_pieces_year:,.0f} πληρωμένα τεμάχια). Πρόβλεψη σεναρίων για τους υπόλοιπους {len(remaining_months)} μήνες του {_fc_year_str}.")
+            remaining_months = [my for my in full_period_months if my not in real_months]
+            _real_names_display = ", ".join(f"{MONTH_NAMES_GR[my.split('/')[0]]} {my.split('/')[1]}" for my in real_months)
+            st.info(f"📊 Πραγματικά δεδομένα: **{_real_names_display}** ({len(real_months)} μήνα/ες, {real_pieces_year:,.0f} πληρωμένα τεμάχια). Πρόβλεψη σεναρίων για τους υπόλοιπους {len(remaining_months)} μήνες, μέχρι {MONTH_NAMES_GR[end_month_fc]} {end_year_fc}.")
+
+            # --- 🔍 Σύγκριση: ο δείκτης που έβαλες vs τι έδειξαν τα ΠΡΑΓΜΑΤΙΚΑ στοιχεία ---
+            with st.expander("🔍 Σύγκριση: Ο δείκτης σου vs η Πραγματικότητα (στους μήνες που ήδη ξέρεις)", expanded=True):
+                st.caption(
+                    "Στους μήνες που ήδη έχεις πουλήσει, ΔΕΝ χρειάζεται να μαντέψεις τη σχέση μεταξύ τους — "
+                    "φαίνεται εδώ τι πραγματικά συνέβη. Χρησιμοποίησε αυτή τη σύγκριση για να διορθώσεις "
+                    "τους δείκτες των ΑΓΝΩΣΤΩΝ μηνών πιο ρεαλιστικά."
+                )
+                _max_real_pieces = max(real_pieces_by_month.values()) if real_pieces_by_month else 1
+                _comparison_rows = []
+                for my in real_months:
+                    _mm = my.split("/")[0]
+                    _comparison_rows.append({
+                        "Μήνας": f"{MONTH_NAMES_GR[_mm]} {my.split('/')[1]}",
+                        "Ο δείκτης που έβαλες": round(seasonality[_mm], 2),
+                        "Πραγματικά Τεμάχια": int(real_pieces_by_month.get(my, 0)),
+                        "Πραγματική Σχετική Δύναμη (κανονικοποιημένη)": round(real_pieces_by_month.get(my, 0) / _max_real_pieces, 2) if _max_real_pieces else 0,
+                    })
+                st.dataframe(pd.DataFrame(_comparison_rows), use_container_width=True, hide_index=True)
+                st.caption("💡 Η στήλη «Πραγματική Σχετική Δύναμη» δείχνει το ίδιο είδος δείκτη (0-1, με τον πιο δυνατό πραγματικό μήνα = 1.00) αλλά υπολογισμένο από τα ΠΡΑΓΜΑΤΙΚΑ νούμερα — σύγκρινέ το με τον δικό σου δείκτη διπλανή στήλη.")
 
             real_revenue_year = real_pieces_year * ref_price
             avg_cost_be = (total_cost / total_paid_pieces) if total_paid_pieces else 0
             real_cogs_year = real_pieces_year * avg_cost_be
 
-            # --- Σταθερά έξοδα: ΑΠΟ τον Μάιο και μετά (τότε ξεκίνησε η επιχείρηση), με τον Μάιο ως
-            # προεπιλογή όπου λείπει καταχώρηση — ΟΧΙ Ιανουάριο-Απρίλιο, που δεν υπήρχε καν δραστηριότητα.
-            _may_key = f"05/{_fc_year_str}"
-            _may_fixed_total = get_month_grand_total(_may_key)
+            # --- Σταθερά έξοδα: όλο το επιλεγμένο εύρος, με το ΠΡΩΤΟ μήνα του εύρους ως προεπιλογή
+            # όπου λείπει καταχώρηση (π.χ. αν ξεκίνησες Μάιο 2026, αυτός γίνεται η φυσική βάση αναφοράς).
+            _ref_fixed_key = full_period_months[0]
+            _ref_fixed_total = get_month_grand_total(_ref_fixed_key)
             annual_fixed_fc = 0.0
             _fixed_used_default = []
-            for mkey in MONTH_NAMES_GR.keys():
-                if mkey < _business_start_month:
-                    continue
-                _mfull = f"{mkey}/{_fc_year_str}"
-                _mtotal = get_month_grand_total(_mfull)
-                if _mtotal <= 0 and _may_fixed_total > 0:
-                    _mtotal = _may_fixed_total
-                    _fixed_used_default.append(MONTH_NAMES_GR[mkey])
+            for my in full_period_months:
+                _mtotal = get_month_grand_total(my)
+                if _mtotal <= 0 and _ref_fixed_total > 0:
+                    _mtotal = _ref_fixed_total
+                    _fixed_used_default.append(my)
                 annual_fixed_fc += _mtotal
             if _fixed_used_default:
-                st.caption(f"ℹ️ Χρησιμοποιήθηκαν τα έξοδα του Μαΐου ως προεπιλογή για: {', '.join(_fixed_used_default)} (χωρίς δική τους καταχώρηση ακόμα).")
+                st.caption(f"ℹ️ Χρησιμοποιήθηκαν τα έξοδα του {_ref_fixed_key} ως προεπιλογή για: {', '.join(_fixed_used_default)} (χωρίς δική τους καταχώρηση ακόμα).")
 
-            real_seasonality_sum = sum(seasonality[m] for m in real_months)
-            rate_per_seasonality_unit = (real_pieces_year / real_seasonality_sum) if real_seasonality_sum > 0 else 0
+            # 🔧 FIX: αντί για ΕΝΑ άθροισμα (που εξαρτιόταν 100% από τους δικούς σου δείκτες και στους
+            # ΠΡΑΓΜΑΤΙΚΟΥΣ μήνες), υπολογίζουμε τον "ρυθμό ανά μονάδα εποχικότητας" ΞΕΧΩΡΙΣΤΑ για κάθε
+            # πραγματικό μήνα (από τα ΠΡΑΓΜΑΤΙΚΑ του τεμάχια), και παίρνουμε τον ΜΕΣΟ ΟΡΟ τους. Έτσι η
+            # πρόβλεψη βασίζεται όσο γίνεται περισσότερο σε γεγονότα, όχι σε εικασίες για ήδη γνωστούς μήνες.
+            _implied_rates = [real_pieces_by_month.get(my, 0) / seasonality[my.split("/")[0]] for my in real_months if seasonality[my.split("/")[0]] > 0]
+            rate_per_seasonality_unit = (sum(_implied_rates) / len(_implied_rates)) if _implied_rates else 0
 
             st.markdown("**Ποσοστά Σεναρίων** (πάνω/κάτω από τον βαθμονομημένο ρυθμό παραγωγής, για τους υπόλοιπους μήνες)")
             sp1, sp2, sp3 = st.columns(3)
@@ -6277,8 +6337,9 @@ elif page == "🎯 Νεκρό Σημείο":
                 proj_pieces = real_pieces_year
                 proj_revenue = real_revenue_year
                 proj_cogs = real_cogs_year
-                for m in remaining_months:
-                    month_pieces = max(0.0, rate_per_seasonality_unit * seasonality[m] * (1 + pct / 100))
+                for my in remaining_months:
+                    _mm = my.split("/")[0]
+                    month_pieces = max(0.0, rate_per_seasonality_unit * seasonality[_mm] * (1 + pct / 100))
                     proj_pieces += month_pieces
                     proj_revenue += month_pieces * ref_price
                     proj_cogs += month_pieces * avg_cost_be
@@ -6380,7 +6441,7 @@ elif page == "🎯 Νεκρό Σημείο":
                 _now_str_fc = datetime.now().strftime("%d/%m/%Y %H:%M")
             try:
                 _fc_pdf_data = {
-                    "year": _fc_year_str,
+                    "period_label": f"{MONTH_NAMES_GR[start_month_fc]} {start_year_fc} έως {MONTH_NAMES_GR[end_month_fc]} {end_year_fc}",
                     "seasonality": seasonality, "month_names": MONTH_NAMES_GR,
                     "real_months": real_months, "remaining_months": remaining_months,
                     "real_pieces_year": real_pieces_year,
