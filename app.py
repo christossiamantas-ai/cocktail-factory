@@ -238,6 +238,22 @@ def _find_unicode_font_path():
 
 _UNICODE_FONT_PATH = _find_unicode_font_path()
 
+def _pdf_safe_text(text):
+    """Αφαιρεί emoji/σύμβολα που η γραμματοσειρά DejaVu (χρησιμοποιούμενη στα PDF) δεν
+    υποστηρίζει — χωρίς αυτό, η FPDF μπορεί να σκάσει εντελώς με 'Not enough horizontal
+    space to render a single character'. Χρησιμοποιείται ΜΟΝΟ σε κείμενο που πάει σε PDF —
+    στην ίδια την οθόνη Streamlit τα emoji εμφανίζονται κανονικά μέσω του browser."""
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F300-\U0001FAFF"  # εικονίδια/pictographs, emoticons, μεταφορά, συμπληρωματικά
+        "\U00002600-\U000027BF"  # διάφορα σύμβολα, dingbats
+        "\U0001F1E0-\U0001F1FF"  # σημαίες
+        "\U00002190-\U000021FF"  # βέλη
+        "\U00002B00-\U00002BFF"  # διάφορα σύμβολα/βέλη (π.χ. ⭐ U+2B50)
+        "]+", flags=re.UNICODE
+    )
+    return emoji_pattern.sub("", text).strip()
+
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
@@ -911,14 +927,14 @@ def generate_scenario_forecast_pdf(data, now_str):
         pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
         pdf.set_x(10)
         pdf.set_font(f_name, size=11)
-        pdf.cell(0, 6, subtitle, ln=1)
+        pdf.cell(0, 6, _pdf_safe_text(subtitle), ln=1)
         pdf.set_text_color(*DARK)
         pdf.ln(14)
 
     def section(title):
         pdf.set_font(f_name, 'B', 12)
         pdf.set_fill_color(*LIGHTGREY)
-        pdf.cell(0, 8, title, ln=1, fill=True)
+        pdf.cell(0, 8, _pdf_safe_text(title), ln=1, fill=True)
         pdf.ln(1)
 
     def row(label, value, bold=False, color=None, indent=0):
@@ -926,8 +942,8 @@ def generate_scenario_forecast_pdf(data, now_str):
         pdf.set_text_color(*(color or DARK))
         if indent > 0:
             pdf.cell(10 * indent, 7)
-        pdf.cell(180 - 10 * indent, 7, label)
-        pdf.cell(70, 7, value, align='R', ln=1)
+        pdf.cell(180 - 10 * indent, 7, _pdf_safe_text(label))
+        pdf.cell(70, 7, _pdf_safe_text(str(value)), align='R', ln=1)
         pdf.set_text_color(*DARK)
 
     def divider():
@@ -992,7 +1008,7 @@ def generate_scenario_forecast_pdf(data, now_str):
     pdf.set_fill_color(*LIGHTGREY)
     pdf.cell(75, 7, "", fill=True)
     for label in data["fc_results"].keys():
-        pdf.cell(62, 7, label, border=1, fill=True, align='C')
+        pdf.cell(62, 7, _pdf_safe_text(label), border=1, fill=True, align='C')
     pdf.ln()
 
     def scenario_row(metric_label, key, fmt="{:,.2f}", is_currency=True):
@@ -1017,7 +1033,7 @@ def generate_scenario_forecast_pdf(data, now_str):
     # --- ΠΙΝΑΚΕΣ ΤΙΜΩΝ ΑΝΑ ΣΕΝΑΡΙΟ ---
     for label, table_data in data["fc_price_tables"].items():
         pdf.add_page()
-        header_bar(f"Προτεινόμενες Νέες Τιμές — {label}")
+        header_bar(f"Προτεινόμενες Νέες Τιμές — {_pdf_safe_text(label)}")
         if not table_data["needs_change"]:
             pdf.set_font(f_name, 'B', 12)
             pdf.set_text_color(*GREEN)
@@ -1027,7 +1043,7 @@ def generate_scenario_forecast_pdf(data, now_str):
             section("ΠΡΟΤΕΙΝΟΜΕΝΕΣ ΚΙΝΗΣΕΙΣ")
             pdf.set_font(f_name, size=10)
             for tip in table_data.get("advice", []):
-                pdf.multi_cell(0, 6, "• " + tip.replace("**", ""))
+                pdf.multi_cell(0, 6, "• " + _pdf_safe_text(tip.replace("**", "")))
                 pdf.ln(1)
             continue
 
@@ -1042,7 +1058,7 @@ def generate_scenario_forecast_pdf(data, now_str):
         section("ΠΡΟΤΕΙΝΟΜΕΝΕΣ ΚΙΝΗΣΕΙΣ")
         pdf.set_font(f_name, size=10)
         for tip in table_data.get("advice", []):
-            pdf.multi_cell(0, 6, "• " + tip.replace("**", ""))
+            pdf.multi_cell(0, 6, "• " + _pdf_safe_text(tip.replace("**", "")))
             pdf.ln(1)
         pdf.set_font(f_name, size=7)
         pdf.set_text_color(*GREY)
@@ -1076,10 +1092,10 @@ def generate_scenario_forecast_pdf(data, now_str):
     def explain_row(title, desc):
         pdf.set_font(f_name, 'B', 10)
         pdf.set_text_color(*DARK)
-        pdf.multi_cell(0, 6, title)
+        pdf.multi_cell(0, 6, _pdf_safe_text(title))
         pdf.set_font(f_name, size=9)
         pdf.set_text_color(*GREY)
-        pdf.multi_cell(0, 5.5, desc)
+        pdf.multi_cell(0, 5.5, _pdf_safe_text(desc))
         pdf.set_text_color(*DARK)
         pdf.ln(2)
 
@@ -6664,14 +6680,23 @@ elif page == "🎯 Νεκρό Σημείο":
 
                     if price_rows_fc:
                         df_price_fc = pd.DataFrame(price_rows_fc)
+                        # 🔧 FIX: καθαρισμός γενικής ασφάλειας — όποια στήλη έχει None/NaN (π.χ.
+                        # άγνωστη κατηγορία, ελλιπές ιστορικό), το Streamlit το εμφάνιζε ως ορατό
+                        # κείμενο "None" στη σελίδα. Ίδιο μοτίβο διόρθωσης με προηγούμενους πίνακες.
+                        for _col_fc in df_price_fc.columns:
+                            df_price_fc[_col_fc] = df_price_fc[_col_fc].apply(
+                                lambda v: "—" if (v is None or (isinstance(v, float) and pd.isna(v))) else v
+                            )
 
                         def _hl_fc(row):
                             styles = [''] * len(row)
                             idx = row.index.get_loc("Νέα Τιμή Αντιπροσώπου (€)")
-                            if row["Νέα Τιμή Αντιπροσώπου (€)"] > row["Παλιά Τιμή Αντιπροσώπου (€)"]:
-                                styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
-                            elif row["Νέα Τιμή Αντιπροσώπου (€)"] < row["Παλιά Τιμή Αντιπροσώπου (€)"]:
-                                styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
+                            new_v, old_v = row["Νέα Τιμή Αντιπροσώπου (€)"], row["Παλιά Τιμή Αντιπροσώπου (€)"]
+                            if isinstance(new_v, (int, float)) and isinstance(old_v, (int, float)):
+                                if new_v > old_v:
+                                    styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
+                                elif new_v < old_v:
+                                    styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
                             return styles
 
                         st.dataframe(df_price_fc.style.apply(_hl_fc, axis=1), use_container_width=True, hide_index=True)
