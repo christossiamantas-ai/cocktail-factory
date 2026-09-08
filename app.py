@@ -1023,6 +1023,12 @@ def generate_scenario_forecast_pdf(data, now_str):
             pdf.set_text_color(*GREEN)
             pdf.cell(0, 10, "Το σενάριο είναι ήδη κερδοφόρο — δεν χρειάζεται αλλαγή τιμών.", ln=1)
             pdf.set_text_color(*DARK)
+            pdf.ln(4)
+            section("ΠΡΟΤΕΙΝΟΜΕΝΕΣ ΚΙΝΗΣΕΙΣ")
+            pdf.set_font(f_name, size=10)
+            for tip in table_data.get("advice", []):
+                pdf.multi_cell(0, 6, "• " + tip.replace("**", ""))
+                pdf.ln(1)
             continue
 
         pdf.set_font(f_name, size=10)
@@ -1032,6 +1038,17 @@ def generate_scenario_forecast_pdf(data, now_str):
         pdf.cell(0, 5, "Οι τιμές παρακάτω είναι τιμές ΑΝΤΙΠΡΟΣΩΠΟΥ (74% της λιανικής), όχι λιανικές.", ln=1)
         pdf.set_text_color(*DARK)
         pdf.ln(3)
+
+        section("ΠΡΟΤΕΙΝΟΜΕΝΕΣ ΚΙΝΗΣΕΙΣ")
+        pdf.set_font(f_name, size=10)
+        for tip in table_data.get("advice", []):
+            pdf.multi_cell(0, 6, "• " + tip.replace("**", ""))
+            pdf.ln(1)
+        pdf.set_font(f_name, size=7)
+        pdf.set_text_color(*GREY)
+        pdf.cell(0, 5, "Βασισμένο σε καθιερωμένες πρακτικές μικρών επιχειρήσεων/bar — όχι εξατομικευμένη οικονομική συμβουλή.", ln=1)
+        pdf.set_text_color(*DARK)
+        pdf.ln(5)
 
         cols = [("Κοκτέιλ", 90), ("Κόστος", 40), ("Παλιά Τιμή Αντ.", 45), ("Νέα Τιμή Αντ.", 45), ("% Αύξησης", 47)]
         pdf.set_font(f_name, 'B', 9)
@@ -6381,11 +6398,35 @@ elif page == "🎯 Νεκρό Σημείο":
                         total += ml * float(match_ing_fc.iloc[0].get("Τιμή/ml", 0) or 0)
                 return total
 
+            def _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price, price_increase_pct=None):
+                """Συμβουλές βασισμένες σε καθιερωμένες πρακτικές μικρών επιχειρήσεων/bar
+                (μείωση σταθερού/μεταβλητού κόστους, menu engineering, εποχιακή προώθηση,
+                επανεπένδυση) — επιλέγονται ανάλογα με τα δικά σου νούμερα σε κάθε σενάριο."""
+                advice = []
+                total_cost_res = res["cogs"] + res["fixed"]
+                fixed_ratio = (res["fixed"] / total_cost_res) if total_cost_res else 0
+                margin_ratio = ((ref_price - avg_cost_be) / ref_price) if ref_price else 0
+
+                if res["profit"] < 0:
+                    if fixed_ratio > 0.45:
+                        advice.append("🏠 **Μείωση σταθερών εξόδων**: τα σταθερά σου έξοδα είναι μεγάλο κομμάτι του συνόλου — επαναδιαπραγμάτευση ενοικίου, επανεξέταση συνδρομών/παγίων υπηρεσιών που δεν αξιοποιούνται πλήρως, ή ευέλικτο ωράριο προσωπικού στους αδύναμους μήνες.")
+                    if margin_ratio < 0.35:
+                        advice.append("🧪 **Έλεγχος μεταβλητού κόστους**: το περιθώριο ανά τεμάχιο είναι σχετικά χαμηλό — έλεγξε τη φύρα/απώλειες υλικών, διαπραγματεύσου καλύτερες τιμές με προμηθευτές, ή αναθεώρησε συνταγές με ακριβά συστατικά χωρίς να χάσεις ποιότητα.")
+                    advice.append("🎯 **Στοχευμένη, όχι οριζόντια αύξηση τιμών** (menu engineering): αύξησε τιμές κυρίως στα δημοφιλή αλλά χαμηλού περιθωρίου κοκτέιλ, διατηρώντας ελκυστικές τις τιμές στα ήδη υψηλού περιθωρίου.")
+                    advice.append("📅 **Ενίσχυση όγκου στους αδύναμους μήνες**: εποχιακές προσφορές, events, ή στοχευμένο μάρκετινγκ ειδικά στην περίοδο χαμηλής ζήτησης — εκεί εντοπίζεται συνήθως το μεγαλύτερο μέρος του ελλείμματος.")
+                else:
+                    advice.append("💰 **Επανεπένδυση με στόχο**: αντί να μείνει αδρανές, αξιολόγησε την επανεπένδυση μέρους του κέρδους σε μάρκετινγκ/νέα προϊόντα με το καλύτερο αναμενόμενο όφελος.")
+                    advice.append("🛡️ **Αποθεματικό για τους αδύναμους μήνες**: χτίσε ένα μαξιλάρι ρευστότητας τώρα που το σενάριο είναι θετικό, για να απορροφήσει διακυμάνσεις σε πιο αδύναμες περιόδους.")
+                return advice
+
             for label, res in fc_results.items():
                 with st.expander(f"{label} — {'✅ Ήδη κερδοφόρο' if res['profit'] >= 0 else '❌ Χρειάζεται αύξηση τιμών'}", expanded=(res['profit'] < 0)):
                     if res["profit"] >= 0:
                         st.success(f"Το σενάριο είναι ήδη κερδοφόρο ({res['profit']:,.0f} €) — δεν χρειάζεται αλλαγή τιμών.")
-                        fc_price_tables[label] = {"needs_change": False, "price_increase_pct": 0.0, "required_avg_price": ref_price, "rows": []}
+                        fc_price_tables[label] = {"needs_change": False, "price_increase_pct": 0.0, "required_avg_price": ref_price, "rows": [], "advice": _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price)}
+                        st.markdown("**💡 Προτεινόμενες Κινήσεις**")
+                        for tip in _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price):
+                            st.markdown(f"- {tip}")
                         continue
                     required_total_revenue = res["cogs"] + res["fixed"]
                     required_avg_price = required_total_revenue / res["pieces"] if res["pieces"] else 0
@@ -6395,6 +6436,12 @@ elif page == "🎯 Νεκρό Σημείο":
                     ic1.metric("Απαιτούμενος Τζίρος", f"{required_total_revenue:,.0f} €")
                     ic2.metric("Απαιτούμενη Μέση Τιμή", f"{required_avg_price:.2f} €")
                     ic3.metric("Ποσοστό Αύξησης Τιμών", f"{price_increase_pct:+.1f} %")
+
+                    st.markdown("**💡 Προτεινόμενες Κινήσεις**")
+                    for tip in _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price, price_increase_pct):
+                        st.markdown(f"- {tip}")
+                    st.caption("Βασισμένο σε καθιερωμένες πρακτικές μικρών επιχειρήσεων/bar (μείωση κόστους, menu engineering, εποχιακή προώθηση) — όχι εξατομικευμένη οικονομική συμβουλή.")
+                    st.markdown("")
 
                     price_rows_fc = []
                     for _, r_fc2 in df_rec.iterrows():
@@ -6415,7 +6462,7 @@ elif page == "🎯 Νεκρό Σημείο":
                             "% Αύξησης": round(price_increase_pct, 1),
                         })
 
-                    fc_price_tables[label] = {"needs_change": True, "price_increase_pct": price_increase_pct, "required_avg_price": required_avg_price, "rows": price_rows_fc}
+                    fc_price_tables[label] = {"needs_change": True, "price_increase_pct": price_increase_pct, "required_avg_price": required_avg_price, "rows": price_rows_fc, "advice": _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price, price_increase_pct)}
 
                     if price_rows_fc:
                         df_price_fc = pd.DataFrame(price_rows_fc)
