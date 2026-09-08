@@ -6398,6 +6398,84 @@ elif page == "🎯 Νεκρό Σημείο":
                         total += ml * float(match_ing_fc.iloc[0].get("Τιμή/ml", 0) or 0)
                 return total
 
+            # --- 🧠 MENU ENGINEERING: ιστορικός όγκος πωλήσεων ανά κοκτέιλ, για έξυπνη κατανομή ---
+            try:
+                _res_vol = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, prod_date, prod_time, customer, lot_cocktail").execute()
+                _df_vol = pd.DataFrame(_res_vol.data) if _res_vol.data else pd.DataFrame()
+                if not _df_vol.empty:
+                    _df_vol = _df_vol.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+                    _df_vol["_paid"] = pd.to_numeric(_df_vol["pieces"], errors="coerce").fillna(0) - pd.to_numeric(_df_vol.get("free_pieces", 0), errors="coerce").fillna(0)
+                    _volume_by_cocktail = _df_vol.groupby("cocktail_name")["_paid"].sum().to_dict()
+                else:
+                    _volume_by_cocktail = {}
+            except Exception:
+                _volume_by_cocktail = {}
+
+            def _compute_menu_engineering_allocation(total_gap_revenue):
+                """Αντί για ΟΜΟΙΟΜΟΡΦΟ ποσοστό αύξησης παντού, κατανέμει την απαιτούμενη αύξηση
+                τζίρου βάσει ταξινόμησης κάθε κοκτέιλ σε 4 κατηγορίες (menu engineering, καθιερωμένη
+                τεχνική bar/εστίασης): Star (δημοφιλές+κερδοφόρο, μικρή αύξηση για προστασία),
+                Plowhorse (δημοφιλές+χαμηλό περιθώριο, ΜΕΓΑΛΥΤΕΡΗ αύξηση - εκεί «κρύβεται» η ζημιά),
+                Puzzle (σπάνιο+κερδοφόρο, μέτρια αύξηση), Dog (σπάνιο+χαμηλό περιθώριο, ελεύθερα
+                μπορεί να πάρει μεγαλύτερη % αύξηση αφού ελάχιστος όγκος κινδυνεύει).
+                Επιστρέφει λίστα από dict, ένα ανά κοκτέιλ, με βάρος/κατηγορία/τελικό ποσοστό."""
+                items = []
+                for _, r_me in df_rec.iterrows():
+                    c_name_me = r_me["Ονομα"]
+                    retail_price_me = float(r_me.get("Τιμή Καταλόγου", 0.0) or 0.0)
+                    agent_price_me = retail_price_me * 0.74
+                    if agent_price_me <= 0:
+                        continue
+                    cost_me = get_unit_cost_for_cocktail(c_name_me, _fc_raw_material_cost(r_me))
+                    volume_me = float(_volume_by_cocktail.get(c_name_me, 0.0))
+                    margin_pct_me = ((agent_price_me - cost_me) / agent_price_me) if agent_price_me else 0
+                    items.append({"name": c_name_me, "cost": cost_me, "old_price": agent_price_me, "volume": volume_me, "margin_pct": margin_pct_me})
+
+                if not items:
+                    return []
+
+                max_volume = max(it["volume"] for it in items) or 1
+                max_margin = max(it["margin_pct"] for it in items) or 1
+                min_margin = min(it["margin_pct"] for it in items)
+                margin_range = (max_margin - min_margin) or 1
+
+                for it in items:
+                    norm_volume = it["volume"] / max_volume  # 0..1, δημοφιλία
+                    norm_margin = (it["margin_pct"] - min_margin) / margin_range  # 0..1, κερδοφορία %
+                    it["norm_volume"] = norm_volume
+                    it["norm_margin"] = norm_margin
+                    if norm_volume >= 0.5 and norm_margin >= 0.5:
+                        it["category"] = "⭐ Star"
+                    elif norm_volume >= 0.5 and norm_margin < 0.5:
+                        it["category"] = "🐎 Plowhorse"
+                    elif norm_volume < 0.5 and norm_margin >= 0.5:
+                        it["category"] = "🧩 Puzzle"
+                    else:
+                        it["category"] = "🐶 Dog"
+                    # 🔧 Βάρος: υψηλό όταν δημοφιλές ΚΑΙ χαμηλό περιθώριο (Plowhorse) — εκεί
+                    # μια μικρή αύξηση αποφέρει το μεγαλύτερο πρόσθετο κέρδος με τον μικρότερο
+                    # κίνδυνο αντίδρασης πελατών, αφού το προϊόν είναι ήδη αγαπητό.
+                    it["weight"] = 0.15 + norm_volume * (1 - norm_margin)  # +0.15 ελάχιστο, ώστε κανείς να μην πάρει 0%
+
+                total_weighted_base = sum(it["weight"] * it["volume"] * it["old_price"] for it in items)
+                if total_weighted_base <= 0:
+                    # αν δεν υπάρχει καθόλου ιστορικός όγκος, μοίρασε ισόποσα βάσει τιμής μόνο
+                    total_weighted_base = sum(it["weight"] * it["old_price"] for it in items)
+                    for it in items:
+                        it["share"] = (it["weight"] * it["old_price"] / total_weighted_base) if total_weighted_base else 0
+                else:
+                    for it in items:
+                        it["share"] = (it["weight"] * it["volume"] * it["old_price"] / total_weighted_base) if total_weighted_base else 0
+
+                for it in items:
+                    allocated_revenue = it["share"] * total_gap_revenue
+                    denom = it["volume"] * it["old_price"] if it["volume"] > 0 else it["old_price"]
+                    pct_increase = (allocated_revenue / denom * 100) if denom else 0
+                    it["pct_increase"] = max(0.0, pct_increase)
+                    it["new_price"] = it["old_price"] * (1 + it["pct_increase"] / 100)
+
+                return items
+
             def _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price, price_increase_pct=None):
                 """Συμβουλές βασισμένες σε καθιερωμένες πρακτικές μικρών επιχειρήσεων/bar
                 (μείωση σταθερού/μεταβλητού κόστους, menu engineering, εποχιακή προώθηση,
@@ -6418,6 +6496,14 @@ elif page == "🎯 Νεκρό Σημείο":
                     advice.append("💰 **Επανεπένδυση με στόχο**: αντί να μείνει αδρανές, αξιολόγησε την επανεπένδυση μέρους του κέρδους σε μάρκετινγκ/νέα προϊόντα με το καλύτερο αναμενόμενο όφελος.")
                     advice.append("🛡️ **Αποθεματικό για τους αδύναμους μήνες**: χτίσε ένα μαξιλάρι ρευστότητας τώρα που το σενάριο είναι θετικό, για να απορροφήσει διακυμάνσεις σε πιο αδύναμες περιόδους.")
                 return advice
+
+            price_alloc_mode = st.radio(
+                "Τρόπος κατανομής της αύξησης τιμών:",
+                ["Ομοιόμορφη (ίδιο % σε όλα)", "🧠 Έξυπνη κατανομή (menu engineering: βάσει κόστους, όγκου πωλήσεων & περιθωρίου)"],
+                key="fc_price_alloc_mode"
+            )
+            if price_alloc_mode.startswith("🧠"):
+                st.caption("Ταξινομεί κάθε κοκτέιλ σε Star/Plowhorse/Puzzle/Dog (δημοφιλία × περιθώριο) και συγκεντρώνει τη μεγαλύτερη αύξηση στα «Plowhorses» (δημοφιλή αλλά χαμηλού περιθωρίου) — εκεί μια μικρή αύξηση αποφέρει το περισσότερο κέρδος με τον μικρότερο κίνδυνο.")
 
             for label, res in fc_results.items():
                 with st.expander(f"{label} — {'✅ Ήδη κερδοφόρο' if res['profit'] >= 0 else '❌ Χρειάζεται αύξηση τιμών'}", expanded=(res['profit'] < 0)):
@@ -6444,23 +6530,35 @@ elif page == "🎯 Νεκρό Σημείο":
                     st.markdown("")
 
                     price_rows_fc = []
-                    for _, r_fc2 in df_rec.iterrows():
-                        c_name_fc = r_fc2["Ονομα"]
-                        retail_price_fc = float(r_fc2.get("Τιμή Καταλόγου", 0.0) or 0.0)
-                        # 🔧 FIX: οι τιμές εδώ πρέπει να είναι τιμές ΑΝΤΙΠΡΟΣΩΠΟΥ (74% της λιανικής),
-                        # ίδια σύμβαση με Markup & Margin/Εμπορική Πολιτική — όχι η λιανική απευθείας.
-                        old_price_fc = retail_price_fc * 0.74
-                        if old_price_fc <= 0:
-                            continue
-                        new_price_fc = old_price_fc * (1 + price_increase_pct / 100)
-                        cocktail_cost_fc = get_unit_cost_for_cocktail(c_name_fc, _fc_raw_material_cost(r_fc2))
-                        price_rows_fc.append({
-                            "Κοκτέιλ": c_name_fc,
-                            "Κόστος (€)": round(cocktail_cost_fc, 2),
-                            "Παλιά Τιμή Αντιπροσώπου (€)": round(old_price_fc, 2),
-                            "Νέα Τιμή Αντιπροσώπου (€)": round(new_price_fc, 2),
-                            "% Αύξησης": round(price_increase_pct, 1),
-                        })
+                    if price_alloc_mode.startswith("🧠"):
+                        _me_items = _compute_menu_engineering_allocation(required_total_revenue - res["revenue"])
+                        for it in _me_items:
+                            price_rows_fc.append({
+                                "Κοκτέιλ": it["name"],
+                                "Κατηγορία": it["category"],
+                                "Κόστος (€)": round(it["cost"], 2),
+                                "Παλιά Τιμή Αντιπροσώπου (€)": round(it["old_price"], 2),
+                                "Νέα Τιμή Αντιπροσώπου (€)": round(it["new_price"], 2),
+                                "% Αύξησης": round(it["pct_increase"], 1),
+                            })
+                    else:
+                        for _, r_fc2 in df_rec.iterrows():
+                            c_name_fc = r_fc2["Ονομα"]
+                            retail_price_fc = float(r_fc2.get("Τιμή Καταλόγου", 0.0) or 0.0)
+                            # 🔧 FIX: οι τιμές εδώ πρέπει να είναι τιμές ΑΝΤΙΠΡΟΣΩΠΟΥ (74% της λιανικής),
+                            # ίδια σύμβαση με Markup & Margin/Εμπορική Πολιτική — όχι η λιανική απευθείας.
+                            old_price_fc = retail_price_fc * 0.74
+                            if old_price_fc <= 0:
+                                continue
+                            new_price_fc = old_price_fc * (1 + price_increase_pct / 100)
+                            cocktail_cost_fc = get_unit_cost_for_cocktail(c_name_fc, _fc_raw_material_cost(r_fc2))
+                            price_rows_fc.append({
+                                "Κοκτέιλ": c_name_fc,
+                                "Κόστος (€)": round(cocktail_cost_fc, 2),
+                                "Παλιά Τιμή Αντιπροσώπου (€)": round(old_price_fc, 2),
+                                "Νέα Τιμή Αντιπροσώπου (€)": round(new_price_fc, 2),
+                                "% Αύξησης": round(price_increase_pct, 1),
+                            })
 
                     fc_price_tables[label] = {"needs_change": True, "price_increase_pct": price_increase_pct, "required_avg_price": required_avg_price, "rows": price_rows_fc, "advice": _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price, price_increase_pct)}
 
