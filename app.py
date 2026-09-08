@@ -6428,38 +6428,41 @@ elif page == "🎯 Νεκρό Σημείο":
                         continue
                     cost_me = get_unit_cost_for_cocktail(c_name_me, _fc_raw_material_cost(r_me))
                     volume_me = float(_volume_by_cocktail.get(c_name_me, 0.0))
-                    margin_pct_me = ((agent_price_me - cost_me) / agent_price_me) if agent_price_me else 0
-                    items.append({"name": c_name_me, "cost": cost_me, "old_price": agent_price_me, "volume": volume_me, "margin_pct": margin_pct_me})
+                    # 🔧 FIX: η ΠΡΑΓΜΑΤΙΚΗ μέθοδος menu engineering (Kasavana & Smith) ταξινομεί βάσει
+                    # ΑΠΟΛΥΤΟΥ κέρδους ανά τεμάχιο (€), ΟΧΙ ποσοστού περιθωρίου (%) — ένα ακριβό κοκτέιλ
+                    # μπορεί να έχει χαμηλότερο % αλλά μεγαλύτερο απόλυτο κέρδος/τεμάχιο, όπως σωστά
+                    # παρατήρησες με το Zombie. Χρησιμοποιούσα λάθος μέγεθος.
+                    margin_abs_me = agent_price_me - cost_me
+                    items.append({"name": c_name_me, "cost": cost_me, "old_price": agent_price_me, "volume": volume_me, "margin_abs": margin_abs_me})
 
                 if not items:
                     return []
 
                 max_volume = max(it["volume"] for it in items) or 1
-                max_margin = max(it["margin_pct"] for it in items) or 1
-                min_margin = min(it["margin_pct"] for it in items)
+                max_margin = max(it["margin_abs"] for it in items) or 1
+                min_margin = min(it["margin_abs"] for it in items)
                 margin_range = (max_margin - min_margin) or 1
 
-                # 🔧 FIX: η καθιερωμένη μέθοδος menu engineering (Kasavana & Smith) ταξινομεί βάσει
-                # ΜΕΣΟΥ ΟΡΟΥ δημοφιλίας/περιθωρίου, όχι βάσει % του ΜΕΓΙΣΤΟΥ. Με βάση το μέγιστο,
-                # αν οι πωλήσεις συγκεντρώνονται σε λίγα προϊόντα, σχεδόν τίποτα δεν φτάνει το 50%
-                # του κορυφαίου — γι' αυτό δεν εμφανιζόταν καθόλου κατηγορία «Star».
+                # Η καθιερωμένη μέθοδος menu engineering (Kasavana & Smith) ταξινομεί βάσει ΜΕΣΟΥ
+                # ΟΡΟΥ δημοφιλίας/κέρδους, όχι βάσει % του ΜΕΓΙΣΤΟΥ — έτσι κατανέμεται λογικά σε
+                # όλες τις κατηγορίες, ακόμα κι αν οι πωλήσεις συγκεντρώνονται σε λίγα προϊόντα.
                 avg_volume = sum(it["volume"] for it in items) / len(items) if items else 0
-                avg_margin_pct = sum(it["margin_pct"] for it in items) / len(items) if items else 0
+                avg_margin_abs = sum(it["margin_abs"] for it in items) / len(items) if items else 0
 
                 CATEGORY_EXPLANATIONS = {
-                    "⭐ Star": "Δημοφιλές ΚΑΙ καλό περιθώριο — ο «πρωταθλητής» σου. Μικρή αύξηση, για να μην το ρισκάρεις.",
-                    "🐎 Plowhorse": "Δημοφιλές αλλά χαμηλό περιθώριο — εδώ «κρύβεται» η ζημιά. Μεγαλύτερη αύξηση εδώ αποδίδει τα περισσότερα, με μικρό κίνδυνο.",
-                    "🧩 Puzzle": "Σπάνια πωλείται, αλλά καλό περιθώριο όποτε πωληθεί — μέτρια αύξηση, ίσως χρειάζεται περισσότερη προβολή/προώθηση αντί για ακριβότερη τιμή.",
-                    "🐶 Dog": "Σπάνια πωλείται ΚΑΙ χαμηλό περιθώριο — μικρός όγκος διακυβεύεται, οπότε μπορεί να πάρει μεγαλύτερη % αύξηση χωρίς μεγάλο ρίσκο.",
+                    "⭐ Star": "Δημοφιλές ΚΑΙ καλό απόλυτο κέρδος/τεμάχιο (€) — ο «πρωταθλητής» σου. Μικρή αύξηση, για να μην το ρισκάρεις.",
+                    "🐎 Plowhorse": "Δημοφιλές αλλά χαμηλό απόλυτο κέρδος/τεμάχιο — εδώ «κρύβεται» η ζημιά. Μεγαλύτερη αύξηση εδώ αποδίδει τα περισσότερα, με μικρό κίνδυνο.",
+                    "🧩 Puzzle": "Σπάνια πωλείται, αλλά καλό απόλυτο κέρδος/τεμάχιο όποτε πωληθεί — μέτρια αύξηση, ίσως χρειάζεται περισσότερη προβολή/προώθηση αντί για ακριβότερη τιμή.",
+                    "🐶 Dog": "Σπάνια πωλείται ΚΑΙ χαμηλό απόλυτο κέρδος/τεμάχιο — μικρός όγκος διακυβεύεται, οπότε μπορεί να πάρει μεγαλύτερη % αύξηση χωρίς μεγάλο ρίσκο.",
                 }
 
                 for it in items:
                     norm_volume = it["volume"] / max_volume  # 0..1, μόνο για το βάρος παρακάτω
-                    norm_margin = (it["margin_pct"] - min_margin) / margin_range  # 0..1, μόνο για το βάρος
+                    norm_margin = (it["margin_abs"] - min_margin) / margin_range  # 0..1, μόνο για το βάρος
                     it["norm_volume"] = norm_volume
                     it["norm_margin"] = norm_margin
                     is_popular = it["volume"] >= avg_volume
-                    is_profitable = it["margin_pct"] >= avg_margin_pct
+                    is_profitable = it["margin_abs"] >= avg_margin_abs
                     if is_popular and is_profitable:
                         it["category"] = "⭐ Star"
                     elif is_popular and not is_profitable:
@@ -6469,7 +6472,7 @@ elif page == "🎯 Νεκρό Σημείο":
                     else:
                         it["category"] = "🐶 Dog"
                     it["explanation"] = CATEGORY_EXPLANATIONS[it["category"]]
-                    # 🔧 Βάρος: υψηλό όταν δημοφιλές ΚΑΙ χαμηλό περιθώριο (Plowhorse) — εκεί
+                    # 🔧 Βάρος: υψηλό όταν δημοφιλές ΚΑΙ χαμηλό απόλυτο κέρδος (Plowhorse) — εκεί
                     # μια μικρή αύξηση αποφέρει το μεγαλύτερο πρόσθετο κέρδος με τον μικρότερο
                     # κίνδυνο αντίδρασης πελατών, αφού το προϊόν είναι ήδη αγαπητό.
                     it["weight"] = 0.15 + norm_volume * (1 - norm_margin)  # +0.15 ελάχιστο, ώστε κανείς να μην πάρει 0%
@@ -6555,6 +6558,8 @@ elif page == "🎯 Νεκρό Σημείο":
                                 "Κατηγορία": it["category"],
                                 "Τι σημαίνει": it["explanation"],
                                 "Κόστος (€)": round(it["cost"], 2),
+                                "Κέρδος/τμχ (€)": round(it["margin_abs"], 2),
+                                "Ιστορικά Τεμάχια": int(it["volume"]),
                                 "Παλιά Τιμή Αντιπροσώπου (€)": round(it["old_price"], 2),
                                 "Νέα Τιμή Αντιπροσώπου (€)": round(it["new_price"], 2),
                                 "% Αύξησης": round(it["pct_increase"], 1),
