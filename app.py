@@ -1055,7 +1055,7 @@ def generate_scenario_forecast_pdf(data, now_str):
             section("ΠΡΟΤΕΙΝΟΜΕΝΕΣ ΚΙΝΗΣΕΙΣ")
             pdf.set_font(f_name, size=10)
             for tip in table_data.get("advice", []):
-                pdf.multi_cell(0, 6, "• " + _pdf_safe_text(tip.replace("**", "")))
+                pdf.set_x(10); pdf.multi_cell(265, 6, "- " + _pdf_safe_text(tip.replace("**", "")))
                 pdf.ln(1)
             continue
 
@@ -1070,7 +1070,7 @@ def generate_scenario_forecast_pdf(data, now_str):
         section("ΠΡΟΤΕΙΝΟΜΕΝΕΣ ΚΙΝΗΣΕΙΣ")
         pdf.set_font(f_name, size=10)
         for tip in table_data.get("advice", []):
-            pdf.multi_cell(0, 6, "• " + _pdf_safe_text(tip.replace("**", "")))
+            pdf.set_x(10); pdf.multi_cell(265, 6, "- " + _pdf_safe_text(tip.replace("**", "")))
             pdf.ln(1)
         pdf.set_font(f_name, size=7)
         pdf.set_text_color(*GREY)
@@ -1102,12 +1102,14 @@ def generate_scenario_forecast_pdf(data, now_str):
     header_bar("Πώς Λειτουργεί Αυτό το Εργαλείο")
 
     def explain_row(title, desc):
+        pdf.set_x(10)
         pdf.set_font(f_name, 'B', 10)
         pdf.set_text_color(*DARK)
-        pdf.multi_cell(0, 6, _pdf_safe_text(title))
+        pdf.multi_cell(265, 6, _pdf_safe_text(title))
+        pdf.set_x(10)
         pdf.set_font(f_name, size=9)
         pdf.set_text_color(*GREY)
-        pdf.multi_cell(0, 5.5, _pdf_safe_text(desc))
+        pdf.multi_cell(265, 5.5, _pdf_safe_text(desc))
         pdf.set_text_color(*DARK)
         pdf.ln(2)
 
@@ -1120,15 +1122,16 @@ def generate_scenario_forecast_pdf(data, now_str):
     pdf.ln(3)
 
     section("Β. ΠΩΣ ΚΑΤΗΓΟΡΙΟΠΟΙΟΥΝΤΑΙ ΤΑ ΚΟΚΤΕΪΛ (MENU ENGINEERING)")
+    pdf.set_x(10)
     pdf.set_font(f_name, size=9)
     pdf.set_text_color(*GREY)
-    pdf.multi_cell(0, 5.5, "Καθιερωμένη μέθοδος του κλάδου bar/εστίασης — ταξινομεί κάθε κοκτέιλ βάσει δύο κριτηρίων: πόσο δημοφιλές είναι (ιστορικά τεμάχια), και πόσο απόλυτο κέρδος σε ευρώ αποφέρει ανά τεμάχιο.")
+    pdf.multi_cell(265, 5.5, "Καθιερωμένη μέθοδος του κλάδου bar/εστίασης — ταξινομεί κάθε κοκτέιλ βάσει δύο κριτηρίων: πόσο δημοφιλές είναι (ιστορικά τεμάχια), και πόσο απόλυτο κέρδος σε ευρώ αποφέρει ανά τεμάχιο.")
     pdf.set_text_color(*DARK)
     pdf.ln(2)
-    explain_row("⭐ Star", "Δημοφιλές ΚΑΙ κερδοφόρο — ο «πρωταθλητής» του καταλόγου.")
-    explain_row("🐎 Plowhorse", "Δημοφιλές αλλά χαμηλό κέρδος/τεμάχιο — εκεί «κρύβεται» η ζημιά.")
-    explain_row("🧩 Puzzle", "Σπάνιο αλλά κερδοφόρο — ίσως χρειάζεται περισσότερη προβολή, όχι αλλαγή τιμής.")
-    explain_row("🐶 Dog", "Σπάνιο ΚΑΙ χαμηλό κέρδος — μικρός όγκος διακυβεύεται από αλλαγή τιμής.")
+    explain_row("Star", "Δημοφιλές ΚΑΙ κερδοφόρο — ο «πρωταθλητής» του καταλόγου.")
+    explain_row("Plowhorse", "Δημοφιλές αλλά χαμηλό κέρδος/τεμάχιο — εκεί «κρύβεται» η ζημιά.")
+    explain_row("Puzzle", "Σπάνιο αλλά κερδοφόρο — ίσως χρειάζεται περισσότερη προβολή, όχι αλλαγή τιμής.")
+    explain_row("Dog", "Σπάνιο ΚΑΙ χαμηλό κέρδος — μικρός όγκος διακυβεύεται από αλλαγή τιμής.")
     pdf.ln(3)
 
     section("Γ. ΠΩΣ ΕΠΙΛΕΓΟΥΜΕ ΠΟΙΕΣ ΤΙΜΕΣ ΝΑ ΑΥΞΗΣΟΥΜΕ")
@@ -1137,9 +1140,10 @@ def generate_scenario_forecast_pdf(data, now_str):
     explain_row("3. Μετατροπή σε % αύξησης ανά κοκτέιλ", "Κάθε κοκτέιλ παίρνει το δικό του ποσοστό αύξησης· το άθροισμα όλων των πρόσθετων εσόδων ισούται ακριβώς με το συνολικό απαιτούμενο ποσό.")
     explain_row("Εναλλακτικά: Ομοιόμορφη κατανομή", "Αν επιλεγεί «Ομοιόμορφη» αντί για «Έξυπνη», όλα τα κοκτέιλ παίρνουν το ίδιο ποσοστό αύξησης — πιο απλό, αλλά αγνοεί τις διαφορές δημοφιλίας/κέρδους μεταξύ τους.")
     pdf.ln(3)
+    pdf.set_x(10)
     pdf.set_font(f_name, size=8)
     pdf.set_text_color(*GREY)
-    pdf.multi_cell(0, 5, "Σημείωση: Αυτό είναι εργαλείο υποστήριξης απόφασης βασισμένο σε καθιερωμένες πρακτικές του κλάδου — όχι εξατομικευμένη οικονομική συμβουλή. Ο τελικός έλεγχος και η απόφαση παραμένουν δικά σου.")
+    pdf.multi_cell(265, 5, "Σημείωση: Αυτό είναι εργαλείο υποστήριξης απόφασης βασισμένο σε καθιερωμένες πρακτικές του κλάδου — όχι εξατομικευμένη οικονομική συμβουλή. Ο τελικός έλεγχος και η απόφαση παραμένουν δικά σου.")
     pdf.set_text_color(*DARK)
 
     pdf.set_y(-15)
