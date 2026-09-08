@@ -6423,7 +6423,23 @@ elif page == "🎯 Νεκρό Σημείο":
                 st.dataframe(pd.DataFrame(_comparison_rows), use_container_width=True, hide_index=True)
                 st.caption("💡 Η στήλη «Πραγματική Σχετική Δύναμη» δείχνει το ίδιο είδος δείκτη (0-1, με τον πιο δυνατό πραγματικό μήνα = 1.00) αλλά υπολογισμένο από τα ΠΡΑΓΜΑΤΙΚΑ νούμερα — σύγκρινέ το με τον δικό σου δείκτη διπλανή στήλη.")
 
-            real_revenue_year = real_pieces_year * ref_price
+            st.markdown("**Κανάλι Πώλησης** (για τον υπολογισμό τζίρου σε αυτή την πρόβλεψη)")
+            sales_channel = st.radio(
+                "Κανάλι:",
+                ["🤝 Μέσω Αντιπροσώπου (τρέχον)", "🎯 Απευθείας στα Μαγαζιά (Τιμή Λιανικής)"],
+                key="fc_sales_channel", horizontal=True,
+                help="«Απευθείας» παρακάμπτει τον αντιπρόσωπο και υποθέτει ότι εισπράττεις ολόκληρη τη λιανική τιμή, όχι το 74% που παίρνει σήμερα ο αντιπρόσωπος."
+            )
+            _direct_channel = sales_channel.startswith("🎯")
+            # 🔧 Η τιμή αντιπροσώπου = 74% της λιανικής (καθιερωμένη σχέση σε όλη την εφαρμογή).
+            # Αν παρακάμπτεται ο αντιπρόσωπος, «ξεμπλοκάρουμε» την τιμή διαιρώντας με το 0.74,
+            # ώστε να αντιστοιχεί στην πλήρη λιανική τιμή αντί για το μερίδιο του αντιπροσώπου.
+            channel_ref_price = (ref_price / 0.74) if _direct_channel else ref_price
+            channel_multiplier = 1.0 if _direct_channel else 0.74
+            if _direct_channel:
+                st.info(f"🎯 Υπολογισμός με **απευθείας** πώληση στα μαγαζιά, στην τιμή λιανικής: {channel_ref_price:.2f}€ μέση τιμή (αντί για {ref_price:.2f}€ μέσω αντιπροσώπου).")
+
+            real_revenue_year = real_pieces_year * channel_ref_price
             avg_cost_be = (total_cost / total_paid_pieces) if total_paid_pieces else 0
             real_cogs_year = real_pieces_year * avg_cost_be
 
@@ -6467,7 +6483,7 @@ elif page == "🎯 Νεκρό Σημείο":
                     _mm = my.split("/")[0]
                     month_pieces = max(0.0, rate_per_seasonality_unit * seasonality[_mm] * (1 + pct / 100))
                     proj_pieces += month_pieces
-                    proj_revenue += month_pieces * ref_price
+                    proj_revenue += month_pieces * channel_ref_price
                     proj_cogs += month_pieces * avg_cost_be
                 proj_profit = proj_revenue - proj_cogs - annual_fixed_fc
                 fc_results[label] = {
@@ -6487,7 +6503,11 @@ elif page == "🎯 Νεκρό Σημείο":
 
             st.divider()
             st.markdown("### 📋 Προτεινόμενες Νέες Τιμές ανά Σενάριο (ώστε να φτάσεις στο 0)")
-            st.caption("Για κάθε σενάριο όπου το αποτέλεσμα είναι αρνητικό, υπολογίζεται το ελάχιστο ποσοστό αύξησης τιμών (ίδιο % σε όλα τα κοκτέιλ) ώστε ο ετήσιος τζίρος να καλύπτει ακριβώς το κόστος + τα σταθερά έξοδα.")
+            st.caption("Για κάθε σενάριο όπου το αποτέλεσμα είναι αρνητικό, υπολογίζεται το ελάχιστο ποσοστό αύξησης τιμών ώστε ο ετήσιος τζίρος να καλύπτει ακριβώς το κόστος + τα σταθερά έξοδα.")
+            if _direct_channel:
+                st.caption("🎯 Οι στήλες «Τιμή Αντιπροσώπου» παρακάτω αντιστοιχούν στην πλήρη **τιμή λιανικής** σε αυτό το σενάριο (απευθείας πώληση, χωρίς αντιπρόσωπο).")
+            else:
+                st.caption("🤝 Οι τιμές παρακάτω είναι τιμές **Αντιπροσώπου** (74% της λιανικής) — το τρέχον κανάλι πώλησης.")
 
 
             fc_price_tables = {}  # θα κρατήσει τα δεδομένα κάθε σεναρίου, για το PDF παρακάτω
@@ -6532,7 +6552,7 @@ elif page == "🎯 Νεκρό Σημείο":
                 for _, r_me in df_rec.iterrows():
                     c_name_me = r_me["Ονομα"]
                     retail_price_me = float(r_me.get("Τιμή Καταλόγου", 0.0) or 0.0)
-                    agent_price_me = retail_price_me * 0.74
+                    agent_price_me = retail_price_me * channel_multiplier
                     if agent_price_me <= 0:
                         continue
                     cost_me = get_unit_cost_for_cocktail(c_name_me, _fc_raw_material_cost(r_me))
@@ -6638,14 +6658,14 @@ elif page == "🎯 Νεκρό Σημείο":
                 with st.expander(f"{label} — {'✅ Ήδη κερδοφόρο' if res['profit'] >= 0 else '❌ Χρειάζεται αύξηση τιμών'}", expanded=(res['profit'] < 0)):
                     if res["profit"] >= 0:
                         st.success(f"Το σενάριο είναι ήδη κερδοφόρο ({res['profit']:,.0f} €) — δεν χρειάζεται αλλαγή τιμών.")
-                        fc_price_tables[label] = {"needs_change": False, "price_increase_pct": 0.0, "required_avg_price": ref_price, "rows": [], "advice": _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price)}
+                        fc_price_tables[label] = {"needs_change": False, "price_increase_pct": 0.0, "required_avg_price": channel_ref_price, "rows": [], "advice": _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, channel_ref_price)}
                         st.markdown("**💡 Προτεινόμενες Κινήσεις**")
-                        for tip in _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price):
+                        for tip in _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, channel_ref_price):
                             st.markdown(f"- {tip}")
                         continue
                     required_total_revenue = res["cogs"] + res["fixed"]
                     required_avg_price = required_total_revenue / res["pieces"] if res["pieces"] else 0
-                    price_increase_pct = ((required_avg_price - ref_price) / ref_price * 100) if ref_price else 0
+                    price_increase_pct = ((required_avg_price - channel_ref_price) / channel_ref_price * 100) if channel_ref_price else 0
 
                     ic1, ic2, ic3 = st.columns(3)
                     ic1.metric("Απαιτούμενος Τζίρος", f"{required_total_revenue:,.0f} €")
@@ -6653,7 +6673,7 @@ elif page == "🎯 Νεκρό Σημείο":
                     ic3.metric("Ποσοστό Αύξησης Τιμών", f"{price_increase_pct:+.1f} %")
 
                     st.markdown("**💡 Προτεινόμενες Κινήσεις**")
-                    for tip in _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price, price_increase_pct):
+                    for tip in _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, channel_ref_price, price_increase_pct):
                         st.markdown(f"- {tip}")
                     st.caption("Βασισμένο σε καθιερωμένες πρακτικές μικρών επιχειρήσεων/bar (μείωση κόστους, menu engineering, εποχιακή προώθηση) — όχι εξατομικευμένη οικονομική συμβουλή.")
                     st.markdown("")
@@ -6677,9 +6697,9 @@ elif page == "🎯 Νεκρό Σημείο":
                         for _, r_fc2 in df_rec.iterrows():
                             c_name_fc = r_fc2["Ονομα"]
                             retail_price_fc = float(r_fc2.get("Τιμή Καταλόγου", 0.0) or 0.0)
-                            # 🔧 FIX: οι τιμές εδώ πρέπει να είναι τιμές ΑΝΤΙΠΡΟΣΩΠΟΥ (74% της λιανικής),
-                            # ίδια σύμβαση με Markup & Margin/Εμπορική Πολιτική — όχι η λιανική απευθείας.
-                            old_price_fc = retail_price_fc * 0.74
+                            # Τιμή αντιπροσώπου (74% της λιανικής) ή πλήρης λιανική τιμή, ανάλογα
+                            # με το επιλεγμένο κανάλι πώλησης παραπάνω.
+                            old_price_fc = retail_price_fc * channel_multiplier
                             if old_price_fc <= 0:
                                 continue
                             new_price_fc = old_price_fc * (1 + price_increase_pct / 100)
@@ -6692,7 +6712,7 @@ elif page == "🎯 Νεκρό Σημείο":
                                 "% Αύξησης": round(price_increase_pct, 1),
                             })
 
-                    fc_price_tables[label] = {"needs_change": True, "price_increase_pct": price_increase_pct, "required_avg_price": required_avg_price, "rows": price_rows_fc, "advice": _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, ref_price, price_increase_pct)}
+                    fc_price_tables[label] = {"needs_change": True, "price_increase_pct": price_increase_pct, "required_avg_price": required_avg_price, "rows": price_rows_fc, "advice": _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, channel_ref_price, price_increase_pct)}
 
                     if price_rows_fc:
                         df_price_fc = pd.DataFrame(price_rows_fc)
