@@ -258,8 +258,13 @@ def _pdf_safe_text(text):
         "\u2013\u2014"    # παύλες (en-dash, em-dash)
         "\n\r\t"
         "]+"
+        , re.UNICODE
     )
-    return "".join(safe_pattern.findall(text)).strip()
+    result = "".join(safe_pattern.findall(text)).strip()
+    # 🔧 Επιπλέον ασφάλεια: αν ο καθαρισμός αφαίρεσε τα πάντα (π.χ. το αρχικό κείμενο ήταν
+    # μόνο emoji), ΠΟΤΕ μην επιστρέφουμε κενή συμβολοσειρά στην FPDF — ένα κενό αλφαριθμητικό
+    # μπορεί ΚΙ ΑΥΤΟ να προκαλέσει σφάλμα σε ορισμένες περιπτώσεις πλάτους/θέσης δρομέα.
+    return result if result else "-"
 
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
@@ -1082,7 +1087,7 @@ def generate_scenario_forecast_pdf(data, now_str):
         pdf.set_font(f_name, size=9)
         for i, r in enumerate(table_data["rows"]):
             pdf.set_fill_color(250, 250, 250) if i % 2 == 0 else pdf.set_fill_color(*WHITE)
-            pdf.cell(cols[0][1], 6, str(r["Κοκτέιλ"])[:42], border=1, fill=True)
+            pdf.cell(cols[0][1], 6, _pdf_safe_text(str(r["Κοκτέιλ"]))[:42], border=1, fill=True)
             pdf.cell(cols[1][1], 6, f"{r['Κόστος (€)']:.2f}", border=1, fill=True, align='R')
             pdf.cell(cols[2][1], 6, f"{r['Παλιά Τιμή Αντιπροσώπου (€)']:.2f}", border=1, fill=True, align='R')
             new_v, old_v = r["Νέα Τιμή Αντιπροσώπου (€)"], r["Παλιά Τιμή Αντιπροσώπου (€)"]
