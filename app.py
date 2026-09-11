@@ -266,6 +266,15 @@ def _pdf_safe_text(text):
     # μπορεί ΚΙ ΑΥΤΟ να προκαλέσει σφάλμα σε ορισμένες περιπτώσεις πλάτους/θέσης δρομέα.
     return result if result else "-"
 
+def _ui_safe(value, fallback=""):
+    """Επιστρέφει το value ως κείμενο, ΑΛΛΑ ποτέ την κυριολεκτική συμβολοσειρά 'None' —
+    αν το value είναι None (π.χ. άδειο πεδίο βάσης, ή λείπον .get()), επιστρέφει fallback
+    αντ' αυτού. Χρησιμοποιείται σε f-strings που πάνε σε st.markdown/caption/κλπ., ώστε
+    ποτέ να μην εμφανιστεί ορατό 'None' στην οθόνη."""
+    if value is None:
+        return fallback
+    return value
+
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
@@ -6888,7 +6897,7 @@ elif page == "🎯 Νεκρό Σημείο":
                         fc_price_tables[label] = {"needs_change": False, "price_increase_pct": 0.0, "required_avg_price": channel_ref_price, "rows": [], "advice": _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, channel_ref_price)}
                         st.markdown("**💡 Προτεινόμενες Κινήσεις**")
                         for tip in _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, channel_ref_price):
-                            st.markdown(f"- {tip}")
+                            st.markdown(f"- {_ui_safe(tip)}")
                         continue
                     required_total_revenue = res["cogs"] + res["fixed"]
                     required_avg_price = required_total_revenue / res["pieces"] if res["pieces"] else 0
@@ -6901,9 +6910,8 @@ elif page == "🎯 Νεκρό Σημείο":
 
                     st.markdown("**💡 Προτεινόμενες Κινήσεις**")
                     for tip in _generate_scenario_advice(res, annual_fixed_fc, avg_cost_be, channel_ref_price, price_increase_pct):
-                        st.markdown(f"- {tip}")
+                        st.markdown(f"- {_ui_safe(tip)}")
                     st.caption("Βασισμένο σε καθιερωμένες πρακτικές μικρών επιχειρήσεων/bar (μείωση κόστους, menu engineering, εποχιακή προώθηση) — όχι εξατομικευμένη οικονομική συμβουλή.")
-                    st.markdown("")
 
                     price_rows_fc = []
                     if price_alloc_mode.startswith("🧠"):
