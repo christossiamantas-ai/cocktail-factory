@@ -6521,7 +6521,12 @@ elif page == "🎯 Νεκρό Σημείο":
         _auto_seasonality = {}
         for _mk in MONTH_NAMES_GR.keys():
             if _mk in _real_pieces_by_monthkey and _max_monthkey_pieces > 0:
-                _auto_seasonality[_mk] = round(_real_pieces_by_monthkey[_mk] / _max_monthkey_pieces, 2)
+                # 🔧 FIX: χωρίς clamp, ένας μήνας με πολύ χαμηλές πωλήσεις σε σχέση με τον
+                # κορυφαίο μπορούσε να βγάλει δείκτη κάτω από το ελάχιστο αποδεκτό (0.1) του
+                # πεδίου, κάνοντας ολόκληρη την εφαρμογή να σκάσει — και κόβοντας το ρέντερινγκ
+                # πριν προλάβουν να εμφανιστούν οι υπόλοιποι μήνες.
+                _raw_ratio = _real_pieces_by_monthkey[_mk] / _max_monthkey_pieces
+                _auto_seasonality[_mk] = round(min(5.0, max(0.1, _raw_ratio)), 2)
             else:
                 _auto_seasonality[_mk] = DEFAULT_SEASONALITY[_mk]
 
