@@ -7052,22 +7052,20 @@ elif page == "🎯 Νεκρό Σημείο":
         _all_cocktail_names = sorted(df_rec["Ονομα"].dropna().unique().tolist()) if not df_rec.empty else []
         _cocktail_categories_map = _classify_cocktail_categories()
 
-        st.markdown("🍹 **Επίλεξε τα κοκτέιλ που αφορά η μείωση τιμής** (τσέκαρε τη στήλη «Συμπερίληψη»)")
-        st.caption("Η στήλη «Κατηγορία» δείχνει πού ανήκει κάθε κοκτέιλ σήμερα — σκέψου δύο φορές πριν συμπεριλάβεις ένα ⭐ Star.")
-        _selection_df = pd.DataFrame([
-            {"Συμπερίληψη": False, "Κοκτέιλ": name, "Κατηγορία": _cocktail_categories_map.get(name, "—")}
-            for name in _all_cocktail_names
-        ])
-        _edited_selection_df = st.data_editor(
-            _selection_df,
-            column_config={
-                "Συμπερίληψη": st.column_config.CheckboxColumn("Συμπερίληψη;", default=False),
-                "Κοκτέιλ": st.column_config.TextColumn("Κοκτέιλ", disabled=True),
-                "Κατηγορία": st.column_config.TextColumn("Κατηγορία", disabled=True),
-            },
-            hide_index=True, use_container_width=True, key="discount_selection_table"
+        with st.expander("📋 Κατηγορία κάθε κοκτέιλ (για αναφορά πριν επιλέξεις)", expanded=False):
+            st.caption("Σκέψου δύο φορές πριν συμπεριλάβεις ένα ⭐ Star.")
+            _cat_ref_df = pd.DataFrame([
+                {"Κοκτέιλ": name, "Κατηγορία": _cocktail_categories_map.get(name) or "—"}
+                for name in _all_cocktail_names
+            ])
+            st.dataframe(_cat_ref_df, use_container_width=True, hide_index=True)
+
+        selected_discount_cocktails = st.multiselect(
+            "🍹 Επίλεξε τα κοκτέιλ που αφορά η μείωση τιμής:",
+            options=_all_cocktail_names,
+            key="discount_selected_cocktails",
+            help="Πολλαπλή επιλογή — δες τον πίνακα κατηγοριών παραπάνω πριν διαλέξεις."
         )
-        selected_discount_cocktails = _edited_selection_df[_edited_selection_df["Συμπερίληψη"] == True]["Κοκτέιλ"].tolist()
 
         if not selected_discount_cocktails:
             st.info("Επίλεξε τουλάχιστον ένα κοκτέιλ παραπάνω για να δεις τα σενάρια μείωσης τιμών.")
