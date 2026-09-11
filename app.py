@@ -275,6 +275,22 @@ def _ui_safe(value, fallback=""):
         return fallback
     return value
 
+def _safe_df(df):
+    """Καθαρίζει None/NaN σε ΟΛΕΣ τις στήλες ενός DataFrame πριν την εμφάνιση με st.dataframe,
+    ώστε να ΜΗΝ εμφανίζεται ποτέ ορατό 'None' στην οθόνη — γενική προστασία, εφαρμόσιμη
+    σε ΟΠΟΙΟΔΗΠΟΤΕ πίνακα της εφαρμογής. Ασφαλές να καλείται και σε άδειο/None DataFrame."""
+    try:
+        if df is None or df.empty:
+            return df
+        df = df.copy()
+        for col in df.columns:
+            df[col] = df[col].apply(
+                lambda v: "—" if (v is None or (isinstance(v, float) and pd.isna(v))) else v
+            )
+        return df
+    except Exception:
+        return df
+
 # --- ΥΒΡΙΔΙΚΗ ΣΥΝΑΡΤΗΣΗ PDF: ΣΥΓΚΕΝΤΡΩΤΙΚΑ ΠΡΟΪΟΝΤΑ & ΣΥΝΟΛΑ ---
 def generate_hybrid_report(customer_name, financial_data, production_data):
     pdf = FPDF()
@@ -2729,7 +2745,7 @@ elif page == "📦 Αποθήκη":
         if "Απόθεμα (ml)" in df_ing.columns:
             display_columns.append("Απόθεμα (ml)")
             
-        st.dataframe(df_ing[display_columns], use_container_width=True)
+        st.dataframe(_safe_df(df_ing[display_columns]), use_container_width=True)
         
         st.divider()
         
@@ -3107,7 +3123,7 @@ elif page == "📊 Διαχείριση":
             
             if df_rec_list:
                 df_rec = pd.DataFrame(df_rec_list)
-                st.dataframe(df_rec, use_container_width=True)
+                st.dataframe(_safe_df(df_rec), use_container_width=True)
             else:
                 st.info("Δεν υπάρχουν ενεργές συνταγές για προβολή.")
 
@@ -3909,8 +3925,8 @@ elif page == "🔍 Ανάλυση":
                                 st.markdown(f"#### 🍹 Πού καταναλώθηκε το {selected_ing};")
                                 
                                 # 1. Ο ΠΙΝΑΚΑΣ (Πιάνει πλέον όλο το πλάτος της οθόνης)
-                                st.dataframe(
-                                    df_breakdown.style.format({
+                                st.dataframe(_safe_df(
+                                    df_breakdown).style.format({
                                         "Παραχθέντα Τεμάχια": "{:,.0f} τμχ",
                                         "Κατανάλωση (ml)": lambda x: f"{x:,.1f} ml ({x/bottle_vol:.1f} φιάλες)" if bottle_vol > 0 else f"{x:,.1f} ml",
                                         "Αναλογία (%)": "{:.1f}%",
@@ -4212,13 +4228,13 @@ elif page == "💰 Κοστολόγιο & Σταθερά Έξοδα":
 
                         st.success(f"✅ Βρέθηκαν {len(df_import)} κοκτέιλ στο αρχείο — {len(matched)} ταιριάζουν με συνταγές της εφαρμογής.")
                         st.info(f"📦 Ανιχνεύθηκε κόστος συσκευασίας: **{detected_packaging:.4f}€** (θα μπει ως Κόστος Συσκευασίας, ίδιο για όλα).")
-                        st.dataframe(
-                            matched[["Cocktail", "Ylika", "Ergatika", "Βιομηχανικό (Υλικά+Εργατικά)"]].rename(columns={"Cocktail": "Κοκτέιλ (Excel)"}),
+                        st.dataframe(_safe_df(
+                            matched[["Cocktail", "Ylika", "Ergatika", "Βιομηχανικό (Υλικά+Εργατικά)"]].rename(columns={"Cocktail": "Κοκτέιλ (Excel)"})),
                             use_container_width=True, hide_index=True
                         )
                         if not unmatched.empty:
                             with st.expander(f"⚠️ {len(unmatched)} κοκτέιλ του αρχείου ΔΕΝ βρέθηκαν στις συνταγές της εφαρμογής (δεν θα εισαχθούν)"):
-                                st.dataframe(unmatched[["Cocktail"]], use_container_width=True, hide_index=True)
+                                st.dataframe(_safe_df(unmatched[["Cocktail"]]), use_container_width=True, hide_index=True)
 
                         if st.button("📥 Εφαρμογή Εισαγωγής", type="primary"):
                             try:
@@ -4575,6 +4591,7 @@ elif page == "📐 Markup & Margin":
             return styles
 
         df_display = df_all_scenario.apply(_add_arrow, axis=1)
+        df_display = _safe_df(df_display)
         styled_scenario = df_display.style.apply(_highlight_price_change, axis=1)
         st.dataframe(styled_scenario, use_container_width=True, hide_index=True)
         st.caption("↑ κόκκινο = η τιμή ανεβαίνει  |  ↓ πράσινο = η τιμή κατεβαίνει  |  = αμετάβλητη")
@@ -5557,10 +5574,10 @@ elif page == "📈 Dashboard":
                     st.markdown("#### 📋 Αναλυτικά Ποσά & Φιάλες")
                     # Για τον πίνακα τα θέλουμε με φθίνουσα σειρά (τα ακριβά πάνω)
                     df_display = df_ing_costs.sort_values('Total_Cost', ascending=False)
-                    st.dataframe(
+                    st.dataframe(_safe_df(
                         df_display[['ingredient_name', 'Φιάλες', 'Total_Cost']].rename(
                             columns={'ingredient_name': 'Πρώτη Ύλη', 'Total_Cost': 'Κόστος'}
-                        ).style.format({
+                        )).style.format({
                             'Κόστος': "{:.2f} €",
                             'Φιάλες': "{:.1f}" # 🚀 Μορφοποίηση με 1 δεκαδικό (π.χ. 2.4)
                         }),
@@ -5653,15 +5670,15 @@ elif page == "📈 Dashboard":
 
                 df_dash_promos['Ημερομηνία'] = pd.to_datetime(df_dash_promos['created_at']).dt.strftime('%d/%m/%Y')
                 df_dash_promos['Κοκτέιλ Προσφοράς'] = df_dash_promos['order_details'].apply(get_promo_cocktail_dash)
-                st.dataframe(
-                    df_dash_promos.rename(columns={"customer_name": "ΠΕΛΑΤΗΣ", "total_amount": "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"})[["Ημερομηνία", "ΠΕΛΑΤΗΣ", "Κοκτέιλ Προσφοράς", "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"]],
+                st.dataframe(_safe_df(
+                    df_dash_promos.rename(columns={"customer_name": "ΠΕΛΑΤΗΣ", "total_amount": "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"})[["Ημερομηνία", "ΠΕΛΑΤΗΣ", "Κοκτέιλ Προσφοράς", "ΤΕΛΙΚΗ ΧΡΕΩΣΗ (€)"]]),
                     use_container_width=True, hide_index=True
                 )
 
             if not df_new_gifts.empty:
                 st.markdown("**Νέο σύστημα** (αυτόματο, Κιβωτιακή Πολιτική):")
-                st.dataframe(
-                    df_new_gifts.rename(columns={"prod_date": "Ημερομηνία Παραγωγής", "customer": "ΠΕΛΑΤΗΣ", "cocktail_name": "Κοκτέιλ", "f_pcs": "Δωρεάν Τεμάχια"})[["Ημερομηνία Παραγωγής", "ΠΕΛΑΤΗΣ", "Κοκτέιλ", "Δωρεάν Τεμάχια"]].sort_values("Ημερομηνία Παραγωγής", ascending=False),
+                st.dataframe(_safe_df(
+                    df_new_gifts.rename(columns={"prod_date": "Ημερομηνία Παραγωγής", "customer": "ΠΕΛΑΤΗΣ", "cocktail_name": "Κοκτέιλ", "f_pcs": "Δωρεάν Τεμάχια"})[["Ημερομηνία Παραγωγής", "ΠΕΛΑΤΗΣ", "Κοκτέιλ", "Δωρεάν Τεμάχια"]].sort_values("Ημερομηνία Παραγωγής", ascending=False)),
                     use_container_width=True, hide_index=True
                 )
 
@@ -5669,7 +5686,7 @@ elif page == "📈 Dashboard":
         with st.expander("📄 Αναλυτικό Αρχείο (LOT & Profit)"):
             display_df = df_filtered.copy()
             display_df.rename(columns={"Theoretical_Revenue": "Revenue"}, inplace=True)
-            st.dataframe(display_df[["prod_date", "customer", "cocktail_name", "t_pcs", "Revenue", "Total_Cost", "Profit", "lot_cocktail"]].sort_values("prod_date", ascending=False), use_container_width=True, hide_index=True)
+            st.dataframe(_safe_df(display_df[["prod_date", "customer", "cocktail_name", "t_pcs", "Revenue", "Total_Cost", "Profit", "lot_cocktail"]].sort_values("prod_date", ascending=False)), use_container_width=True, hide_index=True)
 
         # =====================================================================
         # 👤 ΑΝΑΛΥΤΙΚΟ REPORT ΠΕΛΑΤΗ 
@@ -5729,7 +5746,7 @@ elif page == "📈 Dashboard":
                     st.plotly_chart(fig_fav, use_container_width=True)
 
             with st.expander(f"📋 Δείτε όλες τις κινήσεις του {sel_cust_rep}"):
-                st.dataframe(cust_prod[['prod_date', 'cocktail_name', 't_pcs', 'lot_cocktail']].sort_values(by='prod_date', ascending=False), use_container_width=True, hide_index=True)
+                st.dataframe(_safe_df(cust_prod[['prod_date', 'cocktail_name', 't_pcs', 'lot_cocktail']].sort_values(by='prod_date', ascending=False)), use_container_width=True, hide_index=True)
         else:
             st.info("Δεν υπάρχουν ακόμα δεδομένα πελατών για ανάλυση.")
 
@@ -5774,8 +5791,8 @@ elif page == "📈 Dashboard":
             st.plotly_chart(fig, use_container_width=True, key="unique_sales_plotly_chart_id")
             
             with st.expander("📋 Προβολή Αναλυτικού Πίνακα Δεδομένων"):
-                st.dataframe(
-                    df_grouped_chart.style.format({
+                st.dataframe(_safe_df(
+                    df_grouped_chart).style.format({
                         "Τεμάχια (τμχ)": "{:.0f}", "Τζίρος (€)": "{:.2f} €",
                         "Συνολικό Κόστος (€)": "{:.2f} €", "Καθαρό Κέρδος (€)": "{:.2f} €"
                     }), use_container_width=True, hide_index=True
@@ -6463,34 +6480,34 @@ elif page == "🎯 Νεκρό Σημείο":
 
         with st.expander("📖 Πώς λειτουργεί αυτό το εργαλείο — αναλυτική εξήγηση", expanded=False):
             st.markdown("#### Α. Πώς βγαίνουν τα σενάρια")
-            st.dataframe(pd.DataFrame([
+            st.dataframe(_safe_df(pd.DataFrame([
                 {"Βήμα": "1. Εντοπισμός πραγματικών μηνών", "Τι κάνει": "Βρίσκει ποιοι μήνες μέσα στο επιλεγμένο εύρος έχουν ήδη πραγματικά δεδομένα παραγωγής.", "Πώς υπολογίζεται": "Ομαδοποίηση καταχωρήσεων production_log ανά μήνα/έτος, μετά από αφαίρεση τυχόν διπλότυπων εγγραφών."},
                 {"Βήμα": "2. Βαθμονόμηση ρυθμού", "Τι κάνει": "Μετατρέπει τα πραγματικά τεμάχια κάθε μήνα σε έναν «ρυθμό ανά μονάδα εποχικότητας», για να μπορεί να προβληθεί σε άλλους μήνες.", "Πώς υπολογίζεται": "implied_rate = πραγματικά_τεμάχια_μήνα ÷ δείκτης_εποχικότητας_μήνα, για ΚΑΘΕ πραγματικό μήνα ξεχωριστά· τελικός ρυθμός = μέσος όρος αυτών (όχι ένα άθροισμα εξαρτημένο 100% από τους δείκτες)."},
                 {"Βήμα": "3. Προβολή υπόλοιπων μηνών", "Τι κάνει": "Εκτιμά πόσα τεμάχια θα πουληθούν στους μήνες που ΔΕΝ έχεις ακόμα δεδομένα.", "Πώς υπολογίζεται": "προβλεπόμενα_τεμάχια = ρυθμός × δείκτης_εποχικότητας_μήνα × (1 + ποσοστό_σεναρίου%)."},
                 {"Βήμα": "4. Σταθερά έξοδα περιόδου", "Τι κάνει": "Αθροίζει τα σταθερά έξοδα όλης της περιόδου πρόβλεψης.", "Πώς υπολογίζεται": "Άθροισμα πραγματικών καταχωρήσεων ανά μήνα (καρτέλα «Έξοδα»)· όπου λείπει καταχώρηση, χρησιμοποιείται ο πρώτος μήνας του εύρους ως προεπιλογή."},
                 {"Βήμα": "5. Τελικό αποτέλεσμα", "Τι κάνει": "Υπολογίζει το καθαρό αποτέλεσμα κάθε σεναρίου.", "Πώς υπολογίζεται": "Καθαρό = (Πραγματικός+Προβλεπόμενος Τζίρος) − (Πραγματικό+Προβλεπόμενο Μεταβλητό Κόστος) − Σταθερά Έξοδα."},
-            ]), use_container_width=True, hide_index=True)
+            ])), use_container_width=True, hide_index=True)
 
             st.markdown("#### Β. Πώς κατηγοριοποιούνται τα κοκτέιλ (Menu Engineering)")
             st.caption("Καθιερωμένη μέθοδος του κλάδου bar/εστίασης (Kasavana & Smith) — ταξινομεί κάθε κοκτέιλ σε 1 από 4 κατηγορίες, βάσει 2 κριτηρίων: πόσο δημοφιλές είναι, και πόσο απόλυτο κέρδος (€) αποφέρει ανά τεμάχιο.")
-            st.dataframe(pd.DataFrame([
+            st.dataframe(_safe_df(pd.DataFrame([
                 {"Κριτήριο": "Δημοφιλία", "Πώς μετριέται": "Ιστορικά πωλημένα τεμάχια (πραγματικά δεδομένα, όχι εκτίμηση)", "Όριο 'υψηλό/χαμηλό'": "Μέσος όρος όγκου όλων των κοκτέιλ"},
                 {"Κριτήριο": "Κερδοφορία", "Πώς μετριέται": "ΑΠΟΛΥΤΟ κέρδος ανά τεμάχιο σε €  (Τιμή Αντιπροσώπου − Κόστος) — ΟΧΙ ποσοστό %", "Όριο 'υψηλό/χαμηλό'": "Μέσος όρος κέρδους/τεμάχιο όλων των κοκτέιλ"},
-            ]), use_container_width=True, hide_index=True)
-            st.dataframe(pd.DataFrame([
+            ])), use_container_width=True, hide_index=True)
+            st.dataframe(_safe_df(pd.DataFrame([
                 {"Κατηγορία": "⭐ Star", "Δημοφιλία": "Υψηλή", "Κερδοφορία": "Υψηλή", "Τι σημαίνει": "Ο «πρωταθλητής» — δημοφιλές ΚΑΙ κερδοφόρο."},
                 {"Κατηγορία": "🐎 Plowhorse", "Δημοφιλία": "Υψηλή", "Κερδοφορία": "Χαμηλή", "Τι σημαίνει": "Δημοφιλές αλλά χαμηλό κέρδος/τεμάχιο — εκεί «κρύβεται» η ζημιά."},
                 {"Κατηγορία": "🧩 Puzzle", "Δημοφιλία": "Χαμηλή", "Κερδοφορία": "Υψηλή", "Τι σημαίνει": "Σπάνιο αλλά κερδοφόρο — ίσως χρειάζεται προβολή, όχι τιμή."},
                 {"Κατηγορία": "🐶 Dog", "Δημοφιλία": "Χαμηλή", "Κερδοφορία": "Χαμηλή", "Τι σημαίνει": "Σπάνιο ΚΑΙ χαμηλό κέρδος — μικρός όγκος διακυβεύεται."},
-            ]), use_container_width=True, hide_index=True)
+            ])), use_container_width=True, hide_index=True)
 
             st.markdown("#### Γ. Πώς επιλέγουμε ποιες τιμές να αυξήσουμε")
-            st.dataframe(pd.DataFrame([
+            st.dataframe(_safe_df(pd.DataFrame([
                 {"Βήμα": "1. Υπολογισμός «βάρους» ανά κοκτέιλ", "Λεπτομέρειες": "weight = 0.15 + (κανονικοποιημένη δημοφιλία) × (1 − κανονικοποιημένο κέρδος). Υψηλότερο βάρος σε κοκτέιλ που είναι ΔΗΜΟΦΙΛΗ ΑΛΛΑ έχουν ΧΑΜΗΛΟ κέρδος (Plowhorses) — εκεί μια μικρή αύξηση αποφέρει το μεγαλύτερο πρόσθετο κέρδος με τον μικρότερο κίνδυνο αντίδρασης πελατών."},
                 {"Βήμα": "2. Κατανομή του συνολικού «κενού» τζίρου", "Λεπτομέρειες": "Το ποσό που λείπει για να φτάσεις στο 0 μοιράζεται σε όλα τα κοκτέιλ ανάλογα με το μερίδιο βάρους×όγκου×τιμής του καθενός — όχι ισόποσα."},
                 {"Βήμα": "3. Μετατροπή σε % αύξησης ανά κοκτέιλ", "Λεπτομέρειες": "% αύξησης = (μερίδιο πρόσθετου τζίρου του κοκτέιλ) ÷ (ιστορικός τζίρος του κοκτέιλ) × 100. Το άθροισμα όλων των πρόσθετων τζίρων ισούται ΑΚΡΙΒΩΣ με το συνολικό κενό."},
                 {"Βήμα": "Εναλλακτικά: Ομοιόμορφη κατανομή", "Λεπτομέρειες": "Αν επιλέξεις «Ομοιόμορφη» αντί για «Έξυπνη», όλα τα κοκτέιλ παίρνουν το ΙΔΙΟ % αύξησης — πιο απλό, αλλά αγνοεί τις διαφορές δημοφιλίας/κέρδους μεταξύ τους."},
-            ]), use_container_width=True, hide_index=True)
+            ])), use_container_width=True, hide_index=True)
             st.caption("⚠️ Αυτό είναι εργαλείο υποστήριξης απόφασης βασισμένο σε καθιερωμένες πρακτικές του κλάδου — όχι εξατομικευμένη οικονομική συμβουλή. Ο τελικός έλεγχος και η απόφαση παραμένουν δικά σου.")
 
         MONTH_NAMES_GR = {
@@ -6651,7 +6668,7 @@ elif page == "🎯 Νεκρό Σημείο":
                         "Πραγματικά Τεμάχια": int(real_pieces_by_month.get(my, 0)),
                         "Πραγματική Σχετική Δύναμη (κανονικοποιημένη)": round(real_pieces_by_month.get(my, 0) / _max_real_pieces, 2) if _max_real_pieces else 0,
                     })
-                st.dataframe(pd.DataFrame(_comparison_rows), use_container_width=True, hide_index=True)
+                st.dataframe(_safe_df(pd.DataFrame(_comparison_rows)), use_container_width=True, hide_index=True)
                 st.caption("💡 Η στήλη «Πραγματική Σχετική Δύναμη» δείχνει το ίδιο είδος δείκτη (0-1, με τον πιο δυνατό πραγματικό μήνα = 1.00) αλλά υπολογισμένο από τα ΠΡΑΓΜΑΤΙΚΑ νούμερα — σύγκρινέ το με τον δικό σου δείκτη διπλανή στήλη.")
 
             st.markdown("**Κανάλι Πώλησης** (για τον υπολογισμό τζίρου σε αυτή την πρόβλεψη)")
@@ -6970,7 +6987,7 @@ elif page == "🎯 Νεκρό Σημείο":
                                     styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
                             return styles
 
-                        st.dataframe(df_price_fc.style.apply(_hl_fc, axis=1), use_container_width=True, hide_index=True)
+                        st.dataframe(_safe_df(df_price_fc).style.apply(_hl_fc, axis=1), use_container_width=True, hide_index=True)
                     else:
                         st.info("Δεν βρέθηκαν κοκτέιλ με έγκυρη τιμή για τον πίνακα.")
 
@@ -7058,7 +7075,7 @@ elif page == "🎯 Νεκρό Σημείο":
                 {"Κοκτέιλ": name, "Κατηγορία": _cocktail_categories_map.get(name) or "—"}
                 for name in _all_cocktail_names
             ])
-            st.dataframe(_cat_ref_df, use_container_width=True, hide_index=True)
+            st.dataframe(_safe_df(_cat_ref_df), use_container_width=True, hide_index=True)
 
         selected_discount_cocktails = st.multiselect(
             "🍹 Επίλεξε τα κοκτέιλ που αφορά η μείωση τιμής:",
@@ -7070,7 +7087,128 @@ elif page == "🎯 Νεκρό Σημείο":
         if not selected_discount_cocktails:
             st.info("Επίλεξε τουλάχιστον ένα κοκτέιλ παραπάνω για να δεις τα σενάρια μείωσης τιμών.")
         else:
-            st.info(f"🔧 ΔΙΑΓΝΩΣΤΙΚΟ: Επιλέχθηκαν {len(selected_discount_cocktails)} κοκτέιλ: {', '.join(selected_discount_cocktails)}")
+            dc1, dc2 = st.columns(2)
+            price_decrease_pct = dc1.number_input("Ποσοστό Μείωσης Τιμής (%)", min_value=0.0, max_value=50.0, value=10.0, step=1.0, key="discount_price_pct")
+            expected_volume_increase_pct = dc2.number_input(
+                "Αναμενόμενη Αύξηση Τεμαχίων λόγω μείωσης (%)", min_value=0.0, max_value=300.0, value=20.0, step=5.0,
+                key="discount_volume_increase_pct",
+                help="Η υπόθεσή σας — πόσο πιστεύετε ότι θα αυξηθούν οι παραγγελίες αντιπροσώπων/πωλήσεις λόγω της χαμηλότερης τιμής."
+            )
+
+            # --- Στοιχεία βάσης ανά επιλεγμένο κοκτέιλ (τρέχουσα τιμή, κόστος, ιστορικός όγκος) ---
+            _discount_items_base = []
+            for cname in selected_discount_cocktails:
+                r_dc = df_rec[df_rec["Ονομα"] == cname]
+                if r_dc.empty:
+                    continue
+                r_dc = r_dc.iloc[0]
+                retail_price_dc = float(r_dc.get("Τιμή Καταλόγου", 0.0) or 0.0)
+                old_price_dc = retail_price_dc * channel_multiplier
+                if old_price_dc <= 0:
+                    continue
+                cost_dc = get_unit_cost_for_cocktail(cname, _fc_raw_material_cost(r_dc))
+                volume_dc = float(_volume_by_cocktail.get(cname, 0.0))
+                new_price_dc = old_price_dc * (1 - price_decrease_pct / 100)
+                new_volume_dc = volume_dc * (1 + expected_volume_increase_pct / 100)
+                old_contribution_dc = volume_dc * (old_price_dc - cost_dc)
+                new_contribution_dc = new_volume_dc * (new_price_dc - cost_dc)
+                _discount_items_base.append({
+                    "name": cname, "old_price": old_price_dc, "new_price": new_price_dc, "cost": cost_dc,
+                    "old_volume": volume_dc, "new_volume": new_volume_dc,
+                    "old_contribution": old_contribution_dc, "new_contribution": new_contribution_dc,
+                    "delta": new_contribution_dc - old_contribution_dc,
+                })
+
+            if not _discount_items_base:
+                st.warning("Δεν βρέθηκαν έγκυρα δεδομένα τιμής για τα επιλεγμένα κοκτέιλ.")
+            else:
+                total_delta_discount = sum(it["delta"] for it in _discount_items_base)
+                st.markdown("#### 📋 Νέες Τιμές για τα Επιλεγμένα Κοκτέιλ")
+                if _direct_channel:
+                    st.caption("🎯 Τιμές λιανικής (απευθείας κανάλι).")
+                else:
+                    st.caption("🤝 Τιμές Αντιπροσώπου (74% της λιανικής).")
+
+                dc_rows = []
+                for it in _discount_items_base:
+                    dc_rows.append({
+                        "Κοκτέιλ": it["name"],
+                        "Παλιά Τιμή (€)": round(it["old_price"], 2),
+                        "Νέα Τιμή (€)": round(it["new_price"], 2),
+                        "Ποσοστό Έκπτωσης (%)": round(price_decrease_pct, 1),
+                        "Παλιά Τεμάχια (ιστορικά)": int(it["old_volume"]),
+                        "Νέα Τεμάχια (πρόβλεψη)": int(it["new_volume"]),
+                        "Μεταβολή Καθαρού Κέρδους (€)": round(it["delta"], 2),
+                    })
+                df_discount = pd.DataFrame(dc_rows)
+                # 🔧 Γενική ασφάλεια: καθαρισμός None/NaN πριν την εμφάνιση.
+                for _col_dc in df_discount.columns:
+                    df_discount[_col_dc] = df_discount[_col_dc].apply(
+                        lambda v: "—" if (v is None or (isinstance(v, float) and pd.isna(v))) else v
+                    )
+
+                def _hl_discount(row):
+                    styles = [''] * len(row)
+                    idx = row.index.get_loc("Μεταβολή Καθαρού Κέρδους (€)")
+                    val = row["Μεταβολή Καθαρού Κέρδους (€)"]
+                    if isinstance(val, (int, float)):
+                        if val < 0:
+                            styles[idx] = 'background-color: #4d1f1f; color: #ff6b6b; font-weight: 600;'
+                        elif val > 0:
+                            styles[idx] = 'background-color: #1f4d24; color: #6fd67f; font-weight: 600;'
+                    return styles
+
+                st.dataframe(_safe_df(df_discount).style.apply(_hl_discount, axis=1), use_container_width=True, hide_index=True)
+                st.metric("Συνολική Μεταβολή Καθαρού Κέρδους (από τα επιλεγμένα κοκτέιλ)", f"{total_delta_discount:,.2f} €")
+
+                st.divider()
+                st.markdown("#### 🎯 Επίδραση σε Κάθε Σενάριο Πρόβλεψης")
+                st.caption("Η παραπάνω μεταβολή προστίθεται στο ήδη υπολογισμένο αποτέλεσμα κάθε σεναρίου (Χειρότερο/Αναμενόμενο/Καλύτερο) από την ενότητα εποχικότητας.")
+
+                dcol1, dcol2, dcol3 = st.columns(3)
+                for col, (label, res) in zip([dcol1, dcol2, dcol3], fc_results.items()):
+                    with col:
+                        st.markdown(f"**{label}**")
+                        new_profit_scenario = res["profit"] + total_delta_discount
+                        st.metric("Καθαρό Πριν", f"{res['profit']:,.0f} €")
+                        _dc = "normal" if new_profit_scenario >= res["profit"] else "inverse"
+                        st.metric("Καθαρό Μετά τη Μείωση Τιμών", f"{new_profit_scenario:,.0f} €", delta=f"{total_delta_discount:,.0f} €", delta_color=_dc)
+                        if res["profit"] < 0:
+                            gap_coverage_pct = (total_delta_discount / abs(res["profit"])) * 100
+                            if gap_coverage_pct >= 0:
+                                st.caption(f"✅ Καλύπτει το **{gap_coverage_pct:.1f}%** του κενού αυτού του σεναρίου.")
+                            else:
+                                st.caption(f"⚠️ **Επιδεινώνει** το κενό κατά {abs(gap_coverage_pct):.1f}% επιπλέον.")
+                            if 0 <= gap_coverage_pct < 20:
+                                st.caption("💡 Μικρή κάλυψη — τα επιλεγμένα κοκτέιλ είναι μικρό κομμάτι του συνολικού τζίρου. Δοκίμασε να συμπεριλάβεις περισσότερα, ή μη περιμένεις να κλείσει μόνο του το κενό.")
+                        else:
+                            st.caption("✅ Το σενάριο ήταν ήδη κερδοφόρο πριν τη μείωση τιμών.")
+
+                st.divider()
+                try:
+                    _now_str_dc = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    _now_str_dc = datetime.now().strftime("%d/%m/%Y %H:%M")
+                try:
+                    _dc_pdf_data = {
+                        "discount_pct": price_decrease_pct,
+                        "volume_increase_pct": expected_volume_increase_pct,
+                        "rows": dc_rows,
+                        "total_delta": total_delta_discount,
+                        "fc_results": fc_results,
+                        "channel_label": "🎯 Απευθείας στα Μαγαζιά (Τιμή Λιανικής)" if _direct_channel else "🤝 Μέσω Αντιπροσώπου",
+                    }
+                    _dc_pdf_bytes = generate_discount_scenario_pdf(_dc_pdf_data, _now_str_dc)
+                    st.download_button(
+                        "📄 Λήψη PDF: Σενάριο Μείωσης Τιμών",
+                        data=bytes(_dc_pdf_bytes),
+                        file_name=f"Cabclub_Meiosi_Timon_{_now_str_dc.replace('/', '-').replace(':', 'h')}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
 
 
 # --- 📑 ΑΝΑΦΟΡΑ ΕΣΟΔΩΝ - ΕΞΟΔΩΝ (P&L) ---
@@ -7297,7 +7435,7 @@ elif page == "📑 Έσοδα - Έξοδα":
                     Κόστος=("cost_total", "sum"),
                 )
                 df_by_cocktail["Κέρδος"] = df_by_cocktail["Τζίρος"] - df_by_cocktail["Κόστος"]
-                st.dataframe(df_by_cocktail.sort_values("Τζίρος", ascending=False), use_container_width=True, hide_index=True)
+                st.dataframe(_safe_df(df_by_cocktail.sort_values("Τζίρος", ascending=False)), use_container_width=True, hide_index=True)
 
             # --- 📄 PDF ---
             st.divider()
@@ -7378,7 +7516,7 @@ elif page == "📑 Έσοδα - Έξοδα":
                     "month": "Μήνας", "revenue": "Τζίρος", "cogs": "COGS", "gross_profit": "Μικτό Κέρδος",
                     "fixed_costs": "Πάγια", "net_profit": "Καθαρό (προ φόρων)", "tax": "Φόρος", "net_after_tax": "Καθαρό (μετά φόρων)"
                 })
-                st.dataframe(df_months_summary.style.format({
+                st.dataframe(_safe_df(df_months_summary).style.format({
                     "Τζίρος": "{:,.2f} €", "COGS": "{:,.2f} €", "Μικτό Κέρδος": "{:,.2f} €",
                     "Πάγια": "{:,.2f} €", "Καθαρό (προ φόρων)": "{:,.2f} €", "Φόρος": "{:,.2f} €", "Καθαρό (μετά φόρων)": "{:,.2f} €",
                 }), use_container_width=True, hide_index=True)
@@ -9810,7 +9948,7 @@ elif page == "📦 Lot Παραγωγής":
                         df_unique = df_rep.drop_duplicates().sort_values(by=["Πρώτη Ύλη", "Ημ. Παραγωγής"], ascending=[True, False])
                         
                         st.success(f"✅ Βρέθηκαν {len(df_unique)} μοναδικές καταγραφές LOT!")
-                        st.dataframe(df_unique, use_container_width=True, hide_index=True)
+                        st.dataframe(_safe_df(df_unique), use_container_width=True, hide_index=True)
                         
                         # --- ΝΕΟ: ΔΗΜΙΟΥΡΓΙΑ HTML ΓΙΑ PDF / ΕΚΤΥΠΩΣΗ ---
                         import datetime
@@ -9909,7 +10047,7 @@ elif page == "📦 Lot Παραγωγής":
                 if search_lot: dff = dff[dff.apply(lambda x: search_lot.lower() in str(x).lower(), axis=1)]
 
                 st.write(f"Αποτελέσματα: **{len(dff)}** εγγραφές")
-                st.dataframe(dff, use_container_width=True, hide_index=True)
+                st.dataframe(_safe_df(dff), use_container_width=True, hide_index=True)
 
     with tab_recall_tool:
         st.markdown("#### 🚨 Εργαλείο Άμεσης Ανάκλησης Πρώτων Υλών")
@@ -9931,7 +10069,7 @@ elif page == "📦 Lot Παραγωγής":
                 detected_ingredients = df_affected["Υλικό"].dropna().unique().tolist()
                 ingredient_title = ", ".join([f"{ing}" for ing in detected_ingredients]) if detected_ingredients else "Άγνωστο Υλικό"
                 df_display = df_affected[["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail", "Τεμάχια"]].drop_duplicates()
-                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                st.dataframe(_safe_df(df_display), use_container_width=True, hide_index=True)
                 
                 affected_cust_list = df_display["Πελάτης"].unique().tolist()
                 st.warning(f"📞 **B2B Πελάτες που πρέπει να ειδοποιηθούν άμεσα:** \n\n {', '.join([f'**{c}**' for c in affected_cust_list])}")
@@ -10085,7 +10223,7 @@ elif page == "📦 Lot Παραγωγής":
                         })
                         
                         st.warning("⚠️ **ΠΡΟΣΟΧΗ:** Τα παρακάτω προϊόντα πρέπει να ελεγχθούν / ανακληθούν!")
-                        st.dataframe(df_blast_summary, use_container_width=True, hide_index=True)
+                        st.dataframe(_safe_df(df_blast_summary), use_container_width=True, hide_index=True)
                         
                         affected_customers = df_blast_summary["👤 Πελάτης"].unique().tolist()
                         st.error(f"📞 Πελάτες προς ενημέρωση: **{', '.join(affected_customers)}**")
@@ -10562,8 +10700,8 @@ elif page == "👥 Πελατολόγιο":
                     st.divider()
                     
                     with st.expander("📜 Αναλυτικό Ιστορικό Παραγγελιών", expanded=False):
-                        st.dataframe(
-                            df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Cocktail", "Τεμάχια"]],
+                        st.dataframe(_safe_df(
+                            df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Cocktail", "Τεμάχια"]]),
                             use_container_width=True, hide_index=True
                         )
                 else:
@@ -11076,8 +11214,8 @@ elif page == "🔄 Αντικατάσταση":
                     }
 
                     # Εμφάνιση του DataFrame
-                    st.dataframe(
-                        df_res.style.format(format_dict).map(style_profit, subset=['Διαφορά Λιαν. (€)', 'Διαφορά Αντιπρ. (€)']),
+                    st.dataframe(_safe_df(
+                        df_res).style.format(format_dict).map(style_profit, subset=['Διαφορά Λιαν. (€)', 'Διαφορά Αντιπρ. (€)']),
                         use_container_width=True,
                         hide_index=True
                     )
@@ -11225,13 +11363,13 @@ elif page == "📦 Παραγγελίες B2B":
 
                     if not df_duplicates.empty:
                         st.error(f"⚠️ Βρέθηκαν {len(df_duplicates)} εγγραφές σε {df_duplicates.groupby(['customer_name','order_date_iso']).ngroups} διπλότυπα ζευγάρια (ίδιος πελάτης + ίδια ημέρα, 2+ φορές):")
-                        st.dataframe(df_duplicates[["id", "customer_name", "order_date_iso", "total_amount"]], use_container_width=True, hide_index=True)
+                        st.dataframe(_safe_df(df_duplicates[["id", "customer_name", "order_date_iso", "total_amount"]]), use_container_width=True, hide_index=True)
                     else:
                         st.success("✅ Δεν βρέθηκαν διπλότυπες εγγραφές (ίδιος πελάτης + ίδια ημέρα).")
 
                     if not df_orphaned.empty:
                         st.warning(f"⚠️ Βρέθηκαν {len(df_orphaned)} εγγραφές b2b_orders ΧΩΡΙΣ καμία αντίστοιχη γραμμή παραγωγής (πιθανές \"ξεχασμένες\"):")
-                        st.dataframe(df_orphaned[["id", "customer_name", "order_date_iso", "total_amount"]], use_container_width=True, hide_index=True)
+                        st.dataframe(_safe_df(df_orphaned[["id", "customer_name", "order_date_iso", "total_amount"]]), use_container_width=True, hide_index=True)
                         st.caption("Αυτές οι εγγραφές πιθανόν να προήλθαν από παλιά παραγωγή που διαγράφηκε/επεξεργάστηκε χωρίς να ενημερωθεί το b2b_orders. Μπορείς να τις διαγράψεις χειροκίνητα από το tab «Ιστορικό & Αναζήτηση» παρακάτω αν επιβεβαιώσεις ότι είναι όντως ξεπερασμένες.")
                     else:
                         st.success("✅ Δεν βρέθηκαν 'ξεχασμένες' εγγραφές χωρίς αντίστοιχη παραγωγή.")
@@ -11851,7 +11989,7 @@ elif page == "🛒 Λίστα Αγορών":
                     c1, c2 = st.columns([1, 2.5])
                     with c1:
                         st.markdown("**Σύνοψη προς Παραγωγή:**")
-                        st.dataframe(cocktail_sums.rename(columns={"cocktail_name": "Κοκτέιλ", "pieces": "Τεμάχια"}), hide_index=True)
+                        st.dataframe(_safe_df(cocktail_sums.rename(columns={"cocktail_name": "Κοκτέιλ", "pieces": "Τεμάχια"})), hide_index=True)
                     
                     with c2:
                         st.markdown("**🛍️ Πίνακας Προμηθειών (Διορθώστε την Παραγγελία και Καταχωρήστε)**")
@@ -12035,7 +12173,7 @@ elif page == "🛒 Λίστα Αγορών":
                                 else:
                                     shopping_list.append({"Υλικό": ing_name, "Απαιτείται": f"{(ml_u * target_pcs):.1f} ml", "Λείπουν": "0.0 ml", "Αγορά": "✅ Επαρκές"})
                     
-                    if shopping_list: st.dataframe(pd.DataFrame(shopping_list), use_container_width=True, hide_index=True)
+                    if shopping_list: st.dataframe(_safe_df(pd.DataFrame(shopping_list)), use_container_width=True, hide_index=True)
             else:
                 st.warning("Δεν βρέθηκαν συνταγές.")
     else:
@@ -12160,7 +12298,7 @@ elif page == "🚚 Παραλαβές":
                 "bottles_received": "Παρελήφθησαν (Φιάλες)"
             })
             
-            st.dataframe(df_hist[["Ημερομηνία", "Υλικό", "Παραγγέλθηκαν (Φιάλες)", "Παρελήφθησαν (Φιάλες)"]], use_container_width=True, hide_index=True)
+            st.dataframe(_safe_df(df_hist[["Ημερομηνία", "Υλικό", "Παραγγέλθηκαν (Φιάλες)", "Παρελήφθησαν (Φιάλες)"]]), use_container_width=True, hide_index=True)
         else:
             st.info("Δεν υπάρχει ιστορικό παραλαβών.")
 
@@ -12271,8 +12409,8 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
                 df_results = pd.DataFrame(test_results)
                 
                 # 1. ΕΜΦΑΝΙΣΗ ΣΤΗΝ ΟΘΟΝΗ
-                st.dataframe(
-                    df_results.style.format({
+                st.dataframe(_safe_df(
+                    df_results).style.format({
                         "Απαιτούμενα (ml)": "{:.1f} ml",
                         "Βάρος (g)": "{:.1f} g",
                         "Φιάλες": "{:.2f} μπουκ."
