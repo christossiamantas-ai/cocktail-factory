@@ -906,6 +906,132 @@ def generate_expenses_all_time_pdf(all_entries, now_str):
 
     return pdf.output()
 
+def generate_discount_scenario_pdf(data, now_str):
+    """Αναφορά σεναρίου μείωσης τιμών σε επιλεγμένα κοκτέιλ: παλιά/νέα τιμή, ποσοστό
+    έκπτωσης, πρόβλεψη όγκου, και επίδραση σε κάθε ένα από τα 3 σενάρια πρόβλεψης."""
+    pdf = FPDF(orientation='L')
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    if _UNICODE_FONT_PATH:
+        try:
+            pdf.add_font('DejaVu', '', _UNICODE_FONT_PATH)
+            pdf.add_font('DejaVu', 'B', _UNICODE_FONT_PATH)
+            f_name = 'DejaVu'
+        except Exception:
+            f_name = 'Helvetica'
+    else:
+        f_name = 'Helvetica'
+
+    GREEN = (30, 122, 52)
+    RED = (176, 0, 32)
+    BLUE = (27, 94, 158)
+    DARK = (30, 30, 30)
+    GREY = (110, 110, 110)
+    WHITE = (255, 255, 255)
+    LIGHTGREY = (245, 245, 245)
+
+    def header_bar(subtitle):
+        pdf.set_fill_color(*GREEN)
+        pdf.rect(0, 0, 297, 26, 'F')
+        pdf.set_xy(10, 6)
+        pdf.set_font(f_name, 'B', 16)
+        pdf.set_text_color(*WHITE)
+        pdf.cell(0, 8, "CABCLUB COCKTAILS", ln=1)
+        pdf.set_x(10)
+        pdf.set_font(f_name, size=11)
+        pdf.cell(0, 6, _pdf_safe_text(subtitle), ln=1)
+        pdf.set_text_color(*DARK)
+        pdf.ln(14)
+
+    def section(title):
+        pdf.set_font(f_name, 'B', 12)
+        pdf.set_fill_color(*LIGHTGREY)
+        pdf.cell(0, 8, _pdf_safe_text(title), ln=1, fill=True)
+        pdf.ln(1)
+
+    def row(label, value, bold=False, color=None, indent=0):
+        pdf.set_font(f_name, 'B' if bold else '', 10)
+        pdf.set_text_color(*(color or DARK))
+        if indent > 0:
+            pdf.cell(10 * indent, 7)
+        pdf.cell(180 - 10 * indent, 7, _pdf_safe_text(label))
+        pdf.cell(70, 7, _pdf_safe_text(str(value)), align='R', ln=1)
+        pdf.set_text_color(*DARK)
+
+    def divider():
+        pdf.ln(1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 287, pdf.get_y())
+        pdf.ln(3)
+
+    header_bar("Σενάριο Μείωσης Τιμών σε Επιλεγμένα Κοκτέιλ")
+    pdf.set_font(f_name, size=9)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 5, f"Δημιουργήθηκε: {now_str}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.set_font(f_name, 'B', 11)
+    pdf.set_text_color(*BLUE)
+    pdf.cell(0, 7, f"Κανάλι Πώλησης: {_pdf_safe_text(data.get('channel_label', 'Μέσω Αντιπροσώπου'))}", ln=1)
+    pdf.set_text_color(*DARK)
+    pdf.ln(3)
+
+    section("ΠΑΡΑΜΕΤΡΟΙ ΣΕΝΑΡΙΟΥ")
+    row("Ποσοστό Μείωσης Τιμής", f"{data['discount_pct']:.1f} %", bold=True)
+    row("Αναμενόμενη Αύξηση Τεμαχίων (υπόθεση)", f"{data['volume_increase_pct']:.1f} %", bold=True)
+    row("Αριθμός Επιλεγμένων Κοκτέιλ", f"{len(data['rows'])}")
+    row("Συνολική Μεταβολή Καθαρού Κέρδους", f"{data['total_delta']:,.2f} EUR", bold=True, color=(GREEN if data['total_delta'] >= 0 else RED))
+    divider()
+
+    section("ΝΕΕΣ ΤΙΜΕΣ ΓΙΑ ΤΑ ΕΠΙΛΕΓΜΕΝΑ ΚΟΚΤΕΪΛ")
+    cols = [("Κοκτέιλ", 65), ("Παλιά Τιμή", 32), ("Νέα Τιμή", 32), ("Έκπτωση %", 28), ("Παλιά Τμχ", 32), ("Νέα Τμχ", 32), ("Δ Κέρδους", 46)]
+    pdf.set_font(f_name, 'B', 9)
+    pdf.set_fill_color(*LIGHTGREY)
+    for cname, w in cols:
+        pdf.cell(w, 7, cname, border=1, fill=True, align='C')
+    pdf.ln()
+    pdf.set_font(f_name, size=9)
+    for i, r in enumerate(data["rows"]):
+        pdf.set_fill_color(250, 250, 250) if i % 2 == 0 else pdf.set_fill_color(*WHITE)
+        pdf.cell(cols[0][1], 6, _pdf_safe_text(str(r["Κοκτέιλ"]))[:38], border=1, fill=True)
+        pdf.cell(cols[1][1], 6, f"{r['Παλιά Τιμή (€)']:.2f}", border=1, fill=True, align='R')
+        pdf.cell(cols[2][1], 6, f"{r['Νέα Τιμή (€)']:.2f}", border=1, fill=True, align='R')
+        pdf.cell(cols[3][1], 6, f"{r['Ποσοστό Έκπτωσης (%)']:.1f}%", border=1, fill=True, align='R')
+        pdf.cell(cols[4][1], 6, f"{r['Παλιά Τεμάχια (ιστορικά)']:,}", border=1, fill=True, align='R')
+        pdf.cell(cols[5][1], 6, f"{r['Νέα Τεμάχια (πρόβλεψη)']:,}", border=1, fill=True, align='R')
+        delta_v = r["Μεταβολή Καθαρού Κέρδους (€)"]
+        pdf.set_text_color(*(GREEN if delta_v >= 0 else RED))
+        pdf.cell(cols[6][1], 6, f"{delta_v:,.2f}", border=1, fill=True, align='R')
+        pdf.set_text_color(*DARK)
+        pdf.ln()
+    pdf.ln(6)
+
+    section("ΕΠΙΔΡΑΣΗ ΣΕ ΚΑΘΕ ΣΕΝΑΡΙΟ ΠΡΟΒΛΕΨΗΣ")
+    pdf.set_font(f_name, 'B', 9)
+    pdf.set_fill_color(*LIGHTGREY)
+    pdf.cell(75, 7, "", fill=True)
+    for label in data["fc_results"].keys():
+        pdf.cell(62, 7, _pdf_safe_text(label), border=1, fill=True, align='C')
+    pdf.ln()
+
+    def scenario_row(metric_label, get_val, is_currency=True):
+        pdf.set_font(f_name, size=9)
+        pdf.cell(75, 7, metric_label, border=1)
+        for label, res in data["fc_results"].items():
+            val = get_val(res)
+            txt = f"{val:,.0f}" + (" EUR" if is_currency else "")
+            pdf.cell(62, 7, txt, border=1, align='R')
+        pdf.ln()
+
+    scenario_row("Καθαρό Πριν", lambda res: res["profit"])
+    scenario_row("Καθαρό Μετά τη Μείωση Τιμών", lambda res: res["profit"] + data["total_delta"])
+
+    pdf.set_y(-15)
+    pdf.set_font(f_name, size=8)
+    pdf.set_text_color(*GREY)
+    pdf.cell(0, 6, "CabClub Cocktails - Σενάριο Μείωσης Τιμών", align='C')
+
+    return pdf.output()
+
 def generate_scenario_forecast_pdf(data, now_str):
     """Πλήρης αναφορά πρόβλεψης σεναρίων: συντελεστές εποχικότητας, ποσοστά σεναρίων,
     σύγκριση 3 σεναρίων, και πίνακας νέων τιμών για κάθε σενάριο που το χρειάζεται."""
@@ -2426,16 +2552,26 @@ if page == "🏠 Αρχική":
     # --- Γρήγορη Εικόνα (φρέσκα νούμερα, τρέχων μήνας) ---
     try:
         _cur_month_label = _home_now.strftime("%m/%Y")
-        _res_home_prod = supabase.table("production_log").select("pieces, prod_date, customer").execute()
+        _res_home_prod = supabase.table("production_log").select("pieces, free_pieces, prod_date, prod_time, customer, cocktail_name, lot_cocktail").execute()
         _df_home = pd.DataFrame(_res_home_prod.data) if _res_home_prod.data else pd.DataFrame()
         if not _df_home.empty:
+            # 🔧 FIX: δεν αφαιρούσε καθόλου διπλότυπες εγγραφές, και τα "Τεμάχια" μέτραγαν
+            # μαζί και τα δωρεάν — γι' αυτό η Αρχική έδειχνε διαφορετικό νούμερο από το
+            # Dashboard/Έσοδα-Έξοδα. Ίδια μέθοδος ομαδοποίησης με το Dashboard, και τώρα
+            # αφαιρούνται τα δωρεάν τεμάχια από το κύριο "Τεμάχια", όπως παντού αλλού.
+            for _hc in ["pieces", "free_pieces"]:
+                _df_home[_hc] = pd.to_numeric(_df_home.get(_hc, 0), errors="coerce").fillna(0)
+            _df_home = _df_home.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+                pieces=("pieces", "max"), free_pieces=("free_pieces", "max")
+            )
+            _df_home["paid_pieces"] = _df_home["pieces"] - _df_home["free_pieces"]
             _df_home["parsed"] = pd.to_datetime(_df_home["prod_date"], format="%d/%m/%Y", errors="coerce")
             _df_home = _df_home.dropna(subset=["parsed"])
             _df_home_month = _df_home[_df_home["parsed"].dt.strftime("%m/%Y") == _cur_month_label]
-            _pieces_month = pd.to_numeric(_df_home_month["pieces"], errors="coerce").fillna(0).sum()
+            _pieces_month = _df_home_month["paid_pieces"].sum()
             _customers_month = _df_home_month["customer"].nunique()
             _today_label = _home_now.strftime("%d/%m/%Y")
-            _pieces_today = pd.to_numeric(_df_home[_df_home["prod_date"] == _today_label]["pieces"], errors="coerce").fillna(0).sum()
+            _pieces_today = _df_home[_df_home["prod_date"] == _today_label]["paid_pieces"].sum()
         else:
             _pieces_month, _customers_month, _pieces_today = 0, 0, 0
 
@@ -4462,7 +4598,19 @@ elif page == "📐 Markup & Margin":
             st.error(f"Σφάλμα φόρτωσης ιστορικού πωλήσεων: {e}")
 
         if res_mm_hist and res_mm_hist.data:
-            df_mm_hist = pd.DataFrame(res_mm_hist.data).drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+            # 🔧 FIX: ευθυγράμμιση με την ίδια μέθοδο ομαδοποίησης του Dashboard (αντί για απλό
+            # drop_duplicates), για συνέπεια σε ολόκληρη την εφαρμογή.
+            _df_mm_raw = pd.DataFrame(res_mm_hist.data)
+            for _mm_col in ["pieces", "free_pieces", "discounted_pieces", "discount_pct"]:
+                if _mm_col in _df_mm_raw.columns:
+                    _df_mm_raw[_mm_col] = pd.to_numeric(_df_mm_raw[_mm_col], errors="coerce").fillna(0)
+            if "applied_cost" not in _df_mm_raw.columns:
+                _df_mm_raw["applied_cost"] = None
+            df_mm_hist = _df_mm_raw.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+                pieces=("pieces", "max"), free_pieces=("free_pieces", "max"),
+                discounted_pieces=("discounted_pieces", "max"), discount_pct=("discount_pct", "max"),
+                applied_cost=("applied_cost", "min"),
+            )
             df_mm_hist["pieces"] = pd.to_numeric(df_mm_hist["pieces"], errors="coerce").fillna(0)
             df_mm_hist["free_pieces"] = pd.to_numeric(df_mm_hist.get("free_pieces", 0), errors="coerce").fillna(0)
             df_mm_hist["applied_cost_raw"] = pd.to_numeric(df_mm_hist.get("applied_cost", pd.NA), errors="coerce")  # 🔧 FIX: ΔΕΝ κάνουμε fillna(0) εδώ, ώστε να ξεχωρίζει "πραγματικά κενό" από σκόπιμο μηδέν
@@ -5939,7 +6087,7 @@ elif page == "💸 Έξοδα":
     st.caption("Το πραγματικό κόστος πρώτων υλών/παραγωγής, υπολογισμένο από το ιστορικό πωλήσεών σου — μηνιαία ή ετήσια.")
 
     try:
-        res_exp_hist = supabase.table("production_log").select("cocktail_name, pieces, applied_cost, lot_cocktail, prod_time, prod_date, customer").execute()
+        res_exp_hist = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, applied_cost, lot_cocktail, prod_time, prod_date, customer").execute()
         df_exp_hist = pd.DataFrame(res_exp_hist.data) if res_exp_hist.data else pd.DataFrame()
     except Exception as e:
         st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
@@ -5948,7 +6096,18 @@ elif page == "💸 Έξοδα":
     if df_exp_hist.empty:
         st.warning("Δεν βρέθηκαν δεδομένα παραγωγής για υπολογισμό μεταβλητού κόστους.")
     else:
-        df_exp_hist = df_exp_hist.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+        # 🔧 FIX: ευθυγράμμιση με την ίδια μέθοδο ομαδοποίησης του Dashboard. Σημείωση: εδώ
+        # ΣΚΟΠΙΜΑ χρησιμοποιούνται ΟΛΑ τα τεμάχια (μαζί με τα δωρεάν) στον υπολογισμό κόστους —
+        # τα δωρεάν κοκτέιλ ΔΕΝ φέρνουν τζίρο, αλλά καταναλώνουν πραγματικά υλικά, άρα σωστά
+        # προσμετρώνται στο κόστος παραγωγής.
+        for _exp_col in ["pieces", "free_pieces"]:
+            if _exp_col in df_exp_hist.columns:
+                df_exp_hist[_exp_col] = pd.to_numeric(df_exp_hist[_exp_col], errors="coerce").fillna(0)
+        if "applied_cost" not in df_exp_hist.columns:
+            df_exp_hist["applied_cost"] = None
+        df_exp_hist = df_exp_hist.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+            pieces=("pieces", "max"), free_pieces=("free_pieces", "max"), applied_cost=("applied_cost", "min")
+        )
         df_exp_hist["parsed_date"] = pd.to_datetime(df_exp_hist["prod_date"], format="%d/%m/%Y", errors="coerce")
         df_exp_hist = df_exp_hist.dropna(subset=["parsed_date"])
 
@@ -6106,11 +6265,19 @@ elif page == "🎯 Νεκρό Σημείο":
             res_cust_be = supabase.table("customers").select("name, discount").execute()
             df_cust_be = pd.DataFrame(res_cust_be.data) if res_cust_be.data else pd.DataFrame(columns=["name", "discount"])
             if res_be_hist.data:
-                # 🔧 FIX: πριν το dedup ΔΕΝ περιλάμβανε "customer" — αν το ίδιο κοκτέιλ
-                # καταχωρήθηκε στην ίδια αποθήκευση για 2+ διαφορετικούς πελάτες (πολύ συχνό,
-                # μιας κι ένα save μπορεί να έχει πολλούς πελάτες), κρατούσε μόνο τον έναν και
-                # υποεκτιμούσε τα πραγματικά πληρωμένα τεμάχια.
-                df_be_hist = pd.DataFrame(res_be_hist.data).drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+                # 🔧 FIX: ευθυγράμμιση με την ίδια μέθοδο ομαδοποίησης του Dashboard (αντί για
+                # απλό drop_duplicates), για συνέπεια σε ολόκληρη την εφαρμογή.
+                _df_be_raw = pd.DataFrame(res_be_hist.data)
+                for _be_col in ["pieces", "free_pieces", "discounted_pieces", "discount_pct"]:
+                    if _be_col in _df_be_raw.columns:
+                        _df_be_raw[_be_col] = pd.to_numeric(_df_be_raw[_be_col], errors="coerce").fillna(0)
+                if "applied_cost" not in _df_be_raw.columns:
+                    _df_be_raw["applied_cost"] = None
+                df_be_hist = _df_be_raw.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+                    pieces=("pieces", "max"), free_pieces=("free_pieces", "max"),
+                    discounted_pieces=("discounted_pieces", "max"), discount_pct=("discount_pct", "max"),
+                    applied_cost=("applied_cost", "min"),
+                )
                 df_be_hist["pieces"] = pd.to_numeric(df_be_hist["pieces"], errors="coerce").fillna(0)
                 df_be_hist["free_pieces"] = pd.to_numeric(df_be_hist.get("free_pieces", 0), errors="coerce").fillna(0)
 
@@ -6327,13 +6494,49 @@ elif page == "🎯 Νεκρό Σημείο":
             "07": 1.8, "08": 1.8, "09": 1.3, "10": 0.8, "11": 0.5, "12": 0.9,
         }
 
+        # 🆕 Αυτόματος υπολογισμός δεικτών εποχικότητας για μήνες που ΗΔΗ έχουν πωλήσεις:
+        # ο πιο δυνατός μήνας (σε πληρωμένα τεμάχια, όλα τα διαθέσιμα έτη μαζί) παίρνει 1.00,
+        # οι υπόλοιποι γνωστοί μήνες παίρνουν αναλογικό δείκτη βάσει πραγματικών νούμερων —
+        # χωρίς να χρειάζεται να τα μαντέψεις. Οι άγνωστοι μήνες κρατούν την προεπιλογή.
+        try:
+            _res_seas_prod = supabase.table("production_log").select("pieces, free_pieces, prod_date, prod_time, customer, cocktail_name, lot_cocktail").execute()
+            _df_seas = pd.DataFrame(_res_seas_prod.data) if _res_seas_prod.data else pd.DataFrame()
+            if not _df_seas.empty:
+                for _sc in ["pieces", "free_pieces"]:
+                    _df_seas[_sc] = pd.to_numeric(_df_seas.get(_sc, 0), errors="coerce").fillna(0)
+                _df_seas = _df_seas.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+                    pieces=("pieces", "max"), free_pieces=("free_pieces", "max")
+                )
+                _df_seas["_paid"] = _df_seas["pieces"] - _df_seas["free_pieces"]
+                _df_seas["_parsed"] = pd.to_datetime(_df_seas["prod_date"], format="%d/%m/%Y", errors="coerce")
+                _df_seas = _df_seas.dropna(subset=["_parsed"])
+                _df_seas["_mkey"] = _df_seas["_parsed"].dt.strftime("%m")
+                _real_pieces_by_monthkey = _df_seas.groupby("_mkey")["_paid"].sum().to_dict()
+            else:
+                _real_pieces_by_monthkey = {}
+        except Exception:
+            _real_pieces_by_monthkey = {}
+
+        _max_monthkey_pieces = max(_real_pieces_by_monthkey.values()) if _real_pieces_by_monthkey else 0
+        _auto_seasonality = {}
+        for _mk in MONTH_NAMES_GR.keys():
+            if _mk in _real_pieces_by_monthkey and _max_monthkey_pieces > 0:
+                _auto_seasonality[_mk] = round(_real_pieces_by_monthkey[_mk] / _max_monthkey_pieces, 2)
+            else:
+                _auto_seasonality[_mk] = DEFAULT_SEASONALITY[_mk]
+
         with st.expander("⚙️ Συντελεστές Εποχικότητας (επεξεργάσιμοι)", expanded=False):
-            st.caption("Προεπιλογή για εποχικό, εξωτερικό bar (καλοκαίρι ψηλά, χειμώνας χαμηλά) — προσάρμοσέ τα ελεύθερα.")
+            if _real_pieces_by_monthkey:
+                _auto_months_names = ", ".join(MONTH_NAMES_GR[m] for m in sorted(_real_pieces_by_monthkey.keys()))
+                st.caption(f"✅ Αυτόματα υπολογισμένο από πραγματικές πωλήσεις για: **{_auto_months_names}** (ο πιο δυνατός μήνας = 1,00). Οι υπόλοιποι μήνες έχουν προεπιλογή για εποχικό, εξωτερικό bar — προσάρμοσέ τα ελεύθερα.")
+            else:
+                st.caption("Προεπιλογή για εποχικό, εξωτερικό bar (καλοκαίρι ψηλά, χειμώνας χαμηλά) — προσάρμοσέ τα ελεύθερα.")
             seas_cols = st.columns(4)
             seasonality = {}
             for idx, (mkey, mname) in enumerate(MONTH_NAMES_GR.items()):
                 col = seas_cols[idx % 4]
-                seasonality[mkey] = col.number_input(mname, min_value=0.1, max_value=5.0, value=DEFAULT_SEASONALITY[mkey], step=0.1, key=f"seas_{mkey}")
+                _label = f"{mname} 🔒" if mkey in _real_pieces_by_monthkey else mname
+                seasonality[mkey] = col.number_input(_label, min_value=0.1, max_value=5.0, value=_auto_seasonality[mkey], step=0.1, key=f"seas_{mkey}")
 
         # --- 📅 Επιλογή εύρους μηνών πρόβλεψης (μπορεί να εκτείνεται σε 2 ημερολογιακά έτη) ---
         try:
@@ -6376,9 +6579,18 @@ elif page == "🎯 Νεκρό Σημείο":
             _res_fc_prod = supabase.table("production_log").select("cocktail_name, pieces, applied_cost, prod_date, prod_time, customer, lot_cocktail, free_pieces, discounted_pieces, discount_pct").execute()
             df_fc_prod = pd.DataFrame(_res_fc_prod.data) if _res_fc_prod.data else pd.DataFrame()
             if not df_fc_prod.empty:
-                # 🔧 FIX: χωρίς αυτό, τυχόν παλιές διπλότυπες εγγραφές (π.χ. από το γνωστό ιστορικό bug
-                # με τα B2B ραντεβού) μετριούνται πολλαπλές φορές — ίδιο dedup με το υπόλοιπο εργαλείο.
-                df_fc_prod = df_fc_prod.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+                # 🔧 FIX: ευθυγράμμιση με την ίδια μέθοδο ομαδοποίησης του Dashboard (πιο
+                # ανθεκτική από απλό drop_duplicates σε γνωστές περιπτώσεις ιστορικών εγγραφών).
+                for _fc_col in ["pieces", "free_pieces", "discounted_pieces", "discount_pct"]:
+                    if _fc_col in df_fc_prod.columns:
+                        df_fc_prod[_fc_col] = pd.to_numeric(df_fc_prod[_fc_col], errors="coerce").fillna(0)
+                if "applied_cost" not in df_fc_prod.columns:
+                    df_fc_prod["applied_cost"] = None
+                df_fc_prod = df_fc_prod.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+                    pieces=("pieces", "max"), free_pieces=("free_pieces", "max"),
+                    discounted_pieces=("discounted_pieces", "max"), discount_pct=("discount_pct", "max"),
+                    applied_cost=("applied_cost", "min"),
+                )
         except Exception as e:
             df_fc_prod = pd.DataFrame()
             st.error(f"Σφάλμα φόρτωσης ιστορικού: {e}")
@@ -6409,11 +6621,11 @@ elif page == "🎯 Νεκρό Σημείο":
             st.info(f"📊 Πραγματικά δεδομένα: **{_real_names_display}** ({len(real_months)} μήνα/ες, {real_pieces_year:,.0f} πληρωμένα τεμάχια). Πρόβλεψη σεναρίων για τους υπόλοιπους {len(remaining_months)} μήνες, μέχρι {MONTH_NAMES_GR[end_month_fc]} {end_year_fc}.")
 
             # --- 🔍 Σύγκριση: ο δείκτης που έβαλες vs τι έδειξαν τα ΠΡΑΓΜΑΤΙΚΑ στοιχεία ---
-            with st.expander("🔍 Σύγκριση: Ο δείκτης σου vs η Πραγματικότητα (στους μήνες που ήδη ξέρεις)", expanded=True):
+            with st.expander("🔍 Επιβεβαίωση: Δείκτης vs Πραγματικότητα (στους μήνες που ήδη ξέρεις)", expanded=False):
                 st.caption(
-                    "Στους μήνες που ήδη έχεις πουλήσει, ΔΕΝ χρειάζεται να μαντέψεις τη σχέση μεταξύ τους — "
-                    "φαίνεται εδώ τι πραγματικά συνέβη. Χρησιμοποίησε αυτή τη σύγκριση για να διορθώσεις "
-                    "τους δείκτες των ΑΓΝΩΣΤΩΝ μηνών πιο ρεαλιστικά."
+                    "Οι δείκτες των μηνών με 🔒 παραπάνω υπολογίστηκαν ΗΔΗ αυτόματα από τα πραγματικά "
+                    "τεμάχια — εδώ βλέπεις τα ακριβή νούμερα πίσω από αυτόν τον υπολογισμό. Αν άλλαξες "
+                    "χειροκίνητα κάποιον δείκτη παραπάνω, θα φανεί η διαφορά εδώ."
                 )
                 _max_real_pieces = max(real_pieces_by_month.values()) if real_pieces_by_month else 1
                 _comparison_rows = []
@@ -6537,8 +6749,13 @@ elif page == "🎯 Νεκρό Σημείο":
                 _res_vol = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, prod_date, prod_time, customer, lot_cocktail").execute()
                 _df_vol = pd.DataFrame(_res_vol.data) if _res_vol.data else pd.DataFrame()
                 if not _df_vol.empty:
-                    _df_vol = _df_vol.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
-                    _df_vol["_paid"] = pd.to_numeric(_df_vol["pieces"], errors="coerce").fillna(0) - pd.to_numeric(_df_vol.get("free_pieces", 0), errors="coerce").fillna(0)
+                    # 🔧 FIX: ευθυγράμμιση με την ίδια μέθοδο ομαδοποίησης του Dashboard.
+                    for _vol_col in ["pieces", "free_pieces"]:
+                        _df_vol[_vol_col] = pd.to_numeric(_df_vol.get(_vol_col, 0), errors="coerce").fillna(0)
+                    _df_vol = _df_vol.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+                        pieces=("pieces", "max"), free_pieces=("free_pieces", "max")
+                    )
+                    _df_vol["_paid"] = _df_vol["pieces"] - _df_vol["free_pieces"]
                     _volume_by_cocktail = _df_vol.groupby("cocktail_name")["_paid"].sum().to_dict()
                 else:
                     _volume_by_cocktail = {}
@@ -6788,13 +7005,56 @@ elif page == "🎯 Νεκρό Σημείο":
             "εφαρμόζεται αυτόματα παντού."
         )
 
+        def _classify_cocktail_categories():
+            """Ταξινομεί ΟΛΑ τα κοκτέιλ σε Star/Plowhorse/Puzzle/Dog (ίδια μεθοδολογία με το
+            εργαλείο menu engineering παραπάνω), για να φαίνεται η κατηγορία στον πίνακα επιλογής."""
+            items_c = []
+            for _, r_c in df_rec.iterrows():
+                cname_c = r_c["Ονομα"]
+                retail_price_c = float(r_c.get("Τιμή Καταλόγου", 0.0) or 0.0)
+                price_c = retail_price_c * channel_multiplier
+                if price_c <= 0:
+                    continue
+                cost_c = get_unit_cost_for_cocktail(cname_c, _fc_raw_material_cost(r_c))
+                volume_c = float(_volume_by_cocktail.get(cname_c, 0.0))
+                items_c.append({"name": cname_c, "volume": volume_c, "margin_abs": price_c - cost_c})
+            if not items_c:
+                return {}
+            avg_volume_c = sum(it["volume"] for it in items_c) / len(items_c)
+            avg_margin_c = sum(it["margin_abs"] for it in items_c) / len(items_c)
+            result_c = {}
+            for it in items_c:
+                is_popular_c = it["volume"] >= avg_volume_c
+                is_profitable_c = it["margin_abs"] >= avg_margin_c
+                if is_popular_c and is_profitable_c:
+                    result_c[it["name"]] = "⭐ Star"
+                elif is_popular_c:
+                    result_c[it["name"]] = "🐎 Plowhorse"
+                elif is_profitable_c:
+                    result_c[it["name"]] = "🧩 Puzzle"
+                else:
+                    result_c[it["name"]] = "🐶 Dog"
+            return result_c
+
         _all_cocktail_names = sorted(df_rec["Ονομα"].dropna().unique().tolist()) if not df_rec.empty else []
-        selected_discount_cocktails = st.multiselect(
-            "🍹 Επίλεξε τα κοκτέιλ που αφορά η μείωση τιμής:",
-            options=_all_cocktail_names,
-            key="discount_selected_cocktails",
-            help="Πολλαπλή επιλογή — μπορείς να διαλέξεις 1, μερικά, ή και όλα."
+        _cocktail_categories_map = _classify_cocktail_categories()
+
+        st.markdown("🍹 **Επίλεξε τα κοκτέιλ που αφορά η μείωση τιμής** (τσέκαρε τη στήλη «Συμπερίληψη»)")
+        st.caption("Η στήλη «Κατηγορία» δείχνει πού ανήκει κάθε κοκτέιλ σήμερα — σκέψου δύο φορές πριν συμπεριλάβεις ένα ⭐ Star.")
+        _selection_df = pd.DataFrame([
+            {"Συμπερίληψη": False, "Κοκτέιλ": name, "Κατηγορία": _cocktail_categories_map.get(name, "—")}
+            for name in _all_cocktail_names
+        ])
+        _edited_selection_df = st.data_editor(
+            _selection_df,
+            column_config={
+                "Συμπερίληψη": st.column_config.CheckboxColumn("Συμπερίληψη;", default=False),
+                "Κοκτέιλ": st.column_config.TextColumn("Κοκτέιλ", disabled=True),
+                "Κατηγορία": st.column_config.TextColumn("Κατηγορία", disabled=True),
+            },
+            hide_index=True, use_container_width=True, key="discount_selection_table"
         )
+        selected_discount_cocktails = _edited_selection_df[_edited_selection_df["Συμπερίληψη"] == True]["Κοκτέιλ"].tolist()
 
         if not selected_discount_cocktails:
             st.info("Επίλεξε τουλάχιστον ένα κοκτέιλ παραπάνω για να δεις τα σενάρια μείωσης τιμών.")
@@ -6881,6 +7141,32 @@ elif page == "🎯 Νεκρό Σημείο":
                         _dc = "normal" if new_profit_scenario >= res["profit"] else "inverse"
                         st.metric("Καθαρό Μετά τη Μείωση Τιμών", f"{new_profit_scenario:,.0f} €", delta=f"{total_delta_discount:,.0f} €", delta_color=_dc)
 
+                st.divider()
+                try:
+                    _now_str_dc = datetime.now(greece_tz).strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    _now_str_dc = datetime.now().strftime("%d/%m/%Y %H:%M")
+                try:
+                    _dc_pdf_data = {
+                        "discount_pct": price_decrease_pct,
+                        "volume_increase_pct": expected_volume_increase_pct,
+                        "rows": dc_rows,
+                        "total_delta": total_delta_discount,
+                        "fc_results": fc_results,
+                        "channel_label": "🎯 Απευθείας στα Μαγαζιά (Τιμή Λιανικής)" if _direct_channel else "🤝 Μέσω Αντιπροσώπου",
+                    }
+                    _dc_pdf_bytes = generate_discount_scenario_pdf(_dc_pdf_data, _now_str_dc)
+                    st.download_button(
+                        "📄 Λήψη PDF: Σενάριο Μείωσης Τιμών",
+                        data=bytes(_dc_pdf_bytes),
+                        file_name=f"Cabclub_Meiosi_Timon_{_now_str_dc.replace('/', '-').replace(':', 'h')}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Σφάλμα προετοιμασίας PDF: {e}")
+
 # --- 📑 ΑΝΑΦΟΡΑ ΕΣΟΔΩΝ - ΕΞΟΔΩΝ (P&L) ---
 elif page == "📑 Έσοδα - Έξοδα":
     st.header("📑 Αναφορά Εσόδων - Εξόδων")
@@ -6901,7 +7187,20 @@ elif page == "📑 Έσοδα - Έξοδα":
     if df_pl_all.empty:
         st.warning("Δεν βρέθηκαν δεδομένα παραγωγής.")
     else:
-        df_pl_all = df_pl_all.drop_duplicates(subset=["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"])
+        # 🔧 FIX: χρησιμοποιούσε απλό drop_duplicates() (κρατάει την ΠΡΩΤΗ εγγραφή), ενώ το
+        # Dashboard χρησιμοποιεί έξυπνη ομαδοποίηση (κρατάει το ΜΕΓΙΣΤΟ pieces/free_pieces ανά
+        # ομάδα) — σε σπάνιες περιπτώσεις αυτό έδινε διαφορετικό αριθμό τεμαχίων μεταξύ των δύο
+        # καρτελών. Τώρα χρησιμοποιεί ΑΚΡΙΒΩΣ την ίδια μέθοδο με το Dashboard.
+        for _pl_col in ["pieces", "free_pieces", "discounted_pieces", "discount_pct"]:
+            if _pl_col in df_pl_all.columns:
+                df_pl_all[_pl_col] = pd.to_numeric(df_pl_all[_pl_col], errors="coerce").fillna(0)
+        if "applied_cost" not in df_pl_all.columns:
+            df_pl_all["applied_cost"] = None
+        df_pl_all = df_pl_all.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+            pieces=("pieces", "max"), free_pieces=("free_pieces", "max"),
+            discounted_pieces=("discounted_pieces", "max"), discount_pct=("discount_pct", "max"),
+            applied_cost=("applied_cost", "min"),
+        )
         df_pl_all["parsed_date"] = pd.to_datetime(df_pl_all["prod_date"], format="%d/%m/%Y", errors="coerce")
         df_pl_all = df_pl_all.dropna(subset=["parsed_date"])
 
