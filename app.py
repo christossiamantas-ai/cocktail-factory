@@ -8064,44 +8064,67 @@ elif page == "📦 Lot Παραγωγής":
         st.subheader(f"⚖️ Οδηγίες Ζύγισης (LOT: {date_lot_label})")
         
         st.markdown("### 🛒 1. Καταχώρηση Παραγγελιών ανά Πελάτη")
-        c_col1, c_col2, c_col3, c_col4 = st.columns([2, 2, 1, 1.2])
-        
-        sel_cust = c_col1.selectbox("👤 1. Επιλέξτε Πελάτη:", customer_options, index=None, placeholder="Αναζήτηση Πελάτη...", key=f"batch_cust_{reset_key}")
-        
-        recipe_options = list(df_rec["Ονομα"].unique())
-        
-        sel_cocktail = c_col2.selectbox("🍹 2. Επιλέξτε Κοκτέιλ:", recipe_options, index=None, placeholder="Αναζήτηση Κοκτέιλ...", key=f"batch_cocktail_{reset_key}")
-        
-        sel_pcs = c_col3.number_input("📦 3. Τεμάχια:", min_value=1, step=1, value=1, key=f"batch_pcs_{reset_key}")
-        
-        # --- 🚀 ΝΕΟΣ ΔΙΑΚΟΠΤΗΣ ΣΤΟΚ ---
-        st_col1, st_col2 = st.columns([2, 2])
-        is_from_stock = st_col1.checkbox("📦 Άντληση από έτοιμο Στοκ (Δεν αφαιρεί υλικά)", key=f"stock_check_{reset_key}")
-        
-        charge_stock_cost = False 
-        manual_old_lot = ""
-        
-        if is_from_stock:
-            charge_stock_cost = st_col1.checkbox("💰 Να υπολογιστεί κανονικά το κόστος στα σημερινά έξοδα;", value=False, key=f"charge_cost_{reset_key}")
-            
-            available_lots = []
-            if sel_cocktail:
-                try:
-                    res_lots = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", sel_cocktail).execute()
-                    if res_lots.data:
-                        lots_set = set(r["lot_cocktail"] for r in res_lots.data if r.get("lot_cocktail"))
-                        available_lots = sorted(list(lots_set), reverse=True)
-                except Exception:
-                    pass
-            
-            if available_lots:
-                manual_old_lot = st_col2.selectbox("🔢 Επιλέξτε Παλιό LOT:", options=available_lots, key=f"old_lot_{reset_key}")
-            else:
-                st_col2.error(f"❌ Δεν βρέθηκε παλαιότερη παραγωγή για {sel_cocktail}!")
-                manual_old_lot = ""
-        
+
+        # 🚀 PERFORMANCE FIX: τα πεδία επιλογής (πελάτης/κοκτέιλ/τεμάχια/στοκ) ήταν το σημείο
+        # που ένιωθες καθυστέρηση σε ΚΑΘΕ επιλογή — κάθε αλλαγή έκανε rerun ΟΛΟΚΛΗΡΟ το script
+        # (12.500+ γραμμές). Το @st.fragment κάνει αυτά τα widgets να ξανατρέχουν ΜΟΝΑ τους,
+        # πολύ πιο γρήγορα. Το κουμπί «Προσθήκη» παραμένει ΕΞΩ απ' αυτό, οπότε συνεχίζει να
+        # ενημερώνει κανονικά το καλάθι παρακάτω (πλήρες rerun μόνο όταν πραγματικά χρειάζεται).
+        @st.fragment
+        def _order_selection_fragment():
+            f_col1, f_col2, f_col3 = st.columns([2, 2, 1])
+            f_sel_cust = f_col1.selectbox("👤 1. Επιλέξτε Πελάτη:", customer_options, index=None, placeholder="Αναζήτηση Πελάτη...", key=f"batch_cust_{reset_key}")
+
+            recipe_options_f = list(df_rec["Ονομα"].unique())
+            f_sel_cocktail = f_col2.selectbox("🍹 2. Επιλέξτε Κοκτέιλ:", recipe_options_f, index=None, placeholder="Αναζήτηση Κοκτέιλ...", key=f"batch_cocktail_{reset_key}")
+
+            f_sel_pcs = f_col3.number_input("📦 3. Τεμάχια:", min_value=1, step=1, value=1, key=f"batch_pcs_{reset_key}")
+
+            st_col1, st_col2 = st.columns([2, 2])
+            f_is_from_stock = st_col1.checkbox("📦 Άντληση από έτοιμο Στοκ (Δεν αφαιρεί υλικά)", key=f"stock_check_{reset_key}")
+
+            f_charge_stock_cost = False
+            f_manual_old_lot = ""
+
+            if f_is_from_stock:
+                f_charge_stock_cost = st_col1.checkbox("💰 Να υπολογιστεί κανονικά το κόστος στα σημερινά έξοδα;", value=False, key=f"charge_cost_{reset_key}")
+
+                available_lots = []
+                if f_sel_cocktail:
+                    try:
+                        res_lots = supabase.table("production_log").select("lot_cocktail").eq("cocktail_name", f_sel_cocktail).execute()
+                        if res_lots.data:
+                            lots_set = set(r["lot_cocktail"] for r in res_lots.data if r.get("lot_cocktail"))
+                            available_lots = sorted(list(lots_set), reverse=True)
+                    except Exception:
+                        pass
+
+                if available_lots:
+                    f_manual_old_lot = st_col2.selectbox("🔢 Επιλέξτε Παλιό LOT:", options=available_lots, key=f"old_lot_{reset_key}")
+                else:
+                    st_col2.error(f"❌ Δεν βρέθηκε παλαιότερη παραγωγή για {f_sel_cocktail}!")
+                    f_manual_old_lot = ""
+
+            # Αποθήκευση στο session_state, ώστε να είναι διαθέσιμα ΕΞΩ από το fragment
+            # (το κουμπί «Προσθήκη» παρακάτω τα διαβάζει από εκεί, όχι ως τοπικές μεταβλητές).
+            st.session_state["_frag_sel_cust"] = f_sel_cust
+            st.session_state["_frag_sel_cocktail"] = f_sel_cocktail
+            st.session_state["_frag_sel_pcs"] = f_sel_pcs
+            st.session_state["_frag_is_from_stock"] = f_is_from_stock
+            st.session_state["_frag_charge_stock_cost"] = f_charge_stock_cost
+            st.session_state["_frag_manual_old_lot"] = f_manual_old_lot
+
+        _order_selection_fragment()
+
+        sel_cust = st.session_state.get("_frag_sel_cust")
+        sel_cocktail = st.session_state.get("_frag_sel_cocktail")
+        sel_pcs = st.session_state.get("_frag_sel_pcs", 1)
+        is_from_stock = st.session_state.get("_frag_is_from_stock", False)
+        charge_stock_cost = st.session_state.get("_frag_charge_stock_cost", False)
+        manual_old_lot = st.session_state.get("_frag_manual_old_lot", "")
+
         st.write("") 
-        if c_col4.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
+        if st.button("➕ Προσθήκη", use_container_width=True, type="secondary"):
             if not sel_cust:
                 st.error("⚠️ Πρέπει να επιλέξετε πρώτα Πελάτη! (αν είναι λιανική πώληση, επιλέξτε «Λιανική / Άγνωστος»)")
             elif sel_cocktail:
