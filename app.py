@@ -2351,6 +2351,14 @@ def format_greek(value):
     return value
 
 # --- ΣΥΝΑΡΤΗΣΕΙΣ ΦΟΡΤΩΣΗΣ ΔΕΔΟΜΕΝΩΝ (SUPABASE) ---
+@st.cache_data(ttl=300)
+def load_ingredients_raw():
+    """Ακατέργαστα δεδομένα ingredients (ίδια μορφή με supabase.table(...).select('*').execute().data),
+    για σημεία του κώδικα που περιμένουν τα πρωτότυπα ονόματα στηλών (name, price, κλπ.),
+    όχι τη μετονομασμένη μορφή του load_all_ingredients(). 🚀 PERFORMANCE FIX."""
+    res = supabase.table("ingredients").select("*").execute()
+    return res.data if res.data else []
+
 @st.cache_data(ttl=600) 
 def load_all_ingredients():
     res = supabase.table("ingredients").select("*").order("name").execute()
@@ -3133,8 +3141,8 @@ elif page == "🔍 Ανάλυση":
     
     # --- ΜΑΓΕΙΑ SUPABASE: Φτιάχνουμε τα df_ing & df_rec όπως ακριβώς τα περιμένει ο κώδικάς σου! ---
     # 1. Φόρτωση Αποθήκης
-    res_ing = supabase.table("ingredients").select("*").execute()
-    ing_data = res_ing.data if res_ing.data else []
+    # 🚀 PERFORMANCE FIX: χρήση cached load_ingredients_raw() αντί για ξεχωριστό fetch.
+    ing_data = load_ingredients_raw()
     df_ing_list = []
     for item in ing_data:
         df_ing_list.append({
@@ -3858,9 +3866,9 @@ elif page == "🔍 Ανάλυση":
             
             with st.spinner("Φόρτωση ιστορικών δεδομένων..."):
                 try:
-                    # 🚀 Φορτώνουμε τα ιστορικά δεδομένα ΑΚΡΙΒΩΣ όπως τα φορτώνει το Dashboard
-                    res_raw = supabase.table("production_log").select("*").execute()
-                    df_tab2 = pd.DataFrame(res_raw.data)
+                    # 🚀 PERFORMANCE FIX: χρήση της ήδη cached load_production_log_snapshot()
+                    # αντί για ξεχωριστό, μη-cached fetch ολόκληρου του πίνακα.
+                    df_tab2 = pd.DataFrame(load_production_log_snapshot())
                 except Exception as e:
                     df_tab2 = pd.DataFrame()
                     st.error(f"Σφάλμα φόρτωσης: {e}")
@@ -4913,8 +4921,8 @@ elif page == "📊 Εμπορική Πολιτική":
     st.write("Συγκρίνετε τη στρατηγική Δώρων έναντι της Έκπτωσης % και δείτε την ανάλυση κερδοφορίας.")
 
     # --- ΜΑΓΕΙΑ SUPABASE: Φόρτωση φρέσκων δεδομένων για την Εμπορική Πολιτική ---
-    res_ing = supabase.table("ingredients").select("*").execute()
-    ing_data = res_ing.data if res_ing.data else []
+    # 🚀 PERFORMANCE FIX: χρήση cached load_ingredients_raw() αντί για ξεχωριστό fetch.
+    ing_data = load_ingredients_raw()
     df_ing_list = []
     for item in ing_data:
         df_ing_list.append({
@@ -5261,7 +5269,8 @@ elif page == "📈 Dashboard":
     # 1. ΦΟΡΤΩΣΗ ΔΕΔΟΜΕΝΩΝ
     @st.cache_data(ttl=300) 
     def load_dashboard_data():
-        log = supabase.table("production_log").select("*").execute().data
+        # 🚀 PERFORMANCE FIX: κοινόχρηστο cache με άλλες καρτέλες αντί για ξεχωριστό fetch.
+        log = load_production_log_snapshot()
         orders = supabase.table("b2b_orders").select("*").execute().data
         rec = supabase.table("recipes").select("id, name, catalog_price").execute().data
         ing = supabase.table("ingredients").select("name, price, volume").execute().data
@@ -7069,20 +7078,22 @@ elif page == "🎯 Νεκρό Σημείο":
         _all_cocktail_names = sorted(df_rec["Ονομα"].dropna().unique().tolist()) if not df_rec.empty else []
         _cocktail_categories_map = _classify_cocktail_categories()
 
-        with st.expander("📋 Κατηγορία κάθε κοκτέιλ (για αναφορά πριν επιλέξεις)", expanded=False):
-            st.caption("Σκέψου δύο φορές πριν συμπεριλάβεις ένα ⭐ Star.")
-            _cat_ref_df = pd.DataFrame([
-                {"Κοκτέιλ": name, "Κατηγορία": _cocktail_categories_map.get(name) or "—"}
-                for name in _all_cocktail_names
-            ])
-            st.dataframe(_safe_df(_cat_ref_df), use_container_width=True, hide_index=True)
-
-        selected_discount_cocktails = st.multiselect(
-            "🍹 Επίλεξε τα κοκτέιλ που αφορά η μείωση τιμής:",
-            options=_all_cocktail_names,
-            key="discount_selected_cocktails",
-            help="Πολλαπλή επιλογή — δες τον πίνακα κατηγοριών παραπάνω πριν διαλέξεις."
+        st.markdown("🍹 **Επίλεξε τα κοκτέιλ που αφορά η μείωση τιμής** (τσέκαρε τη στήλη «Συμπερίληψη»)")
+        st.caption("Η στήλη «Κατηγορία» δείχνει πού ανήκει κάθε κοκτέιλ σήμερα — σκέψου δύο φορές πριν συμπεριλάβεις ένα ⭐ Star.")
+        _selection_df = pd.DataFrame([
+            {"Συμπερίληψη": False, "Κοκτέιλ": name, "Κατηγορία": _cocktail_categories_map.get(name) or "—"}
+            for name in _all_cocktail_names
+        ])
+        _edited_selection_df = st.data_editor(
+            _selection_df,
+            column_config={
+                "Συμπερίληψη": st.column_config.CheckboxColumn("Συμπερίληψη;", default=False),
+                "Κοκτέιλ": st.column_config.TextColumn("Κοκτέιλ", disabled=True),
+                "Κατηγορία": st.column_config.TextColumn("Κατηγορία", disabled=True),
+            },
+            hide_index=True, use_container_width=True, key="discount_selection_table"
         )
+        selected_discount_cocktails = _edited_selection_df[_edited_selection_df["Συμπερίληψη"] == True]["Κοκτέιλ"].tolist()
 
         if not selected_discount_cocktails:
             st.info("Επίλεξε τουλάχιστον ένα κοκτέιλ παραπάνω για να δεις τα σενάρια μείωσης τιμών.")
@@ -10115,8 +10126,8 @@ elif page == "📦 Lot Παραγωγής":
 
             # Φόρτωση Δεδομένων
             with st.spinner("Φόρτωση δεδομένων ιχνηλασιμότητας..."):
-                res_trace = supabase.table("production_log").select("*").execute()
-                df_trace = pd.DataFrame(res_trace.data) if res_trace.data else pd.DataFrame()
+                # 🚀 PERFORMANCE FIX: χρήση της ήδη cached load_production_log_snapshot().
+                df_trace = pd.DataFrame(load_production_log_snapshot())
             
             if not df_trace.empty:
                 # ΔΙΟΡΘΩΣΗ ΣΦΑΛΜΑΤΟΣ: Ομαλοποίηση ονομάτων στηλών για το Lot Number
@@ -10330,10 +10341,11 @@ elif page == "📦 Lot Παραγωγής":
     
     if st.button("📑 Προετοιμασία Πλήρους Ιστορικού για Εκτύπωση"):
         with st.spinner("Λήψη όλων των δεδομένων από το Cloud..."):
-            res_full_hist = supabase.table("production_log").select("*").execute()
-            
-        if res_full_hist.data:
-            df_raw_hist = pd.DataFrame(res_full_hist.data).rename(columns={"prod_date": "Ημερομηνία", "customer": "Πελάτης", "cocktail_name": "Cocktail", "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια"})
+            # 🚀 PERFORMANCE FIX: χρήση της ήδη cached load_production_log_snapshot().
+            res_full_hist_data = load_production_log_snapshot()
+
+        if res_full_hist_data:
+            df_raw_hist = pd.DataFrame(res_full_hist_data).rename(columns={"prod_date": "Ημερομηνία", "customer": "Πελάτης", "cocktail_name": "Cocktail", "lot_cocktail": "LOT_Cocktail", "pieces": "Τεμάχια"})
             df_raw_hist['temp_date'] = pd.to_datetime(df_raw_hist['Ημερομηνία'], format='%d/%m/%Y')
             df_full_hist = df_raw_hist.sort_values(by='temp_date', ascending=False).drop_duplicates(subset=["Ημερομηνία", "Πελάτης", "Cocktail", "LOT_Cocktail"])
     
@@ -10700,8 +10712,19 @@ elif page == "👥 Πελατολόγιο":
                     st.divider()
                     
                     with st.expander("📜 Αναλυτικό Ιστορικό Παραγγελιών", expanded=False):
+                        # 🔧 FIX: ο πίνακας έδειχνε μόνο Ημερομηνία/Cocktail/Τεμάχια — αποκλείοντας
+                        # τη στήλη με τα δωρεάν τεμάχια, παρόλο που τα δεδομένα υπήρχαν σωστά (γι' αυτό
+                        # το συνολικό μέτρο "🎁 Δώρα" πιο πάνω έδειχνε σωστά, αλλά όχι ΠΟΙΑ παραγγελία
+                        # είχε δώρο). Τώρα δείχνει και «Χρεώσιμα» και «Δωρεάν» ξεχωριστά ανά παραγγελία.
+                        df_hist_display = df_p_clean.copy()
+                        df_hist_display["free_pieces"] = pd.to_numeric(df_hist_display.get("free_pieces", 0), errors="coerce").fillna(0).apply(safe_int)
+                        df_hist_display["pieces"] = pd.to_numeric(df_hist_display["pieces"], errors="coerce").fillna(0).apply(safe_int)
+                        df_hist_display["Χρεώσιμα"] = df_hist_display["pieces"] - df_hist_display["free_pieces"]
+                        df_hist_display = df_hist_display.rename(columns={
+                            "prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Σύνολο Τμχ", "free_pieces": "🎁 Δωρεάν"
+                        })
                         st.dataframe(_safe_df(
-                            df_p_clean.rename(columns={"prod_date": "Ημερομηνία", "cocktail_name": "Cocktail", "pieces": "Τεμάχια"})[["Ημερομηνία", "Cocktail", "Τεμάχια"]]),
+                            df_hist_display[["Ημερομηνία", "Cocktail", "Σύνολο Τμχ", "Χρεώσιμα", "🎁 Δωρεάν"]]),
                             use_container_width=True, hide_index=True
                         )
                 else:
@@ -11064,8 +11087,8 @@ elif page == "🔄 Αντικατάσταση":
     st.info("Σύγκριση Τιμών: Οι τιμές πώλησης (Λιανική & Αντιπρόσωπος στο -26%) παραμένουν σταθερές για να φανεί το πραγματικό επιπλέον κέρδος.")
 
     # --- ΜΑΓΕΙΑ SUPABASE: Φόρτωση φρέσκων δεδομένων (αν δεν υπάρχουν) ---
-    res_ing = supabase.table("ingredients").select("*").execute()
-    ing_data = res_ing.data if res_ing.data else []
+    # 🚀 PERFORMANCE FIX: χρήση cached load_ingredients_raw() αντί για ξεχωριστό fetch.
+    ing_data = load_ingredients_raw()
     df_ing_list = []
     for item in ing_data:
         df_ing_list.append({
@@ -11929,7 +11952,8 @@ elif page == "🛒 Λίστα Αγορών":
 
     @st.cache_data(ttl=10)
     def load_live_data():
-        ing = supabase.table("ingredients").select("*").execute().data
+        # 🚀 PERFORMANCE FIX: χρήση cached load_ingredients_raw() αντί για ξεχωριστό fetch.
+        ing = load_ingredients_raw()
         # 🚀 ΣΠΑΜΕ ΤΟ ΟΡΙΟ: Αντί για 1000, ζητάμε 10.000 γραμμές και τις πιο πρόσφατες πρώτα!
         plog = supabase.table("production_log").select("prod_date, prod_time, customer, cocktail_name, pieces").order("id", desc=True).limit(100000).execute().data
         return ing, plog
@@ -12309,8 +12333,8 @@ elif page == "🧪 Δοκιμαστικές Παραγωγές":
     st.write("Υπολογίστε άμεσα τα ακριβή υλικά για παραγωγή. Οι δοκιμές εδώ **δεν αποθηκεύονται** στο ιστορικό.")
 
     # --- ΜΑΓΕΙΑ SUPABASE: Φόρτωση φρέσκων δεδομένων (Συνταγές & Υλικά) ---
-    res_ing = supabase.table("ingredients").select("*").execute()
-    ing_data = res_ing.data if res_ing.data else []
+    # 🚀 PERFORMANCE FIX: χρήση cached load_ingredients_raw() αντί για ξεχωριστό fetch.
+    ing_data = load_ingredients_raw()
     df_ing_list = []
     for item in ing_data:
         df_ing_list.append({
