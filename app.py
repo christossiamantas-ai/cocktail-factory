@@ -99,6 +99,9 @@ def delete_order_and_production_safely(order_id, customer_name, created_at_times
             if ids_to_delete:
                 supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
         
+        # 🔧 FIX: χωρίς αυτό, Dashboard/Νεκρό Σημείο/Έσοδα-Έξοδα συνέχιζαν να δείχνουν
+        # τζίρο/τεμάχια που περιλάμβαναν την ήδη διαγραμμένη παραγγελία.
+        st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Σφάλμα κατά την ασφαλή διαγραφή: {e}")
@@ -8948,7 +8951,8 @@ elif page == "📦 Lot Παραγωγής":
                                         
                                         if "scanned_lots" in st.session_state:
                                             del st.session_state["scanned_lots"]
-                                            
+                                        
+                                        st.cache_data.clear()
                                         st.success("✅ Όλα τα LOT καταχωρήθηκαν επιτυχώς σε κλάσματα δευτερολέπτου!")
                                         import time
                                         time.sleep(1)
@@ -9082,6 +9086,7 @@ elif page == "📦 Lot Παραγωγής":
                                         supabase.table("production_log").update({"lot_cocktail": new_bulk_lot.strip()}).eq("prod_date", b_date).eq("cocktail_name", b_cocktail).eq("lot_cocktail", b_old_lot).execute()
                                     
                                     st.session_state.pop('search_data_loaded', None)
+                                    st.cache_data.clear()
                                     st.success("✅ Το LOT Παραγωγής άλλαξε επιτυχώς σε όλες τις παραγγελίες των επιλεγμένων κοκτέιλ!")
                                     import time
                                     time.sleep(1.5)
@@ -9316,6 +9321,7 @@ elif page == "📦 Lot Παραγωγής":
                                                             supabase.table("production_log").insert(stock_entries_to_insert).execute()
                                                             
                                                             st.session_state.pop('search_data_loaded', None)
+                                                            st.cache_data.clear()
                                                             st.success(f"✅ Επιτυχία! Η παραγγελία σπάστηκε σε {len(valid_splits)} παλιά LOT.")
                                                             import time
                                                             time.sleep(1.5)
@@ -9702,6 +9708,7 @@ elif page == "📦 Lot Παραγωγής":
                             
                             st.session_state['lot_reset_key'] += 1
                             st.session_state.pop('search_data_loaded', None)
+                            st.cache_data.clear()
                             st.success("✅ Όλα αποθηκεύτηκαν τέλεια! Το Σύστημα Πιστότητας, οι ποσότητες και τα LOT ενημερώθηκαν επιτυχώς!")
                             import time
                             time.sleep(1.5)
@@ -11053,6 +11060,7 @@ elif page == "👥 Πελατολόγιο":
 
                                         if same_day_count > 1:
                                             supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                            st.cache_data.clear()
                                             st.warning(f"⚠️ Βρέθηκαν {same_day_count} παραγγελίες αυτού του πελάτη την ίδια μέρα — για ασφάλεια διαγράφηκε ΜΟΝΟ η οικονομική εγγραφή. Τα δεδομένα παραγωγής είναι κοινά/ασαφή ανάμεσα στις παραγγελίες — αν χρειάζεται πλήρης διαγραφή, χρησιμοποίησε το «📦 Lot Παραγωγής → Ιστορικό» για χειροκίνητη, στοχευμένη διαγραφή.")
                                         else:
                                             prod_res = supabase.table("production_log").select("id, prod_date").eq("customer", sel_name).execute()
@@ -11068,6 +11076,10 @@ elif page == "👥 Πελατολόγιο":
                                             if ids_to_delete:
                                                 supabase.table("production_log").delete().in_("id", ids_to_delete).execute()
                                             supabase.table("b2b_orders").delete().eq("id", order_id).execute()
+                                            # 🔧 FIX: χωρίς αυτό, το Dashboard/Νεκρό Σημείο/Έσοδα-Έξοδα κ.λπ.
+                                            # συνέχιζαν να δείχνουν τζίρο/τεμάχια που περιλάμβαναν τη
+                                            # διαγραμμένη παραγγελία, μέχρι να λήξει το cache τους (έως 5 λεπτά).
+                                            st.cache_data.clear()
                                             st.success("✅ Διαγράφηκε ολόκληρη η παραγγελία (οικονομικά + όλα τα υλικά παραγωγής) — ήταν η μοναδική παραγγελία αυτού του πελάτη/ημέρας, οπότε ήταν ασφαλές.")
                                         
                                         import time
@@ -11476,6 +11488,7 @@ elif page == "📦 Παραγγελίες B2B":
                             new_entries += 1
                     
                     if new_entries > 0:
+                        st.cache_data.clear()
                         st.success(f"✅ Εισήχθησαν {new_entries} νέες παραγγελίες!")
                     else:
                         st.info("Δεν βρέθηκαν νέες παραγγελίες στο E-shop.")
@@ -11528,6 +11541,7 @@ elif page == "📦 Παραγγελίες B2B":
                         
                         if st.button("Ενημέρωση", key=f"btn_upd_{row['id']}", use_container_width=True):
                             supabase.table("b2b_orders").update({"status": new_status}).eq("id", row['id']).execute()
+                            st.cache_data.clear()
                             st.success("Ενημερώθηκε!")
                             time.sleep(0.5)
                             st.rerun()
@@ -11535,6 +11549,7 @@ elif page == "📦 Παραγγελίες B2B":
                         st.divider()
                         if st.button("🗑️ Διαγραφή", key=f"del_b2b_{row['id']}", type="secondary", use_container_width=True):
                             supabase.table("b2b_orders").delete().eq("id", row['id']).execute()
+                            st.cache_data.clear()
                             st.rerun()
         else:
             st.info("Δεν υπάρχουν παραγγελίες στη βάση.")
