@@ -4740,17 +4740,29 @@ elif page == "📐 Markup & Margin":
             st.markdown("### 📊 Μέσος Όρος (σταθμισμένος με πραγματικές πωλήσεις)")
             st.caption(
                 "Ο μέσος όρος υπολογίζεται από **όλες** τις ιστορικές πωλήσεις σου (όλα τα κοκτέιλ μαζί, όλες οι ημερομηνίες) — "
-                "όχι απλός αριθμητικός μέσος όρος των συνταγών, αλλά **σταθμισμένος** με τον πραγματικό όγκο πωλήσεων: ένα "
-                "κοκτέιλ που πουλάς πολύ επηρεάζει τον μέσο όρο περισσότερο από ένα σπάνιο. Δείχνει «τι θα άλλαζε στο "
-                "σύνολο της επιχείρησης» αν εφάρμοζες αυτό το σενάριο τιμολόγησης σε όλα τα κοκτέιλ ταυτόχρονα."
+                "όχι απλός αριθμητικός μέσος όρος των συνταγών, αλλά **σταθμισμένος** με τον πραγματικό όγκο πωλήσεων."
+            )
+            st.warning(
+                "⚠️ **Σημαντικό:** αυτό το markup/margin συγκρίνει το κόστος με την **τελική τιμή που πληρώνει ο πελάτης** "
+                "— δηλαδή Επίπεδο 1 × Επίπεδο 2 (σύνθετο, όχι απλή πρόσθεση), **μείον** την έκπτωση του κάθε πελάτη. "
+                "Αν οι πελάτες σου έχουν σημαντικές εκπτώσεις, αυτό το νούμερο θα είναι **χαμηλότερο** από το markup "
+                "που όρισες στο Επίπεδο 1 ή 2 — δεν είναι λάθος, απλά μετράει διαφορετικό πράγμα (την πραγματικότητα μετά τις εκπτώσεις)."
             )
             if total_paid_pieces_mm > 0:
                 avg_price_old = total_revenue_actual / total_paid_pieces_mm
                 avg_price_new = total_revenue_scenario / total_paid_pieces_mm
-                avg_markup_old = _markup(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_old)
-                avg_markup_new = _markup(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_new)
-                avg_margin_old = _margin(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_old)
-                avg_margin_new = _margin(total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0, avg_price_new)
+                avg_cost_mm = total_cost_mm / total_paid_pieces_mm if total_paid_pieces_mm else 0
+                avg_markup_old = _markup(avg_cost_mm, avg_price_old)
+                avg_markup_new = _markup(avg_cost_mm, avg_price_new)
+                avg_margin_old = _margin(avg_cost_mm, avg_price_old)
+                avg_margin_new = _margin(avg_cost_mm, avg_price_new)
+
+                # 🆕 Ενδιάμεσο βήμα διαφάνειας: το markup ΧΩΡΙΣ την έκπτωση πελατών, ώστε να
+                # φαίνεται καθαρά πόσο "τρώει" η έκπτωση από το markup που όρισες στα Επίπεδα.
+                if not _direct_mode:
+                    _avg_retail_new_undiscounted = (df_mm_hist["pieces"] - df_mm_hist["free_pieces"]).mul(df_mm_hist["retail_new"]).sum() / total_paid_pieces_mm if total_paid_pieces_mm else 0
+                    _markup_before_discount = _markup(avg_cost_mm, _avg_retail_new_undiscounted)
+                    st.caption(f"📐 Χωρίς έκπτωση πελατών, η τιμή λιανικής (Επίπεδο 1×2 σύνθετο) θα έδινε markup **{_markup_before_discount:.1f}%** — η μέση έκπτωση πελατών το κατεβάζει στο **{avg_markup_new:.1f}%** παρακάτω.")
 
                 ac1, ac2, ac3 = st.columns(3)
                 ac1.metric("Μέση Τιμή Πώλησης (Τώρα → Σενάριο)", f"{avg_price_old:.2f} € → {avg_price_new:.2f} €", delta=f"{(avg_price_new-avg_price_old):+.2f} € ({((avg_price_new-avg_price_old)/avg_price_old*100 if avg_price_old else 0):+.1f}%)")
