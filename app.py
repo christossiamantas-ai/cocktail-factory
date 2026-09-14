@@ -4554,6 +4554,12 @@ elif page == "📐 Markup & Margin":
 
         df_all_scenario = pd.DataFrame(all_scenario_rows)
 
+        # 🆕 Αποθήκευση σεναρίου, ώστε να είναι διαθέσιμο και στο Νεκρό Σημείο (Ετήσια Πρόβλεψη).
+        st.session_state["mm_scenario_prices"] = cocktail_new_prices
+        st.session_state["mm_scenario_label"] = (
+            f"Markup&Margin σενάριο: Επίπεδο 1={desired1:.1f}% / Επίπεδο 2={desired2:.1f}% / Επίπεδο 3={desired3:.1f}% ({scenario_mode})"
+        )
+
         # 🔧 FIX ΓΕΝΙΚΗΣ ΑΣΦΑΛΕΙΑΣ (ενισχυμένο): όποια στήλη κι αν έχει None/NaN/NaT (π.χ.
         # συνταγή χωρίς καταχωρημένη τιμή καταλόγου, ή χωρίς υλικά), το Streamlit το εμφάνιζε
         # ως ορατό κείμενο "None" στη σελίδα. Τώρα καθαρίζουμε ΟΛΟΚΛΗΡΟ τον πίνακα πριν την
@@ -6695,6 +6701,24 @@ elif page == "🎯 Νεκρό Σημείο":
                 st.dataframe(_safe_df(pd.DataFrame(_comparison_rows)), use_container_width=True, hide_index=True)
                 st.caption("💡 Η στήλη «Πραγματική Σχετική Δύναμη» δείχνει το ίδιο είδος δείκτη (0-1, με τον πιο δυνατό πραγματικό μήνα = 1.00) αλλά υπολογισμένο από τα ΠΡΑΓΜΑΤΙΚΑ νούμερα — σύγκρινέ το με τον δικό σου δείκτη διπλανή στήλη.")
 
+            # --- 🧠 Ιστορικός όγκος πωλήσεων ανά κοκτέιλ (χρειάζεται εδώ ΚΑΙ πιο κάτω, στο
+            # menu engineering) — μετακινήθηκε νωρίτερα ώστε να το μοιράζονται και τα δύο σημεία.
+            try:
+                _res_vol = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, prod_date, prod_time, customer, lot_cocktail").execute()
+                _df_vol = pd.DataFrame(_res_vol.data) if _res_vol.data else pd.DataFrame()
+                if not _df_vol.empty:
+                    for _vol_col in ["pieces", "free_pieces"]:
+                        _df_vol[_vol_col] = pd.to_numeric(_df_vol.get(_vol_col, 0), errors="coerce").fillna(0)
+                    _df_vol = _df_vol.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
+                        pieces=("pieces", "max"), free_pieces=("free_pieces", "max")
+                    )
+                    _df_vol["_paid"] = _df_vol["pieces"] - _df_vol["free_pieces"]
+                    _volume_by_cocktail = _df_vol.groupby("cocktail_name")["_paid"].sum().to_dict()
+                else:
+                    _volume_by_cocktail = {}
+            except Exception:
+                _volume_by_cocktail = {}
+
             st.markdown("**Κανάλι Πώλησης** (για τον υπολογισμό τζίρου σε αυτή την πρόβλεψη)")
             sales_channel = st.radio(
                 "Κανάλι:",
@@ -6708,7 +6732,36 @@ elif page == "🎯 Νεκρό Σημείο":
             # ώστε να αντιστοιχεί στην πλήρη λιανική τιμή αντί για το μερίδιο του αντιπροσώπου.
             channel_ref_price = (ref_price / 0.74) if _direct_channel else ref_price
             channel_multiplier = 1.0 if _direct_channel else 0.74
-            if _direct_channel:
+
+            # 🆕 Σύνδεση με Markup & Margin: αν υπάρχει αποθηκευμένο σενάριο εκεί, δίνεται η
+            # επιλογή να χρησιμοποιηθεί ΑΥΤΟ αντί για τη σημερινή τιμή, ώστε να φαίνεται αν το
+            # markup/margin που όρισες εκεί αρκεί για να φτάσεις στο νεκρό σημείο, προβαλλόμενο
+            # μπροστά με εποχικότητα.
+            _mm_scenario_prices = st.session_state.get("mm_scenario_prices")
+            _use_mm_scenario = False
+            if _mm_scenario_prices:
+                _use_mm_scenario = st.checkbox(
+                    f"📐 Χρήση σεναρίου από Markup & Margin: «{st.session_state.get('mm_scenario_label', '')}»",
+                    key="fc_use_mm_scenario",
+                    help="Αντί για τη σημερινή τιμή, θα χρησιμοποιηθεί η τιμή του σεναρίου που όρισες στο Markup & Margin, σταθμισμένη με τον πραγματικό όγκο πωλήσεων κάθε κοκτέιλ."
+                )
+                if _use_mm_scenario:
+                    _price_key = "direct_new" if _direct_channel else "agent_new"
+                    _mm_weighted_revenue = 0.0
+                    _mm_weighted_volume = 0.0
+                    for _cn, _cp in _mm_scenario_prices.items():
+                        _vol = _volume_by_cocktail.get(_cn, 0.0)
+                        _price_val = _cp.get(_price_key, 0.0)
+                        if _vol > 0 and isinstance(_price_val, (int, float)) and _price_val != float('inf'):
+                            _mm_weighted_revenue += _vol * _price_val
+                            _mm_weighted_volume += _vol
+                    if _mm_weighted_volume > 0:
+                        channel_ref_price = _mm_weighted_revenue / _mm_weighted_volume
+                        st.info(f"📐 Χρησιμοποιείται η τιμή του σεναρίου Markup & Margin: {channel_ref_price:.2f}€ μέση τιμή (σταθμισμένη με πραγματικό όγκο πωλήσεων ανά κοκτέιλ).")
+                    else:
+                        st.warning("⚠️ Δεν βρέθηκε επαρκής ιστορικός όγκος πωλήσεων για να σταθμιστεί το σενάριο Markup & Margin — χρησιμοποιείται η κανονική τιμή.")
+
+            if _direct_channel and not _use_mm_scenario:
                 st.info(f"🎯 Υπολογισμός με **απευθείας** πώληση στα μαγαζιά, στην τιμή λιανικής: {channel_ref_price:.2f}€ μέση τιμή (αντί για {ref_price:.2f}€ μέσω αντιπροσώπου).")
 
             real_revenue_year = real_pieces_year * channel_ref_price
@@ -6798,24 +6851,6 @@ elif page == "🎯 Νεκρό Σημείο":
                     if not match_ing_fc.empty:
                         total += ml * float(match_ing_fc.iloc[0].get("Τιμή/ml", 0) or 0)
                 return total
-
-            # --- 🧠 MENU ENGINEERING: ιστορικός όγκος πωλήσεων ανά κοκτέιλ, για έξυπνη κατανομή ---
-            try:
-                _res_vol = supabase.table("production_log").select("cocktail_name, pieces, free_pieces, prod_date, prod_time, customer, lot_cocktail").execute()
-                _df_vol = pd.DataFrame(_res_vol.data) if _res_vol.data else pd.DataFrame()
-                if not _df_vol.empty:
-                    # 🔧 FIX: ευθυγράμμιση με την ίδια μέθοδο ομαδοποίησης του Dashboard.
-                    for _vol_col in ["pieces", "free_pieces"]:
-                        _df_vol[_vol_col] = pd.to_numeric(_df_vol.get(_vol_col, 0), errors="coerce").fillna(0)
-                    _df_vol = _df_vol.groupby(["prod_date", "prod_time", "customer", "cocktail_name", "lot_cocktail"], dropna=False, as_index=False).agg(
-                        pieces=("pieces", "max"), free_pieces=("free_pieces", "max")
-                    )
-                    _df_vol["_paid"] = _df_vol["pieces"] - _df_vol["free_pieces"]
-                    _volume_by_cocktail = _df_vol.groupby("cocktail_name")["_paid"].sum().to_dict()
-                else:
-                    _volume_by_cocktail = {}
-            except Exception:
-                _volume_by_cocktail = {}
 
             def _compute_menu_engineering_allocation(total_gap_revenue):
                 """Αντί για ΟΜΟΙΟΜΟΡΦΟ ποσοστό αύξησης παντού, κατανέμει την απαιτούμενη αύξηση
