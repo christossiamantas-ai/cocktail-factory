@@ -6749,15 +6749,29 @@ elif page == "🎯 Νεκρό Σημείο":
                     _price_key = "direct_new" if _direct_channel else "agent_new"
                     _mm_weighted_revenue = 0.0
                     _mm_weighted_volume = 0.0
+                    _mm_breakdown_rows = []
                     for _cn, _cp in _mm_scenario_prices.items():
                         _vol = _volume_by_cocktail.get(_cn, 0.0)
                         _price_val = _cp.get(_price_key, 0.0)
-                        if _vol > 0 and isinstance(_price_val, (int, float)) and _price_val != float('inf'):
+                        _cost_val = _cp.get("my_cost", 0.0)
+                        _valid_price = isinstance(_price_val, (int, float)) and _price_val != float('inf')
+                        if _vol > 0 and _valid_price:
                             _mm_weighted_revenue += _vol * _price_val
                             _mm_weighted_volume += _vol
+                        _mm_breakdown_rows.append({
+                            "Κοκτέιλ": _cn,
+                            "Κόστος (€)": round(_cost_val, 2),
+                            "Τιμή Σεναρίου (€)": round(_price_val, 2) if _valid_price else "Μη εφικτό",
+                            "Ιστορικός Όγκος (τμχ)": int(_vol),
+                            "Συνεισφορά στον Σταθμισμένο Μ.Ο.": "—" if not (_vol > 0 and _valid_price) else "ναι",
+                        })
                     if _mm_weighted_volume > 0:
                         channel_ref_price = _mm_weighted_revenue / _mm_weighted_volume
                         st.info(f"📐 Χρησιμοποιείται η τιμή του σεναρίου Markup & Margin: {channel_ref_price:.2f}€ μέση τιμή (σταθμισμένη με πραγματικό όγκο πωλήσεων ανά κοκτέιλ).")
+                        with st.expander("📋 Τιμές ανά κοκτέιλ (σενάριο Markup & Margin)", expanded=False):
+                            _df_mm_breakdown = pd.DataFrame(_mm_breakdown_rows).sort_values("Ιστορικός Όγκος (τμχ)", ascending=False)
+                            st.dataframe(_safe_df(_df_mm_breakdown), use_container_width=True, hide_index=True)
+                            st.caption(f"Τιμή = «{'Τιμή Απευθείας' if _direct_channel else 'Τιμή Αντιπροσώπου'}» του σεναρίου. Μόνο κοκτέιλ με ιστορικό όγκο > 0 συνεισφέρουν στον σταθμισμένο μέσο όρο {channel_ref_price:.2f}€.")
                     else:
                         st.warning("⚠️ Δεν βρέθηκε επαρκής ιστορικός όγκος πωλήσεων για να σταθμιστεί το σενάριο Markup & Margin — χρησιμοποιείται η κανονική τιμή.")
 
