@@ -7727,6 +7727,15 @@ elif page == "🏷️ Προσφορές & Εκπτώσεις":
     res_cust = supabase.table("customers").select("*").order("name").execute()
     df_cust = pd.DataFrame(res_cust.data) if res_cust.data else pd.DataFrame()
 
+    # 🔧 FIX: κρίσιμο bug — αυτή η σελίδα χρησιμοποιούσε τη μεταβλητή recipe_prices
+    # (στο κουμπί «Εφαρμογή & Επανυπολογισμός Παραγγελίας») χωρίς να την ορίζει ΠΟΤΕ μέσα
+    # στη δική της εμβέλεια, προκαλώντας NameError σε ΚΑΘΕ χρήση του εργαλείου. Το
+    # production_log ΠΡΟΛΑΒΑΙΝΕ να ενημερωθεί πριν το σφάλμα — αν πατήθηκε το κουμπί
+    # ξανά μετά το σφάλμα (λογικό, αφού δεν εμφανιζόταν επιτυχία), μπορεί να δημιουργήθηκαν
+    # διπλές ενημερώσεις, εξηγώντας γιατί μια παραγγελία 24 τμχ εμφανίστηκε αργότερα ως 48.
+    _res_rec_offers = supabase.table("recipes").select("name, catalog_price").execute()
+    recipe_prices = {r['name']: float(r.get('catalog_price') or 0.0) for r in _res_rec_offers.data} if _res_rec_offers.data else {}
+
     st.subheader("🏷️ Κεντρική Διαχείριση Προσφορών & Εκπτώσεων")
     
     sel_cust_offers = st.selectbox("👤 Επιλέξτε Πελάτη για διαχείριση:", options=["-- Επιλέξτε --"] + sorted(df_cust["name"].tolist()) if not df_cust.empty else ["-- Επιλέξτε --"], key="offers_c")
