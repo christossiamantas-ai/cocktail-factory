@@ -1004,7 +1004,7 @@ def generate_discount_scenario_pdf(data, now_str):
     pdf.ln(3)
 
     section("ΠΑΡΑΜΕΤΡΟΙ ΣΕΝΑΡΙΟΥ")
-    row("Ποσοστό Μείωσης Τιμής", f"{data['discount_pct']:.1f} %", bold=True)
+    row("Τρόπος Καθορισμού Νέας Τιμής", data.get('price_mode_label', 'Χειροκίνητο ποσοστό (ανά κοκτέιλ)'), bold=True)
     row("Αναμενόμενη Αύξηση Τεμαχίων (υπόθεση)", f"{data['volume_increase_pct']:.1f} %", bold=True)
     row("Αριθμός Επιλεγμένων Κοκτέιλ", f"{len(data['rows'])}")
     row("Συνολική Μεταβολή Καθαρού Κέρδους", f"{data['total_delta']:,.2f} EUR", bold=True, color=(GREEN if data['total_delta'] >= 0 else RED))
@@ -7162,9 +7162,45 @@ elif page == "🎯 Νεκρό Σημείο":
         if not selected_discount_cocktails:
             st.info("Επίλεξε τουλάχιστον ένα κοκτέιλ παραπάνω για να δεις τα σενάρια μείωσης τιμών.")
         else:
-            dc1, dc2 = st.columns(2)
-            price_decrease_pct = dc1.number_input("Ποσοστό Μείωσης Τιμής (%)", min_value=0.0, max_value=50.0, value=10.0, step=1.0, key="discount_price_pct")
-            expected_volume_increase_pct = dc2.number_input(
+            # 🆕 Επιλογή τρόπου καθορισμού της νέας τιμής: είτε χειροκίνητο ποσοστό έκπτωσης
+            # (πλέον ΑΝΑ κοκτέιλ, όχι ένα κοινό ποσοστό για όλα), είτε απευθείας οι τιμές από
+            # το σενάριο Markup & Margin (αν έχει οριστεί σενάριο εκεί).
+            _mm_scenario_prices_dc = st.session_state.get("mm_scenario_prices")
+            _price_mode_options_dc = ["✏️ Χειροκίνητο ποσοστό έκπτωσης (ανά κοκτέιλ)"]
+            if _mm_scenario_prices_dc:
+                _price_mode_options_dc.append("📐 Τιμές από σενάριο Markup & Margin")
+            price_mode_dc = st.radio(
+                "🎯 Πώς θα οριστεί η νέα τιμή κάθε κοκτέιλ;",
+                _price_mode_options_dc,
+                key="discount_price_mode_dc",
+                horizontal=True,
+                help="«Χειροκίνητο» σου επιτρέπει διαφορετικό ποσοστό έκπτωσης ανά κοκτέιλ. «Markup & Margin» χρησιμοποιεί απευθείας τις τιμές που όρισες εκεί, χωρίς ενιαίο ποσοστό."
+            )
+            _use_mm_for_discount = price_mode_dc.startswith("📐")
+
+            per_cocktail_discount_pct = {}
+            if _use_mm_for_discount:
+                st.caption(f"📐 Χρησιμοποιούνται οι τιμές του σεναρίου: «{st.session_state.get('mm_scenario_label', '')}» — κοκτέιλ χωρίς έγκυρη τιμή σεναρίου θα εξαιρεθούν.")
+            else:
+                st.markdown("**Ποσοστό Έκπτωσης ανά Κοκτέιλ** (μπορείς να ορίσεις διαφορετικό για κάθε ένα)")
+                _disc_pct_rows = []
+                for _cn_dc in selected_discount_cocktails:
+                    _r_dc0 = df_rec[df_rec["Ονομα"] == _cn_dc]
+                    _old_price0 = float(_r_dc0.iloc[0].get("Τιμή Καταλόγου", 0.0) or 0.0) * channel_multiplier if not _r_dc0.empty else 0.0
+                    _disc_pct_rows.append({"Κοκτέιλ": _cn_dc, "Τρέχουσα Τιμή (€)": round(_old_price0, 2), "Ποσοστό Έκπτωσης (%)": 10.0})
+                _disc_pct_df = pd.DataFrame(_disc_pct_rows)
+                _edited_disc_pct_df = st.data_editor(
+                    _disc_pct_df,
+                    column_config={
+                        "Κοκτέιλ": st.column_config.TextColumn(disabled=True),
+                        "Τρέχουσα Τιμή (€)": st.column_config.NumberColumn(disabled=True, format="%.2f"),
+                        "Ποσοστό Έκπτωσης (%)": st.column_config.NumberColumn(min_value=0.0, max_value=50.0, step=1.0, format="%.1f"),
+                    },
+                    hide_index=True, use_container_width=True, key="discount_pct_per_cocktail_table"
+                )
+                per_cocktail_discount_pct = dict(zip(_edited_disc_pct_df["Κοκτέιλ"], _edited_disc_pct_df["Ποσοστό Έκπτωσης (%)"]))
+
+            expected_volume_increase_pct = st.number_input(
                 "Αναμενόμενη Αύξηση Τεμαχίων λόγω μείωσης (%)", min_value=0.0, max_value=300.0, value=20.0, step=5.0,
                 key="discount_volume_increase_pct",
                 help="Η υπόθεσή σας — πόσο πιστεύετε ότι θα αυξηθούν οι παραγγελίες αντιπροσώπων/πωλήσεις λόγω της χαμηλότερης τιμής."
@@ -7183,12 +7219,25 @@ elif page == "🎯 Νεκρό Σημείο":
                     continue
                 cost_dc = get_unit_cost_for_cocktail(cname, _fc_raw_material_cost(r_dc))
                 volume_dc = float(_volume_by_cocktail.get(cname, 0.0))
-                new_price_dc = old_price_dc * (1 - price_decrease_pct / 100)
+
+                if _use_mm_for_discount:
+                    _price_key_dc = "direct_new" if _direct_channel else "agent_new"
+                    _mm_entry_dc = _mm_scenario_prices_dc.get(cname, {})
+                    _mm_price_val_dc = _mm_entry_dc.get(_price_key_dc, 0.0)
+                    if not (isinstance(_mm_price_val_dc, (int, float)) and _mm_price_val_dc != float('inf') and _mm_price_val_dc > 0):
+                        continue  # καμία έγκυρη τιμή σεναρίου για αυτό το κοκτέιλ — εξαιρείται
+                    new_price_dc = _mm_price_val_dc
+                else:
+                    _cocktail_pct_dc = float(per_cocktail_discount_pct.get(cname, 0.0))
+                    new_price_dc = old_price_dc * (1 - _cocktail_pct_dc / 100)
+
+                _effective_pct_dc = ((old_price_dc - new_price_dc) / old_price_dc * 100) if old_price_dc else 0.0
                 new_volume_dc = volume_dc * (1 + expected_volume_increase_pct / 100)
                 old_contribution_dc = volume_dc * (old_price_dc - cost_dc)
                 new_contribution_dc = new_volume_dc * (new_price_dc - cost_dc)
                 _discount_items_base.append({
                     "name": cname, "old_price": old_price_dc, "new_price": new_price_dc, "cost": cost_dc,
+                    "effective_pct": _effective_pct_dc,
                     "old_volume": volume_dc, "new_volume": new_volume_dc,
                     "old_contribution": old_contribution_dc, "new_contribution": new_contribution_dc,
                     "delta": new_contribution_dc - old_contribution_dc,
@@ -7210,7 +7259,7 @@ elif page == "🎯 Νεκρό Σημείο":
                         "Κοκτέιλ": it["name"],
                         "Παλιά Τιμή (€)": round(it["old_price"], 2),
                         "Νέα Τιμή (€)": round(it["new_price"], 2),
-                        "Ποσοστό Έκπτωσης (%)": round(price_decrease_pct, 1),
+                        "Ποσοστό Έκπτωσης (%)": round(it["effective_pct"], 1),
                         "Παλιά Τεμάχια (ιστορικά)": int(it["old_volume"]),
                         "Νέα Τεμάχια (πρόβλεψη)": int(it["new_volume"]),
                         "Μεταβολή Καθαρού Κέρδους (€)": round(it["delta"], 2),
@@ -7266,7 +7315,7 @@ elif page == "🎯 Νεκρό Σημείο":
                     _now_str_dc = datetime.now().strftime("%d/%m/%Y %H:%M")
                 try:
                     _dc_pdf_data = {
-                        "discount_pct": price_decrease_pct,
+                        "price_mode_label": "📐 Τιμές από σενάριο Markup & Margin" if _use_mm_for_discount else "✏️ Χειροκίνητο ποσοστό έκπτωσης (διαφορετικό ανά κοκτέιλ)",
                         "volume_increase_pct": expected_volume_increase_pct,
                         "rows": dc_rows,
                         "total_delta": total_delta_discount,
